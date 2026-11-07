@@ -323,7 +323,10 @@ describe('a plan that went ahead', () => {
       [
         {
           ...planned(),
-          body: markComment(planComment('Two tasks.', yaml), { went: true, gates: ['product'] }),
+          body: markComment(planComment('Two tasks.', yaml, undefined, true), {
+            went: true,
+            gates: ['product'],
+          }),
         },
       ],
       taskPrs,

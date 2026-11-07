@@ -413,13 +413,13 @@ describe('stale posts', () => {
     expect(plan.units.map((u) => [u.unit.skill, u.unit.waits])).toEqual([['story', true]])
   })
 
-  it('skips the item, counting no attempt, when a get fails while planning', async () => {
+  it('skips the item the approved post hands on, counting no attempt, when a get fails while planning', async () => {
     const gone = { name: 'report.md', url: 'file:///nowhere/report.md', sha256: sha('x') }
-    const card = yours(1, [waiting([gone])])
+    const card = yours(1, [waiting([gone]), post('approve', '2026-10-24T02:00:00Z')])
     await checkPins([card], config.store as Store, process.env)
     const plan = planRun({
       config,
-      items: [card],
+      items: [withApproved(card)],
       allowances: { claude: allowance(config.budget, null, 0, config.windows) },
       skills: { builtin: builtinSkills },
     })

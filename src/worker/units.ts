@@ -519,17 +519,18 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       return { unposted: `plan.yml: contract ${file.plan.contract} is missing or empty` }
     const tasks = file.plan.tasks.map((t) => t.id)
     const inline = [outputFile.report, 'plan.yml', ...(name ? [name] : [])]
+    const went = !!post && 'went' in post
     if (summary !== undefined) {
       const pins = await pinOut(p, out, inline, notes, name || undefined)
       const missing = ['plan.yml', ...(name ? [name] : [])].find(
         (n) => !pins.some((pin) => pin.name === n),
       )
       if (missing) return { tasks, unposted: `${missing} isn't in the store` }
-      const lean = `${leanPlanComment(summary, file.plan.tasks)}${pinBlock(pins)}`
+      const lean = `${leanPlanComment(summary, file.plan.tasks, went)}${pinBlock(pins)}`
       const posted = await postComment(p, 'plan', () => lean, post)
       return { tasks, ...posted, ...(posted.url && { post: post ?? { waits: true } }) }
     }
-    const body = planComment(report, yaml, name ? { name, text } : undefined)
+    const body = planComment(report, yaml, name ? { name, text } : undefined, went)
     // The plan an approve approves is the one the next run reads back, so it must be the file's.
     const read = checkPlan(planYaml(body), limits)
     if (!('plan' in read && isDeepStrictEqual(read.plan, file.plan)))

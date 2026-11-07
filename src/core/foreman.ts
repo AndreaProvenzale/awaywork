@@ -25,8 +25,10 @@ import {
   type Ranked,
   rank,
   TOP,
+  waitsOn,
   within,
 } from './queue.js'
+import type { Moved } from './report.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
 import type {
@@ -143,6 +145,8 @@ export interface RunPlan {
   present?: boolean
   /** Each routine's next occurrence, by name, as an ISO time. */
   routines?: Record<string, string>
+  /** The moves on_done held on posts you approved since, made before planning. */
+  moved?: Moved[]
 }
 
 /** Match, dedupe and route this run's items; no I/O. */
@@ -276,7 +280,7 @@ export function planRun(input: {
       skip('invalid_plan', `plan refused: ${card.problem}`, card.item.url)
       continue
     }
-    // A report's post that waits holds its rule, whatever else changed on the card.
+    // A report's post that waits holds its rule at ranking, so here it's answered, if any.
     const posted =
       rule.deliver === 'report' && !items[0]?.task
         ? items.flatMap((item) => {
@@ -284,14 +288,6 @@ export function planRun(input: {
             return post ? [{ item, answer: postAnswer(post) }] : []
           })[0]
         : undefined
-    if (posted?.answer === 'waiting') {
-      skip(
-        'waiting_for_approval',
-        `waiting for your approval of ${rule.skill}'s result on ${posted.item.url}`,
-        posted.item.url,
-      )
-      continue
-    }
     // Closing a task's PR doesn't touch the card, nor editing a pinned file: its re-plan is due all the same.
     const replan = card?.state === 'replan'
     const stale = items.some(
@@ -613,13 +609,20 @@ function deliveryRefusal(
 
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`, or the last report rule done with it. */
 export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
+  const waiting = queue.find((r) => matches(r, item) && waitsOn(r, item))
+  if (waiting && !isAwayworkPr(item))
+    return {
+      kind: 'waiting_for_approval',
+      reason: `waiting for your approval of ${waiting.skill}'s result on ${item.url}`,
+      url: item.url,
+    }
   const done = queue.findLastIndex((r) => matches(r, item) && doneWith(r, item))
   const post = done >= 0 && !isAwayworkPr(item) && doneWith(queue[done] as Rule, item)
   if (post) {
     const how = 'went' in post.state ? 'its result went ahead' : 'you approved its result'
     return {
       kind: 'approved',
-      reason: `#${done + 1} ${queue[done]?.skill} doesn't run again: ${how} on ${item.url}; delete that post to run it again`,
+      reason: `#${done + 1} ${queue[done]?.skill} doesn't run again: ${how}; to run it again, delete that post on ${item.url}`,
       url: item.url,
     }
   }
