@@ -178,3 +178,18 @@ queue:
     ])
   })
 })
+
+it('posts a report rule with wait: false and no gates of its own as a plain result, as one without wait', () => {
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { tracker: { command: 'echo []', write: 'cat' } }
+queue: [{ skill: story, deliver: report, wait: false, on_done: { comment: result } }]
+`)
+  const plan = planRun({
+    config,
+    items: [{ ...card(), fields: { repo: 'acme/web' } }],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: {},
+  })
+  expect(plan.units.map((u) => u.unit.waits)).toEqual([undefined])
+})

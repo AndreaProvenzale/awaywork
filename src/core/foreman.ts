@@ -369,8 +369,8 @@ export function planRun(input: {
     const id = slug(items[0]?.key ?? '')
     // A post after your feedback, or a task's PR closed, waits for you whatever `wait` says.
     const again = card?.state === 'feedback' || replan || posted?.answer === 'feedback'
-    const decides =
-      planned || (rule.deliver === 'report' && (rule.wait !== undefined || !!rule.gates))
+    // A report that neither waits nor has gates of its own posts as a plain result, `wait: false` too.
+    const decides = planned || (rule.deliver === 'report' && (rule.wait === true || !!rule.gates))
     const waits = decides ? again || (rule.wait ?? planned) : undefined
     // A resumed task's draft stays stacked on the task below it while that one is open.
     const below =
