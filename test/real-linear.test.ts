@@ -2,10 +2,9 @@ import { mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { Item } from '../src/core/types.js'
+import type { Discovery, Item } from '../src/core/types.js'
 import { itemFields, sourceField } from '../src/sources/index.js'
 import { API, linear } from '../src/sources/linear.js'
-import { scriptedAsk } from './fakes/ask.js'
 
 const token = process.env.LINEAR_API_KEY ?? ''
 const team = process.env.AWAYWORK_LINEAR_TEAM ?? ''
@@ -177,14 +176,9 @@ describe.skipIf(!token || !team)('linear source, live', () => {
     expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(comment)
   }, 120_000)
 
-  it('offers the real team and status names at init', async () => {
-    const ask = scriptedAsk([
-      [/Linear teams/, [team]],
-      [/GitHub repo for issues in/, repo],
-    ])
-    const setup = await linear.init?.(ask, ctx)
-    expect(setup?.config).toEqual({ repo_map: { [team]: repo } })
-    expect(setup?.values?.team).toContain(team)
-    expect(setup?.values?.status).toContain(state)
+  it('discovers the real team and status names', async () => {
+    const found = await linear.discover?.({}, ctx)
+    const mine = ((found?.teams ?? []) as Discovery[]).find((t) => t.key === team)
+    expect(mine?.states).toContain(state)
   }, 30_000)
 })

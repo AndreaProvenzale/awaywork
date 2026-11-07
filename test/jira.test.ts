@@ -7,7 +7,6 @@ import { awaitsAnswer, isAwayworkComment, markComment } from '../src/core/footer
 import type { Ctx } from '../src/core/types.js'
 import { adfToMarkdown, jiraSource, textToAdf } from '../src/sources/jira.js'
 import { recordedFetch } from './fakes/asana.js'
-import { scriptedAsk } from './fakes/ask.js'
 import { jiraFetch, jiraFixture } from './fakes/jira.js'
 import { expectPlanBack, roundTripComment, roundTripYaml } from './fakes/plan.js'
 
@@ -251,28 +250,17 @@ describe('jira source', () => {
     )
   })
 
-  it('sets up a classic token on the site URL, without a cloud id', async () => {
+  it('discovers on the site URL for a classic token, without a cloud id', async () => {
     const http = jiraFetch()
-    const ask = scriptedAsk([
-      [/^Jira Cloud site/, 'acme.atlassian.net'],
-      [/^Atlassian account email/, 'dev@acme.test'],
-      [/^Is the token scoped/, false],
-      [/^Jira projects/, ['ENG']],
-      [/^GitHub repo for issues in ENG/, 'acme/api'],
-    ])
-    const setup = await jiraSource(http).init?.(ask, ctx)
-    expect(setup?.config).toEqual({
-      site: 'acme.atlassian.net',
-      email: 'dev@acme.test',
-      repo_map: { ENG: 'acme/api' },
-    })
+    await jiraSource(http).discover?.({ site: 'acme.atlassian.net', email: 'dev@acme.test' }, ctx)
     expect(http.calls.map((c) => c.url.split('?')[0])).toEqual([
+      'https://acme.atlassian.net/rest/api/3/myself',
       'https://acme.atlassian.net/rest/api/3/project/search',
       'https://acme.atlassian.net/rest/api/3/status',
     ])
   })
 
-  it('lists every page of projects at setup', async () => {
+  it('discovers every page of projects', async () => {
     const projects = JSON.parse(jiraFixture('projects.json'))
     const ops = { id: '10002', key: 'OPS', name: 'Operations' }
     const http = jiraFetch([
@@ -282,22 +270,15 @@ describe('jira source', () => {
         JSON.stringify({ ...projects, isLast: true, values: [ops] }),
       ],
     ])
-    const ask = scriptedAsk([
-      [/^Jira Cloud site/, 'acme.atlassian.net'],
-      [/^Atlassian account email/, 'dev@acme.test'],
-      [/^Is the token scoped/, true],
-      [/^Jira projects/, []],
+    const found = await jiraSource(http).discover?.(
+      { site: 'acme.atlassian.net', email: 'dev@acme.test' },
+      ctx,
+    )
+    expect(((found?.projects ?? []) as { key: string }[]).map((p) => p.key)).toEqual([
+      'ENG',
+      'WEB',
+      'OPS',
     ])
-    const setup = await jiraSource(http).init?.(ask, ctx)
-    expect(setup?.values?.project).toEqual(['ENG', 'WEB', 'OPS'])
-  })
-
-  it('refuses to set up without a site', async () => {
-    const ask = scriptedAsk([
-      [/^Jira Cloud site/, ''],
-      [/^Atlassian account email/, ''],
-    ])
-    await expect(source.init?.(ask, ctx)).rejects.toThrow('Jira needs a site and an email')
   })
 
   it('takes a site host and projects mapped to owner/repo', () => {

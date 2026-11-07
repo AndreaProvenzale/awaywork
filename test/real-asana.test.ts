@@ -2,10 +2,9 @@ import { mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { Ask } from '../src/core/types.js'
+import type { Discovery } from '../src/core/types.js'
 import { API, asana } from '../src/sources/asana.js'
 import { itemFields, sourceField } from '../src/sources/index.js'
-import { scriptedAsk } from './fakes/ask.js'
 
 const token = process.env.ASANA_TOKEN
 const workspace = process.env.AWAYWORK_ASANA_WORKSPACE ?? ''
@@ -157,29 +156,10 @@ describe.skipIf(!token || !workspace || !project)('asana source, live', () => {
     expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(comment)
   }, 120_000)
 
-  it('offers my real workspace, projects and sections at init', async () => {
-    const offered: string[] = []
-    const script = scriptedAsk([
-      ...(me.workspaces.length > 1 ? [[/Asana workspace/, workspace] as [RegExp, unknown]] : []),
-      [/Asana projects/, [project]],
-      [/GitHub repo for tasks in/, repo],
-    ])
-    const ask: Ask = {
-      ...script,
-      select: (message, choices, initial) => {
-        offered.push(...choices.map((c) => c.label ?? c.value))
-        return script.select(message, choices, initial)
-      },
-      multiselect: (message, choices, initial) => {
-        offered.push(...choices.map((c) => c.label ?? c.value))
-        return script.multiselect(message, choices, initial)
-      },
-    }
-    const setup = await asana.init?.(ask, ctx)
-    expect(setup?.config).toEqual(cfg)
-    expect(setup?.values?.section).toContain(section.name)
-    expect(offered).toContain(projectName)
-    if (me.workspaces.length > 1)
-      expect(offered).toContain(me.workspaces.find((w) => w.gid === workspace)?.name)
+  it('discovers my real workspace, projects and sections', async () => {
+    const found = await asana.discover?.(cfg, ctx)
+    const mine = ((found?.workspaces ?? []) as Discovery[]).find((w) => w.gid === workspace)
+    expect(((mine?.projects ?? []) as Discovery[]).map((p) => p.name)).toContain(projectName)
+    expect(mine?.sections).toContain(section.name)
   }, 30_000)
 })

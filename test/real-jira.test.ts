@@ -2,10 +2,9 @@ import { mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { Item } from '../src/core/types.js'
+import type { Discovery, Item } from '../src/core/types.js'
 import { itemFields, sourceField } from '../src/sources/index.js'
 import { jira } from '../src/sources/jira.js'
-import { scriptedAsk } from './fakes/ask.js'
 
 const {
   JIRA_API_TOKEN,
@@ -172,23 +171,10 @@ describe.skipIf(!JIRA_API_TOKEN || !JIRA_SITE || !JIRA_EMAIL || !project)(
       expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(`e2e comment ${run}`)
     }, 120_000)
 
-    it('offers the real project and status names at init', async () => {
-      const ask = scriptedAsk([
-        [/^Jira Cloud site/, JIRA_SITE],
-        [/^Atlassian account email/, JIRA_EMAIL],
-        [/^Is the token scoped/, Boolean(JIRA_CLOUD_ID)],
-        [/^Jira projects/, [project]],
-        [new RegExp(`^GitHub repo for issues in ${project} `), repo],
-      ])
-      const setup = await jira.init?.(ask, ctx)
-      expect(setup?.config).toEqual({
-        site: JIRA_SITE,
-        email: JIRA_EMAIL,
-        ...(JIRA_CLOUD_ID && { cloud_id: JIRA_CLOUD_ID }),
-        repo_map: { [project]: repo },
-      })
-      expect(setup?.values?.project).toContain(project)
-      expect(setup?.values?.status).toContain(status)
+    it('discovers the real project and status names', async () => {
+      const found = await jira.discover?.(cfg, ctx)
+      expect(((found?.projects ?? []) as Discovery[]).map((p) => p.key)).toContain(project)
+      expect(found?.statuses).toContain(status)
     }, 30_000)
   },
 )

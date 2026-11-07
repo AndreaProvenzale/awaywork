@@ -224,35 +224,6 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
       return { before, after: (await read()).updatedAt }
     },
 
-    /** Maps teams to repos and lists the account's real team keys and workflow state names. */
-    async init(ask, ctx) {
-      const token =
-        ctx.env.LINEAR_API_KEY ||
-        (await ask.secret(
-          'LINEAR_API_KEY',
-          'Linear personal API key (Settings > Account > Security & access)',
-        ))
-      if (!token) return { config: {} }
-
-      const found = await teams(token)
-      const picked = await ask.multiselect(
-        'Linear teams whose issues have code in a GitHub repo',
-        found.map((t) => ({ value: t.key, label: t.name })),
-      )
-      const repos: Record<string, string> = {}
-      for (const key of picked) {
-        const repo = await ask.text(`GitHub repo for issues in ${key} (owner/repo, blank: none)`)
-        if (repo.trim()) repos[key] = repo.trim()
-      }
-      return {
-        config: Object.keys(repos).length > 0 ? { repo_map: repos } : {},
-        values: {
-          team: found.map((t) => t.key),
-          status: [...new Set(found.flatMap((t) => t.states.nodes.map((s) => s.name)))],
-        },
-      }
-    },
-
     /** The teams, each with its workflow states. */
     async discover(cfg, ctx) {
       const token = tokenFrom({ token_env: config.shape.token_env.parse(cfg.token_env) }, ctx)

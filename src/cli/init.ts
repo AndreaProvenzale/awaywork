@@ -7,17 +7,13 @@ import { cancel, confirm, intro, isCancel, log, outro, spinner } from '@clack/pr
 import { type Command, InvalidArgumentError } from 'commander'
 import { flow, queueYaml } from '../config/edit.js'
 import { ConfigError, configPath, parseConfig } from '../config/load.js'
-import { bin, builtinSkillsDir, envFile, pluginDir, skillsDirOf } from '../config/paths.js'
-import { loadSkills } from '../config/skills.js'
+import { bin, envFile, pluginDir } from '../config/paths.js'
 import { defaultRules } from '../core/queue.js'
-import type { SkillMeta } from '../core/skills.js'
-import type { Ask, Ctx, Provider, Rule, Source } from '../core/types.js'
+import type { Ctx, Discovery, Provider, Rule, Source } from '../core/types.js'
 import { time } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
-import { Cancelled, defaultAsk } from './ask.js'
-import { describeRule } from './format.js'
 
 export function initCommand(program: Command): void {
   program
@@ -68,23 +64,19 @@ export function initCommand(program: Command): void {
         if (found) found.stop(lines.join(', '))
         else log.info(lines.join(', '))
 
-        const skills = {
-          ...(await loadSkills(builtinSkillsDir)),
-          ...(await loadSkills(skillsDirOf(path))),
-        }
         const ctx: Ctx = { env: process.env, log: (line) => log.warn(line) }
-        const ask = defaultAsk(presets(opts), (line) => log.info(line))
-        const text = await initConfig({ ask, ctx, installed, ghLogin, skills })
+        const note = (line: string) => log.info(line)
+        const text = await initConfig({ ...opts, ctx, installed, ghLogin, note })
         parseConfig(text, path)
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, text)
         outro(`Wrote ${path}. Next: awaywork doctor, awaywork plan, awaywork schedule install`)
       } catch (e) {
-        if (e instanceof Cancelled) {
+        if (e instanceof NothingToWrite) {
           cancel(`Nothing written: ${e.message}`)
           process.exitCode = 1
         } else if (e instanceof ConfigError) {
-          cancel(`Nothing written, the answers make an invalid config:\n${e.message}`)
+          cancel(`Nothing written, that makes an invalid config:\n${e.message}`)
           process.exitCode = 1
         } else throw e
       }
@@ -222,111 +214,99 @@ function parseWindow(value: string): [string, string] {
   return [start, end]
 }
 
-/** The --yes answers the flags give, keyed by the prompts of initConfig. */
-function presets({ provider, source, window }: InitOptions): [RegExp, unknown][] {
-  const presets: [RegExp, unknown][] = []
-  if (provider) presets.push([/^Providers/, provider])
-  if (source) presets.push([/^Where does the work come from/, source])
-  if (window) presets.push([/^Window starts/, window[0]], [/^Window ends/, window[1]])
-  return presets
-}
-
 export interface InitInput {
-  ask: Ask
   ctx: Ctx
   installed: string[]
   ghLogin: boolean
-  skills: Record<string, SkillMeta>
+  provider?: string[]
+  source?: string[]
+  window?: [string, string]
+  note: (message: string) => void
   providers?: Record<string, Provider>
   sources?: Record<string, Source>
 }
 
-/** Asks for providers, sources, a starting queue and the run window; returns the config text. */
+/** Nothing usable to write, e.g. no provider; the message says what is missing. */
+export class NothingToWrite extends Error {}
+
+const or = new Intl.ListFormat('en-GB', { type: 'disjunction' })
+const named: Record<string, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  cursor: "Cursor's agent CLI",
+}
+
+/** The --yes config: the flags, else the detected providers and sources, each set up from what it discovers. */
 export async function initConfig(input: InitInput): Promise<string> {
-  const { ask, ctx, installed } = input
+  const { ctx, installed } = input
   const registry = { providers: input.providers ?? providers, sources: input.sources ?? sources }
 
   const ids = Object.keys(registry.providers)
   const keyless = (id: string) => id === 'cursor' && !ctx.env.CURSOR_API_KEY
-  const hint = (id: string) =>
-    !installed.includes(id) ? 'not installed' : keyless(id) ? 'needs CURSOR_API_KEY' : undefined
-  let picked: string[] = []
-  while (picked.length === 0)
-    picked = await ask.multiselect(
-      'Providers (pick at least one)',
-      ids.map((id) => ({ value: id, hint: hint(id) })),
-      ids.filter((id) => installed.includes(id) && !keyless(id)),
-    )
-  if (picked.length > 1) {
-    const first = await ask.select(
-      'Which provider takes units first? The next takes over when its quota runs out',
-      picked.map((id) => ({ value: id })),
-      picked[0],
-    )
-    picked = [first, ...picked.filter((id) => id !== first)]
+  const picked = input.provider ?? ids.filter((id) => installed.includes(id) && !keyless(id))
+  if (picked.length === 0) {
+    const missing = ids.filter((id) => !installed.includes(id))
+    const fixes = [
+      ...(missing.length ? [`install ${or.format(missing.map((id) => named[id] ?? id))}`] : []),
+      ...(installed.some(keyless) ? ['set CURSOR_API_KEY for Cursor'] : []),
+      'pass --provider',
+    ]
+    throw new NothingToWrite(`no provider found: ${fixes.join(', or ')}`)
   }
 
   const configs: Record<string, Record<string, unknown>> = {}
-  const values: Record<string, Record<string, string[]>> = {}
-  while (Object.keys(configs).length === 0) {
-    const chosen = await ask.multiselect(
-      'Where does the work come from? (pick at least one)',
-      // Routines have nothing to ask: you write them in the config.
-      Object.keys(registry.sources)
-        .filter((id) => id !== 'routines')
-        .map((id) => ({
-          value: id,
-          hint: id === 'github' && !input.ghLogin ? 'gh not logged in' : undefined,
-        })),
-      input.ghLogin ? ['github'] : [],
-    )
-    for (const id of chosen) {
-      const source = registry.sources[id]
-      try {
-        const setup = (await source?.init?.(ask, ctx)) ?? { config: {} }
-        configs[id] = setup.config
-        values[id] = setup.values ?? {}
-      } catch (e) {
-        if (e instanceof Cancelled) throw e
-        ask.note(`Skipping ${id}: ${(e as Error).message}`)
-      }
-    }
-  }
-
-  const defaults = defaultRules(Object.keys(configs))
-  const kept = await ask.multiselect(
-    'Starting queue, top rule first (reorder later with awaywork config edit)',
-    defaults.map((r, i) => ({ value: String(i), label: r.skill, hint: describeRule(r) })),
-    defaults.map((_, i) => String(i)),
-  )
-  const queue: Rule[] = []
-  for (const rule of kept.map((i) => defaults[Number(i)] as Rule)) {
-    const where = { ...rule.where }
-    const [key, guess] =
-      Object.entries(where).find(([k]) => values[rule.source ?? '']?.[k]?.length) ?? []
-    const known = key ? (values[rule.source ?? '']?.[key] ?? []) : []
-    if (key && typeof guess === 'string') {
-      const description = input.skills[rule.skill]?.description ?? ''
-      const pick = await ask.select(
-        `Which ${key} holds the items for ${rule.skill}? ${description}`,
-        [...known.map((v) => ({ value: v })), { value: '', label: 'none, drop this rule' }],
-        known.find((v) => v.toLowerCase() === guess.toLowerCase()) ?? '',
+  const names: Record<string, Record<string, string[]>> = {}
+  for (const id of input.source ?? (input.ghLogin ? ['github'] : [])) {
+    try {
+      const setup = await setUp(id, registry.sources[id], ctx)
+      configs[id] = setup.config
+      names[id] = setup.names ?? {}
+    } catch (e) {
+      const { message, unset } = e as Error & { unset?: string }
+      input.note(
+        `Skipping ${id}: ${unset ? `${unset} is not set; awaywork secret ${unset} saves it` : message}`,
       )
-      if (!pick) continue
-      where[key] = pick
     }
-    queue.push({ ...rule, where })
   }
+  if (Object.keys(configs).length === 0)
+    throw new NothingToWrite(
+      input.source || input.ghLogin
+        ? 'no source could be set up'
+        : 'no source found: log in to gh (gh auth login), or pass --source',
+    )
 
-  const clock = async (message: string, initial: string) => {
-    let value = await ask.text(message, { initial })
-    while (!time.safeParse(value).success)
-      value = await ask.text(`${message} (HH:MM, 24 hours)`, { initial })
-    return value
-  }
-  const start = await clock('Window starts at', '01:00')
-  const end = await clock('Window ends at', '07:00')
+  const queue = defaultRules(Object.keys(configs)).flatMap((rule) => {
+    const found = names[rule.source ?? ''] ?? {}
+    const key = Object.keys(rule.where).find((k) => found[k]?.length)
+    const guess = key && rule.where[key]
+    if (!key || typeof guess !== 'string') return [rule]
+    const name = found[key]?.find((v) => v.toLowerCase() === guess.toLowerCase())
+    return name ? [{ ...rule, where: { ...rule.where, [key]: name } }] : []
+  })
+
+  const [start, end] = input.window ?? ['01:00', '07:00']
   return renderConfig({ window: { start, end }, providers: picked, sources: configs, queue })
+}
+
+/** A source's config from what its credentials see, and the real names its rules' `where` may use. */
+async function setUp(
+  id: string,
+  source: Source | undefined,
+  ctx: Ctx,
+): Promise<{ config: Record<string, unknown>; names?: Record<string, string[]> }> {
+  if (!source?.discover) return { config: {} }
+  const found = await source.discover(source.configSchema.partial().parse({}), ctx)
+  if (id === 'github') return { config: { repos: [`${found.login}/*`] } }
+  if (id === 'asana') {
+    const [first] = (found.workspaces ?? []) as Discovery[]
+    if (!first) throw new Error('this token sees no workspace')
+    return { config: { workspace: first.gid }, names: { section: first.sections as string[] } }
+  }
+  if (id === 'linear') {
+    const states = (found.teams as Discovery[]).flatMap((t) => t.states as string[])
+    return { config: {}, names: { status: [...new Set(states)] } }
+  }
+  return { config: {} }
 }
 
 const commented = (line: string, comment: string) => `${line.padEnd(31)} # ${comment}`

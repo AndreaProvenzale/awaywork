@@ -9,7 +9,6 @@ import type { Item } from '../src/core/types.js'
 import { exec } from '../src/forge/gh.js'
 import { github } from '../src/sources/github.js'
 import { itemFields, sourceField, writeItem } from '../src/sources/index.js'
-import { initial, scriptedAsk } from './fakes/ask.js'
 
 let repo = process.env.AWAYWORK_GITHUB_SANDBOX ?? ''
 const reviewerToken = process.env.AWAYWORK_GITHUB_REVIEWER_TOKEN ?? ''
@@ -218,9 +217,8 @@ jobs:
     expect(await read('checks.md')).toContain(failure)
   }, 240_000)
 
-  it('suggests my own repos at init', async () => {
-    const setup = await github.init?.(scriptedAsk([[/GitHub repos/, initial]]), ctx)
-    expect(setup?.config).toEqual({ repos: [`${login}/*`] })
+  it('discovers my login', async () => {
+    expect((await github.discover?.({}, ctx))?.login).toBe(login)
   }, 30_000)
 
   it('moves the seeded issue by a label new to the repo and comments on it as awaywork', async () => {

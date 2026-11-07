@@ -99,22 +99,11 @@ export interface Choice<T extends string = string> {
   hint?: string
 }
 
-/** Questions `awaywork init` asks in the terminal; tests answer them from a script. */
+/** Questions `schedule install` and `config edit` ask in the terminal; tests answer them from a script. */
 export interface Ask {
-  text(message: string, opts?: { initial?: string; placeholder?: string }): Promise<string>
   select<T extends string>(message: string, choices: Choice<T>[], initial?: T): Promise<T>
-  multiselect<T extends string>(message: string, choices: Choice<T>[], initial?: T[]): Promise<T[]>
   confirm(message: string, initial?: boolean): Promise<boolean>
-  /** Prompts for an unset secret and saves it to the env file; '' when skipped. */
-  secret(name: string, message: string): Promise<string>
   note(message: string): void
-}
-
-export interface SourceSetup {
-  /** The config as a user writes it. */
-  config: Record<string, unknown>
-  /** Values found for `where` fields, e.g. the user's real section names. */
-  values?: Record<string, string[]>
 }
 
 export interface Source<C = unknown> {
@@ -131,8 +120,6 @@ export interface Source<C = unknown> {
   /** The open items, plus those finished (`state` merged or closed) since `since` when given. */
   items(cfg: C, ctx: Ctx, since?: Date): Promise<Item[]>
   prefetch(item: Item, dir: string, ctx: Ctx): Promise<void>
-  /** Asks what `awaywork init` needs to configure this source. */
-  init?(ask: Ask, ctx: Ctx): Promise<SourceSetup>
   /**
    * What its credentials can see, read only: the names a config and `where` use. An unconfigured
    * source gets its schema's defaults alone, so its required keys may be missing.
