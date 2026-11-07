@@ -70,11 +70,11 @@ export async function approveItem(
   const post = item && decisionPost(item)
   if (!item || !post) throw new Error(`nothing on ${key} waits for your approval`)
   const what = post.what === 'plan' ? 'the plan' : post.what
-  if (post.went)
-    throw new Error(`${what} on ${item.url} went ahead: nothing waits for your approval`)
+  const on = item.thread?.url ?? item.url
+  if (post.went) throw new Error(`${what} on ${on} went ahead: nothing waits for your approval`)
   if (post.answer)
     throw new Error(
-      `${what} on ${item.url} was already answered by ${post.answer.author}, ${post.answer.at}`,
+      `${what} on ${on} was already answered by ${post.answer.author}, ${post.answer.at}`,
     )
   const write = { op: 'comment', body: approveReply(notes) } as const
   const { url = item.url } = await writeItem(source, cfg, item, write, ctx, undefined, { forge })

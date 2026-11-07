@@ -55,7 +55,7 @@ const searchQuery = `query($q: String!, $first: Int!, $after: String) {
     pageInfo { hasNextPage endCursor }
     nodes {
       __typename
-      ... on Issue { ${common}
+      ... on Issue { ${common} viewerDidAuthor
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
           nodes { number url isDraft headRefName headRefOid baseRefName baseRef { target { oid } } isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
         }
@@ -264,8 +264,8 @@ export function githubSource(base: Exec = exec): Source<Config> {
         const nodes = await (finished ? searchAll : searchFirst)(run, q, ctx.log)
         for (const node of nodes) {
           if (!inScope(node.repository.nameWithOwner)) continue
-          // Awaywork's thread for another item isn't an item: a plan rule would take it too.
-          if (node.__typename === 'Issue' && threadOf(node.body)) continue
+          // Your thread for another item isn't an item: a plan rule would take it too.
+          if (node.__typename === 'Issue' && node.viewerDidAuthor && threadOf(node.body)) continue
           const item = byId.get(node.id) ?? toItem(node)
           Object.assign(item.fields, fields)
           if (item.fields.mine) item.mine = true

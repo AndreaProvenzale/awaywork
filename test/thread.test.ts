@@ -257,9 +257,10 @@ queue:
     ])
     expect(dry.calls).toEqual(['threads acme/api'])
     const real = threadForge(found)
-    expect((await planOn(real)).lines).toEqual([
-      `closed ${thread57.url}, ENG-7's thread: the card is closed`,
-    ])
+    const closed = await planOn(real)
+    expect(closed.lines).toEqual([`closed ${thread57.url}, ENG-7's thread: the card is closed`])
+    // Read only so its thread closes, the card isn't a skip.
+    expect(closed.plan.skipped).toEqual([])
     expect(real.calls).toEqual([
       'threads acme/api',
       'close #57: The card is done, so awaywork closes its thread.',
@@ -280,6 +281,13 @@ queue:
       )
       expect(forge.calls).toEqual(['threads acme/api', 'comment #57: approve'])
     }
+    const yours = { author: 'me', body: 'approve', at: '2026-11-04T00:00:00Z', mine: true as const }
+    const answered = threadForge([
+      { item: 'tracker:ENG-7', thread: thread57, comments: [posted, yours] },
+    ])
+    await expect(
+      approveItem('tracker:ENG-7', config, '', { forge: answered, ctx: ctx() }),
+    ).rejects.toThrow(`the plan on ${thread57.url} was already answered by me`)
   })
 })
 
@@ -360,9 +368,13 @@ describe("GitHub's thread issues", () => {
     ])
   })
 
-  it("leaves awaywork's thread issues out of the GitHub source's items", async () => {
+  it("leaves your thread issues out of the GitHub source's items, but not a teammate's lookalike", async () => {
     const assigned = JSON.parse(fixture('search-assigned.json'))
-    assigned.data.search.nodes.push(issue(57, marked('ENG-7')))
+    const lookalike = { ...issue(59, marked('ENG-7')), viewerDidAuthor: false }
+    assigned.data.search.nodes.push(
+      { ...issue(57, marked('ENG-7')), viewerDidAuthor: true },
+      lookalike,
+    )
     const run = recorded([
       [/q=is:issue is:open archived:false assignee:@me/, JSON.stringify(assigned)],
       [
@@ -373,5 +385,6 @@ describe("GitHub's thread issues", () => {
     const items = await githubSource(run).items({ repos: ['acme/*'] }, ctx())
     expect(items.length).toBeGreaterThan(0)
     expect(items.map((i) => i.key)).not.toContain('acme/api#57')
+    expect(items.map((i) => i.key)).toContain('acme/api#59')
   })
 })
