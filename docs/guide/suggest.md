@@ -14,7 +14,7 @@ In Claude Code, with the [plugin](./agents.md#claude-code) installed:
 /away what could you take off my plate?
 ```
 
-With no config at all, `/away` sets awaywork up, and the one message it opens with asks whether your first rules should come from this, with the scope and size it would read: say yes and it doesn't ask again. On a config with no queue yet, or just the default rules `awaywork init` wrote, it offers it once before asking what to offload. Either way it never needs a token: those go in with `awaywork secret <NAME>`, which you run, as in [With an AI agent](./agents.md#claude-code). Codex and friends get the same skills from the npm package, in `plugin/skills/`, as in [Codex and friends](./agents.md#codex-and-friends).
+With no config at all, `/away` sets awaywork up, and one of its questions asks whether your first rules should come from this, with the scope and size it would read: say yes and it doesn't ask again. On a config with no queue yet, or just the default rules `awaywork init` wrote, it offers it once before asking what to offload. Either way it never needs a token: those go in with `awaywork secret <NAME>`, which you run, as in [With an AI agent](./agents.md#claude-code). Codex and friends get the same skill from the npm package, in `plugin/skills/away/`, as in [Codex and friends](./agents.md#codex-and-friends).
 
 ## It asks first
 
