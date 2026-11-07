@@ -95,6 +95,8 @@ export interface Thread {
   host: string
   /** Its key at the host, e.g. `acme/api#57`. */
   key: string
+  /** A custom host's own id for it, when it isn't the key. */
+  id?: string
   url: string
   /** The card's own updated time, when a reply on the thread is newer and stands in for it. */
   card?: string
@@ -257,7 +259,9 @@ export interface Provider {
   repoConfig?: string[]
 }
 
-export interface Forge extends Partial<ThreadHost> {
+export interface Forge {
+  /** Its thread issues, on GitHub. */
+  threads?: ThreadHost
   /** Why awaywork won't go on with its own drafts here, if it won't. */
   ownDraftsRefused?: string
   /** With `fork`, `branch` is on a fork: the clone checks out its pull ref, which must be at `fork.head` if given. */

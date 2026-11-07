@@ -69,7 +69,7 @@ export function threadHost(
   forge: Forge,
   ctx: Ctx,
 ): ThreadHost | undefined {
-  if (name === 'github') return forge.openThread && (forge as ThreadHost)
+  if (name === 'github') return forge.threads
   const cfg = sources[name]
   return isCommand(cfg) && cfg.thread ? commandThreads(name, cfg, ctx) : undefined
 }

@@ -202,8 +202,9 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     secrets: (c) => c.secrets,
 
     async items(c, ctx, since) {
-      // Awaywork's thread for another item isn't an item: a plan rule would take it too.
-      return (await printed(id, c, ctx, since)).filter((i) => !threadOf(i.description))
+      const items = await printed(id, c, ctx, since)
+      // A host's thread for another item isn't an item: a plan rule would take it too.
+      return c.thread ? items.filter((i) => !threadOf(i.description)) : items
     },
 
     async prefetch(item, dir) {
@@ -239,7 +240,7 @@ export function commandThreads(id: string, cfg: CommandConfig, ctx: Ctx): Thread
       listed ??= printed(id, cfg, ctx)
       return (await listed).flatMap((i) => {
         const item = threadOf(i.description)
-        const thread = { host: id, key: i.key, url: i.url }
+        const thread = { host: id, key: i.key, url: i.url, ...(i.id !== i.key && { id: i.id }) }
         return item ? [{ item, thread, comments: i.comments }] : []
       })
     },
@@ -250,16 +251,18 @@ export function commandThreads(id: string, cfg: CommandConfig, ctx: Ctx): Thread
       try {
         opened = JSON.parse(stdout)
       } catch {}
-      const { data } = z.object({ key: z.string().min(1), url: z.string() }).safeParse(opened)
+      const { data } = z
+        .object({ key: z.string().min(1), id: z.string().min(1).optional(), url: z.string() })
+        .safeParse(opened)
       if (!data) throw new Error(`${id}'s write printed no {"key","url"} for the thread it opened`)
       return { host: id, ...data }
     },
     async threadComment(thread, body) {
-      await write({ op: 'comment', item: thread.key, id: thread.key, body })
+      await write({ op: 'comment', item: thread.key, id: thread.id ?? thread.key, body })
       return thread.url
     },
     async closeThread(thread, body) {
-      await write({ op: 'close', item: thread.key, id: thread.key, body })
+      await write({ op: 'close', item: thread.key, id: thread.id ?? thread.key, body })
     },
   }
 }

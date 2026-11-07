@@ -4495,7 +4495,7 @@ async function finishedRun(
   provider = looper({}),
   write?: Source['write'] | null,
   ownDraftsRefused?: string,
-  threads: Partial<Forge> = {},
+  threads?: Forge['threads'],
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-done-'))
   const { origin, forge, opened, updated } = await originForge(root)
@@ -4535,7 +4535,7 @@ ${queue}
     dryRun: false,
     providers: { claude: provider },
     sources: { github: source as Source, tracker: source as Source },
-    forge: { ...forge, ownDraftsRefused, ...threads },
+    forge: { ...forge, ownDraftsRefused, threads },
     ctx: { env: { PATH: process.env.PATH, SRC_TOKEN: 's3cret' }, log: (line) => lines.push(line) },
     watch: () => ({ stop: async () => {} }),
     shortage: async () => undefined,
@@ -4546,7 +4546,9 @@ ${queue}
 
 it("posts a thread rule's waiting result on a thread issue it opens for a card that can't write, holding no move it can't make", async () => {
   const posted: string[] = []
-  const threads: Partial<Forge> = {
+  const threads: NonNullable<Forge['threads']> = {
+    threads: async () => [],
+    closeThread: async () => {},
     openThread: async (repo, item) => {
       posted.push(`open ${repo} for ${item.source}:${item.key}`)
       return { host: 'github', key: `${repo}#57`, url: `https://github.com/${repo}/issues/57` }

@@ -6,7 +6,7 @@ import { approveItem } from '../src/cli/approve.js'
 import { finishedSince, linkThreads, probeAndPlan } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { markComment, planComment, threadBody, threadMarker, threadOf } from '../src/core/footer.js'
-import type { Forge, Item, Thread } from '../src/core/types.js'
+import type { Forge, Item, Thread, ThreadHost } from '../src/core/types.js'
 import { githubSource, githubThreads } from '../src/sources/github.js'
 import { sourceFor, writeItem } from '../src/sources/index.js'
 import { fakeForge } from './fakes/forge.js'
@@ -16,25 +16,27 @@ import { fakeItem } from './fakes/items.js'
 type Found = { item: string; thread: Thread; comments: Item['comments'] }
 
 /** A forge whose thread issues live in memory: what it opened, commented and closed, in order. */
-function threadForge(found: Found[] = []): Forge & { calls: string[] } {
+function threadForge(found: Found[] = []): Forge & { calls: string[]; threads: ThreadHost } {
   const calls: string[] = []
   return Object.assign(fakeForge(), {
     calls,
-    byRepo: true,
-    threads: async (repo?: string) => {
-      calls.push(`threads ${repo}`)
-      return found.filter((t) => t.thread.key.startsWith(`${repo}#`))
-    },
-    openThread: async (repo: string | undefined, item: Pick<Item, 'source' | 'key'>) => {
-      calls.push(`open ${repo} for ${item.source}:${item.key}`)
-      return { host: 'github', key: `${repo}#57`, url: `https://github.com/${repo}/issues/57` }
-    },
-    threadComment: async (t: Thread, body: string) => {
-      calls.push(`comment ${t.key}: ${body.split('\n')[0]}`)
-      return `${t.url}#issuecomment-1`
-    },
-    closeThread: async (t: Thread, body: string) => {
-      calls.push(`close ${t.key}: ${body.split('\n')[0]}`)
+    threads: {
+      byRepo: true,
+      threads: async (repo?: string) => {
+        calls.push(`threads ${repo}`)
+        return found.filter((t) => t.thread.key.startsWith(`${repo}#`))
+      },
+      openThread: async (repo: string | undefined, item: Pick<Item, 'source' | 'key'>) => {
+        calls.push(`open ${repo} for ${item.source}:${item.key}`)
+        return { host: 'github', key: `${repo}#57`, url: `https://github.com/${repo}/issues/57` }
+      },
+      threadComment: async (t: Thread, body: string) => {
+        calls.push(`comment ${t.key}: ${body.split('\n')[0]}`)
+        return `${t.url}#issuecomment-1`
+      },
+      closeThread: async (t: Thread, body: string) => {
+        calls.push(`close ${t.key}: ${body.split('\n')[0]}`)
+      },
     },
   })
 }
@@ -165,11 +167,13 @@ queue:
   })
 
   it("leaves out the items whose repo's threads it couldn't read, saying so", async () => {
-    const forge = Object.assign(threadForge(), {
+    const forge = threadForge()
+    forge.threads = {
+      ...forge.threads,
       threads: async () => {
         throw new Error('HTTP 502')
       },
-    })
+    }
     const lines: string[] = []
     const linked = await linkThreads([item('ENG-7')], config, forge, {
       env: {},
@@ -401,7 +405,7 @@ if (process.argv[2] !== 'write') {
 let input = ''
 for await (const chunk of process.stdin) input += chunk
 const w = JSON.parse(input)
-appendFileSync('writes.log', w.op + ' ' + w.item + '\\n')
+appendFileSync('writes.log', w.op + ' ' + w.item + (w.id && w.id !== w.item ? ' id=' + w.id : '') + '\\n')
 if (w.op === 'open') {
   const key = 'thread-' + w.item
   threads.push({ id: key, key, title: w.title, url: 'file://' + key, description: w.body })
@@ -475,12 +479,19 @@ queue:
     ])
   })
 
-  it("isn't an item, and waits for your approve there, a teammate's being context, then fans out", async () => {
+  it("isn't an item, though a plain source's card quoting its marker is, and waits for your approve there, a teammate's being context, then fans out", async () => {
     await writeFile(join(root, 'items.json'), JSON.stringify([card()]))
     const teammate = { author: 'bob', body: 'approve', at: '2026-11-03T00:00:00Z' }
     await writeFile(join(root, 'threads.json'), JSON.stringify(threadOn([posted, teammate])))
     const notes = config.sources.notes
     expect(await sourceFor('notes', notes)?.items(notes, ctx())).toEqual([])
+    const quoting = { ...card(), key: 'ENG-8', description: threadOn([])[0]?.description }
+    await writeFile(join(root, 'items.json'), JSON.stringify([card(), quoting]))
+    const tracker = config.sources.tracker
+    expect((await sourceFor('tracker', tracker)?.items(tracker, ctx()))?.map((i) => i.key)).toEqual(
+      ['ENG-7', 'ENG-8'],
+    )
+    await writeFile(join(root, 'items.json'), JSON.stringify([card()]))
     const waiting = await planOn()
     expect(waiting.plan.skipped.map((s) => [s.item.key, s.kind, s.url])).toEqual([
       ['ENG-7', 'waiting_for_approval', 'file://thread-ENG-7'],
@@ -493,7 +504,7 @@ queue:
     ])
   })
 
-  it("approves by the card's key or the thread's, through the host's write", async () => {
+  it("approves by the card's key or the thread's, through the host's write, sending its own id", async () => {
     await writeFile(join(root, 'items.json'), JSON.stringify([card()]))
     for (const key of ['tracker:ENG-7', 'notes:thread-ENG-7']) {
       await writeFile(join(root, 'threads.json'), JSON.stringify(threadOn([posted])))
@@ -501,7 +512,14 @@ queue:
         'plan approved: replied approve on file://thread-ENG-7',
       )
     }
-    expect(await writes()).toEqual(['comment thread-ENG-7', 'comment thread-ENG-7'])
+    const [page] = threadOn([posted])
+    await writeFile(join(root, 'threads.json'), JSON.stringify([{ ...page, id: 'page-7' }]))
+    await approveItem('tracker:ENG-7', config, '', { forge: fakeForge(), ctx: ctx() })
+    expect(await writes()).toEqual([
+      'comment thread-ENG-7',
+      'comment thread-ENG-7',
+      'comment thread-ENG-7 id=page-7',
+    ])
   })
 
   it('sends close once the card is done, which a host may ignore', async () => {

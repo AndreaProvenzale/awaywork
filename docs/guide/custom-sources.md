@@ -165,15 +165,15 @@ The rule's first post for a card opens its thread, one more op for `write`:
 { "op": "open", "item": "ENG-2101", "title": "ENG-2101: Export VAT report", "body": "awaywork posts here for [ENG-2101](https://acme.atlassian.net/browse/ENG-2101), Export VAT report: its plans, results and questions. Reply here to answer them; the card still decides whether it's yours.\n\n<!-- awaywork thread item=jira:ENG-2101 -->" }
 ```
 
-It prints the new thread's key and link, `{"key": "ENG-2101", "url": "file:///Users/me/vault/awaywork/ENG-2101.md"}`. Every post awaywork makes for the card is then a `comment` on that key, sent as both `item` and `id`, and once the card's source says it's done, a `close` with a last line to post, `The card is done, so awaywork closes its thread.` A host may ignore `close`: it then gets it again on every run that still reads the card as done, a week by default.
+It prints the new thread's key and link, `{"key": "ENG-2101", "url": "file:///Users/me/vault/awaywork/ENG-2101.md"}`. It may print an `id` too, when the host's own id for the thread isn't the key: a Notion page's, say. Every post awaywork makes for the card is then a `comment` with that key as `item` and the `id` (the key when there's none), and once the card's source says it's done, a `close` with a last line to post, `The card is done, so awaywork closes its thread.` A host may ignore `close`: it then gets it again on every run that still reads the card as done, a week by default.
 
-- **Listed back as items.** `command` prints each thread it opened like any item, with the `body` it got as `description`, the marker line included. That marker is how awaywork finds a card's thread on every run, so nothing goes in the state dir, and why a thread is never an item of its own: a custom source's item carrying it is left out.
-- **Its `comments` are the replies**, oldest first, `mine` on yours, as on any item: only your reply answers a post, a teammate's is context in `item.md`. Everything else works as on a GitHub thread: approving, feedback, held moves, `awaywork approve jira:ENG-2101` or the thread's own key, `notes:ENG-2101`.
+- **Listed back as items.** `command` prints each thread it opened like any item, with the `body` it got as `description`, the marker line included. That marker is how awaywork finds a card's thread on every run, so nothing goes in the state dir, and why a thread is never an item of its own: a thread host's item carrying it is left out.
+- **Its `comments` are the replies**, oldest first, `mine` on yours, as on any item: only your reply answers a post, a teammate's is context in `item.md`. Everything else works as on a GitHub thread: approving, feedback, held moves, `awaywork approve jira:ENG-2101` or the thread's own key, `notes:ENG-2101`. Keep each of awaywork's posts one comment: part of it is the model's text, so a host that splits a post into several at anything shaped like its reply heading lets that text pass for your reply, an `approve` included.
 - **Nobody gets pinged.** A GitHub issue notifies its assignee; a file or a page in your notes doesn't, so a post waits there unseen. Pair the host with a [notify](./configuration.md#notify) hook that tells you when a run left something waiting.
 
 ### A folder of Markdown files
 
-One file per card, in a folder only you write to: a corner of your Obsidian vault, say. A `### <who> · <time>` line heads each reply. A file can't tell who wrote a line, so `mine` is whoever the heading names, and that makes it a thread only while you're the folder's only writer: a personal vault yes, a team's shared drive no.
+One file per card, in a folder only you write to: a corner of your Obsidian vault, say. A `### <who> · <time>` line heads each reply. A file can't tell who wrote a line, so `mine` is whoever the heading names, and that makes it a thread only while you're the folder's only writer: a personal vault yes, a team's shared drive no. awaywork writes there too, so the script escapes a heading line in what it appends (`\### `), and the step's own text can't start a reply.
 
 ```js
 // threads.mjs: awaywork's threads as Markdown files in a folder only you write to
@@ -187,7 +187,9 @@ const dir = resolve(folder)
 const me = userInfo().username
 const reply = /^### (\S+) · (\S+)$/m // `### <who> · <ISO time>`, then the reply
 const file = (key) => join(dir, `${key}.md`)
+const escaped = (text) => text.replace(/^### /gm, '\\### ') // what awaywork posts never reads as a reply
 
+await mkdir(dir, { recursive: true })
 if (mode !== 'write') {
   const threads = []
   for (const name of (await readdir(dir)).filter((n) => n.endsWith('.md'))) {
@@ -211,11 +213,11 @@ if (mode !== 'write') {
   const write = JSON.parse(await text(process.stdin))
   if (write.op === 'open') {
     const key = write.item.replace(/[^\w.-]+/g, '-')
-    await writeFile(file(key), `# ${write.title}\n\n${write.body}\n`, { flag: 'wx' })
+    await writeFile(file(key), escaped(`# ${write.title}\n\n${write.body}\n`), { flag: 'wx' })
     console.log(JSON.stringify({ key, url: `file://${file(key)}` }))
   } else if (write.op === 'comment' || write.op === 'close') {
     const thread = await readFile(file(write.item), 'utf8') // no thread, no comment
-    await writeFile(file(write.item), `${thread}\n### ${me} · ${new Date().toISOString()}\n\n${write.body}\n`)
+    await writeFile(file(write.item), `${thread}\n### ${me} · ${new Date().toISOString()}\n\n${escaped(write.body)}\n`)
     if (write.op === 'close') {
       await mkdir(join(dir, 'closed'), { recursive: true })
       await rename(file(write.item), join(dir, 'closed', `${write.item}.md`))
