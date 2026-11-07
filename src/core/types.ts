@@ -59,6 +59,8 @@ export interface Item {
   fields: Record<string, unknown>
   /** Yours: your PR, or an item assigned to you; awaywork writes only to these. */
   mine?: true
+  /** A PR whose body nobody but you, or awaywork as you, edited last: only its footer pins are read back. */
+  bodyMine?: true
   /** A task of the plan approved on the card `parent`: awaywork makes it, and writes to the card for it. */
   task?: {
     parent: Item

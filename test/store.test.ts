@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -28,10 +28,12 @@ import { postAnswer, readBackPosts, reportPost, withApproved } from '../src/core
 import { formatReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, Write } from '../src/core/types.js'
+import { githubSource } from '../src/sources/github.js'
 import { checkPins, putFiles, readBack, type Store } from '../src/worker/store.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
-import { fakeItem } from './fakes/items.js'
+import { fixture, githubRoutes, recorded } from './fakes/gh.js'
+import { fakeItem, githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
 import { fakeSource } from './fakes/source.js'
 
@@ -404,7 +406,7 @@ describe('PR footers', () => {
       id: '9',
       key: 'acme/api#9',
       type: 'pr',
-      ...(mine && { mine: true as const }),
+      ...(mine && { mine: true as const, bodyMine: true as const }),
       description,
       fields: { repo: 'acme/api', ours: true, updated: '2026-10-24T00:00:00Z' },
     })
@@ -431,6 +433,29 @@ describe('PR footers', () => {
     expect(notes).toEqual([
       "notes.md of the PR body's footer changed in the store since awaywork pinned it: left out",
     ])
+  })
+
+  it("gets no pin a teammate edited into your awaywork PR's body, and those of your own edit", async () => {
+    const secret = await pinned('secret.txt', 'SECRET=1')
+    const logged = await folderStore(
+      `import { appendFileSync } from 'node:fs'\n${storeScript}\nappendFileSync(new URL('log', import.meta.url), \`\${op.op} \${op.url}\\n\`)\n`,
+    )
+    const read = async (editor: string) => {
+      const authored = JSON.parse(fixture('search-authored.json'))
+      Object.assign(authored.data.search.nodes[0], {
+        body: `Body.\n\n${footer('r0', [], undefined, [secret])}`,
+        editor: { login: editor },
+      })
+      const run = recorded([[/author:@me/, JSON.stringify(authored)], ...githubRoutes()])
+      const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, { env: {}, log: () => {} })
+      const posts = readBackPosts(pr1 as Item, 'review', false)
+      const dir = await mkdtemp(join(tmpdir(), 'awaywork-footer-'))
+      await readBack(storeOf(logged.config), process.env, posts, dir)
+      return posts.map((p) => p.name)
+    }
+    expect(await read('teammate')).toEqual([])
+    expect(await read('dev')).toEqual(['pr'])
+    expect(await readFile(join(logged.dir, 'log'), 'utf8')).toBe(`get ${secret.url}\n`)
   })
 })
 
@@ -541,6 +566,37 @@ describe('stale posts', () => {
       attempts,
     })
     expect(plan.units.map((u) => [u.unit.skill, u.unit.waits])).toEqual([['story', true]])
+  })
+
+  it('plans an unanswered post whose file was edited as feedback, on the card and its PR, and while its pins match holds the card alone', async () => {
+    const config = parseConfig(
+      `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${shared.config}\nqueue:\n  - { skill: story, where: { type: issue }, deliver: report, wait: true }\n  - { skill: fix, where: { type: pr, checks: failing } }\n`,
+    )
+    const pr = githubPr(7, { checks: 'failing' })
+    const plan = async (pin: Pin) => {
+      const card = { ...yours(1, [waiting([pin])]), linkedPrs: pr.linkedPrs }
+      await checkPins([card], config.store as Store, process.env)
+      const p = planRun({
+        config,
+        items: [withApproved(card), pr],
+        allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+        skills: { builtin: builtinSkills },
+        attempts: {
+          'github:acme/api#1': { runId: 'r0', skill: 'story', updated: '2026-10-24T00:00:00Z' },
+        },
+      })
+      return {
+        units: p.units.map((u) => [u.unit.skill, u.unit.items.map((i) => i.key)]),
+        skipped: p.skipped.map((s) => [s.item.key, s.kind]),
+      }
+    }
+    expect((await plan(await pinned('report.md', 'edited', sha('as posted')))).units).toEqual([
+      ['story', ['acme/api#1', 'acme/api#7']],
+    ])
+    expect(await plan(await pinned('report.md', 'as posted'))).toEqual({
+      units: [['fix', ['acme/api#7']]],
+      skipped: [['acme/api#1', 'waiting_for_approval']],
+    })
   })
 
   it('skips the item the approved post hands on, counting no attempt, when a get fails while planning', async () => {

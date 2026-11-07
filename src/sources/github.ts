@@ -559,6 +559,7 @@ function toItem(node: Node): Item {
     labels,
     comments: node.comments.nodes.filter(isTrusted).map(toComment),
     linkedPrs: links.map(toPrRef),
+    ...(isPr && !notYours(node) && { bodyMine: true as const }),
     fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)),
     raw: node,
   }
