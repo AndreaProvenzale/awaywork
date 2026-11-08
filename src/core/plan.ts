@@ -1,11 +1,13 @@
 import { parse } from 'yaml'
 import { z } from 'zod'
 import {
+  answerTo,
   commentKind,
   commentTask,
   contractHeading,
   isApprove,
   isAwayworkComment,
+  postState,
   resultOf,
   resultStatus,
 } from './footer.js'
@@ -271,14 +273,20 @@ export function contractText(comment: string, name: string): string {
 
 type Comment = Item['comments'][number]
 
-/** Awaywork's newest plan comment on the item, and its answer: the first comment after it but a bot's or awaywork's result. */
+/** A plan post's `plan.yml`: read back from the store for a lean one, else in its comment. */
+export const planOf = (c: Comment): string => c.pinned?.files['plan.yml'] ?? planYaml(c.body)
+
+/** Awaywork's newest plan comment on the item, and its answer: your first reply after it, or the plan itself when it `went` ahead. */
 export function planThread(
   item: Pick<Item, 'comments'>,
-): { plan: Comment; answer?: Comment } | undefined {
+): { plan: Comment; answer?: Comment; went?: true } | undefined {
   const at = item.comments.findLastIndex((c) => commentKind(c) === 'plan')
   if (at < 0) return undefined
-  const answer = item.comments.slice(at + 1).find((c) => !c.bot && commentKind(c) !== 'result')
-  return { plan: item.comments[at] as Comment, ...(answer && { answer }) }
+  const plan = item.comments[at] as Comment
+  const state = postState(plan)
+  if (state && 'went' in state) return { plan, answer: plan, went: true }
+  const answer = answerTo(item, at)
+  return { plan, ...(answer && { answer }) }
 }
 
 /** The tasks whose `done` result is on the card after its plan's approval: a re-plan's approval leaves older results behind. */
@@ -315,18 +323,19 @@ export function planState(
 ): PlanState | undefined {
   const thread = planThread(item)
   if (!thread) return undefined
-  if (thread.answer && !isApprove(thread.answer)) return { state: 'feedback' }
+  if (thread.plan.pinned?.stale) return { state: 'feedback' }
+  if (thread.answer && !thread.went && !isApprove(thread.answer)) return { state: 'feedback' }
   // A PR closed before the plan was posted retired its id; one closed after it re-plans.
   const posted = Date.parse(thread.plan.at)
   const retired = taskPrUrls(
     item,
     (pr) => pr.state === 'closed' && Date.parse(pr.closedAt ?? '') < posted,
   )
-  const checked = checkPlan(planYaml(thread.plan.body), { ...limits, retired })
+  const checked = checkPlan(planOf(thread.plan), { ...limits, retired })
   if ('problem' in checked) return { state: 'invalid', problem: checked.problem }
   const { contract: path } = checked.plan
   const name = path && contractName(path)
-  const text = name ? contractText(thread.plan.body, name) : ''
+  const text = name ? (thread.plan.pinned?.files[name] ?? contractText(thread.plan.body, name)) : ''
   if (name && !text.trim())
     return { state: 'invalid', problem: `contract ${path} isn't in the plan comment` }
   if (!thread.answer) return { state: 'waiting' }
@@ -335,7 +344,7 @@ export function planState(
   return {
     state: 'approved',
     plan: checked.plan,
-    notes: approveNotes(thread.answer),
+    notes: thread.went ? '' : approveNotes(thread.answer),
     ...(name && { contract: { name, text } }),
   }
 }
@@ -356,7 +365,7 @@ export function cardTasks(item: Pick<Item, 'comments'>): Task[] {
     .reverse()
     .flatMap((c) => {
       try {
-        return planFile.safeParse(parse(planYaml(c.body))).data?.tasks ?? []
+        return planFile.safeParse(parse(planOf(c))).data?.tasks ?? []
       } catch {
         return []
       }

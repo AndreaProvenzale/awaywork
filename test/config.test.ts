@@ -495,33 +495,116 @@ describe('config', () => {
     ])
   })
 
-  it('takes stack on a step or a loop of a draft_pr or pr chain only, never inside a loop', () => {
-    const chain = (rule: string) => problems(`${minimal}queue: [{ skill: implement, ${rule} }]`)
+  it('takes wait and gates on plan and report rules only, a rule gate without changed or a shared name', () => {
+    const rules = (queue: string) =>
+      problems(
+        `${minimal}gates: { risk: { skill: judge } }\nrepos: { acme/api: { gates: { routes: { command: x } } } }\nqueue:\n${queue}\n  - { skill: implement, where: { planned: true } }`,
+      )
     expect(
-      chain(
-        'then: [review, { skill: fix, stack: true }, { loop: [plan], until: { verdict: approve }, max: 1, stack: true }]',
+      rules(
+        '  - { skill: plan, deliver: plan, wait: false, gates: { product: { skill: judge, instructions: judges/product.md } } }\n  - { skill: story, deliver: report, wait: true, gates: { taste: { command: \'test -s "$AWAYWORK_OUT_DIR/report.md"\' } } }',
       ),
     ).toEqual([])
-    expect(chain('deliver: pr, then: [{ skill: fix, stack: true }]')).toEqual([])
-    expect(chain('deliver: push, then: [{ skill: fix, stack: true }]')).toEqual([
-      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not push: a stacked slice opens a PR',
+    const why =
+      'needs deliver: plan or report; a PR is already the decision, and commits take top-level or repo gates'
+    expect(rules('  - { skill: implement, deliver: pr, wait: true }')).toEqual([
+      `queue[0].wait: wait ${why}`,
     ])
-    expect(chain('deliver: report, then: { skill: plan, stack: true }')).toEqual([
-      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not report: a stacked slice opens a PR',
+    expect(rules('  - { skill: implement, gates: { x: { command: x } } }')).toEqual([
+      `queue[0].gates: gates ${why}`,
     ])
-    expect(chain('deliver: pending_review, then: { skill: review, stack: true }')).toEqual([
-      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not pending_review: a stacked slice opens a PR',
-    ])
-    expect(chain('deliver: plan, then: { skill: review, stack: true }')).toContain(
-      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not plan: a stacked slice opens a PR',
-    )
     expect(
-      chain(
-        'then: { loop: [review, { skill: fix, stack: true }], until: { verdict: approve }, max: 2 }',
+      rules('  - { skill: qa, deliver: report, where: { planned: true }, wait: true }'),
+    ).toContain("queue[0].wait: wait goes on the plan's rule: a task's approval is the plan's")
+    expect(
+      rules("  - { skill: story, deliver: report, gates: { ui: { changed: 'src/**' } } }"),
+    ).toEqual([
+      'queue[0].gates.ui.changed: a report has no diff: changed needs commits, in a top-level or repo gate',
+    ])
+    expect(
+      rules(
+        '  - { skill: plan, deliver: plan, gates: { risk: { skill: judge }, routes: { command: y } } }',
       ),
     ).toEqual([
-      'queue[0].then[0].loop[1].stack: a loop sits inside one slice: set stack on the loop',
+      'queue[0].gates.risk: a top-level or repo gate is named risk too: name this one otherwise',
+      'queue[0].gates.routes: a top-level or repo gate is named routes too: name this one otherwise',
     ])
+    expect(
+      rules('  - { skill: plan, deliver: plan, gates: { x: { command: x, instructions: a.md } } }'),
+    ).toEqual(['queue[0].gates.x.instructions: instructions go to a judge: they need skill'])
+  })
+
+  it("refuses a report that waits on a source that can't write, and approved: true with what it names now", () => {
+    const quiet = `providers: [claude: {}]\nsources: { github: { repos: [acme/api] }, tracker: { command: 'echo []' } }\n`
+    expect(
+      problems(`${quiet}queue: [{ skill: story, source: tracker, deliver: report, wait: true }]`),
+    ).toEqual([
+      "queue[0].wait: a report that waits posts on the item, and tracker can't write to its items; add thread: github",
+    ])
+    const hint = "approved names the approved post's skill now, e.g. approved: story"
+    expect(problems(`${minimal}queue: [{ skill: implement, where: { approved: true } }]`)).toEqual([
+      `queue[0].where.approved: ${hint}`,
+    ])
+    expect(
+      problems(`${minimal}queue: [{ skill: implement, where: { approved: [story, prototype] } }]`),
+    ).toEqual([])
+  })
+
+  it("takes a plan or a waiting report on a source that can't write with thread: github, never on Bitbucket or a task rule", () => {
+    const quiet = `providers: [claude: {}]\nsources: { github: { repos: [acme/api] }, tracker: { command: 'echo []' } }\n`
+    const task = '{ skill: implement, where: { planned: true } }'
+    expect(
+      problems(
+        `${quiet}queue: [{ skill: plan, source: tracker, deliver: plan, thread: github }, { skill: story, source: tracker, deliver: report, wait: true, thread: github }, ${task}]`,
+      ),
+    ).toEqual([])
+    expect(
+      problems(`${quiet}queue: [{ skill: plan, source: tracker, deliver: plan }, ${task}]`),
+    ).toEqual([
+      "queue[0].deliver: plan posts on the item, and tracker can't write to its items; use report, or thread: github",
+    ])
+    expect(
+      problems(
+        `${quiet}queue: [{ skill: plan, deliver: plan, thread: github }, { skill: implement, where: { planned: true }, thread: github }]`,
+      ),
+    ).toEqual([
+      "queue[1].thread: thread goes on the plan's rule: its tasks post where the plan did",
+    ])
+    const bitbucket = `providers: [claude: {}]\nsources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []' } }\n`
+    expect(
+      problems(
+        `${bitbucket}queue: [{ skill: story, source: tracker, deliver: report, thread: github }]`,
+      ),
+    ).toEqual([
+      "queue[0].thread: thread: github opens an issue in the item's repo, and this config's repos are on Bitbucket; a custom thread host can take its posts instead",
+    ])
+  })
+
+  it('takes a custom thread host that says it opens threads, on Bitbucket too', () => {
+    const hosts = `providers: [claude: {}]\nsources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []' }, notes: { command: 'echo []', write: 'cat', thread: true } }\n`
+    const story = (thread: string) =>
+      problems(
+        `${hosts}queue: [{ skill: story, source: tracker, deliver: report, wait: true, thread: ${thread} }]`,
+      )
+    expect(story('notes')).toEqual([])
+    const refused = (host: string) =>
+      `queue[0].thread: thread is item, github or a custom source with thread: true, and ${host} isn't one`
+    expect(story('tracker')).toEqual([refused('tracker')])
+    expect(story('nowhere')).toEqual([refused('nowhere')])
+    expect(
+      problems(`providers: [claude: {}]\nsources: { notes: { command: 'echo []', thread: true } }`),
+    ).toEqual(['sources.notes.thread: a thread host opens threads through its `write`: add one'])
+  })
+
+  it('refuses stack, which was removed, with what to do instead', () => {
+    const chain = (rule: string) => problems(`${minimal}queue: [{ skill: implement, ${rule} }]`)
+    const hint = 'stack was removed: split work into tasks with a deliver: plan rule'
+    expect(chain('then: [review, { skill: fix, stack: true }]')).toEqual([
+      `queue[0].then[1]: ${hint}`,
+    ])
+    expect(
+      chain('then: { loop: [review], until: { verdict: approve }, max: 1, stack: true }'),
+    ).toEqual([`queue[0].then: ${hint}`])
   })
 
   it('takes a custom source with a command and matches rules on its declared fields', () => {

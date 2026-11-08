@@ -37,7 +37,6 @@ export const watchLockPath = join(stateDir, 'watch.lock')
 export const watchStatePath = join(stateDir, 'watch.json')
 export const watchLogPath = join(stateDir, 'watch.log')
 export const skipsPath = join(stateDir, 'skips.json')
-export const approvalsPath = join(stateDir, 'approvals.json')
 
 const bins = new Map<string, string>()
 
