@@ -24,7 +24,14 @@ import {
   waitingTasks,
 } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
-import { checkPlan, planContract, planState, taskPrUrls } from '../src/core/plan.js'
+import {
+  checkPlan,
+  doneTasks,
+  planContract,
+  planState,
+  planThread,
+  taskPrUrls,
+} from '../src/core/plan.js'
 import { rank, ruleFor } from '../src/core/queue.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, TaskPr, Unit, Write } from '../src/core/types.js'
@@ -310,6 +317,45 @@ describe('reading a fanned-out plan back', () => {
   })
 })
 
+describe('a plan that went ahead', () => {
+  const went = (taskPrs: Record<string, TaskPr> = {}) =>
+    card(
+      [
+        {
+          ...planned(),
+          body: markComment(planComment('Two tasks.', yaml, undefined, true), {
+            went: true,
+            gates: ['product'],
+          }),
+        },
+      ],
+      taskPrs,
+    )
+  const wentQueue = configOf(`  - { skill: plan, deliver: plan, wait: false }
+  - { skill: implement, where: { planned: true } }
+`)
+
+  it('is its own answer: it fans out with no notes, and the tasks after it read results from it on', () => {
+    expect(units(plan([went()], wentQueue))).toEqual([['acme-api-1-api', 'away/acme-api-1-api']])
+    expect(planThread(went())?.went).toBe(true)
+    const done = { ...posted(resultComment('Done.', 'done', 'implement', 'api'), 3) }
+    expect(doneTasks({ comments: [...went().comments, done] })).toEqual(['api'])
+  })
+
+  it('plans again once a task PR closed, though the card is unchanged, and the re-plan waits', () => {
+    const closed = { api: pr('api', 'closed', at(3)) }
+    const attempts: Attempts = {
+      'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at(5) },
+    }
+    const p = plan([went(closed)], wentQueue, attempts)
+    expect(p.units.map((u) => [u.unit.id, u.unit.waits])).toEqual([['acme-api-1', true]])
+    expect(
+      plan([card([planned(), yours('Split web.')])], wentQueue).units.map((u) => u.unit.waits),
+    ).toEqual([true])
+    expect(plan([card([])], wentQueue).units.map((u) => u.unit.waits)).toEqual([false])
+  })
+})
+
 describe('tasks as items', () => {
   it("makes each task an item of the card's source, URL, owner, fields and thread", () => {
     const parent = approved()
@@ -330,8 +376,8 @@ describe('tasks as items', () => {
       task: { id: 'api', skill: 'implement', notes: 'Go.' },
     })
     expect(task.task?.parent).toBe(parent)
-    const approvedCard = { ...parent, fields: { ...parent.fields, approved: true } }
-    expect(taskItem(approvedCard, { id: 'api', title: 'A' }).fields.approved).toBe(false)
+    const approvedCard = { ...parent, fields: { ...parent.fields, approved: 'story' } }
+    expect(taskItem(approvedCard, { id: 'api', title: 'A' }).fields.approved).toBeUndefined()
     const md = taskMarkdown(task)
     expect(md).toContain(
       '# acme/api#1/api: VAT export endpoint\n\nhttps://example.com/1\n\nAdd GET /exports/vat.\n',
@@ -452,12 +498,12 @@ describe('tasks as items', () => {
     expect(skips(plan([{ ...approved(), taskPrs: null }]))).toEqual([
       ['acme/api#1', 'fanned_out', failed],
     ])
-    const feedback = plan([{ ...card([planned(), theirs('Split web.', 2)]), taskPrs: null }])
+    const feedback = plan([{ ...card([planned(), yours('Split web.', 2)]), taskPrs: null }])
     expect(feedback.units).toEqual([])
     expect(skips(feedback)).toEqual([['acme/api#1', 'fanned_out', failed]])
     // A second plan waiting for you still needs you when its tasks' PRs went unread.
     const waiting = {
-      ...card([planned(), theirs('Split web.', 2), planned(yaml, 3)]),
+      ...card([planned(), yours('Split web.', 2), planned(yaml, 3)]),
       taskPrs: null,
     }
     expect(skips(plan([waiting]))).toEqual([
@@ -749,7 +795,7 @@ describe("a task's PR", () => {
     forge.heads['acme/api:away/acme-api-1-old'] = [on(3, 'closed', 'acme/api#1/old')]
     const old = 'tasks: [{ id: old, title: Old }]'
     const parent = {
-      ...card([planned(old, 1), theirs('No.', 2), planned(yaml, 3)]),
+      ...card([planned(old, 1), yours('No.', 2), planned(yaml, 3)]),
       taskPrs: undefined,
     }
     const lines: string[] = []
@@ -785,7 +831,7 @@ describe("a task's PR", () => {
     const first = { ...card([planned()]), taskPrs: undefined }
     await linkPlanTasks([first], config, { builtin: builtinSkills }, counting, ctx)
     expect([calls, first.taskPrs]).toEqual([0, undefined])
-    const answered = { ...card([planned(), theirs('Split web.', 2)]), taskPrs: undefined }
+    const answered = { ...card([planned(), yours('Split web.', 2)]), taskPrs: undefined }
     await linkPlanTasks([answered], config, { builtin: builtinSkills }, counting, ctx)
     expect([calls, answered.taskPrs]).toEqual([2, {}])
   })
@@ -1102,10 +1148,10 @@ it('takes no other branch for a task: its PR is found by that name', async () =>
   const forge = fakeForge()
   forge.branches.add('acme/api:away/acme-api-1-api')
   const [unit] = plan([approved()]).units.map((u) => u.unit)
-  expect(await freeBranch(forge, unit as Unit, new Set())).toEqual({
+  expect(await freeBranch(forge, unit as Unit)).toEqual({
     skip: 'away/acme-api-1-api exists on acme/api; delete it to run this task',
   })
-  expect(await freeBranch(fakeForge(), unit as Unit, new Set())).toEqual({
+  expect(await freeBranch(fakeForge(), unit as Unit)).toEqual({
     branch: 'away/acme-api-1-api',
   })
 })

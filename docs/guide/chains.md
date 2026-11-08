@@ -1,5 +1,5 @@
 ---
-description: Chains in awaywork, steps that run after a rule's skill in the same clone, covering then, review-and-fix loops, when conditions, stacked PRs, pushing onto your own PR and keeping it in line with its base.
+description: Chains in awaywork, steps that run after a rule's skill in the same clone, covering then, review-and-fix loops, when conditions, pushing onto your own PR and keeping it in line with its base.
 ---
 
 # Chains
@@ -10,7 +10,7 @@ No new chain features until real runs ask for them: only fixes and simplificatio
 
 ## `then`
 
-Steps run right after the rule's skill, one after the other, in the same clone and on the same branch. The whole chain is one unit: it publishes once, when it ends, as one PR, one push or one report, unless a step says [`stack`](#stack). A step is a skill name, or a map when you want to set more:
+Steps run right after the rule's skill, one after the other, in the same clone and on the same branch. The whole chain is one unit: it publishes once, when it ends, as one PR, one push or one report. To split work into PRs of their own, plan it into [tasks](./how-it-works.md#plans). A step is a skill name, or a map when you want to set more:
 
 ```yaml
 queue:
@@ -27,7 +27,7 @@ queue:
       - { skill: review, provider: codex, mcp: [] }
 ```
 
-- A step takes `provider`, `model`, `skills`, `mcp` and `instructions`, plus `with`, [`when`](#when) and [`stack`](#stack). It inherits the first five from the rule unless it sets its own, and `[]` clears a list: above, `implement` gets `sentry`, `review` gets no MCP server and keeps `opus` should it route to Claude. `with`, `when` and `stack` are the step's own. Top-level `instructions` and `skills` still apply, as to every unit.
+- A step takes `provider`, `model`, `skills`, `mcp` and `instructions`, plus `with` and [`when`](#when). It inherits the first five from the rule unless it sets its own, and `[]` clears a list: above, `implement` gets `sentry`, `review` gets no MCP server and keeps `opus` should it route to Claude. `with` and `when` are the step's own. Top-level `instructions` and `skills` still apply, as to every unit.
 - A skill commits unless its metadata says it reports, as the built-in `plan` and `review` do. The rule's `deliver` says where the chain's commits go: one draft PR (`draft_pr`, the default), one PR ready for review (`pr`), a [`push`](#push) onto your own PR, or `report`, where no step commits. A chain that committed nothing publishes its steps' reports, joined, as one report. Steps have no `deliver` or `branch` of their own: a committing skill that should only report is a [skill of your own](./skills.md#write-your-own).
 - Each step finds what the one before left in `.away/context/previous/`: its `report.md` and `verdict`, what the chain did so far in `pr.md`, its commits in `diff.patch`, and, in a loop, the `until` command's output in `check.log`.
 - `model` takes two per provider, `{ claude: [sonnet, opus] }`: a step that fails on the first [runs once more on the second](./configuration.md#retry-on-the-next-model), and the chain goes on from there.
@@ -62,10 +62,10 @@ queue:
        then docs (user) on claude, when the branch changes src/**
   ```
 
-- A chain counts once against the [caps](./configuration.md#windows-limits-and-budget) and its rule's `units`, as soon as its first step has a provider, and once more per [stacked slice](#stack). A chain whose first slice is over a cap is skipped whole, naming the cap; a later slice over it is left out.
+- A chain counts once against the [caps](./configuration.md#windows-limits-and-budget) and its rule's `units`, as soon as its first step has a provider. A chain over a cap is skipped whole, naming the cap.
 - On someone else's PR or a PR from a fork, a chain that could commit (a step's skill commits and `deliver` isn't `report` or `pending_review`) is skipped with the reason. `deliver: report` turns it into a review chain, and `pending_review` leaves its last report on the PR as your pending review.
 - A skill runs at most once outside loops, and once across the chain's loops: a loop may repeat the rule's skill, as in `fix` then `loop: [review, fix]`.
-- Steps are named `<unit>-<skill>`, and `<unit>-<skill>-<round>` in a loop. Each leaves a folder under the run's `units/<unit>/`, numbered in the order the steps ran, next to `out/` with what the chain published (and `out-2/` on, one per [stacked slice](#stack)):
+- Steps are named `<unit>-<skill>`, and `<unit>-<skill>-<round>` in a loop. Each leaves a folder under the run's `units/<unit>/`, numbered in the order the steps ran, next to `out/` with what the chain published:
 
   ```
   units/acme-api-12/
@@ -104,7 +104,7 @@ queue:
 
 ## `when`
 
-A step, in a chain or a loop, runs only when its `when` holds. Otherwise it is passed over and the chain goes on as if the step weren't there, unless the step [starts a slice](#stack):
+A step, in a chain or a loop, runs only when its `when` holds. Otherwise it is passed over and the chain goes on as if the step weren't there:
 
 ```yaml
 queue:
@@ -138,91 +138,6 @@ queue:
 
 - `runs_until_reset` holds when at most that many window openings are left before the provider's long window resets: `1` holds in the last window before the reset, and in a manual run when at most one window is left. `headroom` (e.g. `20%`) holds when at least that share of the window is left under this run's ceiling, so a long chain runs only on spare quota. Both read the quota the run last saw, as the budget does, and don't hold when the quota can't be read.
 - They're rule keys only: on a step they're a config error, and a rule takes no `verdict`, `command` or `changed`. `plan` notes when the quota doesn't hold on the probe or has no reading.
-
-## `stack`
-
-A chain is one PR by default: an `implement` and its review rounds are one change. When it does two separable things, `stack: true` on a step starts a new **slice**, with a branch and a PR of its own, stacked on the slice before:
-
-```yaml
-queue:
-  - skill: implement
-    where: { type: issue, label: awaywork }
-    then:
-      - loop: [{ skill: review, provider: codex }, fix]
-        until: { verdict: approve }
-        max: 3
-      - { skill: docs, stack: true }   # a skill of your own
-```
-
-That publishes `away/acme-api-12` with the implement, review and fix rounds, then a PR for `docs` on `away/acme-api-12-2`, into `away/acme-api-12`.
-
-- A slice publishes as soon as its last step ends, before the next one starts. The next slice's branch is cut from its tip in the same clone, so `setup` doesn't run again, and its commits are pushed on top of the slice before's as pushed, each with the `Awaywork:` trailer.
-- Every slice renders the rule's [`branch`](./configuration.md#branch-names) with the `{type}` of its own first skill that commits: with `branch: "{type}/{key}"` and `metadata.type: docs` on your skill, the example gives `feat/acme-api-12` and `docs/acme-api-12`. A name that's taken, as every later slice's is with the default `away/{key}`, becomes the first free `-2` to `-10`. A branch the chain published this run never counts as awaywork having tried there.
-- The last slice's PR body carries `Closes <issue>` for a GitHub issue when the chain was cut from the default branch, so merging the stack closes it; earlier slices close nothing, and neither does a chain on your own PR, which closes the issue itself. If the last slice is passed over (its `when` doesn't hold, or its first step commits nothing), a cap leaves it out, or the chain ends before it, no PR carries `Closes` and the issue stays open: close it by hand once the stack merges. Workers write no link or stack lines.
-- A stacked PR's body ends with `Stacked on <PR>: merge that first.`, and on a repo with GitHub's [stacked PRs](https://gh.io/stacks) the two are linked. Its first step finds the slice before's PR body, as published, in `.away/context/previous/pr.md`, next to what the step before left, and its prompt names the PR.
-- On a loop, `stack: true` starts the slice at the loop's first round. A loop sits inside one slice, so a step in a loop can't have it.
-- `stack` needs `deliver: draft_pr`, the default, or `pr`. With `pr`, each slice opens ready for review or as a draft on its own. `plan` skips a chain where it's on a step whose skill reports, or after steps that all report: there would be nothing to put in the PR, or nothing to stack on.
-- A stacked slice whose first step commits nothing ends the chain; the slices before it stay published. So does a stacked step whose [`when`](#when) doesn't hold: the rest of the chain is passed over. A failing step or the window's end ends the chain too, and the open slice publishes what it has. Ctrl-C drops the open slice, and the ones that already ended stay published.
-- `when: { changed }` still diffs from where the chain started, so it sees the earlier slices' commits too.
-- A plan's tasks stack the same way with [`after: { api: opened }`](./how-it-works.md#the-feature-block), but each task is a unit of its own, with its own clone, `setup` and branch, cloned from the task before's branch.
-- Each slice counts once against the [caps](./configuration.md#windows-limits-and-budget), as soon as its first step has a provider. A chain keeps the slices that fit and leaves out the rest, naming the cap under it in `plan` and on its row in the report.
-- `plan` starts a slice with `stack` where the other steps say `then`:
-
-  ```
-  Units 1
-       item    rule  skill                 provider  deliver   title
-    1  api#12  #1    implement (built-in)  claude    draft_pr  Rate-limit the export endpoint
-       then loop review ⇄ fix until verdict approve, at most 3 rounds
-         review (built-in) on codex
-         fix (built-in) on claude
-       stack docs (user) on claude
-  ```
-
-  `awaywork report` has the chain's row, with each slice's PR in turn:
-
-  ```
-  Units 1
-       item    skill                                        status          result
-    1  api#12  implement → loop(review ⇄ fix) → stack docs  done, 70 turns  https://github.com/acme/api/pull/42, verdict approve; https://github.com/acme/api/pull/43
-       Adds a per-client token bucket to the export endpoint; bursts get a 429 with Retry-After.
-  ```
-
-  `report --unit 1` adds how the loop went and a row per step, which is where a chain that failed at `review-2` says so:
-
-  ```
-  1  api#12  Rate-limit the export endpoint
-    skill   implement → loop(review ⇄ fix) → stack docs
-    status  done, 70 turns
-    loop    2 rounds of review ⇄ fix; until held: verdict approve
-    result  https://github.com/acme/api/pull/42, verdict approve; https://github.com/acme/api/pull/43
-    item    https://github.com/acme/api/issues/12
-    steps   acme-api-12           implement  claude  done, 14 turns  1 commit
-            acme-api-12-review-1  review     codex   done, 14 turns  a report, verdict changes
-            acme-api-12-fix-1     fix        claude  done, 14 turns  1 commit
-            acme-api-12-review-2  review     codex   done, 14 turns  a report, verdict approve
-            acme-api-12-docs      docs       claude  done, 14 turns  1 commit
-
-  Adds a per-client token bucket to the export endpoint; bursts get a 429 with Retry-After.
-  ```
-
-  `report.md` lists each slice with its steps under it:
-
-  ```markdown
-  | # | Unit | Skill | Provider | Status | Result |
-  |---|---|---|---|---|---|
-  | 1 | [api#12 Rate-limit the export endpoint](https://github.com/acme/api/issues/12) | implement → loop(review ⇄ fix) → stack docs | claude, codex | done, 70 turns | https://github.com/acme/api/pull/42 (2 commits), verdict approve; https://github.com/acme/api/pull/43 (1 commit) |
-  |  | └ slice 1 | implement → loop(review ⇄ fix) | claude, codex | done, 56 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | https://github.com/acme/api/pull/42 (2 commits), verdict approve |
-  |  |   └ acme-api-12 | implement | claude | done, 14 turns | 1 commit |
-  |  |   └ acme-api-12-review-1 | review | codex | done, 14 turns | a report, verdict changes |
-  |  |   └ acme-api-12-fix-1 | fix | claude | done, 14 turns | 1 commit |
-  |  |   └ acme-api-12-review-2 | review | codex | done, 14 turns | a report, verdict approve |
-  |  | └ slice 2 | docs | claude | done, 14 turns | https://github.com/acme/api/pull/43 (1 commit) |
-  |  |   └ acme-api-12-docs | docs | claude | done, 14 turns | 1 commit |
-  ```
-
-- [`notify`](./configuration.md#notify)'s unit event gives every step its own slice's PR in `AWAYWORK_PR_URL`, and `stats` counts each slice's PR.
-
-::: warning Squash-merging the base Once the first PR is squash-merged and its branch deleted (as GitHub's "Automatically delete head branches" does), GitHub retargets the stacked one to the default branch; with the branch kept, it still targets the merged branch. Either way it still carries the first one's commits. Merging the default branch into it usually resolves cleanly, since the content is the same. Workers never rebase, and nobody does that merge for you. :::
 
 ## `push`
 

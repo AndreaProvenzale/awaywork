@@ -339,6 +339,7 @@ const secretsOf = (config: Config, providers: Provider[]) => [
     ),
     ...contextSecrets(config),
     ...(config.notify?.secrets ?? []),
+    ...(config.store?.secrets ?? []),
     ...Object.values(config.repos).flatMap((r) => r.secrets),
     ...Object.values(config.mcp).flatMap((s) => s.secrets),
   ]),
