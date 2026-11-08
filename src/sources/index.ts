@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { markComment, type PostState } from '../core/footer.js'
 import { itemStates } from '../core/queue.js'
-import type { Ctx, Item, Source, Write } from '../core/types.js'
+import type { Ctx, Forge, Item, Source, Write } from '../core/types.js'
 import { asana } from './asana.js'
 import { bitbucket } from './bitbucket.js'
 import { commandSource, isCommand } from './command.js'
@@ -44,17 +44,31 @@ export function sourceField(fields: Source['fields'], key: string): z.ZodType | 
   return fields[key] ?? (dot > 0 ? fields[`${key.slice(0, dot)}.*`] : undefined)
 }
 
-/** Why awaywork won't write to the item: it writes only to yours, through a source that writes. */
-export function unwritable(item: Item, source: Source | undefined): string | undefined {
+/** Why awaywork won't write to the item: it writes only to yours, through a source that writes, or as a comment on its `thread`. */
+export function unwritable(
+  item: Item,
+  source: Source | undefined,
+  thread = false,
+): string | undefined {
   if (!item.mine) return 'not yours'
-  if (!source?.write) return `${item.source} can't write to its items`
+  if (!source?.write && !thread) return `${item.source} can't write to its items`
 }
+
+/** Where awaywork's comments on an item go instead of the item: the card's thread issue on `forge`, or a new one there when `open`. */
+export interface Threads {
+  forge: Forge
+  open?: boolean
+}
+
+/** Whether awaywork's comment on the item goes to a thread issue: its card has one, or `threads` opens one. */
+export const threaded = (item: Item, threads?: Threads): boolean =>
+  !!(item.task?.parent ?? item).thread || !!threads?.open
 
 /**
  * Writes to one of your items through its source, a comment with awaywork's mark, saying what `post` says of it; a plan's task
- * writes to its card, the only item there is. Returns the item's updated time after it, unless
- * someone changed the item since it was read: then none, so their change still counts as one;
- * and a comment's link when the source returns it.
+ * writes to its card, the only item there is. A comment goes to the card's thread issue instead when it has one, or when
+ * `threads` opens one. Returns the item's updated time after it, unless someone changed the item since it was read:
+ * then none, so their change still counts as one; and a comment's link when the source returns it.
  */
 export async function writeItem(
   // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config
@@ -64,12 +78,34 @@ export async function writeItem(
   write: Write,
   ctx: Ctx,
   post?: PostState,
+  threads?: Threads,
 ): Promise<{ updated?: string; url?: string }> {
-  const refused = unwritable(item, source)
-  if (refused || !source?.write) throw new Error(refused)
+  const card = item.task?.parent ?? item
+  const thread = write.op === 'comment' && threaded(item, threads)
+  const refused = unwritable(item, source, thread)
+  if (refused) throw new Error(refused)
+  if (write.op === 'comment' && thread) {
+    const forge = threads?.forge
+    const repo = card.fields.repo
+    if (!forge?.threadComment || !forge.openThread) throw new Error("the forge can't open threads")
+    if (!card.thread && typeof repo !== 'string')
+      throw new Error(`${card.key} has no repo to open its thread in`)
+    // The run's later posts on the card go to the thread this one opened.
+    card.thread ??= await forge.openThread(repo as string, card)
+    // A post on the thread changes neither the card nor the replies that stand for its updated time.
+    return { url: await forge.threadComment(card.thread, markComment(write.body, post)) }
+  }
+  if (!source?.write) throw new Error(`${item.source} can't write to its items`)
   const marked = write.op === 'comment' ? { ...write, body: markComment(write.body, post) } : write
-  const { before, after, url } = await source.write(cfg, item.task?.parent ?? item, marked, ctx)
-  const read = item.fields.updated
+  const { before, after, url } = await source.write(cfg, card, marked, ctx)
+  const read = item.thread?.card ?? item.fields.updated
   const unchanged = before && typeof read === 'string' && Date.parse(before) === Date.parse(read)
-  return { ...(unchanged && after && { updated: after }), ...(url && { url }) }
+  return {
+    ...(unchanged && after && { updated: later(after, item.fields.updated) }),
+    ...(url && { url }),
+  }
 }
+
+/** `a`, unless `b` is a later time: a reply on the item's thread stands for its updated time while it's newer. */
+const later = (a: string, b: unknown): string =>
+  typeof b === 'string' && Date.parse(b) > Date.parse(a) ? b : a

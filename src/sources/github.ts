@@ -1,9 +1,9 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { commentMarkdown, isOurs, leftIn } from '../core/footer.js'
+import { commentMarkdown, isOurs, leftIn, threadBody, threadOf } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
-import type { Item, PrRef, Source } from '../core/types.js'
+import type { Forge, Item, PrRef, Source } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from '../forge/checks.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
 import { EDITED, type Edited, notYours } from '../forge/github.js'
@@ -55,7 +55,7 @@ const searchQuery = `query($q: String!, $first: Int!, $after: String) {
     pageInfo { hasNextPage endCursor }
     nodes {
       __typename
-      ... on Issue { ${common}
+      ... on Issue { ${common} viewerDidAuthor
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
           nodes { number url isDraft headRefName headRefOid baseRefName baseRef { target { oid } } isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
         }
@@ -114,6 +114,16 @@ const prQuery = `query($owner: String!, $name: String!, $number: Int!) {
         }
       }
       commits(last: 1) { nodes { commit { ${checkContexts} } } }
+    }
+  }
+}`
+
+/** Your open issues in a repo, a page at a time: the threads awaywork opened are among them. */
+const openedQuery = `query($owner: String!, $name: String!, $login: String!, $first: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    issues(first: $first, after: $after, states: OPEN, filterBy: { createdBy: $login }) {
+      pageInfo { hasNextPage endCursor }
+      nodes { __typename ${common} }
     }
   }
 }`
@@ -254,6 +264,8 @@ export function githubSource(base: Exec = exec): Source<Config> {
         const nodes = await (finished ? searchAll : searchFirst)(run, q, ctx.log)
         for (const node of nodes) {
           if (!inScope(node.repository.nameWithOwner)) continue
+          // Your thread for another item isn't an item: a plan rule would take it too.
+          if (node.__typename === 'Issue' && node.viewerDidAuthor && threadOf(node.body)) continue
           const item = byId.get(node.id) ?? toItem(node)
           Object.assign(item.fields, fields)
           if (item.fields.mine) item.mine = true
@@ -348,6 +360,87 @@ export function githubSource(base: Exec = exec): Source<Config> {
 }
 
 export const github = githubSource()
+
+/** The forge's thread issues on GitHub, read and written as you through `gh`: listed, not searched, so one opened a minute ago is found. */
+export function githubThreads(
+  base: Exec = exec,
+  host?: string,
+): Required<Pick<Forge, 'threads' | 'openThread' | 'threadComment' | 'closeThread'>> {
+  const run = onHost(base, host)
+  let login: Promise<string> | undefined
+  const viewer = () => {
+    login ??= run('gh', ['api', 'user', '--jq', '.login']).then((l) => l.trim())
+    return login
+  }
+  const comment = async ({ repo, number }: { repo: string; number: number }, body: string) =>
+    (
+      await run('gh', [
+        'api',
+        `repos/${repo}/issues/${number}/comments`,
+        '-f',
+        `body=${body}`,
+        '--jq',
+        '.html_url',
+      ])
+    ).trim()
+  return {
+    async threads(repo) {
+      const [owner = '', name = ''] = repo.split('/')
+      const vars = { owner, name, login: await viewer(), first: PAGE }
+      const byId = new Map<string, Item>()
+      let after: string | undefined
+      do {
+        const { repository } = await graphql<{
+          repository: { issues: { pageInfo: Search['search']['pageInfo']; nodes: Node[] } }
+        }>(run, openedQuery, { ...vars, ...(after && { after }) })
+        for (const node of repository.issues.nodes)
+          if (threadOf(node.body)) byId.set(node.id, toItem(node))
+        const page = repository.issues.pageInfo
+        after = page.hasNextPage ? page.endCursor : undefined
+      } while (after)
+      // A thread missing its older comments could miss the plan it waits on.
+      const failed: string[] = []
+      await readComments(run, byId, (line) => failed.push(line))
+      if (failed[0]) throw new Error(failed[0])
+      return [...byId.values()].map((issue) => ({
+        item: threadOf(issue.description) as string,
+        thread: { repo, number: Number(issue.key.split('#')[1]), url: issue.url },
+        comments: issue.comments,
+      }))
+    },
+    async openThread(repo, item) {
+      const opened = await run('gh', [
+        'api',
+        `repos/${repo}/issues`,
+        '-f',
+        `title=${item.key}: ${item.title}`,
+        '-f',
+        `body=${threadBody(item)}`,
+        '-f',
+        `assignees[]=${await viewer()}`,
+        '--jq',
+        '[.number, .html_url] | @tsv',
+      ])
+      const [number = '', url = ''] = opened.trim().split('\t')
+      return { repo, number: Number(number), url }
+    },
+    threadComment: comment,
+    async closeThread(thread, body) {
+      await comment(thread, body)
+      const path = `repos/${thread.repo}/issues/${thread.number}`
+      await run('gh', [
+        'api',
+        '-X',
+        'PATCH',
+        path,
+        '-f',
+        'state=closed',
+        '-f',
+        'state_reason=completed',
+      ])
+    },
+  }
+}
 
 async function account(run: Exec) {
   const login = (await run('gh', ['api', 'user', '--jq', '.login'])).trim()

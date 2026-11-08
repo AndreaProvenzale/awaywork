@@ -70,7 +70,7 @@ import type {
   Source,
   Unit,
 } from '../core/types.js'
-import { unwritable, writeItem } from '../sources/index.js'
+import { type Threads, threaded, unwritable, writeItem } from '../sources/index.js'
 import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
@@ -330,7 +330,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const posted: Commented[] = []
     for (const item of ownItems(p)) {
       const source = input.sources[item.source]
-      const refused = unwritable(item, source)
+      const refused = commentRefused(p, item)
       if (refused) {
         input.ctx.log(`${item.key} got no result, ${refused}`)
         continue
@@ -355,6 +355,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           write,
           input.ctx,
           state,
+          threadsOf(p),
         )
         input.ctx.log(`${item.key}: result posted on ${url}`)
         posted.push({ ...ref, url, ...(updated && { updated }), ...(state && { post: state }) })
@@ -377,11 +378,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     for (const item of items) {
       const source = input.sources[item.source]
       const refused = unwritable(item, source)
+      const ref = { item: `${item.source}:${item.key}`, to }
       if (refused) {
         input.ctx.log(`on_done: ${item.key} not moved, ${refused}`)
+        // Its posts went to its thread, so the report says the card stayed put.
+        if (item.mine && item.thread) moved.push({ ...ref, failed: refused })
         continue
       }
-      const ref = { item: `${item.source}:${item.key}`, to }
       // The result's post is awaywork's own change: the move compares with the item as it left it.
       const after = posted.find((c) => c.item === ref.item)?.updated
       const read = after ? { ...item, fields: { ...item.fields, updated: after } } : item
@@ -424,6 +427,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const ownItems = (p: PlannedUnit): Item[] =>
     p.unit.items.filter((i) => i.source === p.unit.items[0]?.source)
 
+  /** Where the unit's comments go instead of its items: their thread issues, opened for a rule with `thread: github`. */
+  const threadsOf = (p: PlannedUnit): Threads => ({
+    forge: input.forge,
+    open: input.plan.queue[p.rule]?.thread === 'github',
+  })
+
+  /** Why awaywork won't comment on the unit's item, here or on its thread. */
+  const commentRefused = (p: PlannedUnit, item: Item): string | undefined =>
+    unwritable(item, input.sources[item.source], threaded(item, threadsOf(p)))
+
   /**
    * Posts a comment on the first of the unit's own items that is yours, through a source that writes;
    * a post that fails is reported, never thrown. An item waiting for an answer made no unit.
@@ -435,10 +448,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     post?: PostState,
   ): Promise<Posted> => {
     if (input.signal?.aborted) return { unposted: 'interrupted' }
-    const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
+    const item = ownItems(p).find((i) => !commentRefused(p, i))
     if (!item) {
       const top = p.unit.items[0] as Item
-      return { unposted: `${top.key} ${unwritable(top, input.sources[top.source])}` }
+      return { unposted: `${top.key} ${commentRefused(p, top)}` }
     }
     const ref = `${item.source}:${item.key}`
     try {
@@ -451,6 +464,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         write,
         input.ctx,
         post,
+        threadsOf(p),
       )
       input.ctx.log(`${p.unit.id}: ${what} posted on ${url}`)
       return { item: ref, url }
@@ -877,7 +891,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
               : gitUnrestored(dir)
                 ? "the clone's .git was refused"
                 : unmerged
-          const askedOn = ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))
+          const askedOn = ownItems(first).find((i) => !commentRefused(first, i))
           // The footer records it even when no later run goes on, to hold dependents back.
           const held = leaves && { ...leaves, url: askedOn?.url }
           lead.outcome = kept
@@ -1344,10 +1358,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         report
       ) {
         const status = continues ? 'continue' : 'done'
-        // A post that waits holds on_done's move until you approve it, while the card stays where it saw it.
+        // A post that waits holds on_done's move until you approve it, while the card stays where it saw it; a card that can't move holds none.
+        const holds = (item: Item) => !!onDone?.move && !!input.sources[item.source]?.write
         const post = report
           ? (item: Item): PostState =>
-              went ?? { waits: true, ...(onDone?.move && { move: onDone.move, saw: item.status }) }
+              went ?? {
+                waits: true,
+                ...(holds(item) && { move: onDone?.move as string, saw: item.status }),
+              }
           : undefined
         const pins =
           deliver === 'report' ? await pinOut(first, out, [outputFile.report], storeNotes) : []

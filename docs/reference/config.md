@@ -381,6 +381,7 @@ First matching rule wins; top = highest priority.
 | `wait` | boolean |  | deliver: plan or report: the post waits for your reply on the item, approve as its first line letting the next stage take it, anything else running the step again; default true for plan, false for report; a gate of the rule's own that fires makes it wait anyway |
 | `gates` | map |  | deliver: plan or report: gates of the rule's own, on top of the top-level ones, run on what the step left: a command reads AWAYWORK_OUT_DIR, a skill a read-only copy of .away/out; one that fires puts its line on the post and makes it wait |
 | `post` | "summary" \| "full" |  | deliver: plan, or a report that posts: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full |
+| `thread` | "item" \| "github" |  | Where its posts go and their replies are read: item (default), the item itself; github, an issue awaywork opens as the item's thread in its repo, assigned to you, for a tracker that can't take them; from then on all of the item's posts go there, its plan's tasks' too, and it closes once its source says the item is done |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |

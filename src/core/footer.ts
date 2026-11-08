@@ -89,6 +89,21 @@ export const isOurs = (body: string | null | undefined): boolean => !!body?.incl
 const footerLine = (body: string | null | undefined): string =>
   [...(body ?? '').matchAll(/<!-- awaywork ([^<>]*)-->/g)].at(-1)?.[1] ?? ''
 
+/** The last line of a thread issue's body: the item it's awaywork's thread of, each part URI-encoded as in a PR's footer. */
+export const threadMarker = (item: Pick<Item, 'source' | 'key'>): string =>
+  `${marker} thread item=${encodeURIComponent(item.source)}:${encodeURIComponent(item.key)} -->`
+
+/** The item (`<source>:<key>`) an issue's body says it's awaywork's thread of. */
+export const threadOf = (body: string | null | undefined): string | undefined =>
+  footerLine(body).startsWith('thread ') ? footerItems(body)[0] : undefined
+
+/** The body of the issue awaywork opens as an item's thread. */
+export const threadBody = (item: Pick<Item, 'source' | 'key' | 'title' | 'url'>): string =>
+  `awaywork posts here for [${item.key}](${item.url}), ${item.title}: its plans, results and questions. Reply here to answer them; the card still decides whether it's yours.\n\n${threadMarker(item)}`
+
+/** What awaywork comments on its thread issue as it closes it. */
+export const threadClosed = 'The card is done, so awaywork closes its thread.'
+
 /** The items an awaywork PR's footer names, as `<source>:<key>`. */
 export function footerItems(body: string | null | undefined): string[] {
   return [...footerLine(body).matchAll(/\bitem=([^\s:]+):(\S+)/g)].flatMap(

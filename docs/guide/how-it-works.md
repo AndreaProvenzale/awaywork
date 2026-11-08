@@ -164,7 +164,7 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
 
 - Any comment after it that the agent would see ends the wait: yours, or a teammate's. On GitHub that's an owner, member or collaborator of the repo; a tracker shows every comment on an item assigned to you. Bots don't count (GitHub's bots, Jira's apps, Linear's apps and integrations): a coverage report or an automation's comment after the questions shows in `item.md` but leaves the unit waiting. Asana and custom sources don't mark bots, so there an integration's comment ends the wait too. The next run takes the unit with the same rule, and `item.md` shows awaywork's comment headed `awaywork's questions`, the replies after it. On a rule with [`run: soon`](./configuration.md#run-soon) that's within minutes of your reply, not at the next window. A step that still can't go on asks again.
 - It counts as awaywork's only when its `— awaywork` line comes from your own account, so a stranger pasting one doesn't hold your item ([Safety](./safety.md#what-awaywork-publishes)).
-- On an item that isn't yours, a source that can't write (Bitbucket, a custom source without `write`), or a post that fails, the questions stay in the morning report with the reason, and the unit is still done. Either way the unit's result reads `asked questions`, the report lists them under Questions, and `awaywork run` prints `questions posted on <url>` under the unit, linking the comment itself on GitHub and the item elsewhere:
+- On an item that isn't yours, a source that can't write (Bitbucket, a custom source without `write`) on a rule without a [thread](#threads), or a post that fails, the questions stay in the morning report with the reason, and the unit is still done. Either way the unit's result reads `asked questions`, the report lists them under Questions, and `awaywork run` prints `questions posted on <url>` under the unit, linking the comment itself on GitHub and the item elsewhere:
 
   ```text
     1  api#5  implement  done, 3 turns  asked questions
@@ -324,8 +324,8 @@ The run says where it went, and the rule's [`on_done`](./configuration.md#on-don
 - **Only you answer.** A plan's answer is your first reply after it, read off the card: a teammate's comment, a code owner's or a bot's is context in `item.md`, never an answer, and a later comment of yours changes nothing. Edit your reply to change your mind before the next run reads it; a reply someone else edited isn't yours anymore.
 - **`wait: false`** posts the plan and goes on: the post says so on its mark line (`— awaywork · went ahead`) and that a reply to it changes nothing, counts as its own answer, and the next run fans it out with no notes. Its [gates](./configuration.md#gates-of-a-rules-own) still run, and one that fires makes it wait, its decision card on top of the plan.
 - The plan is read off the card on every run, never the state dir: it's awaywork's newest plan comment, so a fresh runner waits too. Edit it to fix a task and the next run checks your edit again; an edit that breaks it skips the card as **plan refused** with the reason, under Needs you, instead of planning over your edit. A plan comment someone else edited isn't awaywork's anymore ([Safety](./safety.md#what-awaywork-publishes)), so the card has no plan and gets a new one. GitHub reads the card's whole thread, past its last 50 comments, so an old plan up a long thread still counts.
-- A plan that fails its checks, in the file or as the next run reads it back from the comment, a missing `plan.yml` or contract, or a comment over 30 KB, the contract included (a [lean](#files-that-come-back) one pins them instead), is never posted: the reason stays in the morning report, as `plan not posted: plan.yml: task id "api" is used twice`, and `on_done` doesn't fire. Same for an item that isn't yours, a source that can't write, or a post that fails. A step that asks [questions](#questions) instead posts those, and the card waits for your answer as usual.
-- A `deliver: plan` rule that matches only merged or closed items, names a `source` that can't write, or has no rule whose `where` names `planned` to take its tasks, is a config error.
+- A plan that fails its checks, in the file or as the next run reads it back from the comment, a missing `plan.yml` or contract, or a comment over 30 KB, the contract included (a [lean](#files-that-come-back) one pins them instead), is never posted: the reason stays in the morning report, as `plan not posted: plan.yml: task id "api" is used twice`, and `on_done` doesn't fire. Same for an item that isn't yours, a source that can't write on a rule without a [thread](#threads), or a post that fails. A step that asks [questions](#questions) instead posts those, and the card waits for your answer as usual.
+- A `deliver: plan` rule that matches only merged or closed items, names a `source` that can't write without [`thread: github`](#threads), or has no rule whose `where` names `planned` to take its tasks, is a config error.
 
 ### Tasks
 
@@ -756,7 +756,56 @@ To approve, reply with approve as the first line. Any other reply is feedback: a
   ```
 
 - **Gone ahead.** A report rule with [gates of its own](./configuration.md#gates-of-a-rules-own) and no `wait` goes ahead when they ran clear: it posts its result with the gates line on top (`Gates: none fired (taste)`), its mark line saying `— awaywork · went ahead · gates=taste`, and `on_done` moves the card at once. That post counts as approved. A gate that fires makes the post wait, with the decision card on top of it, as on a PR.
-- A report rule that waits, or has gates of its own, needs a source that can write: one that names a `source` that can't is a config error, and `doctor` warns about any it may match. `wait` and rule gates on a `pr`, `draft_pr`, `push` or `pending_review` rule are a config error for now: the PR is already the decision.
+- A report rule that waits, or has gates of its own, needs a source that can write, or a [thread](#threads): one that names a `source` that can't is a config error, and `doctor` warns about any it may match. `wait` and rule gates on a `pr`, `draft_pr`, `push` or `pending_review` rule are a config error for now: the PR is already the decision.
+
+## Threads
+
+Your Jira token is `read:jira-work`, or your custom source has no `write`: the card can't take awaywork's posts, so it can't plan or wait there. `thread: github` on a rule moves the conversation to a GitHub issue awaywork opens for the card, in the card's repo (`repo_map`, or a custom item's `repo`), assigned to you, so GitHub pings you:
+
+```yaml
+queue:
+  - skill: story
+    source: jira # read-only
+    deliver: report
+    wait: true
+    thread: github # posts and replies on an issue in the card's repo
+  - skill: prototype
+    source: jira
+    where: { approved: story }
+    deliver: report
+    thread: github
+    on_done: { comment: result }
+```
+
+The rule's first post opens it, titled with the card's key and title, and posts there; a real one from the sandbox, a custom source's card:
+
+```
+CARD-1: Export VAT report
+
+awaywork posts here for [CARD-1](https://tracker.example/CARD-1), Export VAT report: its plans, results and questions. Reply here to answer them; the card still decides whether it's yours.
+
+<!-- awaywork thread item=tracker:CARD-1 -->
+```
+
+- **Found again, not remembered.** Each run lists the open issues you opened in the card's repo and takes the one whose marker names the card, so nothing goes in the state dir and a runner without state finds it too. It isn't an item: the GitHub source leaves out issues carrying the marker, or a plan rule would take the thread itself.
+- **It's the card's thread now.** Its comments follow the card's in `item.md` and everywhere awaywork reads posts, so plans, posts that wait, held moves, [pins](#files-that-come-back) and questions work there as on a card. From then on every post awaywork makes for the card goes there, other rules' and the plan's tasks' too, so keep a card's rules on one thread. A reply there counts as a change to the card, awaywork's own posts don't, so your feedback runs the step again though the card didn't move.
+- **Your reply decides**, as on a card: reply `approve` on the issue, or `awaywork approve jira:ENG-2101` (the thread's own key, `github:acme/api#57`, works too). A teammate's `approve` there is context. Skips point at the thread:
+
+  ```
+  Needs you 1
+    CARD-1: waiting for your approval of story's result on https://github.com/AndreaProvenzale/awaywork-sandbox/issues/212
+  ```
+
+- **The card still decides.** Whether it's yours is read off the card every run: reassign it and its thread neither fans out nor takes answers. `on_done` moves stay on the card: a card that can't move holds no move on a post that waits, and a plain post's move reports `couldn't move ENG-2101 to "Ready": jira can't write to its items`.
+- **Its end.** Once the card's source says it's done, closed or merged, read back a week, the next run comments and closes the issue; a dry run says `would close`:
+
+  ```text
+    closed https://github.com/AndreaProvenzale/awaywork-sandbox/issues/212, CARD-1's thread: the card is closed
+  ```
+
+  Every task merged isn't the end: the card says `all tasks done: close or move the card` until you do, and its thread stays open with it. Close the thread yourself and the next post opens a new one. A thread whose card leaves your items without reading as done (reassigned, moved to another `repo`, or closed while no run read back that week) stays open: close it yourself.
+
+- `thread: github` needs repos on GitHub: on a Bitbucket config it's a config error, until a custom thread host can take the posts. It goes on the plan's rule, never a `planned` one: tasks post where their plan did. Thread writes use the `gh` login awaywork opens PRs with, never the worker's. A GitHub issue pings its assignee; a host that notifies nobody, a folder of Markdown files say, wants a [notify](./configuration.md#notify) hook next to it, or a plan there waits unseen.
 
 ## Files that come back
 

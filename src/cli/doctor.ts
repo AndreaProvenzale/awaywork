@@ -184,12 +184,15 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       ? [rule.source]
       : Object.keys(config.sources).filter((id) => canMatch(config.sources, id, rule.where))
     const { comment, move } = rule.on_done ?? {}
+    // Its posts go to a thread issue, its moves still to the item.
+    const posts = rule.thread !== 'github'
     const lost = [
-      (comment || waits) && 'no result is posted',
-      waits && 'nothing waits for you',
+      posts && (comment || waits) && 'no result is posted',
+      posts && waits && 'nothing waits for you',
       move && 'they stay put',
     ].filter(Boolean)
     const at = `rule #${i + 1} ${rule.on_done ? 'on_done' : 'wait'}`
+    if (!lost.length) return
     for (const id of scope.filter((id) => !sourceFor(id, config.sources[id])?.write))
       report('warn', at, `${id} can't write to its items: ${lost.join(', ')}`)
   })
