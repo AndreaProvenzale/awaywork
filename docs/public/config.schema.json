@@ -922,6 +922,10 @@
             "description": "Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {\"op\":\"move\",\"item\":\"ENG-2101\",\"id\":\"10012\",\"to\":\"QA\"}, and may print the item's updated times as {\"before\":\"…\",\"after\":\"…\"}. Without it, on_done writes nothing to this source",
             "type": "string",
             "minLength": 1
+          },
+          "thread": {
+            "description": "A thread host: a rule's `thread` may name this source, whose `write` then also answers {\"op\":\"open\",\"item\":\"<card key>\",\"title\":\"…\",\"body\":\"…\"} with {\"key\":\"…\",\"url\":\"…\"}, and `command` lists the threads it opened as items, their comments the replies",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1367,12 +1371,9 @@
             ]
           },
           "thread": {
-            "description": "Where its posts go and their replies are read: item (default), the item itself; github, an issue awaywork opens as the item's thread in its repo, assigned to you, for a tracker that can't take them; from then on all of the item's posts go there, its plan's tasks' too, and it closes once its source says the item is done",
+            "description": "Where its posts go and their replies are read: item (default), the item itself; github, an issue awaywork opens as the item's thread in its repo, assigned to you; or a custom source with thread: true, whose write opens one; for a tracker that can't take them; from then on all of the item's posts go there, its plan's tasks' too, and it closes once its source says the item is done",
             "type": "string",
-            "enum": [
-              "item",
-              "github"
-            ]
+            "minLength": 1
           },
           "branch": {
             "description": "Branch name template for this rule",

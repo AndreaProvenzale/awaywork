@@ -84,15 +84,19 @@ export interface Item {
   }
   /** On a card: the PRs its plans' tasks have, by task id; unset when none was looked up, null when reading failed. */
   taskPrs?: Record<string, TaskPr> | null
-  /** The GitHub issue awaywork opened as the card's thread: its posts go there, and its comments follow the card's. */
+  /** The thread awaywork opened for the card: its posts go there, and its comments follow the card's. */
   thread?: Thread
   raw: unknown
 }
 
-/** A GitHub issue awaywork opened as an item's thread, for posts the item's own tracker can't take. */
+/** A thread awaywork opened for an item, for posts the item's own tracker can't take. */
 export interface Thread {
-  repo: string
-  number: number
+  /** Its host: `github`, or the custom source that opened it. */
+  host: string
+  /** Its key at the host, e.g. `acme/api#57`. */
+  key: string
+  /** A custom host's own id for it, when it isn't the key. */
+  id?: string
   url: string
   /** The card's own updated time, when a reply on the thread is newer and stands in for it. */
   card?: string
@@ -256,6 +260,8 @@ export interface Provider {
 }
 
 export interface Forge {
+  /** Its thread issues, on GitHub. */
+  threads?: ThreadHost
   /** Why awaywork won't go on with its own drafts here, if it won't. */
   ownDraftsRefused?: string
   /** With `fork`, `branch` is on a fork: the clone checks out its pull ref, which must be at `fork.head` if given. */
@@ -313,14 +319,23 @@ export interface Forge {
    * one else; returns its URL. Throws why it didn't, e.g. a pending review of yours already there.
    */
   pendingReview(repo: string, pr: number, head: string, review: Review): Promise<string>
-  /** The open issues in `repo` you opened as items' threads, by item (`source:key`), each with its whole comment history. */
-  threads?(repo: string): Promise<{ item: string; thread: Thread; comments: Item['comments'] }[]>
-  /** Opens an issue in `repo` as the item's thread, assigned to you. */
-  openThread?(repo: string, item: Pick<Item, 'source' | 'key' | 'title' | 'url'>): Promise<Thread>
+}
+
+/** Where awaywork opens items' threads and reads them back: GitHub issues, or a custom source whose `write` answers `open`. */
+export interface ThreadHost {
+  /** Lists threads per repo, the card's: GitHub's issues are. */
+  byRepo?: boolean
+  /** The threads it opened, by item (`source:key`), each with its whole comment history; on GitHub, the open issues you opened in `repo`. */
+  threads(repo?: string): Promise<{ item: string; thread: Thread; comments: Item['comments'] }[]>
+  /** Opens a thread for the item; on GitHub an issue in `repo`, assigned to you. */
+  openThread(
+    repo: string | undefined,
+    item: Pick<Item, 'source' | 'key' | 'title' | 'url'>,
+  ): Promise<Thread>
   /** Comments `body` on the thread; returns the comment's URL. */
-  threadComment?(thread: Thread, body: string): Promise<string>
+  threadComment(thread: Thread, body: string): Promise<string>
   /** Comments `body` on the thread, then closes it. */
-  closeThread?(thread: Thread, body: string): Promise<void>
+  closeThread(thread: Thread, body: string): Promise<void>
 }
 
 /** A PR on a branch; `closedAt` when the forge says. */
@@ -418,8 +433,8 @@ export interface Rule extends Step {
   >
   /** `soon`: awaywork watch starts its units as soon as it sees them due, not only in a window. */
   run?: 'soon' | 'window'
-  /** Where its posts go: `item`, the item itself, or `github`, an issue awaywork opens as the item's thread. */
-  thread?: 'item' | 'github'
+  /** Where its posts go: `item`, the item itself, `github`, an issue awaywork opens as the item's thread, or a custom source that opens threads. */
+  thread?: string
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */

@@ -805,7 +805,9 @@ awaywork posts here for [CARD-1](https://tracker.example/CARD-1), Export VAT rep
 
   Every task merged isn't the end: the card says `all tasks done: close or move the card` until you do, and its thread stays open with it. Close the thread yourself and the next post opens a new one. A thread whose card leaves your items without reading as done (reassigned, moved to another `repo`, or closed while no run read back that week) stays open: close it yourself.
 
-- `thread: github` needs repos on GitHub: on a Bitbucket config it's a config error, until a custom thread host can take the posts. It goes on the plan's rule, never a `planned` one: tasks post where their plan did. Thread writes use the `gh` login awaywork opens PRs with, never the worker's. A GitHub issue pings its assignee; a host that notifies nobody, a folder of Markdown files say, wants a [notify](./configuration.md#notify) hook next to it, or a plan there waits unseen.
+- **Or a host of your own.** `thread: <source>` names a custom source with `thread: true` instead, a Notion database or a folder of Markdown files in your vault, which opens and lists the threads itself: see [Thread hosts](./custom-sources.md#thread-hosts). That's the one for a Bitbucket config.
+
+- `thread: github` needs repos on GitHub: on a Bitbucket config it's a config error. It goes on the plan's rule, never a `planned` one: tasks post where their plan did. Thread writes use the `gh` login awaywork opens PRs with, never the worker's. A GitHub issue pings its assignee; a host that notifies nobody, a folder of Markdown files say, wants a [notify](./configuration.md#notify) hook next to it, or a plan there waits unseen.
 
 ## Files that come back
 

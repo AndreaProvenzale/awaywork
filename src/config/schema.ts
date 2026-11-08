@@ -11,6 +11,7 @@ import {
   matchesValue,
   newerThan,
   ruleSteps,
+  ruleThread,
   spanPattern,
 } from '../core/queue.js'
 import { builtinSkills } from '../core/skills.js'
@@ -21,6 +22,7 @@ import { providers } from '../providers/index.js'
 import {
   commandConfig,
   contextCommand,
+  isCommand,
   linkTemplate,
   pollEvery,
   pollSpan,
@@ -424,10 +426,11 @@ const rule: z.ZodType<Rule, unknown> = z
         "deliver: plan, or a report that posts: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full",
       ),
     thread: z
-      .enum(['item', 'github'])
+      .string()
+      .min(1)
       .optional()
       .describe(
-        "Where its posts go and their replies are read: item (default), the item itself; github, an issue awaywork opens as the item's thread in its repo, assigned to you, for a tracker that can't take them; from then on all of the item's posts go there, its plan's tasks' too, and it closes once its source says the item is done",
+        "Where its posts go and their replies are read: item (default), the item itself; github, an issue awaywork opens as the item's thread in its repo, assigned to you; or a custom source with thread: true, whose write opens one; for a tracker that can't take them; from then on all of the item's posts go there, its plan's tasks' too, and it closes once its source says the item is done",
       ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z
@@ -905,10 +908,10 @@ export const configSchema = z
           message:
             'plan waits for your reply on an open item, and this rule matches only merged or closed items; use report',
         })
-      // A rule whose posts go to a thread issue needs no source that writes.
+      // A rule whose posts go to a thread needs no source that writes.
       const silent =
         r.source &&
-        r.thread !== 'github' &&
+        !ruleThread(r) &&
         sourceIds.includes(r.source) &&
         !sourceFor(r.source, cfg.sources[r.source])?.write
       const threadable = !bitbucket && r.source !== routines.id ? ', or thread: github' : ''
@@ -924,6 +927,14 @@ export const configSchema = z
           path: [...at, 'thread'],
           message:
             "thread: github opens an issue in the item's repo, and this config's repos are on Bitbucket; a custom thread host can take its posts instead",
+        })
+      const host = ruleThread(r)
+      const custom = host && host !== 'github' ? cfg.sources[host] : undefined
+      if (host && host !== 'github' && !(isCommand(custom) && custom.thread))
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'thread'],
+          message: `thread is item, github or a custom source with thread: true, and ${host} isn't one`,
         })
       if (r.thread !== undefined && 'planned' in r.where)
         ctx.addIssue({

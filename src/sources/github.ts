@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { commentMarkdown, isOurs, leftIn, threadBody, threadOf } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
-import type { Forge, Item, PrRef, Source } from '../core/types.js'
+import type { Item, Thread as ItemThread, PrRef, Source, ThreadHost } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from '../forge/checks.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
 import { EDITED, type Edited, notYours } from '../forge/github.js'
@@ -362,21 +362,19 @@ export function githubSource(base: Exec = exec): Source<Config> {
 export const github = githubSource()
 
 /** The forge's thread issues on GitHub, read and written as you through `gh`: listed, not searched, so one opened a minute ago is found. */
-export function githubThreads(
-  base: Exec = exec,
-  host?: string,
-): Required<Pick<Forge, 'threads' | 'openThread' | 'threadComment' | 'closeThread'>> {
+export function githubThreads(base: Exec = exec, host?: string): ThreadHost {
   const run = onHost(base, host)
   let login: Promise<string> | undefined
   const viewer = () => {
     login ??= run('gh', ['api', 'user', '--jq', '.login']).then((l) => l.trim())
     return login
   }
-  const comment = async ({ repo, number }: { repo: string; number: number }, body: string) =>
+  const issuePath = (thread: ItemThread) => `repos/${thread.key.replace('#', '/issues/')}`
+  const comment = async (thread: ItemThread, body: string) =>
     (
       await run('gh', [
         'api',
-        `repos/${repo}/issues/${number}/comments`,
+        `${issuePath(thread)}/comments`,
         '-f',
         `body=${body}`,
         '--jq',
@@ -384,7 +382,9 @@ export function githubThreads(
       ])
     ).trim()
   return {
+    byRepo: true,
     async threads(repo) {
+      if (!repo) return []
       const [owner = '', name = ''] = repo.split('/')
       const vars = { owner, name, login: await viewer(), first: PAGE }
       const byId = new Map<string, Item>()
@@ -404,11 +404,12 @@ export function githubThreads(
       if (failed[0]) throw new Error(failed[0])
       return [...byId.values()].map((issue) => ({
         item: threadOf(issue.description) as string,
-        thread: { repo, number: Number(issue.key.split('#')[1]), url: issue.url },
+        thread: { host: 'github', key: issue.key, url: issue.url },
         comments: issue.comments,
       }))
     },
     async openThread(repo, item) {
+      if (!repo) throw new Error(`${item.key} has no repo to open its thread in`)
       const opened = await run('gh', [
         'api',
         `repos/${repo}/issues`,
@@ -422,17 +423,16 @@ export function githubThreads(
         '[.number, .html_url] | @tsv',
       ])
       const [number = '', url = ''] = opened.trim().split('\t')
-      return { repo, number: Number(number), url }
+      return { host: 'github', key: `${repo}#${number}`, url }
     },
     threadComment: comment,
     async closeThread(thread, body) {
       await comment(thread, body)
-      const path = `repos/${thread.repo}/issues/${thread.number}`
       await run('gh', [
         'api',
         '-X',
         'PATCH',
-        path,
+        issuePath(thread),
         '-f',
         'state=closed',
         '-f',

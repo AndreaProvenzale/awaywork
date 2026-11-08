@@ -579,6 +579,22 @@ describe('config', () => {
     ])
   })
 
+  it('takes a custom thread host that says it opens threads, on Bitbucket too', () => {
+    const hosts = `providers: [claude: {}]\nsources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []' }, notes: { command: 'echo []', write: 'cat', thread: true } }\n`
+    const story = (thread: string) =>
+      problems(
+        `${hosts}queue: [{ skill: story, source: tracker, deliver: report, wait: true, thread: ${thread} }]`,
+      )
+    expect(story('notes')).toEqual([])
+    const refused = (host: string) =>
+      `queue[0].thread: thread is item, github or a custom source with thread: true, and ${host} isn't one`
+    expect(story('tracker')).toEqual([refused('tracker')])
+    expect(story('nowhere')).toEqual([refused('nowhere')])
+    expect(
+      problems(`providers: [claude: {}]\nsources: { notes: { command: 'echo []', thread: true } }`),
+    ).toEqual(['sources.notes.thread: a thread host opens threads through its `write`: add one'])
+  })
+
   it('refuses stack, which was removed, with what to do instead', () => {
     const chain = (rule: string) => problems(`${minimal}queue: [{ skill: implement, ${rule} }]`)
     const hint = 'stack was removed: split work into tasks with a deliver: plan rule'

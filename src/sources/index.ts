@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import { markComment, type PostState } from '../core/footer.js'
 import { itemStates } from '../core/queue.js'
-import type { Ctx, Forge, Item, Source, Write } from '../core/types.js'
+import type { Ctx, Forge, Item, Source, ThreadHost, Write } from '../core/types.js'
 import { asana } from './asana.js'
 import { bitbucket } from './bitbucket.js'
-import { commandSource, isCommand } from './command.js'
+import { commandSource, commandThreads, isCommand } from './command.js'
 import { github } from './github.js'
 import { jira } from './jira.js'
 import { linear } from './linear.js'
@@ -54,19 +54,33 @@ export function unwritable(
   if (!source?.write && !thread) return `${item.source} can't write to its items`
 }
 
-/** Where awaywork's comments on an item go instead of the item: the card's thread issue on `forge`, or a new one there when `open`. */
+/** Where awaywork's comments on an item go instead of the item: the card's thread, or a new one at the host `open` names. */
 export interface Threads {
   forge: Forge
-  open?: boolean
+  /** The config's sources, the custom thread hosts among them. */
+  sources?: Record<string, unknown>
+  open?: string
 }
 
-/** Whether awaywork's comment on the item goes to a thread issue: its card has one, or `threads` opens one. */
+/** The thread host a rule's `thread` names: the forge's GitHub issues, or a custom source with `thread: true`. */
+export function threadHost(
+  name: string,
+  sources: Record<string, unknown>,
+  forge: Forge,
+  ctx: Ctx,
+): ThreadHost | undefined {
+  if (name === 'github') return forge.threads
+  const cfg = sources[name]
+  return isCommand(cfg) && cfg.thread ? commandThreads(name, cfg, ctx) : undefined
+}
+
+/** Whether awaywork's comment on the item goes to a thread: its card has one, or `threads` opens one. */
 export const threaded = (item: Item, threads?: Threads): boolean =>
   !!(item.task?.parent ?? item).thread || !!threads?.open
 
 /**
  * Writes to one of your items through its source, a comment with awaywork's mark, saying what `post` says of it; a plan's task
- * writes to its card, the only item there is. A comment goes to the card's thread issue instead when it has one, or when
+ * writes to its card, the only item there is. A comment goes to the card's thread instead when it has one, or when
  * `threads` opens one. Returns the item's updated time after it, unless someone changed the item since it was read:
  * then none, so their change still counts as one; and a comment's link when the source returns it.
  */
@@ -85,15 +99,14 @@ export async function writeItem(
   const refused = unwritable(item, source, thread)
   if (refused) throw new Error(refused)
   if (write.op === 'comment' && thread) {
-    const forge = threads?.forge
-    const repo = card.fields.repo
-    if (!forge?.threadComment || !forge.openThread) throw new Error("the forge can't open threads")
-    if (!card.thread && typeof repo !== 'string')
-      throw new Error(`${card.key} has no repo to open its thread in`)
+    const name = card.thread?.host ?? (threads?.open as string)
+    const host = threads && threadHost(name, threads.sources ?? {}, threads.forge, ctx)
+    if (!host) throw new Error(`${name} can't open threads`)
+    const repo = typeof card.fields.repo === 'string' ? card.fields.repo : undefined
     // The run's later posts on the card go to the thread this one opened.
-    card.thread ??= await forge.openThread(repo as string, card)
+    card.thread ??= await host.openThread(repo, card)
     // A post on the thread changes neither the card nor the replies that stand for its updated time.
-    return { url: await forge.threadComment(card.thread, markComment(write.body, post)) }
+    return { url: await host.threadComment(card.thread, markComment(write.body, post)) }
   }
   if (!source?.write) throw new Error(`${item.source} can't write to its items`)
   const marked = write.op === 'comment' ? { ...write, body: markComment(write.body, post) } : write
