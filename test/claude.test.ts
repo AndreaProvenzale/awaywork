@@ -67,6 +67,30 @@ describe('claude provider', () => {
     expect(toEvents('not json')).toEqual([])
   })
 
+  it('fails a run the binary ends with is_error, saying why, though its subtype is success', () => {
+    const loggedOut = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: true,
+      num_turns: 1,
+      result: 'Not logged in · Please run /login',
+    })
+    expect(toEvents(loggedOut)).toEqual([
+      { type: 'log', line: 'result: failed: Not logged in · Please run /login' },
+      { type: 'done', ok: false, turns: 1, reason: 'Not logged in · Please run /login' },
+    ])
+    const fine = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'Ok',
+    })
+    expect(toEvents(fine)).toEqual([
+      { type: 'log', line: 'result: success' },
+      { type: 'done', ok: true, turns: 0 },
+    ])
+  })
+
   it('reads the version and probes both windows from one Haiku turn', async () => {
     expect(await provider.detect()).toEqual({ installed: true, version: '2.1.282' })
     expect(await claudeProvider('/nonexistent/claude').detect()).toEqual({ installed: false })

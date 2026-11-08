@@ -755,7 +755,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           quotas[id] = worker.quota
           allowances[id] = withQuota(a, worker.quota)
         }
-        if (worker.status !== 'done') why = worker.reason ?? 'its worker failed'
+        if (worker.status !== 'done')
+          why = maskSecrets(worker.reason ?? 'its worker failed', secrets, input.ctx.env)
       } catch (e) {
         why = (e as Error).message
         log(`error: ${(e as Error).stack}`)
@@ -1186,6 +1187,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         })
         await restoreGit(dir)
         Object.assign(result, worker)
+        if (worker.reason) result.reason = maskSecrets(worker.reason, secrets, input.ctx.env)
         if (loop && p.loop) loop.rounds = p.loop.round
         if (worker.quota) {
           quotas[id] = worker.quota
