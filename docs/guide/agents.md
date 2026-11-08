@@ -16,7 +16,7 @@ You know what you want off your plate: red CI on your PRs, the bugs QA bounces b
 
 On Claude Code 2.1.275 or later, `/plugin install awaywork --marketplace AndreaProvenzale/awaywork` does the first two in one go. Third-party marketplaces don't auto-update by default: `/plugin marketplace update awaywork` pulls the latest skill, or turn auto-update on under `/plugin` > Marketplaces. `awaywork init` does all three from your shell: it offers the install (or loads the package's plugin for that one session on a no) and opens Claude Code on `/away set up awaywork`.
 
-No config yet? `/away`, bare or with anything after it, sets awaywork up. It asks `awaywork config path` where the config goes, and the CLI's answer is the only place it looks: with [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) set, that's the server's config, so there's nothing to set up. Then it looks around without asking: `awaywork doctor --json` for your agent CLIs, every gh account and the orgs it reaches, the login in each Claude Code folder (a shell function that switches `CLAUDE_CONFIG_DIR` counts), whether a job is already scheduled here, and the folders your Claude Code and Codex sessions ran in over the last 30 days, with the MCP servers set up for each, from metadata and config alone, mapped to repos by their git remotes. The rest comes in rounds of up to four multiple-choice questions, its pick first, every option built from what it found. The first round, renamed:
+No config yet? `/away`, bare or with anything after it, sets awaywork up. It asks `awaywork config path` where the config goes, and the CLI's answer is the only place it looks: with [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) set, that's the server's config, so there's nothing to set up. A pane opens beside the chat on its [Config tab](#the-config-tab), empty until the draft exists. Then it looks around without asking: `awaywork doctor --json` for your agent CLIs, every gh account and the orgs it reaches, the login in each Claude Code folder (a shell function that switches `CLAUDE_CONFIG_DIR` counts), whether a job is already scheduled here, and the folders your Claude Code and Codex sessions ran in over the last 30 days, with the MCP servers set up for each, from metadata and config alone, mapped to repos by their git remotes. The rest comes in rounds of up to four multiple-choice questions, its pick first, every option built from what it found. The first round, renamed:
 
 ```text
 ←  ☐ Work  ☐ Claude login  ☐ Runs on  ✔ Submit  →
@@ -53,7 +53,7 @@ The suggestions option says what it would read before it reads it: `Reads 124 Cl
 
 A tracker needs a token, and it never goes through the chat. The skill tells you to run `awaywork secret LINEAR_API_KEY`, which saves it in `~/.config/awaywork/env` (mode 600) and prints only that it did: in your own terminal it asks at a hidden prompt; in Claude Code, copy the token and type `! pbpaste | awaywork secret LINEAR_API_KEY`. Say done, and it reads your teams and statuses with `awaywork sources linear --json` and asks only which repo each team's code lives in.
 
-The draft is `config.draft.yml` beside the config, rendered by `awaywork init --yes` and then edited: your repos, the gh account and Claude login it runs on, pinned as `sources.github.user` and `config_dir` wherever a scheduled job wouldn't find them on its own ([Which login](./configuration.md#which-login)), your tracker, and the rules you picked with your tracker's real status names. `awaywork plan --rules --json` shows what each rule takes now, and on your yes it becomes the config and `doctor` runs once:
+The draft is `config.draft.yml` beside the config, rendered by `awaywork init --yes` right after the round that picks repos and a window, so you watch it fill in on the Config tab, and then edited: your repos, the gh account and Claude login it runs on, pinned as `sources.github.user` and `config_dir` wherever a scheduled job wouldn't find them on its own ([Which login](./configuration.md#which-login)), your tracker, and the rules you picked with your tracker's real status names. `awaywork plan --rules --json` shows what each rule takes now, and on your yes it becomes the config and `doctor` runs once:
 
 ```text
 Rules (none takes anything today)
@@ -94,7 +94,7 @@ waiting for review: awaywork PR is open
 https://github.com/acme/shop/pull/401
 ```
 
-It lands on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else.
+It lands on the first tab with something in it, or on [Config](#the-config-tab) while a draft is waiting. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else.
 
 A tab is a strip of cards, a page at a time: items under their repo, or their tracker and project key, and Needs you lists a repo's by what they ask of you, so the PRs to review sit together. A card has the ref and that word (`review PR`, `answer question`, `approve`, `add repo`, ...) or why the item waits (`no rule`, `over cap`, `skipped by you`, ...), then the title. The line above it says whose card you're on and where (`acme/shop  1/14`). Under the strip sit the card's buttons, and under the rule its detail: the title, the whole reason and the link. Every part keeps its height, so nothing jumps while you browse. The wheel over the cards steps through them; anywhere else it scrolls the detail. A pane too short for all that (a small window, or the pane above the prompt outside fullscreen) drops the fixed heights and scrolls as a whole.
 
@@ -106,7 +106,42 @@ A tab is a strip of cards, a page at a time: items under their repo, or their tr
 - `v` (`view report`) shows a last-run unit's `awaywork report <run> --unit <id>` in the detail, and `b` goes back. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
 - `c` (`ask Claude here`) hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`.
 
-`s` and `a` ask `yes`/`no` in place of the buttons first (`y` or `n`), saying what they'll do and whether there's an undo (`skip #101 in the coming runs? awaywork unskip undoes it`), then mark the card `skipped`, `unskipped` or `approved` in place of its word: the cards are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
+`s` and `a` ask `yes`/`no` in place of the buttons first (`y` or `n`), saying what they'll do and whether there's an undo (`skip #101 in the coming runs? awaywork unskip undoes it`), then mark the card `skipped`, `unskipped` or `approved` in place of its word: the cards are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json` or `config explain`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
+
+### The Config tab
+
+Tab 5 is your config the way it reads to a human: the draft while there is one, else the file. No config yet, or a `config.draft.yml` waiting, and the pane lands here, with this as its only tab until the config exists. A config that lives behind [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) isn't on this machine, so there's no tab for it, just the run tabs.
+
+```text
+☾ awaywork · last run 01:00 · 9 PRs · 14 need you
+r: refresh p: plan
+1: Needs you (14)  2: Last run (12)  3: Next run
+4: Skipped (30)  5: Config
+──────────────────────────────────────────────────────────────
+config.yml  ✓ valid                           f: flow  y: YAML
+01:00–07:00 · claude · github · keeps 10% in reserve
+
+    TAKES                                DOES
+ 1  my PRs, checks failing · 2           fix ▶ draft PR
+ 2  my PRs, your open threads            fix ▶ draft PR
+ 3  PRs, review requested, from tru… · 1 review ▶ report
+▸4  issues, label sprint · 1             plan ▶ ◆ plan
+ 5  planned tasks                        implement ▶ draft PR
+
+4. issues, label sprint
+plan ▶ ◆ plan ▶ rule 5
+
+Takes now
+acme/shop#42  Coupon codes with per-customer limits
+
+↑↓ rule  c: ask Claude  o: open config.yml:11
+```
+
+Each rule is one row: what it takes, in words, and what it does, `· 2` being what it takes right now, from a `plan --rules` in the background (it reads your sources and no quota). `◆` means the rule can stop for you: a plan that waits, `wait: true`, or a gate. Every skill keeps one color, the same on the cards of Last run and Next run (a card too narrow for the skill and a readable ref just drops the skill).
+
+↑↓ moves between rules and redraws the flow under the table, loops included, with `f`, `y` and `d` flipping that to the YAML or the last write's diff. A pane too short for all of it lets the wheel scroll it, and the arrows still step and bring the rule back into view. `c` asks Claude about the rule; `o` opens it at its line in VS Code, or the file if `code` isn't around. A draft that doesn't validate keeps the last good drawing, its problems on top.
+
+No polling: the plugin watches the config's folder, and the chat's own writes to the draft land right away. That's why it runs `awaywork config path` at session start, with `mkdir -p` on that folder only when there's no config yet, so a first setup's files have somewhere to appear. A control folder picked during setup gets followed the moment Claude writes the draft there.
 
 `/away` with anything after it goes to the skill; `/awaywork:away` works the same, for when another command already has the name. Say what you want in your own words, or ask about an item: `/away fix my PRs when CI goes red`, `/away why didn't acme/api#12 run last night?`. The skill:
 

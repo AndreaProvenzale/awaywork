@@ -506,15 +506,20 @@ async function inFlow($: EngineInterface) {
   return v.tab === 'config' && (v.source ?? 'flow') === 'flow' && !!rules?.length
 }
 
-async function stepRule($: EngineInterface, by: number) {
+async function stepRule($: EngineInterface, by: number, reveal: boolean) {
   const rules = (await read($, config)).view?.rules ?? []
+  let rule: number | undefined
   await update($, view, (v) => {
     const at = Math.max(
       0,
       rules.findIndex((r) => r.rule === v.rule),
     )
-    return { ...v, rule: rules[Math.min(rules.length - 1, Math.max(0, at + Math.sign(by)))]?.rule }
+    rule = rules[Math.min(rules.length - 1, Math.max(0, at + Math.sign(by)))]?.rule
+    return { ...v, rule }
   })
+  // A reveal that fails must not undo the arrow's answer.
+  if (reveal && rule !== undefined)
+    await $.ui.scroll({ to: { key: `rule:${rule}` }, in: PANE }).catch(() => undefined)
 }
 
 const paneOpen = async ($: EngineInterface) => (await $.ui.panes()).some((p) => p.id === PANE)
@@ -543,12 +548,13 @@ export const register: Register = (on) => {
   })
 
   // Watchers start only here. The folder, so a first setup's files show up too; it must exist.
+  // A path `config path` answers for that isn't here is a remote's, with nothing to watch.
   on('classic.SessionStart', async ($, e, next) => {
     const r = await next(e)
-    const { path } = await configPaths($)
-    if (!path) return r
+    const { missing, path } = await configPaths($, undefined, 2_000)
+    if (!path || (!missing && !(await $.fs.exists(path)))) return r
     const folder = path.slice(0, path.lastIndexOf('/'))
-    await $.process.run(['mkdir', '-p', folder])
+    if (missing) await $.process.run(['mkdir', '-p', folder])
     return { ...r, watchPaths: [...(r.watchPaths ?? []), folder] }
   })
 
@@ -560,11 +566,12 @@ export const register: Register = (on) => {
   // The agent's writes where no watcher looks yet: a draft in a control folder picked during setup.
   on('tool.call', async ($, e, next) => {
     const r = await next(e)
-    const text =
-      e.tool === 'Write' || e.tool === 'Edit' ? e.file_path : e.tool === 'Bash' ? e.command : ''
-    if (!text || !mentionsConfig(text, await read($, config))) return r
-    if (!(await paneOpen($))) return r
-    const named = draftNamed(e.tool === 'Bash' ? text : ` ${text}`)
+    const isFile = e.tool === 'Write' || e.tool === 'Edit'
+    const text = isFile ? e.file_path : e.tool === 'Bash' ? e.command : ''
+    if (!text) return r
+    const c = await read($, config)
+    if (!mentionsConfig(text, c) || !(await paneOpen($))) return r
+    const named = c.setup ? draftNamed(isFile, text) : undefined
     if (named) await useDraft($, named)
     void syncConfig($)
     return r
@@ -572,10 +579,11 @@ export const register: Register = (on) => {
 
   // A body that fits its window: the wheel over the strip steps the cards, anything else scrolls the detail.
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
-    if (await inFlow($)) {
-      // The wheel still scrolls a body that overflows past the one spare row.
-      if (e.pointer && e.contentRows > e.bodyRows + 1) return next(e)
-      if (e.origin.kind === 'person') await stepRule($, e.by)
+    if (e.origin.kind === 'person' && (await inFlow($))) {
+      // Past the rows `done` keeps spare, the body doesn't fit: the wheel scrolls it.
+      const overflows = e.contentRows > e.bodyRows + 1
+      if (e.pointer && overflows) return next(e)
+      await stepRule($, e.by, overflows)
       return { deny: 'the arrows move between rules' }
     }
     if (!drawn.strip) return next(e)
@@ -712,6 +720,7 @@ export const register: Register = (on) => {
           {rule}
           {body}
           {v.status && <Text dimColor>{v.status}</Text>}
+          {minHeight !== undefined && <Text> </Text>}
         </Box>
       )
     }
@@ -728,7 +737,7 @@ export const register: Register = (on) => {
           setView: (patch) => update($, view, (x) => ({ ...x, ...patch })),
           open: (file, line) => openInEditor($, file, line),
         }),
-        // Arrows reach `ui.scroll` only while there's a row to scroll, so the flow keeps one spare.
+        // Arrows reach `ui.scroll` only with a row to scroll: a spare one, and a blank last row so overflow is exact.
         (v.source ?? 'flow') === 'flow' && c.view ? e.props.scroll.bodyRows + 1 : undefined,
       )
     if (d.error) return done(<Text>{d.error}</Text>)

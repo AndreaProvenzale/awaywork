@@ -1,18 +1,23 @@
 import { isMap, isSeq, LineCounter, parseDocument } from 'yaml'
 import { ConfigError, parseConfig } from '../config/load.js'
+import { committingStep } from '../core/fanout.js'
 import { defaultRules, isLoop } from '../core/queue.js'
-import { builtinSkills } from '../core/skills.js'
+import type { SkillCatalog } from '../core/skills.js'
 import type { Rule, Where } from '../core/types.js'
 
 const pct = (share: number) => `${Math.round(share * 100)}%`
 
 const OPEN_THREADS = '{"not":0}'
 
+/** `lead` and the value, a list joined; a `{not}` or `{matches}` reads through `phrase`. */
+const listed = (lead: string, v: unknown) =>
+  typeof v === 'object' && !Array.isArray(v) ? undefined : `${lead} ${[v].flat().join(', ')}`
+
 /** The conditions worth their own words; anything else reads through `phrase`. */
 const words: Record<string, (value: unknown) => string | undefined> = {
   review_requested: (v) => (v === true ? 'review requested' : undefined),
   checks: (v) => (typeof v === 'string' ? `checks ${v}` : undefined),
-  label: (v) => `label ${[v].flat().join(', ')}`,
+  label: (v) => listed('label', v),
   unresolved_threads: (v) => (JSON.stringify(v) === OPEN_THREADS ? 'open threads' : undefined),
   my_unresolved_threads: (v) =>
     JSON.stringify(v) === OPEN_THREADS ? 'your open threads' : undefined,
@@ -20,8 +25,8 @@ const words: Record<string, (value: unknown) => string | undefined> = {
   trusted: (v) => (v === true ? 'from trusted authors' : undefined),
   behind: (v) => (JSON.stringify(v) === '{"gt":0}' ? 'behind their base' : undefined),
   conflicts: (v) => (v === true ? 'with conflicts' : v === false ? 'no conflicts' : undefined),
-  author: (v) => `by ${[v].flat().join(', ')}`,
-  repo: (v) => `in ${[v].flat().join(', ')}`,
+  author: (v) => listed('by', v),
+  repo: (v) => listed('in', v),
 }
 
 const comparisons = { gt: 'over', gte: 'at least', lt: 'under', lte: 'at most' } as const
@@ -56,40 +61,46 @@ function conditions({ any, ...where }: Where): string[] {
 
 /** What a rule takes, in words. */
 export function takes({ source, where }: Pick<Rule, 'source' | 'where'>): string {
-  const { type, mine, planned, ...rest } = where as Where & Record<string, unknown>
+  const { type, planned, ...rest } = where as Where & Record<string, unknown>
+  const { mine, ...others } = rest
   const noun = planned ? 'planned tasks' : typeof type === 'string' ? `${type}s` : 'items'
   const subject = [mine === true && 'my', source !== 'github' && source, noun.replace(/^pr/, 'PR')]
     .filter(Boolean)
     .join(' ')
-  return [subject, ...conditions(rest as Where)].join(', ')
+  return [subject, ...conditions((mine === true ? others : rest) as Where)].join(', ')
 }
 
-function leaves(r: Rule): string {
-  if (r.deliver === 'draft_pr') return 'draft PR'
-  if (r.deliver === 'pending_review') return 'pending review'
-  if (r.deliver) return r.deliver === 'pr' ? 'PR' : r.deliver
-  const steps = [r, ...(r.then ?? []).flatMap((s) => (isLoop(s) ? s.loop : s))]
-  return steps.every((s) => builtinSkills[s.skill]?.deliver === 'report') ? 'report' : 'draft PR'
+const delivers: Record<string, string> = {
+  draft_pr: 'draft PR',
+  pr: 'PR',
+  pending_review: 'pending review',
+}
+
+/** What a rule leaves, as the run decides it: a rule with no committing step reports. */
+function leaves(r: Rule, skills: SkillCatalog): string {
+  const own = r.deliver === 'pending_review' || r.deliver === 'plan'
+  const deliver = own || committingStep(r, skills) ? (r.deliver ?? 'draft_pr') : 'report'
+  return delivers[deliver] ?? deliver
 }
 
 function until(c: { verdict?: unknown; command?: string }): string {
   return c.command ?? [c.verdict].flat().join(' or ')
 }
 
-/** Each `queue` entry's first and last line in the file; none when the rules are the default queue. */
-function ruleLines(text: string): ([number, number] | undefined)[] {
+/** Each `queue` entry's first line in the file; none when the rules are the default queue. */
+function ruleLines(text: string): (number | undefined)[] {
   const counter = new LineCounter()
   const doc = parseDocument(text, { lineCounter: counter })
   const queue = isMap(doc.contents) ? doc.contents.get('queue', true) : undefined
   if (!isSeq(queue)) return []
   return queue.items.map((item) => {
     const range = (item as { range?: [number, number, number] }).range
-    return range && [counter.linePos(range[0]).line, counter.linePos(range[1] - 1).line]
+    return range && counter.linePos(range[0]).line
   })
 }
 
 /** What a config says, as the `/away` pane draws it: local, no source or provider is read. */
-export function explainConfig(text: string, path: string) {
+export function explainConfig(text: string, path: string, skills: SkillCatalog) {
   let config: ReturnType<typeof parseConfig>
   try {
     config = parseConfig(text, path)
@@ -107,10 +118,9 @@ export function explainConfig(text: string, path: string) {
     providers: config.providers.map((p) => p.id),
     sources: Object.keys(config.sources),
     reserve: budget && pct(budget.reserve),
-    defaultQueue: !config.queue,
     rules: (config.queue ?? defaultRules(Object.keys(config.sources))).map((r, i) => ({
       rule: i + 1,
-      lines: lines[i],
+      line: lines[i],
       takes: takes(r),
       skill: r.skill,
       steps: (r.then ?? []).map((s) =>
@@ -118,8 +128,9 @@ export function explainConfig(text: string, path: string) {
           ? { loop: s.loop.map((l) => l.skill), until: until(s.until), max: s.max }
           : { skill: s.skill },
       ),
-      leaves: leaves(r),
-      waits: r.deliver === 'plan' ? r.wait !== false : r.wait === true || !!r.gates,
+      leaves: leaves(r, skills),
+      // Whether this rule can stop for you: a plan's post, its own `wait`, or a gate that fires.
+      waits: (r.deliver === 'plan' && r.wait !== false) || r.wait === true || !!r.gates,
       plan: r.deliver === 'plan',
       planned: 'planned' in r.where,
       soon: r.run === 'soon',

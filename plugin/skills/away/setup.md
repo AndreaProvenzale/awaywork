@@ -75,7 +75,7 @@ sources:
 
 **Sprint cards,** when they picked them: one question in the round with the tracker's names (a custom tracker: on its own, once it reads), one pick:
 
-1. Plan, then implement across repos, waiting for them only when the judge finds a product decision the card leaves open: `deliver: plan` with `approve: gates` and the built-in `plan-judge`; the tasks fan out to an `implement` rule on `planned: true`, a repo's tasks stacked on each other, and they review the plan and the drafts in the morning.
+1. Plan, then implement across repos, waiting for them only when the judge finds a product decision the card leaves open: `deliver: plan` with `wait: false` and `gates: {product: {skill: judge}}`, the built-in `judge`; the tasks fan out to an `implement` rule on `planned: true`, a repo's tasks stacked on each other, and they review the plan and the drafts in the morning.
 2. The same, waiting for their `approve` on every plan.
 3. A plan report, no code.
 

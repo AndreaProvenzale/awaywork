@@ -70,7 +70,7 @@ export type ConfigStep = { skill: string } | { loop: string[]; until: string; ma
 
 export type ConfigRule = {
   rule: number
-  lines?: [number, number]
+  line?: number
   takes: string
   skill: string
   steps: ConfigStep[]
@@ -87,7 +87,6 @@ export type ConfigView = {
   providers: string[]
   sources: string[]
   reserve?: string
-  defaultQueue: boolean
   rules: ConfigRule[]
 }
 
@@ -102,10 +101,11 @@ export type RuleTakes = {
 export type ConfigState = {
   path?: string
   draft?: string
+  /** The config a setup in a control folder is writing, once a tool call named its draft. */
+  named?: string
   /** The file shown: the draft while there is one, else the config. */
   file?: string
-  isDraft?: boolean
-  /** No config yet: the pane opens on this tab, and it's the only one. */
+  /** `config path` says there's none yet: the pane opens on this tab, and it's the only one. */
   setup?: boolean
   text?: string
   previous?: string

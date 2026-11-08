@@ -24,8 +24,12 @@ export async function json<T>(
 ): Promise<Got<T>> {
   const r = await awaywork($, args, timeoutMs)
   if ('missing' in r && r.missing) return { error: r.missing }
-  if (/unknown option '--json'/.test(r.stderr))
-    return { error: `this awaywork is too old for the pane (no --json): ${FIX}` }
+  const lacks = /unknown option '--json'/.test(r.stderr)
+    ? '--json'
+    : /unknown command 'explain'/.test(r.stderr)
+      ? 'config explain'
+      : undefined
+  if (lacks) return { error: `this awaywork is too old for the pane (no ${lacks}): ${FIX}` }
   if (r.exitCode !== 0)
     return { failed: firstLine(r.stderr) || `awaywork ${args.join(' ')} exited ${r.exitCode}` }
   try {

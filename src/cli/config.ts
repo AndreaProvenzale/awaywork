@@ -8,7 +8,8 @@ import { z } from 'zod'
 import { ConfigError, configPath, loadConfig, parseConfig } from '../config/load.js'
 import { skillsDirOf } from '../config/paths.js'
 import { configSchema } from '../config/schema.js'
-import { unknownSkillsWarning } from '../config/skills.js'
+import { loadSkills, unknownSkillsWarning } from '../config/skills.js'
+import { builtinSkills } from '../core/skills.js'
 import { printBrand, terminalAsk } from './ask.js'
 import { explainConfig } from './explain.js'
 import { staleSchedules } from './schedule.js'
@@ -35,9 +36,13 @@ export function configCommand(program: Command): void {
     .action(async () => {
       const path = configPath(program.opts().config)
       const text = await readFile(path, 'utf8').catch(() => undefined)
-      if (text !== undefined) return console.log(JSON.stringify(explainConfig(text, path), null, 2))
-      console.error(`${path} not found; awaywork init writes one`)
-      process.exitCode = 1
+      if (text === undefined) {
+        console.error(`${path} not found; awaywork init writes one`)
+        process.exitCode = 1
+        return
+      }
+      const skills = { user: await loadSkills(skillsDirOf(path)), builtin: builtinSkills }
+      console.log(JSON.stringify(explainConfig(text, path, skills), null, 2))
     })
 
   config

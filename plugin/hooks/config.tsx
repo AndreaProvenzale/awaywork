@@ -12,9 +12,9 @@ const DRAFT = 'config.draft.yml'
 const folderOf = (path: string) => path.slice(0, path.lastIndexOf('/'))
 const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 
-/** The config's path and the draft's beside it; `missing` when awaywork says there's no config. */
-export async function configPaths($: EngineInterface) {
-  const r = await awaywork($, ['config', 'path'], 10_000)
+/** The config's path, or that of the config setup `named`, and the draft's beside it; `missing` when awaywork says there's none. */
+export async function configPaths($: EngineInterface, named?: string, timeoutMs = 10_000) {
+  const r = await awaywork($, [...(named ? ['--config', named] : []), 'config', 'path'], timeoutMs)
   const path = firstLine(r.stdout)
   const missing = r.exitCode === 1 && /not found; awaywork init writes one/.test(r.stderr)
   if (!path.startsWith('/')) return { missing }
@@ -66,16 +66,15 @@ function readTakes($: EngineInterface) {
 /** Reads the draft, else the config, and what it says; an invalid file keeps the last good drawing. */
 async function fetchConfig($: EngineInterface) {
   const c = await read($, config)
-  const where = c.path ? c : { ...c, ...(await configPaths($)) }
+  const where = await configPaths($, c.named)
   if (!where.path || !where.draft) return
-  const located = { path: where.path, draft: where.draft }
+  const located = { path: where.path, draft: where.draft, setup: where.missing }
   const isDraft = await $.fs.exists(where.draft)
   const hasConfig = await $.fs.exists(where.path)
   const file = isDraft ? where.draft : where.path
   const text = isDraft || hasConfig ? await $.fs.read(file) : undefined
-  const setup = !hasConfig
   if (text === c.text) {
-    await update($, config, (x) => ({ ...x, ...located, file: text && file, isDraft, setup }))
+    await update($, config, (x) => ({ ...x, ...located, file: text && file }))
     return
   }
   const got =
@@ -83,14 +82,14 @@ async function fetchConfig($: EngineInterface) {
       ? undefined
       : await json<Explained>($, ['--config', file, 'config', 'explain'])
   const said = got && 'json' in got ? got.json : undefined
+  // A text explain gave no answer for isn't seen, so the next sync asks again.
+  const seen = text === undefined || said !== undefined
   await update($, config, (x) => ({
     ...x,
     ...located,
     file: text === undefined ? undefined : file,
-    isDraft,
-    setup,
-    text,
-    previous: x.text,
+    text: seen ? text : x.text,
+    previous: seen ? x.text : x.previous,
     view: said?.valid ? said : text === undefined ? undefined : x.view,
     problems:
       said && !said.valid
@@ -116,19 +115,23 @@ export async function wantTakes($: EngineInterface) {
   void readTakes($)
 }
 
-/** A draft at a path of its own, a control folder's, as a tool call names it. */
-export function draftNamed(text: string) {
-  return /(?:^|[\s'"=])((?:\/|~\/)[^\s'"]*\/config\.draft\.yml)(?=$|[\s'"])/.exec(text)?.[1]
+/** The draft a tool call is working on: a Write or Edit of `config.draft.yml`, or an `awaywork --config` at one. */
+export function draftNamed(isFile: boolean, text: string) {
+  if (isFile) return nameOf(text) === DRAFT ? text : undefined
+  return /(?:^|[\s;&|(])awaywork\s[^;&|\n]*?--config(?:=|\s+)['"]?((?:[^\s'"$]*\/)?config\.draft\.yml)(?=$|[\s'"])/.exec(
+    text,
+  )?.[1]
 }
 
 export const mentionsConfig = (text: string, c: ConfigState) =>
   text.includes(DRAFT) || (!!c.path && text.includes(c.path))
 
-export async function useDraft($: EngineInterface, draft: string) {
+/** Follows setup's draft: the CLI expands a `~/`, and a relative path is from where the session now is. */
+export async function useDraft($: EngineInterface, named: string) {
+  const at = /^~?\//.test(named) ? named : `${await $.session.cwd()}/${named}`
+  const draft = firstLine((await awaywork($, ['--config', at, 'config', 'path'])).stdout)
   if (draft.startsWith('/'))
-    await update($, config, (c) =>
-      c.draft === draft ? c : { ...c, draft, path: `${folderOf(draft)}/config.yml` },
-    )
+    await update($, config, (c) => ({ ...c, named: `${folderOf(draft)}/config.yml` }))
 }
 
 /** One hunk from the first changed line to the last, what a single write changes. */
@@ -454,7 +457,7 @@ export function configBody(input: Input): RenderChildren {
   const refs = (items: { key: string; title: string }[], room: number) =>
     items.map((i) => clip(`${i.key}  ${i.title}`, room))
   const unmatched = c.takes?.unmatched ?? []
-  const editLine = r.lines?.[0]
+  const editLine = r.line
   const flow = flowOf(r, rules, width)
   const parts = (list: Part[]) =>
     list.map((p) => (

@@ -14,6 +14,12 @@ type Props = { cards: Card[]; at: number; n: number; w: number }
 
 export const CARD_ROWS = 5
 
+const MIN_REF = 8
+
+/** A card shows the skill only with room for it, the word and MIN_REF columns of ref. */
+const holdsSkill = (c: Card, w: number) =>
+  !!c.skill && c.skill.name.length + 1 + c.word.length + 1 + MIN_REF <= w - 4
+
 /** One card: the ref, cut first, and the word on line 1, the title under them; the hooks draw it too, the ref a Button. */
 export const card = (
   { Box, Text }: Pick<ClientElements, 'Box' | 'Text'>,
@@ -39,7 +45,7 @@ export const card = (
       {ref}
       <Box flexShrink={0}>
         <Text>
-          {c.skill && <Text color={c.skill.color}>{c.skill.name} </Text>}
+          {c.skill && holdsSkill(c, w) && <Text color={c.skill.color}>{c.skill.name} </Text>}
           <Text color={c.color} dimColor={!c.color}>
             {c.word}
           </Text>
