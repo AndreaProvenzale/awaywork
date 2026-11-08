@@ -270,8 +270,8 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       await pushHead(run, withGhLogin, remote(repo), dir, repo, branch, from)
     },
 
-    async openPr(repo, head, base, bodyFile, runId, items, draft, left) {
-      const { title, body } = await prText(bodyFile, head, runId, items, left)
+    async openPr(repo, head, base, bodyFile, runId, items, draft, left, pins) {
+      const { title, body } = await prText(bodyFile, head, runId, items, left, pins)
       const into = base ? ['--base', base] : []
       const asDraft = draft ? ['--draft'] : []
       const args = ['pr', 'create', '-R', repo, ...asDraft, '--head', head, ...into]
@@ -279,8 +279,8 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       return out.trim().split('\n').at(-1) ?? ''
     },
 
-    async updatePr(repo, pr, bodyFile, runId, items, ready, left) {
-      const { title, body } = await prText(bodyFile, '', runId, items, left)
+    async updatePr(repo, pr, bodyFile, runId, items, ready, left, pins) {
+      const { title, body } = await prText(bodyFile, '', runId, items, left, pins)
       await run('gh', ['pr', 'edit', String(pr), '-R', repo, '--title', title, '--body', body])
       if (ready) await run('gh', ['pr', 'ready', String(pr), '-R', repo])
     },

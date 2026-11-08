@@ -32,7 +32,6 @@ import {
 } from '../src/core/launch.js'
 import { formatReport, type RunReport, runHeadline, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
-import { unitStats } from '../src/core/stats.js'
 import type { Forge, Item, Login, Provider, Source } from '../src/core/types.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
@@ -572,209 +571,6 @@ it('ends the chain after a report step that wrote no report, and reports nothing
   expect(opened).toEqual([])
 })
 
-const pull = (branch: string) => `https://example.com/acme/api/pull/${branch}`
-const pr = (branch: string, commits: number) => ({
-  kind: 'pr',
-  url: pull(branch),
-  commits,
-  head: expect.any(String),
-})
-
-it('opens a draft PR per slice: a stacked one on -2, on the slice before as pushed', async () => {
-  const seen: Record<string, string[]> = {}
-  const prompts: Record<string, string> = {}
-  const bodies: Record<string, string> = {}
-  const hooked = join(await mkdtemp(join(tmpdir(), 'awaywork-hook-')), 'log')
-  const { rows, opened, origin, report, plan, forge, logged } = await run(
-    `notify: { command: 'echo "$AWAYWORK_UNIT $AWAYWORK_PR_URL" >> ${hooked}' }
-queue:
-  - skill: implement
-    then: [review, { skill: fix, stack: true }]
-`,
-    [issue(1)],
-    worker({}, { seen, prompts, bodies }),
-  )
-  // The forge lists slice 1's PR with a footer naming the item: slice 2 takes -2 rather than skip as tried.
-  expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-review', 'done', 'a report'],
-    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
-  ])
-  expect(logged).toEqual([
-    'acme-api-1: implement on claude',
-    'acme-api-1: done',
-    'acme-api-1-review: review on claude',
-    'acme-api-1-review: done',
-    'acme-api-1-fix: fix on claude',
-    'acme-api-1-fix: done',
-  ])
-  const published = [
-    'Add rate limits',
-    '',
-    'Done.',
-    '',
-    '## Awaywork chain',
-    '',
-    '<details><summary>Report: acme-api-1-review</summary>',
-    '',
-    'acme-api-1-review says nothing.',
-    '',
-    '</details>',
-    '',
-  ].join('\n')
-  expect(opened).toEqual([
-    { head: 'away/acme-api-1', base: '', body: published },
-    {
-      head: 'away/acme-api-1-2',
-      base: 'away/acme-api-1',
-      body: `Add rate limits\n\nDone.\n\nCloses acme/api#1\n\nStacked on ${pull('away/acme-api-1')}: merge that first.\n`,
-    },
-  ])
-  expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])
-  const parent = await git(origin, 'rev-parse', 'away/acme-api-1-2^')
-  expect(parent.stdout).toBe((await git(origin, 'rev-parse', 'away/acme-api-1')).stdout)
-  const format = '--format=%s|%(trailers:key=Awaywork,valueonly,separator=)'
-  expect((await git(origin, 'log', format, 'away/acme-api-1-2')).stdout.split('\n')).toEqual([
-    'Work on acme-api-1-fix|r1',
-    'Work on acme-api-1|r1',
-    'init|',
-  ])
-  const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1-2')
-  expect(files.stdout.split('\n')).toEqual(['acme-api-1-fix.txt', 'acme-api-1.txt'])
-
-  expect(report.results[2]).toMatchObject({
-    summary: 'Done.',
-    files: {
-      log: 'units/acme-api-1/3-fix/worker.log',
-      sliceBody: 'units/acme-api-1/out-2/pr.md',
-      sliceDiff: 'units/acme-api-1/out-2/diff.patch',
-    },
-  })
-
-  expect(seen['acme-api-1-fix']).toEqual(['pr.md', 'report.md'])
-  expect(bodies['acme-api-1-fix']).toBe(published)
-  expect(prompts['acme-api-1-fix']).toContain(
-    [
-      'Unit `acme-api-1-fix`, skill `fix`. You are on the new branch `away/acme-api-1-2`, cut from `away/acme-api-1`.',
-      '',
-      'This unit is a step of a chain (implement → review → stack fix) whose steps all work in this clone. Each slice, from the first step or a `stack` one on, publishes once when it ends, as a PR stacked on the slice before; this step is in slice 2 of 2, and the branch may already hold its commits.',
-      '',
-      `\`away/acme-api-1\` is the earlier awaywork PR ${pull('away/acme-api-1')}: your PR stacks on it, so leave its commits as they are.`,
-    ].join('\n'),
-  )
-  expect(prompts['acme-api-1-fix']).toContain(
-    `the body of the slice before's PR ${pull('away/acme-api-1')} as published in \`pr.md\``,
-  )
-  expect(prompts['acme-api-1-fix']).toContain('Commit on this branch and write `.away/out/pr.md`')
-
-  expect(formatPlan(plan)).toContain(
-    '     then review (built-in) on claude\n     stack fix (built-in) on claude',
-  )
-  const text = formatReport(report)
-  expect(text).toContain(
-    [
-      `| 1 | [api#1 Fix the thing](https://example.com/1) | implement → review → stack fix | claude | done, 3 turns | ${pull('away/acme-api-1')} (1 commit); ${pull('away/acme-api-1-2')} (1 commit) |`,
-      `|  | └ slice 1 | implement → review | claude | done, 2 turns | ${pull('away/acme-api-1')} (1 commit) |`,
-      '|  |   └ acme-api-1 | implement | claude | done, 1 turn | 1 commit |',
-      '|  |   └ acme-api-1-review | review | claude | done, 1 turn | a report |',
-      `|  | └ slice 2 | fix | claude | done, 1 turn | ${pull('away/acme-api-1-2')} (1 commit) |`,
-      '|  |   └ acme-api-1-fix | fix | claude | done, 1 turn | 1 commit |',
-    ].join('\n'),
-  )
-  expect(runLine('r1', text)).toBe('r1  1 unit, 2 draft PRs, 0 reports')
-  expect(runLine('r1', text.replaceAll('(1 commit)', '(1 commits)'))).toBe(
-    'r1  1 unit, 2 draft PRs, 0 reports',
-  )
-  expect(summarize(report, 'report.md').split('\n')[0]).toBe(
-    'Run r1: 2 draft PRs, 0 reports, 1 unit',
-  )
-  expect((await readFile(hooked, 'utf8')).split('\n')).toEqual([
-    `acme-api-1 ${pull('away/acme-api-1')}`,
-    `acme-api-1-review ${pull('away/acme-api-1')}`,
-    `acme-api-1-fix ${pull('away/acme-api-1-2')}`,
-    '',
-  ])
-  expect(unitStats(report.results).map((s) => [s.id, s.pr])).toEqual([
-    ['acme-api-1', true],
-    ['acme-api-1-review', false],
-    ['acme-api-1-fix', true],
-  ])
-  expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBeUndefined()
-})
-
-it("logs a slice passing over a branch that isn't its chain's", async () => {
-  const { rows, logged } = await run(
-    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
-    [issue(1)],
-    worker(),
-    { taken: ['away/acme-api-1-2'] },
-  )
-  expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', pr('away/acme-api-1-3', 1)],
-  ])
-  expect(logged).toEqual([
-    'acme-api-1: implement on claude',
-    'acme-api-1: done',
-    'acme-api-1-fix: away/acme-api-1-2 is taken on acme/api, using away/acme-api-1-3',
-    'acme-api-1-fix: fix on claude',
-    'acme-api-1-fix: done',
-  ])
-})
-
-it('prepares a stacked slice on its own branch in a dry run', async () => {
-  const { report, logged } = await run(
-    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
-    [issue(1)],
-    worker(),
-    { dryRun: true },
-  )
-  expect(report.results.map((r) => [r.planned.unit.id, r.status, r.planned.unit.branch])).toEqual([
-    ['acme-api-1', 'prepared', 'away/acme-api-1'],
-    ['acme-api-1-fix', 'prepared', 'away/acme-api-1-2'],
-  ])
-  expect(logged).toEqual(['acme-api-1: implement on claude', 'acme-api-1-fix: fix on claude'])
-})
-
-it('publishes a stacked slice on the branch its own type names', async () => {
-  const { rows, opened } = await run(
-    "branch: '{type}/{key}'\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
-    [issue(1)],
-    worker(),
-  )
-  expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('feat/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', pr('fix/acme-api-1', 1)],
-  ])
-  expect(opened.map((o) => [o.head, o.base])).toEqual([
-    ['feat/acme-api-1', ''],
-    ['fix/acme-api-1', 'feat/acme-api-1'],
-  ])
-})
-
-it('cuts slice 2 in the clone with nothing over its base', async () => {
-  const over: string[] = []
-  const base = worker()
-  const provider: Provider = {
-    ...base,
-    async *run(job, signal) {
-      if (job.unit.id === 'acme-api-1-fix')
-        over.push((await git(job.dir, 'log', '--oneline', 'away/acme-api-1..HEAD')).stdout)
-      yield* base.run(job, signal)
-    },
-  }
-  const { rows } = await run(
-    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
-    [issue(1)],
-    provider,
-  )
-  expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
-  ])
-  expect(over).toEqual([''])
-})
-
 it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {
   const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
   const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
@@ -793,11 +589,7 @@ it('ends the chain on a symlink a worker planted in .git, writing nothing throug
       yield* events
     },
   }
-  const { rows } = await run(
-    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
-    [issue(1)],
-    provider,
-  )
+  const { rows } = await run('queue: [{ skill: implement, then: [fix] }]\n', [issue(1)], provider)
   expect(rows).toEqual([
     ['acme-api-1', 'error', refused],
     [
@@ -836,7 +628,7 @@ it('ends the chain on a .git/index a worker symlinked, writing nothing through i
   }
   // `verify` runs `git status` in the clone after the failed step, as a `when` or `until` check does.
   const { rows } = await run(
-    "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
+    "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [fix] }]\n",
     [issue(1)],
     provider,
   )
@@ -900,7 +692,7 @@ it("runs no check in a clone whose .git it couldn't restore, so a planted filter
   process.env.ZZ_SECRET = 'hunter2'
   try {
     const { rows } = await run(
-      "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
+      "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [fix] }]\n",
       [issue(1)],
       provider,
     )
@@ -990,7 +782,7 @@ it('never lets git find a repo above the clone, where a worker can plant one', a
     },
   }
   const { rows } = await run(
-    "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
+    "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [fix] }]\n",
     [issue(1)],
     provider,
   )
@@ -1128,159 +920,6 @@ it('asks docker about a container once when its ps never answers, not again for 
   const { error, calls } = await containerPhase('case "$1" in ps) exec sleep 600;; esac')
   expect(error).toBe("couldn't remove the phase's container, left the clone as it is")
   expect(calls.filter((c) => c === 'ps')).toHaveLength(1)
-})
-
-it('starts a slice at a loop with stack, and diffs `changed` from where the chain started', async () => {
-  const { rows, opened, report } = await run(
-    `queue:
-  - skill: implement
-    then:
-      - { loop: [fix, review], until: { verdict: approve }, max: 2, stack: true }
-      - { skill: plan, when: { changed: acme-api-1.txt } }
-`,
-    [issue(1)],
-    worker({ 'acme-api-1-review-1': 'approve' }),
-  )
-  expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix-1', 'done', pr('away/acme-api-1-2', 1)],
-    ['acme-api-1-review-1', 'done', 'a report'],
-    ['acme-api-1-plan', 'done', 'a report'],
-  ])
-  expect(report.results.map((r) => r.loop)).toEqual([
-    undefined,
-    '1 round of fix ⇄ review; until held: verdict approve',
-    undefined,
-    undefined,
-  ])
-  expect(opened.map((o) => [o.head, o.base])).toEqual([
-    ['away/acme-api-1', ''],
-    ['away/acme-api-1-2', 'away/acme-api-1'],
-  ])
-  expect(opened[0]?.body).toBe('Add rate limits\n\nDone.')
-  expect(opened[1]?.body).toContain('Loop: 1 round of fix ⇄ review; until held: verdict approve')
-  expect(opened[1]?.body).toContain('acme-api-1-plan says nothing.')
-})
-
-it('keeps the slices before when a step of a stacked slice fails, and publishes what that slice has', async () => {
-  const { rows, opened, report } = await run(
-    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }, review] }]\n',
-    [issue(1)],
-    worker({}, { fail: ['acme-api-1-fix'] }),
-  )
-  expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'failed', pr('away/acme-api-1-2', 1)],
-    ['acme-api-1-review', 'skipped', 'acme-api-1-fix failed'],
-  ])
-  expect(opened.map((o) => o.head)).toEqual(['away/acme-api-1', 'away/acme-api-1-2'])
-  expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBe(1)
-})
-
-it('ends the chain when a stacked slice starts with a step that commits nothing', async () => {
-  const { rows, opened, report } = await run(
-    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }, review] }]\n',
-    [issue(1)],
-    worker({}, { idle: ['acme-api-1-fix'] }),
-  )
-  expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'nothing' }],
-    ['acme-api-1-review', 'skipped', 'acme-api-1-fix committed nothing'],
-  ])
-  expect(opened.map((o) => o.head)).toEqual(['away/acme-api-1'])
-  expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBeUndefined()
-})
-
-it('drops the open slice on Ctrl-C and keeps the ones published before', async () => {
-  const controller = new AbortController()
-  const { rows, opened, origin, report } = await run(
-    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }, review] }]\n',
-    [issue(1)],
-    worker({}, { abort: { id: 'acme-api-1-fix', controller } }),
-    { signal: controller.signal },
-  )
-  expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    [
-      'acme-api-1-fix',
-      'stopped: aborted',
-      { kind: 'none', reason: 'interrupted', unpublished: true },
-    ],
-    ['acme-api-1-review', 'skipped', 'interrupted'],
-  ])
-  expect(opened.map((o) => o.head)).toEqual(['away/acme-api-1'])
-  const branches = await git(origin, 'branch', '--format=%(refname:short)')
-  expect(branches.stdout.split('\n')).toEqual(['away/acme-api-1', 'feature-1', 'main'])
-  expect(recordAttempts({}, report)).toEqual({})
-})
-
-it('keeps the slices that fit under a cap, leaves out the rest and names the cap', async () => {
-  const { plan, opened, report } = await run(
-    `limits: { units: 3 }
-queue: [{ skill: implement, then: [review, { skill: fix, stack: true }] }]
-`,
-    [issue(1), issue(2)],
-    worker(),
-  )
-  expect(plan.units.map((p) => [p.unit.id, p.slice, p.capped])).toEqual([
-    ['acme-api-1', undefined, undefined],
-    ['acme-api-1-review', undefined, undefined],
-    ['acme-api-1-fix', 1, undefined],
-    ['acme-api-2', undefined, 'stack fix: over the cap: limits.units is 3'],
-    ['acme-api-2-review', undefined, undefined],
-  ])
-  expect(formatPlan(plan)).toContain(
-    '     then review (built-in) on claude\n     stack fix: over the cap: limits.units is 3',
-  )
-  // The repo's next chain starts from the default branch, not on this run's last PR.
-  expect(opened.map((o) => [o.head, o.base])).toEqual([
-    ['away/acme-api-1', ''],
-    ['away/acme-api-1-2', 'away/acme-api-1'],
-    ['away/acme-api-2', ''],
-  ])
-  // A capped chain left slices out, so none of its PRs closes the issue.
-  expect(opened.map((o) => o.body.includes('Closes'))).toEqual([false, true, false])
-  expect(formatReport(report)).toContain(
-    '| 2 | [api#2 Fix the thing](https://example.com/1) | implement → review | claude | done, 2 turns (stack fix: over the cap: limits.units is 3) |',
-  )
-})
-
-it('refuses a stack on a step that reports, or after steps that all report', async () => {
-  const reasons = async (rule: string) =>
-    (await run(`queue: [${rule}]\n`, [issue(1)], worker())).plan.skipped.map((s) => s.reason)
-  const refused = await run(
-    'queue: [{ skill: implement, then: [{ skill: review, stack: true }] }]\n',
-    [issue(1)],
-    worker(),
-  )
-  expect(refused.plan.skipped.map((s) => [s.kind, s.reason])).toEqual([
-    ['unstackable', 'stack on review: it reports, so its PR would have nothing in it'],
-  ])
-  expect(
-    await reasons(
-      '{ skill: plan, then: [{ loop: [implement, review], until: { verdict: approve }, max: 1, stack: true }] }',
-    ),
-  ).toEqual(['stack on implement: every step before it reports, so there is nothing to stack on'])
-})
-
-it('stacks a chain on your own PR: slice 1 into its branch, slice 2 onto slice 1', async () => {
-  const { opened, forge } = await run(
-    `queue:
-  - { skill: implement, where: { type: pr }, then: [{ skill: fix, stack: true }] }
-  - { skill: implement, where: { type: issue } }
-`,
-    [githubPr(1), { ...issue(2), linkedPrs: githubPr(1).linkedPrs }],
-    worker(),
-  )
-  // Your PR closes its issue, not the stack on it.
-  expect(
-    opened.map((o) => [o.head, o.base, o.body.includes('Stacked on'), o.body.includes('Closes')]),
-  ).toEqual([
-    ['away/acme-api-1', 'feature-1', false, false],
-    ['away/acme-api-1-2', 'away/acme-api-1', true, false],
-  ])
-  expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])
 })
 
 it('hands a chain its first step the report an earlier run left, and later steps the step before', async () => {

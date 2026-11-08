@@ -19,6 +19,7 @@ import {
   WORKER,
   workerFor,
 } from '../core/launch.js'
+import { ruleThread } from '../core/queue.js'
 import { counted } from '../core/report.js'
 import type { Ctx } from '../core/types.js'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
@@ -176,15 +177,25 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       report('warn', id, 'the command reads your home folder, which GitHub Actions lacks')
   }
   config.queue?.forEach((rule, i) => {
-    if (!rule.on_done) return
+    // A report that waits posts on its item, as on_done does.
+    const waits = rule.deliver === 'report' && (rule.wait || rule.gates)
+    if (!rule.on_done && !waits) return
     // A rule without `source` moves the items of the source it matched: only those it can match.
     const scope = rule.source
       ? [rule.source]
       : Object.keys(config.sources).filter((id) => canMatch(config.sources, id, rule.where))
-    const { comment, move } = rule.on_done
-    const lost = [comment && 'no result is posted', move && 'they stay put'].filter(Boolean)
+    const { comment, move } = rule.on_done ?? {}
+    // Its posts go to a thread, its moves still to the item.
+    const posts = !ruleThread(rule)
+    const lost = [
+      posts && (comment || waits) && 'no result is posted',
+      posts && waits && 'nothing waits for you',
+      move && 'they stay put',
+    ].filter(Boolean)
+    const at = `rule #${i + 1} ${rule.on_done ? 'on_done' : 'wait'}`
+    if (!lost.length) return
     for (const id of scope.filter((id) => !sourceFor(id, config.sources[id])?.write))
-      report('warn', `rule #${i + 1} on_done`, `${id} can't write to its items: ${lost.join(', ')}`)
+      report('warn', at, `${id} can't write to its items: ${lost.join(', ')}`)
   })
   for (const [name, server] of Object.entries(config.mcp)) {
     const unset = server.secrets.filter((s) => !process.env[s])

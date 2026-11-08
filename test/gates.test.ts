@@ -10,6 +10,7 @@ import { planRun } from '../src/core/foreman.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Gate, Unit } from '../src/core/types.js'
 import type { Check } from '../src/worker/checks.js'
+import type { Judged } from '../src/worker/gates.js'
 import { describeFired, gatesSection, runGates, runJudges } from '../src/worker/gates.js'
 import { fakeItem } from './fakes/items.js'
 
@@ -37,7 +38,7 @@ const unit = (gates: Record<string, Partial<Gate>>) =>
     gates: Object.fromEntries(
       Object.entries(gates).map(([name, g]) => [
         name,
-        { changed: [], commands: [], skills: [], ...g },
+        { changed: [], commands: [], skills: [], instructions: [], ...g },
       ]),
     ),
   }) as unknown as Unit
@@ -73,19 +74,25 @@ queue: [{ skill: implement }]
   })
   const gatesOf = (repo: string) => plan.units.find((p) => p.unit.repo === repo)?.unit.gates
   expect(gatesOf('acme/api')).toEqual({
-    schema: { changed: ['**/migrations/**', 'src/db/schema/**'], commands: [], skills: [] },
+    schema: {
+      changed: ['**/migrations/**', 'src/db/schema/**'],
+      commands: [],
+      skills: [],
+      instructions: [],
+    },
     routes: {
       changed: [],
       commands: ['scripts/route-diff.sh', 'scripts/api-routes.sh'],
       skills: [],
+      instructions: [],
     },
-    risk: { changed: [], commands: [], skills: ['judge', 'our-judge'] },
-    queues: { changed: ['src/jobs/**'], commands: [], skills: [] },
+    risk: { changed: [], commands: [], skills: ['judge', 'our-judge'], instructions: [] },
+    queues: { changed: ['src/jobs/**'], commands: [], skills: [], instructions: [] },
   })
   expect(gatesOf('acme/web')).toEqual({
-    schema: { changed: ['**/migrations/**'], commands: [], skills: [] },
-    routes: { changed: [], commands: ['scripts/route-diff.sh'], skills: [] },
-    risk: { changed: [], commands: [], skills: ['judge'] },
+    schema: { changed: ['**/migrations/**'], commands: [], skills: [], instructions: [] },
+    routes: { changed: [], commands: ['scripts/route-diff.sh'], skills: [], instructions: [] },
+    risk: { changed: [], commands: [], skills: ['judge'], instructions: [] },
   })
 })
 
@@ -326,7 +333,7 @@ it("fires a gate on its judge's verdict, with the report's lines, and runs every
   const { dir, from } = await slice()
   const gates = unit({ risk: { skills: ['judge', 'our-judge'] }, ok: { skills: ['judge'] } })
   const judge = vi.fn(
-    async (gate: string, skill: string, _unit: Unit, dir: string, _from: string) => {
+    async (gate: string, skill: string, _unit: Unit, dir: string, _on: Judged) => {
       const fires = gate === 'risk' && skill === 'our-judge'
       await writeFile(join(dir, '.away/out/verdict'), fires ? 'fires\n' : 'clear\n')
       await writeFile(
@@ -336,17 +343,17 @@ it("fires a gate on its judge's verdict, with the report's lines, and runs every
       return undefined
     },
   )
-  expect(await runJudges(judge, gates, dir, from)).toEqual([
+  expect(await runJudges(judge, gates, dir, { from })).toEqual([
     { name: 'risk', line: 'VAT rounding moved to each line → totals change', judged: true },
     { name: 'risk', line: '&lt;!-- the rest', judged: true },
   ])
   expect(judge.mock.calls.map((c) => [c[0], c[1], c[4]])).toEqual([
-    ['risk', 'judge', from],
-    ['risk', 'our-judge', from],
-    ['ok', 'judge', from],
+    ['risk', 'judge', { from }],
+    ['risk', 'our-judge', { from }],
+    ['ok', 'judge', { from }],
   ])
   const quiet = judging('fires')
-  expect(await runJudges(quiet, unit({ risk: { skills: ['judge'] } }), dir, from)).toEqual([
+  expect(await runJudges(quiet, unit({ risk: { skills: ['judge'] } }), dir, { from })).toEqual([
     { name: 'risk', line: 'fired, with no report', judged: true },
   ])
 })
@@ -378,7 +385,7 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
     const { dir, from } = await slice()
     const tip = await git(dir, 'rev-parse', 'HEAD')
     const judge = judging('clear', '', act)
-    expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, from)).toEqual([
+    expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from })).toEqual([
       {
         name: 'risk',
         line: 'the judge changed the clone; awaywork dropped its changes',
@@ -396,14 +403,14 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
 it('clears a judge that also wrote its status', async () => {
   const { dir, from } = await slice()
   const judge = judging('clear', '', (dir) => writeFile(join(dir, '.away/out/status'), 'done\n'))
-  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, from)).toEqual([])
+  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from })).toEqual([])
   expect((await readdir(join(dir, '.away/out'))).sort()).toEqual(['diff.patch', 'pr.md'])
 })
 
 it("fails closed: a judge that didn't run or finish fires, whatever it wrote", async () => {
   const { dir, from } = await slice()
   const judge = judging('clear', '', async () => {}, 'reached the window end')
-  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, from)).toEqual([
+  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from })).toEqual([
     { name: 'risk', line: "judge didn't run: reached the window end", judged: true },
   ])
 })

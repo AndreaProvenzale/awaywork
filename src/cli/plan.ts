@@ -1,25 +1,39 @@
 import { type Command, InvalidArgumentError, Option } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { approvalsPath, attemptsPath, skillsDirOf, skipsPath } from '../config/paths.js'
+import { attemptsPath, skillsDirOf, skipsPath } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
-import { loadApprovals, withApprovals } from '../core/approvals.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance, pct } from '../core/budget.js'
 import { taskBranches, taskPr } from '../core/fanout.js'
-import { renderLink } from '../core/footer.js'
+import {
+  commentKind,
+  isAwayworkComment,
+  markComment,
+  renderLink,
+  threadClosed,
+} from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
-import { defaultRules, itemState, lookback } from '../core/queue.js'
-import { counted } from '../core/report.js'
+import { heldMove, withApproved } from '../core/posts.js'
+import {
+  DEFAULT_LOOKBACK,
+  defaultRules,
+  itemState,
+  lookback,
+  ruleThread,
+  spanMs,
+} from '../core/queue.js'
+import { counted, type Moved } from '../core/report.js'
 import { builtinSkills, type SkillCatalog } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
-import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
+import type { Ctx, Forge, Item, Rule, Source, Thread } from '../core/types.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
-import { sourceFor } from '../sources/index.js'
+import { sourceFor, threadHost, writeItem } from '../sources/index.js'
 import { nextOccurrences, type RoutinesConfig } from '../sources/routines.js'
 import { maskSecrets } from '../worker/setup.js'
+import { checkPins } from '../worker/store.js'
 import { configSecrets } from '../worker/workspace.js'
 import { interactive, itemCommands, openScreen } from './browse.js'
 import { reportConfigError } from './config.js'
@@ -133,6 +147,7 @@ export function ruleNumber(text: string): number {
  * Collects items from every configured source, probes every provider and plans a run started `at`,
  * masking secrets in warnings; `present` when it says, else when `at` is outside every window. `soon`
  * plans only the `run: soon` rules over its sources, and its units when it names them; `probe: false` leaves the providers out.
+ * With `moves`, a run's, it first makes the moves on_done held on the posts you approved since, a dry run only saying them.
  */
 export async function probeAndPlan(
   config: Config,
@@ -147,6 +162,8 @@ export async function probeAndPlan(
     soon?: { sources: string[]; units?: string[] }
     probe?: boolean
     failed?: SourceFailed
+    moves?: { dryRun: boolean; log: (line: string) => void }
+    forge?: Forge
   } = {},
 ): Promise<{
   plan: RunPlan
@@ -166,10 +183,22 @@ export async function probeAndPlan(
     )
 
   const { onProgress, soon, failed } = opts
-  const items = withApprovals(
-    await collectItems(config, ctx, { onProgress, sources: soon?.sources, failed }),
-    await loadApprovals(approvalsPath),
-  )
+  const sources = configuredSources(config)
+  // A failed source's warning carries its stderr, and coding agents read `plan`.
+  const secrets = configSecrets(config, providersOf(config), sources)
+  const forge = opts.forge ?? forgeFor(config)
+  const collected = await collectItems(config, ctx, {
+    onProgress,
+    sources: soon?.sources,
+    failed,
+    forge,
+  })
+  const { items, moved } = opts.moves
+    ? await makeHeldMoves(collected, config, ctx, opts.moves, (line) =>
+        maskSecrets(line, secrets, ctx.env),
+      )
+    : { items: collected, moved: [] }
+  if (opts.moves) await closeThreads(items, config, forge, ctx, opts.moves)
 
   const at = opts.at ?? new Date()
   const present = opts.present ?? !windowEnd(config.windows, at)
@@ -199,24 +228,26 @@ export async function probeAndPlan(
   }
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
-  await linkPlanTasks(items, config, skills, forgeFor(config), ctx, onProgress)
+  await linkPlanTasks(items, config, skills, forge, ctx, onProgress)
   const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
-  const sources = configuredSources(config)
-  // A failed source's warning carries its stderr, and coding agents read `plan`.
-  const secrets = configSecrets(config, providersOf(config), sources)
+  const planned = planRun({
+    config,
+    items,
+    allowances,
+    skills,
+    attempts,
+    skips,
+    only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
+  })
   return {
     plan: {
-      ...planRun({
-        config,
-        items,
-        allowances,
-        skills,
-        attempts,
-        skips,
-        only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
-      }),
+      ...planned,
+      skipped: planned.skipped.filter(
+        (s) => s.kind !== 'no_rule' || !readForThread(s.item, planned.queue),
+      ),
       present,
+      ...(moved.length && { moved }),
       ...(config.sources.routines && {
         routines: nextOccurrences(config.sources.routines as RoutinesConfig, at),
       }),
@@ -232,7 +263,7 @@ export async function probeAndPlan(
 async function describeRules(config: Config, json = false): Promise<string> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
-  const items = withApprovals(await collectItems(config, ctx), await loadApprovals(approvalsPath))
+  const items = await collectItems(config, ctx)
   const secrets = configSecrets(config, providersOf(config), configuredSources(config))
   const masked = warnings.map((w) => maskSecrets(w, secrets, ctx.env))
   const rules = config.queue ?? defaultRules(Object.keys(config.sources))
@@ -260,10 +291,10 @@ export type SourceFailed = (source: string, e: Error & { retryAfter?: number }) 
 export async function collectItems(
   config: Config,
   ctx: Ctx,
-  opts: { onProgress?: OnProgress; sources?: string[]; failed?: SourceFailed } = {},
+  opts: { onProgress?: OnProgress; sources?: string[]; failed?: SourceFailed; forge?: Forge } = {},
 ): Promise<Item[]> {
-  const { onProgress } = opts
-  const items: Item[] = []
+  const { onProgress, forge = forgeFor(config) } = opts
+  const found: Item[] = []
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
@@ -271,9 +302,9 @@ export async function collectItems(
     const link = source.link !== false && ((cfg as { link?: string }).link ?? source.link)
     onProgress?.({ name: id, state: 'running' })
     await source.items(cfg, ctx, finishedSince(queue, id)).then(
-      (found) => {
-        items.push(...found.map((i) => (link ? { ...i, link: renderLink(link, i) } : i)))
-        onProgress?.({ name: id, state: 'done', detail: counted(found.length, 'item') })
+      (read) => {
+        found.push(...read.map((i) => (link ? { ...i, link: renderLink(link, i) } : i)))
+        onProgress?.({ name: id, state: 'done', detail: counted(read.length, 'item') })
       },
       (e: Error) => {
         ctx.log(`source ${id}: ${sourceFailure(e)}`)
@@ -282,18 +313,84 @@ export async function collectItems(
       },
     )
   }
-  await linkTasks(items, forgeFor(config), ctx, onProgress)
-  return items
+  await linkTasks(found, forge, ctx, onProgress)
+  const items = await linkThreads(found, config, forge, ctx)
+  // `approved` is read off the thread, an edited file in the store included.
+  if (config.store) await checkPins(items, config.store, ctx.env)
+  return items.map(withApproved)
 }
 
 const firstLine = (text: string) => text.split('\n')[0]
 
-/** How far back the source's rules read finished items, the widest wins; unset when none does. */
+/** Makes each move on_done held on a post of yours you approved since, with no model run; a dry run only says it. Returns the items as moved, and the moves. */
+async function makeHeldMoves(
+  items: Item[],
+  config: Config,
+  ctx: Ctx,
+  { dryRun, log }: { dryRun: boolean; log: (line: string) => void },
+  mask: (line: string) => string,
+): Promise<{ items: Item[]; moved: Moved[] }> {
+  const out: Item[] = []
+  const moved: Moved[] = []
+  for (const item of items) {
+    const to = item.mine && heldMove(item)
+    if (!to || dryRun) {
+      if (to) log(`on_done: would move ${item.key} to ${to}, its post approved`)
+      out.push(item)
+      continue
+    }
+    const cfg = config.sources[item.source]
+    try {
+      const write = { op: 'move', to } as const
+      const { updated } = await writeItem(sourceFor(item.source, cfg), cfg, item, write, ctx)
+      log(`on_done: moved ${item.key} to ${to}, its post approved`)
+      moved.push({ item: `${item.source}:${item.key}`, to })
+      // The move is awaywork's own change, not the card's.
+      out.push(movedTo({ ...item, fields: { ...item.fields, ...(updated && { updated }) } }, to))
+    } catch (e) {
+      const failed = mask((e as Error).message)
+      log(`on_done: couldn't move ${item.key} to ${to}: ${failed}`)
+      moved.push({ item: `${item.source}:${item.key}`, to, failed })
+      out.push(item)
+    }
+  }
+  return { items: out, moved }
+}
+
+/** The item as a move to `to` leaves it, in the fields `where` reads too: a GitHub label, else the tracker's status or section. */
+function movedTo(item: Item, to: string): Item {
+  if (item.source === 'github')
+    return {
+      ...item,
+      labels: [...item.labels, to],
+      fields: { ...item.fields, label: [...item.labels, to] },
+    }
+  const swap = (v: unknown): unknown =>
+    v === item.status ? to : Array.isArray(v) ? v.map(swap) : v
+  const fields = { ...item.fields }
+  for (const key of ['status', 'section']) if (key in fields) fields[key] = swap(fields[key])
+  return { ...item, status: to, fields }
+}
+
+/** How far back the source's rules read finished items, the widest wins, a thread's card's for a week to close its thread; unset when none does. */
 export function finishedSince(queue: Rule[], source: string): Date | undefined {
-  const reach = queue
-    .filter((r) => !r.source || r.source === source)
-    .flatMap((r) => lookback(r.where) ?? [])
+  const rules = rulesOf(queue, source)
+  const reach = rules.flatMap((r) => lookback(r.where) ?? [])
+  if (rules.some((r) => ruleThread(r))) reach.push(spanMs(DEFAULT_LOOKBACK))
   return reach.length > 0 ? new Date(Date.now() - Math.max(...reach)) : undefined
+}
+
+const rulesOf = (queue: Rule[], source: string) =>
+  queue.filter((r) => !r.source || r.source === source)
+
+/** A finished card read only so its thread can close: its source has a thread rule and no rule there looks back. */
+function readForThread(item: Item, queue: Rule[]): boolean {
+  const rules = rulesOf(queue, item.source)
+  return (
+    itemState(item) !== 'open' &&
+    rules.some((r) => ruleThread(r)) &&
+    rules.every((r) => lookback(r.where) === undefined)
+  )
 }
 
 const FAILURE_LINE = 300
@@ -368,4 +465,94 @@ export async function linkTasks(
   }
   if (tasks.length)
     onProgress?.({ name: 'linking PRs', state: 'done', detail: `${tasks.length}/${tasks.length}` })
+}
+
+/** Each thread host a rule names, with the sources its rules take items from. */
+export function threadHosts(config: Pick<Config, 'sources' | 'queue'>): Map<string, string[]> {
+  const hosts = new Map<string, string[]>()
+  for (const r of config.queue ?? []) {
+    const host = ruleThread(r)
+    if (host)
+      hosts.set(host, [
+        ...(hosts.get(host) ?? []),
+        ...(r.source ? [r.source] : Object.keys(config.sources)),
+      ])
+  }
+  return hosts
+}
+
+/**
+ * Each of your items a rule with a `thread` can take gets the thread awaywork opened for it, if any: its comments
+ * follow the card's, and a reply there changes the item as one on the card would. Returns the items but those whose
+ * threads couldn't be read: planned without them, they'd post a second plan.
+ */
+export async function linkThreads(
+  items: Item[],
+  config: Pick<Config, 'sources' | 'queue'>,
+  forge: Forge,
+  ctx: Ctx,
+): Promise<Item[]> {
+  const unread = new Set<Item>()
+  for (const [name, sources] of threadHosts(config)) {
+    const host = threadHost(name, config.sources, forge, ctx)
+    const repoOf = (i: Item) =>
+      host?.byRepo && typeof i.fields.repo === 'string' ? i.fields.repo : undefined
+    const threaded = items.filter(
+      (i) => i.mine && !i.thread && sources.includes(i.source) && (!host?.byRepo || repoOf(i)),
+    )
+    for (const repo of new Set(threaded.map(repoOf))) {
+      const here = threaded.filter((i) => repoOf(i) === repo)
+      const found = await host?.threads(repo).catch((e: Error) => {
+        const keys = here.map((i) => i.key).join(', ')
+        const on = repo ? `in ${repo}` : `on ${name}`
+        ctx.log(`couldn't read awaywork's threads ${on}, so left out ${keys}: ${e.message}`)
+        for (const item of here) unread.add(item)
+      })
+      for (const item of here) {
+        const thread = found?.find((t) => t.item === `${item.source}:${item.key}`)
+        if (thread) linkThread(item, thread)
+      }
+    }
+  }
+  return items.filter((i) => !unread.has(i))
+}
+
+/** The item with its thread's comments after its own, and the newest reply there as its updated time when newer. */
+function linkThread(
+  item: Item,
+  { thread, comments }: { thread: Thread; comments: Item['comments'] },
+): void {
+  // Awaywork's own posts there leave the item as it was, as they do on the card.
+  const replied = comments
+    .filter((c) => !isAwayworkComment(c) || commentKind(c) === 'approve')
+    .at(-1)?.at
+  const card = item.fields.updated
+  const newer = !!replied && !(typeof card === 'string' && Date.parse(card) >= Date.parse(replied))
+  item.thread = { ...thread, ...(newer && typeof card === 'string' && { card }) }
+  item.comments = [...item.comments, ...comments]
+  if (newer) item.fields.updated = replied
+}
+
+/** Closes the thread of each card its source says is done, with a line saying so; a dry run only says it. */
+async function closeThreads(
+  items: Item[],
+  config: Pick<Config, 'sources'>,
+  forge: Forge,
+  ctx: Ctx,
+  { dryRun, log }: { dryRun: boolean; log: (line: string) => void },
+): Promise<void> {
+  for (const item of items) {
+    const { thread } = item
+    const state = itemState(item)
+    if (!thread || state === 'open') continue
+    const what = `${thread.url}, ${item.key}'s thread: the card is ${state}`
+    if (dryRun) log(`would close ${what}`)
+    else
+      await threadHost(thread.host, config.sources, forge, ctx)
+        ?.closeThread(thread, markComment(threadClosed))
+        .then(
+          () => log(`closed ${what}`),
+          (e: Error) => ctx.log(`couldn't close ${thread.url}, ${item.key}'s thread: ${e.message}`),
+        )
+  }
 }

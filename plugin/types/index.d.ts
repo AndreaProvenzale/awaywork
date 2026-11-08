@@ -13,11 +13,7 @@ export type Skip = {
   needsYou?: true
 }
 
-export type Where = { approved?: unknown; any?: Where[] }
-
-export type Rule = { source?: string; where?: Where }
-
-export type Plan = { queue?: Rule[]; units: Planned[]; skipped: Skip[] }
+export type Plan = { units: Planned[]; skipped: Skip[] }
 
 export type Result = {
   planned: Planned

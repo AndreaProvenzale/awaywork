@@ -1,4 +1,5 @@
 import { planThread } from './plan.js'
+import { type Post, postAnswer, reportPost } from './posts.js'
 import type {
   Age,
   Comparison,
@@ -88,6 +89,7 @@ export function matches(rule: Rule, item: Item): boolean {
  * first `planned` rule for its skill, if it matches. An open card of yours carrying awaywork's plan
  * sticks to the `deliver: plan` rule it matches, else the first one for its source whatever its
  * `where` says now, so a move of the card doesn't strand its tasks nor hand it whole to another rule.
+ * A report rule whose result on the item you approved is done with it: the next rule takes it.
  */
 export function ruleFor(queue: Rule[], item: Item): number {
   if (item.task) {
@@ -99,7 +101,24 @@ export function ruleFor(queue: Rule[], item: Item): number {
     ? queue.flatMap((r, i) => (r.deliver === 'plan' && eligible(r, item) ? [i] : []))
     : []
   const plan = plans.find((i) => matches(queue[i] as Rule, item)) ?? plans[0]
-  return plan ?? queue.findIndex((r) => matches(r, item))
+  return plan ?? queue.findIndex((r) => matches(r, item) && !doneWith(r, item))
+}
+
+/** Whether the rule's newest post on the item, a plan or a result, waits for your answer: it holds the item for that rule only. A file of it edited in the store is feedback. */
+export function waitsOn(rule: Rule, item: Item): boolean {
+  const thread = rule.deliver === 'plan' ? planThread(item) : undefined
+  const post = thread
+    ? { post: thread.plan, answer: thread.answer }
+    : rule.deliver === 'report'
+      ? reportPost(item, rule.skill)
+      : undefined
+  return !!post && !post.answer && !post.post.pinned?.stale
+}
+
+/** A report rule's newest result on the item, once you approved it or it went ahead: the rule doesn't run on it again. */
+export function doneWith(rule: Rule, item: Item): Post | undefined {
+  const post = rule.deliver === 'report' ? reportPost(item, rule.skill) : undefined
+  return post && postAnswer(post) === 'approved' ? post : undefined
 }
 
 /** An awaywork PR waits for review unless a rule names `ours`; a plan's task goes only to a rule naming `planned` with its skill, and only a task does. */
@@ -123,6 +142,10 @@ export function itemState(item: Item): ItemState {
   const state = item.fields.state
   return state === 'merged' || state === 'closed' ? state : 'open'
 }
+
+/** The thread host a rule posts on, `github` or a custom source; unset when it posts on the item. */
+export const ruleThread = (rule: Pick<Rule, 'thread'>): string | undefined =>
+  rule.thread === 'item' ? undefined : rule.thread
 
 /** How far back a rule reads finished items when its `where` doesn't bound `closed`. */
 export const DEFAULT_LOOKBACK = '7d'

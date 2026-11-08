@@ -240,11 +240,23 @@ describe('a plan read back from the card', () => {
     })
   })
 
-  it('takes any other first answer as feedback: approve if…, a codeowner, a later approve', () => {
+  it("takes any other first reply of yours as feedback, and skips a teammate's comment", () => {
     expect(state(plan, yours('approve if the route stays'))).toEqual({ state: 'feedback' })
     expect(state(plan, yours('Split web in two.'))).toEqual({ state: 'feedback' })
-    expect(state(plan, theirs('approve'))).toEqual({ state: 'feedback' })
-    expect(state(plan, theirs('Looks off.'), yours('approve', 3))).toEqual({ state: 'feedback' })
+    expect(state(plan, theirs('approve'))).toEqual({ state: 'waiting' })
+    expect(state(plan, theirs('Looks off.'), yours('approve', 3))).toMatchObject({
+      state: 'approved',
+    })
+    expect(state(plan, yours('Split web.'), yours('approve', 3))).toEqual({ state: 'feedback' })
+  })
+
+  it('reads a plan that went ahead as its own answer, whatever you reply after it', () => {
+    const went = {
+      ...plan,
+      body: markComment(planComment('Two tasks.', yaml), { went: true, gates: [] }),
+    }
+    expect(state(went)).toMatchObject({ state: 'approved', notes: '' })
+    expect(state(went, yours('Split web in two.'))).toMatchObject({ state: 'approved' })
   })
 
   it('reads a plan and its approve notes with CRLF line endings, as a web edit leaves them', () => {

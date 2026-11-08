@@ -1,5 +1,6 @@
 import { createWriteStream, existsSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join, posix } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { Config } from '../config/schema.js'
@@ -7,9 +8,17 @@ import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
 import { byHand } from '../core/continue.js'
-import { planComment, questionsComment, resultComment, type Status } from '../core/footer.js'
 import {
-  bySlice,
+  leanPlanComment,
+  type Pin,
+  type PostState,
+  pinBlock,
+  planComment,
+  questionsComment,
+  resultComment,
+  type Status,
+} from '../core/footer.js'
+import {
   describeChain,
   isNamed,
   modelFor,
@@ -37,6 +46,8 @@ import {
   latestResult,
   planYaml,
 } from '../core/plan.js'
+import { readBackPosts } from '../core/posts.js'
+import { ruleThread } from '../core/queue.js'
 import {
   type Commented,
   counted,
@@ -60,16 +71,15 @@ import type {
   Source,
   Unit,
 } from '../core/types.js'
-import { unwritable, writeItem } from '../sources/index.js'
+import { type Threads, threaded, unwritable, writeItem } from '../sources/index.js'
 import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
-import type { Outcome, Stack } from './publish.js'
+import type { Outcome } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { maskSecrets, runSetup } from './setup.js'
 import {
-  cutBranch,
   describeLoop,
   freeBranch,
   type Held,
@@ -91,6 +101,7 @@ import {
   setupEnv,
   snapshot,
 } from './steps.js'
+import { type Kind, outFiles, putFiles, readBack, type Store } from './store.js'
 import {
   concludeMerge,
   conflictsFile,
@@ -170,16 +181,13 @@ const triedLater = (r: UnitResult) =>
   (!!r.reason?.startsWith('no provider left') ||
     (!!r.passedOver && !!r.reason?.startsWith('when ')))
 
-/** Where a chain's slice keeps what it published: `out/`, `out-2/` and so on. */
-const sliceOut = (at: number) => (at > 0 ? `out-${at + 1}` : 'out')
-
-/** Why a `deliver: pr` slice opens as a draft: a step that failed, stopped or never ran; `runLine` splits at `; `. */
+/** Why a `deliver: pr` chain opens as a draft: a step that failed, stopped or never ran; `runLine` splits at `; `. */
 function notReady(r: UnitResult): string {
   const why = r.status === 'skipped' && r.reason?.split('\n')[0]?.split('; ')[0]
   return `${r.planned.unit.id} ${r.status}${why ? `: ${why}` : ''}`
 }
 
-/** A step's files, and what it concluded: its slice's PR body when it leads the slice, else its report. */
+/** A step's files, and what it concluded: the chain's PR body when it leads the chain, else its report. */
 async function leftBy(
   runDir: string,
   chainId: string,
@@ -190,7 +198,7 @@ async function leftBy(
   if (!r.step) return {}
   // Relative and with `/`: report.json is read on other machines, from an uploaded artifact.
   const step = posix.join('units', chainId, r.step)
-  const slice = posix.join('units', chainId, sliceOut(r.planned.slice ?? 0))
+  const slice = posix.join('units', chainId, 'out')
   const all: StepFiles = {
     log: posix.join(step, 'worker.log'),
     report: posix.join(step, 'out', outputFile.report),
@@ -211,26 +219,43 @@ async function leftBy(
   return { files, ...(summary && { summary }) }
 }
 
+/** What a chain starts from: the files its tasks in other repos ship, the folder of each item's files read back from the store, and what didn't come back. */
+interface Ready {
+  shipped: Shipped[]
+  pinned: Record<string, string>
+  notes: string[]
+}
+
+/** A lean post's text: the gates' card, then the step's `summary.md`, else its report's first lines, saying so in `notes`. */
+async function leanText(
+  out: string,
+  outcome: Outcome | undefined,
+  reports: StepReport[],
+  notes: string[],
+): Promise<string> {
+  const written = (await readOutput(join(out, 'summary.md'))).trim()
+  if (!written) notes.push("no summary.md: the post shows the report's first lines")
+  const summary = written || (reports.at(-1)?.text ?? '').split('\n').slice(0, 5).join('\n').trim()
+  const card = outcome?.kind === 'report' ? outcome.gates?.card : undefined
+  return card ? `${card}\n\n${summary}` : summary
+}
+
 /** Under every tracker's comment limit as text; Jira's write also checks the longer ADF it sends. */
 const MAX_COMMENT_BYTES = 30_000
 
-/** A slice's outcome that published: a PR, a push, a report or a pending review left. */
+/** A chain's outcome that published: a PR, a push, a report or a pending review left. */
 const delivered = (o: Outcome | undefined) =>
   !!o && o.kind !== 'none' && !(o.kind === 'report' && o.unposted)
 
-/** A finished chain's result: each slice's report, or a line linking what it published. */
-const resultOf = (outcomes: Outcome[]): string =>
-  outcomes
-    .map((o) => {
-      if (o.kind === 'report') return o.text
-      if (o.kind === 'pr') return `Opened ${o.url}${o.ready ? '' : ' as a draft'}`
-      if (o.kind === 'pushed')
-        return `Pushed ${o.commits} ${o.commits === 1 ? 'commit' : 'commits'} onto ${o.url}`
-      if (o.kind === 'review') return `Left your pending review on ${o.url}`
-      return ''
-    })
-    .filter(Boolean)
-    .join('\n\n')
+/** A finished chain's result: its report, or a line linking what it published. */
+function resultOf(o: Outcome | undefined): string {
+  if (o?.kind === 'report') return o.text
+  if (o?.kind === 'pr') return `Opened ${o.url}${o.ready ? '' : ' as a draft'}`
+  if (o?.kind === 'pushed')
+    return `Pushed ${o.commits} ${o.commits === 1 ? 'commit' : 'commits'} onto ${o.url}`
+  if (o?.kind === 'review') return `Left your pending review on ${o.url}`
+  return ''
+}
 
 /** A failed step to retry: the clone as it found it, and what it leaves the chain if the retry can't start. */
 interface Retry {
@@ -257,11 +282,10 @@ export function namedChains(plan: RunPlan, name: string): PlannedUnit[] {
 
 /**
  * Runs the plan's chains one at a time, re-routing as windows fill. A rule's steps all work in one
- * clone, and each slice of the chain publishes once, when it ends: its commits as a PR or a
- * push onto your PR, else its reports. A PR stacks on the awaywork PR a rule took up, or on
- * the slice before, whose pushed tip the next slice's commits are published onto.
+ * clone, and the chain publishes once, when it ends: its commits as a PR or a push onto your PR,
+ * else its reports. A PR stacks on the awaywork PR a rule took up, or on the task's it stacks on.
  * Every step leaves `units/<id>/<n>-<skill>/` in the run dir: its context, prompt, output and worker
- * log; what each slice published is in `units/<id>/out/`, `out-2/` and so on.
+ * log; what the chain published is in `units/<id>/out/`.
  */
 export async function runUnits(input: RunInput): Promise<RunReport> {
   const startedAt = new Date()
@@ -278,6 +302,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     .filter((p) => !p.chain && (!input.only || named.includes(p)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
+  const store = input.config.store as Store | undefined
   // The worker user can't reach the run dir: its plugins and each clone get a folder of their own under /tmp.
   const root = isolated() ? await workerRoot() : input.runDir
 
@@ -287,24 +312,26 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     signal: input.signal,
     until: input.until,
   })
-  const publisher: Omit<Publisher, 'judge'> = {
+  const publisher: Omit<Publisher, 'judge' | 'pin'> = {
     forge: input.forge,
     runId: input.runId,
     signal: input.signal,
     check,
   }
 
-  /** Posts a finished unit's result on each of its items that is yours; a write that fails is reported, never thrown. */
+  /** Posts a finished unit's result on each of its items that is yours, saying what `post` says of it there; a write that fails is reported, never thrown. */
   const postResult = async (
     p: PlannedUnit,
     text: string,
     status: Status = 'done',
     continued = 0,
+    post?: (item: Item) => PostState,
+    pins: Pin[] = [],
   ): Promise<Commented[]> => {
     const posted: Commented[] = []
     for (const item of ownItems(p)) {
       const source = input.sources[item.source]
-      const refused = unwritable(item, source)
+      const refused = commentRefused(p, item)
       if (refused) {
         input.ctx.log(`${item.key} got no result, ${refused}`)
         continue
@@ -315,14 +342,24 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         continue
       }
       try {
+        const state = post?.(item)
+        const waits = !!state && 'waits' in state
         const write = {
           op: 'comment',
-          body: resultComment(text, status, p.unit.skill, item.task?.id, continued),
+          body: `${resultComment(text, status, p.unit.skill, item.task?.id, continued, waits)}${pinBlock(pins)}`,
         } as const
         const cfg = input.config.sources[item.source]
-        const { updated, url = item.url } = await writeItem(source, cfg, item, write, input.ctx)
+        const { updated, url = item.url } = await writeItem(
+          source,
+          cfg,
+          item,
+          write,
+          input.ctx,
+          state,
+          threadsOf(p),
+        )
         input.ctx.log(`${item.key}: result posted on ${url}`)
-        posted.push({ ...ref, url, ...(updated && { updated }) })
+        posted.push({ ...ref, url, ...(updated && { updated }), ...(state && { post: state }) })
       } catch (e) {
         const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
         event(`couldn't post the result on ${item.key}: ${failed}`)
@@ -342,11 +379,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     for (const item of items) {
       const source = input.sources[item.source]
       const refused = unwritable(item, source)
+      const ref = { item: `${item.source}:${item.key}`, to }
       if (refused) {
         input.ctx.log(`on_done: ${item.key} not moved, ${refused}`)
+        // Its posts went to its thread, so the report says the card stayed put.
+        if (item.mine && item.thread) moved.push({ ...ref, failed: refused })
         continue
       }
-      const ref = { item: `${item.source}:${item.key}`, to }
       // The result's post is awaywork's own change: the move compares with the item as it left it.
       const after = posted.find((c) => c.item === ref.item)?.updated
       const read = after ? { ...item, fields: { ...item.fields, updated: after } } : item
@@ -389,6 +428,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const ownItems = (p: PlannedUnit): Item[] =>
     p.unit.items.filter((i) => i.source === p.unit.items[0]?.source)
 
+  /** Where the unit's comments go instead of its items: their threads, opened for a rule with a `thread`. */
+  const threadsOf = (p: PlannedUnit): Threads => {
+    const rule = input.plan.queue[p.rule]
+    return { forge: input.forge, sources: input.config.sources, open: rule && ruleThread(rule) }
+  }
+
+  /** Why awaywork won't comment on the unit's item, here or on its thread. */
+  const commentRefused = (p: PlannedUnit, item: Item): string | undefined =>
+    unwritable(item, input.sources[item.source], threaded(item, threadsOf(p)))
+
   /**
    * Posts a comment on the first of the unit's own items that is yours, through a source that writes;
    * a post that fails is reported, never thrown. An item waiting for an answer made no unit.
@@ -397,12 +446,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     p: PlannedUnit,
     what: string,
     body: (item: Item) => string,
+    post?: PostState,
   ): Promise<Posted> => {
     if (input.signal?.aborted) return { unposted: 'interrupted' }
-    const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
+    const item = ownItems(p).find((i) => !commentRefused(p, i))
     if (!item) {
       const top = p.unit.items[0] as Item
-      return { unposted: `${top.key} ${unwritable(top, input.sources[top.source])}` }
+      return { unposted: `${top.key} ${commentRefused(p, top)}` }
     }
     const ref = `${item.source}:${item.key}`
     try {
@@ -414,6 +464,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         item,
         write,
         input.ctx,
+        post,
+        threadsOf(p),
       )
       input.ctx.log(`${p.unit.id}: ${what} posted on ${url}`)
       return { item: ref, url }
@@ -429,8 +481,49 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       ? { unposted: `questions.md is over ${MAX_COMMENT_BYTES} bytes` }
       : postComment(p, 'questions', (item) => questionsComment(text, item.task?.id))
 
-  /** Checks the chain's `plan.yml` in its `out` folder and posts it with the report and its contract; a refused plan posts nothing. */
-  const postPlan = async (p: PlannedUnit, report: string, out: string): Promise<PlanPost> => {
+  /**
+   * Puts the files of `out` a post of `p` pins in the store, if there's one, but those `inline` in the post unless it's lean;
+   * a put that fails gets a line in `notes`.
+   */
+  const pinOut = async (
+    p: PlannedUnit,
+    out: string,
+    inline: string[],
+    notes: string[],
+    contract?: string,
+  ): Promise<Pin[]> => {
+    if (!store || input.dryRun) return []
+    const names = (await outFiles(out)).filter((name) => p.unit.lean || !inline.includes(name))
+    const kind = (name: string): Kind =>
+      name === 'plan.yml'
+        ? 'plan'
+        : name === outputFile.report
+          ? 'report'
+          : name === contract
+            ? 'contract'
+            : name
+    const files = names.map((name) => ({ name, kind: kind(name) }))
+    const item = (ownItems(p)[0] as Item).key
+    const { pins, failed } = await putFiles(store, input.ctx.env, out, files, {
+      item,
+      unit: p.unit.id,
+    })
+    notes.push(...failed.map((line) => maskSecrets(line, secrets, input.ctx.env)))
+    return pins
+  }
+
+  /**
+   * Checks the chain's `plan.yml` in its `out` folder and posts it with the report and its contract, saying it went ahead
+   * unless it waits, or, lean, its `summary` and tasks with those files pinned; a refused plan posts nothing.
+   */
+  const postPlan = async (
+    p: PlannedUnit,
+    report: string,
+    out: string,
+    post: PostState | undefined,
+    summary: string | undefined,
+    notes: string[],
+  ): Promise<PlanPost> => {
     const limits = p.unit.planLimits ?? { maxTasks: input.config.limits.plan_tasks }
     const yaml = await readOutput(join(out, 'plan.yml'))
     const file = checkPlan(yaml, limits)
@@ -439,7 +532,20 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const text = name ? (await readOutput(join(out, name))).replace(/\r\n/g, '\n').trimEnd() : ''
     if (name && !text.trim())
       return { unposted: `plan.yml: contract ${file.plan.contract} is missing or empty` }
-    const body = planComment(report, yaml, name ? { name, text } : undefined)
+    const tasks = file.plan.tasks.map((t) => t.id)
+    const inline = [outputFile.report, 'plan.yml', ...(name ? [name] : [])]
+    const went = !!post && 'went' in post
+    if (summary !== undefined) {
+      const pins = await pinOut(p, out, inline, notes, name || undefined)
+      const missing = ['plan.yml', ...(name ? [name] : [])].find(
+        (n) => !pins.some((pin) => pin.name === n),
+      )
+      if (missing) return { tasks, unposted: `${missing} isn't in the store` }
+      const lean = `${leanPlanComment(summary, file.plan.tasks, went)}${pinBlock(pins)}`
+      const posted = await postComment(p, 'plan', () => lean, post)
+      return { tasks, ...posted, ...(posted.url && { post: post ?? { waits: true } }) }
+    }
+    const body = planComment(report, yaml, name ? { name, text } : undefined, went)
     // The plan an approve approves is the one the next run reads back, so it must be the file's.
     const read = checkPlan(planYaml(body), limits)
     if (!('plan' in read && isDeepStrictEqual(read.plan, file.plan)))
@@ -448,48 +554,49 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
     if (name && contractText(body, name) !== text)
       return { unposted: `the contract ${name} doesn't read back from its comment` }
-    const tasks = file.plan.tasks.map((t) => t.id)
     if (Buffer.byteLength(body) > MAX_COMMENT_BYTES)
       return { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
-    return { tasks, ...(await postComment(p, 'plan', () => body)) }
+    const pins = await pinOut(p, out, inline, notes)
+    const posted = await postComment(p, 'plan', () => `${body}${pinBlock(pins)}`, post)
+    return { tasks, ...posted, ...(posted.url && { post: post ?? { waits: true } }) }
   }
 
-  /** Runs notify for each step of a finished chain: its own output, and its slice's PR. Once interrupted, none starts. */
+  /** Runs notify for each step of a finished chain: its own output, and the chain's PR. Once interrupted, none starts. */
   const notifyUnits = async (chain: UnitResult[]) => {
     const hook = input.config.notify
     if (!hook || input.dryRun) return
-    for (const slice of bySlice(chain, (r) => r.planned.slice)) {
-      const outcome = slice.find((r) => r.outcome)?.outcome
-      const pr = outcome?.kind === 'pr' ? outcome.url : undefined
-      for (const r of slice) {
-        if (input.signal?.aborted) return
-        const { id, skill, deliver, items, repo } = r.planned.unit
-        const chainId = r.planned.chain ?? id
-        const outDir = r.step && join(input.runDir, 'units', chainId, r.step, 'out')
-        const out = outDir && join(outDir, outputFile[deliver])
-        const failure = await notifyUnit(
-          hook.command,
-          {
-            runId: input.runId,
-            id,
-            skill,
-            status: r.status,
-            items,
-            repo,
-            verdict: r.verdict,
-            pr,
-            report: out && existsSync(out) ? out : undefined,
-            outDir: outDir && existsSync(outDir) ? outDir : undefined,
-          },
-          input.signal,
-        )
-        if (failure)
-          event(`notify failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`)
-      }
+    const outcome = chain.find((r) => r.outcome)?.outcome
+    const pr = outcome?.kind === 'pr' ? outcome.url : undefined
+    for (const r of chain) {
+      if (input.signal?.aborted) return
+      const { id, skill, deliver, items, repo } = r.planned.unit
+      const chainId = r.planned.chain ?? id
+      const outDir = r.step && join(input.runDir, 'units', chainId, r.step, 'out')
+      const out = outDir && join(outDir, outputFile[deliver])
+      const failure = await notifyUnit(
+        hook.command,
+        {
+          runId: input.runId,
+          id,
+          skill,
+          status: r.status,
+          items,
+          repo,
+          verdict: r.verdict,
+          pr,
+          report: out && existsSync(out) ? out : undefined,
+          outDir: outDir && existsSync(outDir) ? outDir : undefined,
+        },
+        input.signal,
+      )
+      if (failure) event(`notify failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`)
     }
   }
 
-  const runChain = async (chain: PlannedUnit[], shipped: Shipped[] = []): Promise<UnitResult[]> => {
+  const runChain = async (
+    chain: PlannedUnit[],
+    { shipped = [], pinned = {}, notes = [] }: Partial<Ready> = {},
+  ): Promise<UnitResult[]> => {
     const done: UnitResult[] = []
     const first = chain[0] as PlannedUnit
     const { repo, base } = first.unit
@@ -502,7 +609,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         .flatMap((i) => i.linkedPrs)
         .find((pr) => pr.ours && pr.repo === repo && pr.branch === base)?.url ??
       first.unit.stackedOn
-    // The open slice's base, branch and the PR it stacks on: the awaywork PR the chain started on, or the slice before's; a draft it resumes stacks as it did.
+    // The chain's base, branch and the PR it stacks on: the awaywork PR the chain started on; a draft it resumes stacks as it did.
     const shape = {
       base,
       branch: first.unit.branch,
@@ -514,22 +621,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const dir = isolated() ? await workerRoot(0o700) : join(root, 'work', first.unit.id)
     const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
-    const slices = bySlice(chain, (p) => p.slice).length
-    // Slices publish from one repo of awaywork's own, where the next sits on the commits the one before pushed.
-    const stack: Stack | undefined =
-      slices > 1 ? { repo: join(input.runDir, 'publish', first.unit.id) } : undefined
-    // Branches this chain published: a later slice passes them over, not taking them for an earlier attempt.
-    const published = new Set<string>()
-    let at = 0
-    let opening = first
-    let loops: Record<number, OpenLoop> = {}
-    let reports: StepReport[] = []
+    const loops: Record<number, OpenLoop> = {}
+    const reports: StepReport[] = []
     let cloned: string | undefined
     // What gates compare their scripts with: an awaywork PR's commits are a worker's, so where it left the default branch.
     let original: string | undefined
-    // Where the open slice's commits start in the clone, and whether its branch is still to be cut there.
+    // Where the chain's commits start in the clone.
     let from: string | undefined
-    let cut = false
     let previous: Previous | undefined
     let verdict: string | undefined
     // The merge commit awaywork made itself, the one head a merging unit may push.
@@ -541,9 +639,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let interrupted = false
     // A step that failed, to run again on its provider's next model.
     let retrying: Retry | undefined
-    // Why the steps left didn't run, whether they're passed over rather than missed, and whether a slice's `when` did.
+    // Why the steps left didn't run, whether they're passed over rather than missed, and whether the rule's `when` did.
     let ended: { reason: string; passedOver?: true; when?: true } | undefined
-    // A slice that ran and didn't publish, had a step fail or a loop whose `until` never held: on_done doesn't run.
+    // A chain that ran and didn't publish, had a step fail or a loop whose `until` never held: on_done doesn't run.
     let unfinished = false
     // The step that couldn't go on without answers, and its questions.
     let asked: Pick<Questions, 'step' | 'text'> | undefined
@@ -551,23 +649,33 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const leave = (status: Held['status']): Held & { byHand?: string } => {
       const continued = status === 'continue' ? before + 1 : before
       const refused = input.forge.ownDraftsRefused
-      const stop = opensPr && byHand({ continued, refused }, { slice: at })
+      const stop = opensPr && byHand({ continued, refused })
       return { status, continued, ...(stop && { byHand: stop.why }) }
     }
     let leaves: ReturnType<typeof leave> | undefined
     // The note saying the draft it left is yours to finish by hand.
     let finishByHand: string | undefined
-    // Each slice's first step, which publishes it.
-    const leads = new Set<UnitResult>()
+    // The chain's first step, once it published the chain.
+    let publishedBy: UnitResult | undefined
+    // What didn't go to the store or come back from it.
+    const storeNotes = [...notes]
 
-    /** Runs a gate's judge like a step, on the rule's providers and models, its worker log in the slice's `out/`. */
-    const judge: Publisher['judge'] = async (gate, skill, unit, dir, from) => {
-      // On a provider that ran a step of its slice, a judge rides on that step's fallback unit; elsewhere it takes one.
-      const ranSlice = new Set(
-        done
-          .filter((r) => (r.planned.slice ?? 0) === at && r.status !== 'skipped')
-          .map((r) => r.provider),
-      )
+    /** Puts what the PR's `.away/out/` holds besides its body in the store, from a copy out of the clone. */
+    const pin: Publisher['pin'] = async (clone) => {
+      if (!store) return []
+      const copy = await mkdtemp(join(tmpdir(), 'awaywork-pin-'))
+      try {
+        await copyOut(join(clone, WORK_DIR, 'out'), copy)
+        return await pinOut(first, copy, [outputFile.report], storeNotes)
+      } finally {
+        await rm(copy, { recursive: true, force: true })
+      }
+    }
+
+    /** Runs a gate's judge like a step, on the rule's providers and models, its worker log in the chain's `out/`. */
+    const judge: Publisher['judge'] = async (gate, skill, unit, dir, on, instructions) => {
+      // On a provider that ran a step of the chain, a judge rides on that step's fallback unit; elsewhere it takes one.
+      const ranSlice = new Set(done.filter((r) => r.status !== 'skipped').map((r) => r.provider))
       const counted = Object.fromEntries(Object.entries(routed).filter(([p]) => !ranSlice.has(p)))
       const { provider: id, passed } = route(unit.providers, allowances, counted)
       const provider = id && input.providers[id]
@@ -580,7 +688,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const model = modelFor(unit.rule.model, id, 0) ?? entry?.model
       const name = `judge-${gate}-${slug(skill)}`
       input.ctx.log(`${unit.id}: gate ${gate}, ${skill} on ${id}${model ? ` (${model})` : ''}`)
-      const out = join(chainDir, sliceOut(at))
+      const out = join(chainDir, 'out')
       await mkdir(out, { recursive: true })
       const logFile = createWriteStream(join(out, `${name}.log`))
       const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
@@ -592,9 +700,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         deliver: 'report',
         foreign: true,
         stackedOn: undefined,
+        // The gate's own instructions, from the config: the rule's are written for the worker it judges.
         rule: {
           ...unit.rule,
-          instructions: [],
+          instructions,
           with: undefined,
           when: undefined,
         },
@@ -613,7 +722,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           provider,
           ctx: { ...input.ctx, log },
           reuse: true,
-          judge: { from },
+          judge: on,
         })
         const withheld = secrets.filter((name) => !provider.secrets.includes(name))
         const job = {
@@ -623,7 +732,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           maxTurns: a.kind === 'fallback' ? a.turns : MAX_TURNS,
           model,
           // Attributes as the gates read them: a resolved merge's from git's automatic merge.
-          env: await gateEnv(input.ctx.env, dir, withheld, from, unit.automatic ?? original),
+          env: await gateEnv(
+            input.ctx.env,
+            dir,
+            withheld,
+            'from' in on ? on.from : undefined,
+            unit.automatic ?? original,
+          ),
           config: entry?.config,
           configDir: input.configDir,
           plugin,
@@ -753,21 +868,20 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       event(`${unit.id}: ${result.status}`)
     }
 
-    /** Publishes the open slice once its last step ended; after its PR, the next slice is cut at the clone's tip. */
-    const endSlice = async (last: boolean) => {
+    /** Publishes the chain once its last step ended. */
+    const publishChain = async () => {
       const lead = done.find(
-        (r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped' && !r.retried,
+        (r) => r.planned.unit.id === first.unit.id && r.status !== 'skipped' && !r.retried,
       )
-      const out = join(chainDir, sliceOut(at))
-      // A step the chain ended before also leaves the slice unfinished; one passed over by its `when` doesn't.
+      const out = join(chainDir, 'out')
+      // A step the chain ended before also leaves it unfinished; one passed over by its `when` doesn't.
       const failed = done.find(
         (r) =>
-          (r.planned.slice ?? 0) === at &&
           !r.retried &&
           (/^(failed|stopped|error)/.test(r.status) || (r.status === 'skipped' && !r.passedOver)),
       )
       if (from !== undefined && lead && ran && !input.dryRun) {
-        leads.add(lead)
+        publishedBy = lead
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
         interrupted ||= !!input.signal?.aborted
         try {
@@ -778,13 +892,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
               : gitUnrestored(dir)
                 ? "the clone's .git was refused"
                 : unmerged
-          const askedOn = ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))
-          // A first slice's footer records it even when no later run goes on, to hold dependents back; a stacked slice's would resume onto it.
-          const held = at === 0 && leaves ? { ...leaves, url: askedOn?.url } : undefined
+          const askedOn = ownItems(first).find((i) => !commentRefused(first, i))
+          // The footer records it even when no later run goes on, to hold dependents back.
+          const held = leaves && { ...leaves, url: askedOn?.url }
           lead.outcome = kept
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
-                { ...publisher, judge },
+                { ...publisher, judge, pin },
                 {
                   ...first.unit,
                   ...shape,
@@ -800,15 +914,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 original ?? from,
                 reports,
                 loops,
-                stack,
-                // Only the whole chain, cut from the default branch as the draft it resumes was, closes its issues.
-                last && !first.capped && (base === '' || (!!shape.resume && !shape.stackedOn)),
+                // Only a chain cut from the default branch, as the draft it resumes was, closes its issues.
+                base === '' || (!!shape.resume && !shape.stackedOn),
                 (failed && notReady(failed)) || leaves?.byHand,
                 held,
               )
-          // A stacked slice's questions stay in the report whatever it published; a first slice's only with a draft.
-          if (leaves?.byHand && (at > 0 || lead.outcome.kind === 'pr'))
-            finishByHand = `${leaves.byHand}: finish ${lead.outcome.kind === 'pr' ? lead.outcome.url : `it on ${shape.stackedOn}`} by hand`
+          // Its questions stay in the report only with a draft.
+          if (leaves?.byHand && lead.outcome.kind === 'pr')
+            finishByHand = `${leaves.byHand}: finish ${lead.outcome.url} by hand`
           if (asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
             lead.outcome = { kind: 'none', reason: 'asked questions' }
         } catch (e) {
@@ -819,43 +932,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       if (lead && (failed || !delivered(lead.outcome) || Object.values(loops).some((l) => !l.held)))
         unfinished = true
-      if (last || ended) return
-      const outcome = lead?.outcome
-      if (outcome?.kind === 'pr') {
-        if (stack) stack.onto = outcome.head
-        shape.stackedOn = outcome.url
-        if (previous)
-          previous.published = { url: outcome.url, body: join(out, outputFile.draft_pr) }
-      } else if (!input.dryRun) {
-        ended = { reason: `${opening.unit.id} opened no PR to stack on`, passedOver: true }
-        return
-      }
-      published.add(shape.branch)
-      shape.base = shape.branch
-      shape.resume = undefined
-      cut = true
-      try {
-        // The next slice's commits are those after the clone's tip, and it writes its own PR body.
-        from = await head(dir)
-        await refuseSymlinks(dir, [`${WORK_DIR}/out`])
-        await rm(join(dir, WORK_DIR, 'out'), { recursive: true, force: true })
-      } catch (e) {
-        ended = { reason: `${opening.unit.id} error: ${(e as Error).message}` }
-      }
     }
 
     for (let i = 0; i < chain.length; i += retrying ? 0 : 1) {
       const p = chain[i] as PlannedUnit
       const retryOf = retrying
       retrying = undefined
-      if ((p.slice ?? 0) !== at) {
-        await endSlice(false)
-        at = p.slice ?? 0
-        opening = p
-        loops = {}
-        reports = []
-        ran = false
-      }
       if (p.loop) loops[p.loop.at] ??= { skills: p.loop.skills, rounds: 0 }
       const loop = p.loop && loops[p.loop.at]
       // A loop's later rounds run only while it goes on: once the chain ended, or in a dry run, only its first is listed.
@@ -909,9 +991,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         continue
       }
       // A resumed draft's branch is the unit's own: no other name to find.
-      if ((cloned === undefined || cut) && opensPr && !shape.resume) {
+      if (cloned === undefined && opensPr && !shape.resume) {
         const named = p.unit.branch
-        const free = await freeBranch(input.forge, p.unit, published).catch((e: Error) => ({
+        const free = await freeBranch(input.forge, p.unit).catch((e: Error) => ({
           skip: `couldn't check ${named} on ${unit.repo}: ${e.message}`,
         }))
         if ('skip' in free) {
@@ -953,10 +1035,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (retryOf) await discard(dir, retryOf.start, retryOf.saved)
         const ctx = { ...input.ctx, log }
         const reuse = cloned !== undefined
-        if (cut) {
-          await cutBranch(dir, unit.branch)
-          cut = false
-        }
         const prompt = await prepareWorkspace({
           ...input,
           unit,
@@ -968,8 +1046,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           previous: previous ?? (reuse && !retryOf ? undefined : await lastReport(unit, chainDir)),
           reuse,
           shipped,
+          pinned,
           chain: steps,
-          slice: slices > 1 ? { n: at + 1, of: slices } : undefined,
           loop: p.loop,
         })
         if (checked) {
@@ -1051,8 +1129,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             Object.assign(result, { status: 'skipped', reason, passedOver: true })
             event(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
-            // A rule's own `when` gates its whole chain, and a stacked step's the rest of it.
-            if (p === opening) ended = { reason, passedOver: true, when: true }
+            // A rule's own `when` gates its whole chain.
+            if (p === first) ended = { reason, passedOver: true, when: true }
             // A refused check is refused every round: the loop would repeat without its step.
             else if (loop && p.loop && met.check?.refused) loop.ended = reason
             else if (loop && p.loop && p.loop.step === p.loop.skills.length - 1) {
@@ -1095,8 +1173,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (a.kind === 'quota')
           result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
         start = await head(dir)
-        const retryable =
-          !retryOf && published.size === 0 && modelFor(unit.rule.model, id, 1) !== undefined
+        const retryable = !retryOf && modelFor(unit.rule.model, id, 1) !== undefined
         const saved = retryable ? await snapshot(dir) : undefined
         ran = true
         const worker = await runWorker(provider, job, a, {
@@ -1187,8 +1264,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         else if (asks) {
           ended = { reason: `${unit.id} asked questions`, passedOver: true }
           asked = { step: unit.id, text: questions }
-          // A stacked slice's questions reach no later run, whatever its status file said.
-          if (status === 'ask' || at > 0) leaves = leave('ask')
+          if (status === 'ask') leaves = leave('ask')
         } else if (status === 'continue' && kept) {
           leaves = leave('continue')
           ended = {
@@ -1197,8 +1273,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           }
         } else if (!left) {
           const reason = `${unit.id} ${reportsOnly(unit.deliver) ? 'wrote no report' : 'committed nothing'}`
-          // Inside a loop it ends only the loop, and the steps after it still run; a stacked slice's first step leaves it nothing.
-          if (loop && !(at > 0 && p === opening)) loop.ended = reason
+          // Inside a loop it ends only the loop, and the steps after it still run.
+          if (loop) loop.ended = reason
           else ended = { reason, passedOver: true }
         } else if (loop && p.loop) {
           if (result.verdict) loop.verdict = result.verdict
@@ -1242,46 +1318,73 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       event(`${unit.id}: ${result.status}`)
     }
 
-    await endSlice(true)
+    await publishChain()
     const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
-    // Answers to a stacked slice, or to a draft awaywork can't push onto, would reach no later run.
+    // Answers to a draft awaywork can't push onto would reach no later run.
     if (asked && lead)
       lead.questions = {
         ...asked,
         ...(finishByHand ? { unposted: finishByHand } : await postQuestions(first, asked.text)),
       }
     else if (finishByHand && lead) lead.byHand = finishByHand
-    if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report')
-      lead.plan = await postPlan(first, lead.outcome.text, join(chainDir, sliceOut(0)))
     // A unit that goes on isn't done: a report keeps its count in its result, a PR in its draft.
     const continues = leaves?.status === 'continue'
-    // Every slice that ran published, and only a `when`, or a report's `continue`, ended the chain early; a plan rule's plan was posted.
+    // A plan's or report's post waits, or goes ahead unless one of its gates fired, saying which ran clear.
+    const outcome = publishedBy?.outcome
+    const gates = outcome?.kind === 'report' ? outcome.gates : undefined
+    const decides = first.unit.waits !== undefined && !continues
+    const waits = decides && (!!first.unit.waits || !!gates?.fired)
+    const went: PostState | undefined =
+      decides && !waits ? { went: true, gates: gates?.ran ?? [] } : undefined
+    const out = join(chainDir, 'out')
+    // Only what posts reads it, so only a post says it's missing.
+    const summary = () =>
+      first.unit.lean ? leanText(out, outcome, reports, storeNotes) : Promise.resolve(undefined)
+    if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report')
+      lead.plan = await postPlan(first, lead.outcome.text, out, went, await summary(), storeNotes)
+    // The chain ran and published, and only a `when`, or a report's `continue`, ended it early; a plan rule's plan was posted.
     const finished =
       !interrupted &&
       !unfinished &&
       (!ended || ended.when || (continues && deliver === 'report')) &&
-      leads.size > 0
+      !!publishedBy
     const posted = deliver !== 'plan' || !!lead?.plan?.url
     if (lead && finished && posted && !input.dryRun && !input.signal?.aborted) {
-      // A report task's result is how its card hears it's done, so it always posts one.
-      if (onDone?.comment === 'result' || (first.unit.items[0]?.task && reportsOnly(deliver))) {
-        const outcomes = [...leads].flatMap((r) => r.outcome ?? [])
+      // A report task's result is how its card hears it's done, so it always posts one, as does a report that decides.
+      const report = deliver === 'report' && decides
+      if (
+        onDone?.comment === 'result' ||
+        (first.unit.items[0]?.task && reportsOnly(deliver)) ||
+        report
+      ) {
         const status = continues ? 'continue' : 'done'
-        lead.result = await postResult(first, resultOf(outcomes), status, leaves?.continued)
+        // A post that waits holds on_done's move until you approve it, while the card stays where it saw it; a card that can't move holds none.
+        const holds = (item: Item) => !!onDone?.move && !!input.sources[item.source]?.write
+        const post = report
+          ? (item: Item): PostState =>
+              went ?? {
+                waits: true,
+                ...(holds(item) && { move: onDone?.move as string, saw: item.status }),
+              }
+          : undefined
+        const pins =
+          deliver === 'report' ? await pinOut(first, out, [outputFile.report], storeNotes) : []
+        const text = (deliver === 'report' && (await summary())) || resultOf(outcome)
+        lead.result = await postResult(first, text, status, leaves?.continued, post, pins)
       }
-      if (onDone?.move && !continues)
+      if (onDone?.move && !continues && !(report && waits))
         lead.moved = await moveItems(ownItems(first), onDone.move, lead.result)
     }
+    if (lead && storeNotes.length) lead.store = storeNotes
     for (const r of done) {
-      // A committing slice that committed nothing published its reports.
-      const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver
-      Object.assign(r, await leftBy(input.runDir, first.unit.id, r, published, leads.has(r)))
+      // A committing chain that committed nothing published its reports.
+      const published = r === publishedBy && r.outcome?.kind === 'report' ? 'report' : deliver
+      Object.assign(r, await leftBy(input.runDir, first.unit.id, r, published, r === publishedBy))
     }
     for (const path of [dir, workerHome(dir)])
       if (path && !input.dryRun && !lostToWorker(path))
         await rm(path, { recursive: true, force: true })
-    if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done
   }
 
@@ -1333,6 +1436,27 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return { shipped }
   }
 
+  /** Reads back the files of the posts each of a chain's items holds for its first step, into the chain's `files/` in the run dir; why it can't start when a get fails. */
+  const readPosts = async (
+    head: PlannedUnit,
+    shipped: Shipped[],
+  ): Promise<{ skip: string } | Ready> => {
+    const ready: Ready = { shipped, pinned: {}, notes: [] }
+    if (!store) return ready
+    for (const item of head.unit.items) {
+      const posts = readBackPosts(item, head.unit.skill, head.unit.deliver === 'plan')
+      if (!posts.length) continue
+      const dir = join(input.runDir, 'units', head.unit.id, 'files', slug(item.key))
+      try {
+        ready.notes.push(...(await readBack(store, input.ctx.env, posts, dir)))
+      } catch (e) {
+        return { skip: maskSecrets((e as Error).message, secrets, input.ctx.env) }
+      }
+      ready.pinned[item.key] = dir
+    }
+    return ready
+  }
+
   try {
     const turn = input.turn ?? ((chain) => chain())
     for (const chain of chains) {
@@ -1342,7 +1466,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         input.ctx.log(
           `${head.unit.id}: prepared from the default branch; a real run clones ${head.unit.items[0]?.task?.onto}'s branch`,
         )
-      const ready = await blocked(head)
+      const blocker = await blocked(head)
+      const ready = 'skip' in blocker ? blocker : await readPosts(head, blocker.shipped)
       const done =
         'skip' in ready
           ? skipTask(chain, ready.skip)
@@ -1354,7 +1479,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                       unit: { ...p.unit, base: onto.branch, stackedOn: onto.url },
                     }))
                   : chain,
-                ready.shipped,
+                ready,
               ),
             )
       if (done.some((r) => r.status !== 'skipped')) started.add(head.unit.id)

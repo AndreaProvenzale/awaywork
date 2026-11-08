@@ -9,8 +9,9 @@ import { isCommandProvider } from '../providers/command.js'
 import { isCommand } from '../sources/command.js'
 import { routinesOf } from '../sources/routines.js'
 import type { ContextSource } from '../worker/context.js'
+import type { Store } from '../worker/store.js'
 import { defaultConfigPath } from './paths.js'
-import { type Config, configSchema } from './schema.js'
+import { type Config, configSchema, removedKeys } from './schema.js'
 
 export class ConfigError extends Error {
   constructor(
@@ -42,6 +43,7 @@ export async function loadConfig(path: string): Promise<Config> {
     const { context } = cfg as ContextSource
     if (context) context.dir = dirOf('sources', id, 'context', 'command')
   }
+  if (config.store) (config.store as Store).dir = dirOf('store', 'command')
   for (const { config: cfg } of config.providers)
     if (isCommandProvider(cfg)) cfg.dir = dirOf('providers')
   return config
@@ -148,10 +150,15 @@ function absolute(raw: Raw, dir: string): void {
   const fix = (o: unknown) => {
     if (isRaw(o) && 'instructions' in o) o.instructions = resolved(o.instructions)
   }
-  fix(raw)
-  if (isRaw(raw.repos)) Object.values(raw.repos).forEach(fix)
+  // A gate's instructions are files too, a rule's gates' as well.
+  const fixWithGates = (o: unknown) => {
+    fix(o)
+    if (isRaw(o) && isRaw(o.gates)) Object.values(o.gates).forEach(fix)
+  }
+  fixWithGates(raw)
+  if (isRaw(raw.repos)) Object.values(raw.repos).forEach(fixWithGates)
   for (const rule of [raw.queue ?? []].flat()) {
-    fix(rule)
+    fixWithGates(rule)
     for (const step of isRaw(rule) ? [rule.then ?? []].flat() : [])
       if (isRaw(step) && 'loop' in step) [step.loop].flat().forEach(fix)
       else fix(step)
@@ -172,6 +179,8 @@ function formatIssue(issue: z.core.$ZodIssue): string {
   const builtIn = issue.path[0] === 'providers' && issue.path.length === 3
   if (builtIn && issue.code === 'unrecognized_keys' && issue.keys.includes('command'))
     return `${at}: built in, so it takes no command; give your own provider another name`
+  const gone = issue.code === 'unrecognized_keys' && issue.keys.find((key) => removedKeys[key])
+  if (gone) return at ? `${at}: ${removedKeys[gone]}` : (removedKeys[gone] as string)
   // A record key's own message, e.g. `expected owner/name`, sits under zod's generic one.
   const message =
     issue.code === 'invalid_key' ? (issue.issues[0]?.message ?? issue.message) : issue.message
