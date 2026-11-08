@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { createServer, type RequestListener } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execa } from 'execa'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
@@ -23,11 +25,12 @@ import {
   resultOf,
 } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
-import { planState } from '../src/core/plan.js'
+import { cardTasks, planState } from '../src/core/plan.js'
 import { postAnswer, readBackPosts, reportPost, withApproved } from '../src/core/posts.js'
 import { formatReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, Write } from '../src/core/types.js'
+import { TIMEOUT_MS } from '../src/sources/command.js'
 import { githubSource } from '../src/sources/github.js'
 import { checkPins, putFiles, readBack, type Store } from '../src/worker/store.js'
 import { runUnits } from '../src/worker/units.js'
@@ -116,7 +119,13 @@ const writer = (files: Record<string, string>, seen: { prompts: string[]; read: 
   }) as Provider
 
 /** Runs `queue` under `top` on `items`, recording what awaywork writes to them and the pins a PR's footer gets. */
-async function run(top: string, queue: string, items: Item[], provider: Provider) {
+async function run(
+  top: string,
+  queue: string,
+  items: Item[],
+  provider: Provider,
+  env: NodeJS.ProcessEnv = {},
+) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-store-run-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
@@ -159,7 +168,7 @@ async function run(top: string, queue: string, items: Item[], provider: Provider
     providers: { claude: provider },
     sources: { github: source },
     forge,
-    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    ctx: { env: { PATH: process.env.PATH, ...env }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
     shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
@@ -172,6 +181,18 @@ async function run(top: string, queue: string, items: Item[], provider: Provider
 }
 
 const report = '  - { skill: review, deliver: report, on_done: { comment: result } }'
+
+/** Runs `check` against a local HTTP server answering with `handler`, then closes it. */
+async function withHttp<T>(handler: RequestListener, check: (url: string) => Promise<T>) {
+  const server = createServer(handler)
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    return await check(`http://127.0.0.1:${(server.address() as AddressInfo).port}/report.md`)
+  } finally {
+    server.closeAllConnections()
+    server.close()
+  }
+}
 
 describe('pins', () => {
   it('reads pins from above the mark only, and still tells the post by the line above them', async () => {
@@ -254,6 +275,77 @@ describe('lean posts', () => {
     expect(r.results[0]?.store).toEqual([
       expect.stringMatching(/^fail\.bin not stored: Command failed/),
     ])
+  })
+
+  describe('without its report in the store', () => {
+    const refusing = () => folderStore(storeScript.replace("'fail.bin'", "'report.md'"))
+
+    it('posts the whole report, keeps the other pins, and says so', async () => {
+      const store = await refusing()
+      const files = { 'report.md': 'The whole report.', 'summary.md': 'Short.', 'notes.txt': 'n' }
+      const { body, report: r } = await run(
+        store.config,
+        report,
+        [yours(1)],
+        writer(files, { prompts: [], read: [] }),
+      )
+      const pins = pinsOf(post(body()))
+      expect(pins.map((p) => p.name)).toEqual(['notes.txt'])
+      expect(body()).toBe(
+        markComment(`${resultComment('The whole report.', 'done', 'review')}${pinBlock(pins)}`),
+      )
+      expect(r.results[0]?.store).toEqual([
+        expect.stringMatching(/^report\.md not stored: Command failed/),
+        "report.md isn't in the store: the post shows all of it",
+      ])
+    })
+
+    it("keeps a fired gate's decision card on top, as a full post does", async () => {
+      const store = await refusing()
+      const { body } = await run(
+        store.config,
+        "  - { skill: review, deliver: report, gates: { size: { command: 'echo too big; exit 1' } } }",
+        [yours(1)],
+        writer(
+          { 'report.md': 'The whole report.', 'summary.md': 'Short.' },
+          { prompts: [], read: [] },
+        ),
+      )
+      const text = resultOf(post(body()))?.text ?? ''
+      expect(text).toMatch(/^## Needs a decision\n/)
+      expect(text).toContain('- size: too big')
+      expect(text).toMatch(/\n\nThe whole report\.$/)
+    })
+
+    it('fails like any result over the comment limit', async () => {
+      const store = await refusing()
+      const { body, report: r } = await run(
+        store.config,
+        report,
+        [yours(1)],
+        writer({ 'report.md': 'x'.repeat(30_001) }, { prompts: [], read: [] }),
+      )
+      expect(body()).toBe('')
+      expect(r.results[0]?.result?.[0]?.failed).toBe('the result is over 30000 bytes')
+    })
+  })
+
+  it('refuses a lean plan over the comment limit before putting anything', async () => {
+    const store = await folderStore()
+    const yaml = 'tasks:\n  - { id: api, title: VAT endpoint }\n'
+    const files = { 'report.md': 'N.', 'summary.md': 'x'.repeat(30_001), 'plan.yml': yaml }
+    const { body, report: r } = await run(
+      store.config,
+      '  - { skill: plan, deliver: plan }\n  - { skill: implement, where: { planned: true } }',
+      [yours(1)],
+      writer(files, { prompts: [], read: [] }),
+    )
+    expect(body()).toBe('')
+    expect(r.results[0]?.plan).toEqual({
+      tasks: ['api'],
+      unposted: 'the plan comment is over 30000 bytes',
+    })
+    expect(existsSync(join(store.dir, 'files'))).toBe(false)
   })
 
   it('asks no summary.md of a report rule that posts nothing', async () => {
@@ -362,21 +454,244 @@ describe('read-back', () => {
       [card],
       writer({ 'report.md': 'ok' }, seen),
     )
-    expect(seen.read).toEqual(['acme-api-1/files/1-qa', 'acme-api-1/files/1-qa/report.md'])
+    expect(seen.read).toEqual([
+      'acme-api-1/files/1-qa',
+      'acme-api-1/files/1-qa/report.md',
+      'acme-api-1/files/EDITED',
+    ])
     expect(r.results[0]?.store).toEqual([
       "report.md of awaywork's post of 2026-10-24T01:00:00Z changed in the store since awaywork pinned it",
     ])
     const gone = { ...edited, url: 'file:///nowhere/report.md' }
+    const approved = markComment(
+      `${resultComment('Story.', 'done', 'story', undefined, 0, true)}${pinBlock([gone])}`,
+      { waits: true },
+    )
     const failed = await run(
       store,
-      '  - { skill: review, deliver: report }',
-      [yours(1, [post(files([gone]))])],
+      '  - { skill: review, deliver: report, where: { approved: story } }',
+      [withApproved(yours(1, [post(approved), post('approve', '2026-10-24T02:00:00Z')]))],
       writer({}, seen),
     )
     expect(failed.report.results[0]).toMatchObject({
       status: 'skipped',
       reason: expect.stringMatching(/^couldn't read report\.md from the store: /),
     })
+  })
+
+  it("goes on without a post it doesn't depend on when a get fails, leaving nothing of it behind", async () => {
+    const edited = await pinned('report.md', 'edited', sha('as posted'))
+    const gone = { name: 'z.md', url: 'file:///nowhere/z.md', sha256: sha('x') }
+    const seen = { prompts: [] as string[], read: [] as string[] }
+    const { report: r } = await run(
+      store,
+      '  - { skill: review, deliver: report }',
+      [yours(1, [post(files([edited, gone]))])],
+      writer({ 'report.md': 'ok' }, seen),
+    )
+    expect(r.results[0]).toMatchObject({ status: 'done' })
+    expect(seen.prompts).toHaveLength(1)
+    expect(seen.read).toEqual([])
+    expect(r.results[0]?.store).toEqual([
+      expect.stringMatching(
+        /^left out awaywork's post of 2026-10-24T01:00:00Z: couldn't read z\.md from the store: /,
+      ),
+    ])
+  })
+
+  it("masks the store's secrets in the line of a post left out", async () => {
+    const gone = { name: 'z.md', url: 'file:///nowhere/z.md', sha256: sha('x') }
+    const { report: r } = await run(
+      store.replace("' }", " tok-en', secrets: [STORE_TOKEN] }"),
+      '  - { skill: review, deliver: report }',
+      [yours(1, [post(files([gone]))])],
+      writer({ 'report.md': 'ok' }, { prompts: [], read: [] }),
+      { STORE_TOKEN: 'tok-en' },
+    )
+    const line = r.results[0]?.store?.[0]
+    expect(line).toContain('***')
+    expect(line).not.toContain('tok-en')
+  })
+
+  it('needs only the post an approval covers, its own when it runs again, and a PR footer', async () => {
+    const pin = await pinned('report.md', 'x')
+    const waits = (skill: string, at: string) =>
+      post(
+        markComment(`${resultComment('R.', 'done', skill, undefined, 0, true)}${pinBlock([pin])}`, {
+          waits: true,
+        }),
+        at,
+      )
+    const card = yours(1, [
+      waits('story', '2026-10-24T01:00:00Z'),
+      post('approve', '2026-10-24T02:00:00Z'),
+      post(files([pin]), '2026-10-24T03:00:00Z'),
+      waits('review', '2026-10-24T04:00:00Z'),
+      post('redo', '2026-10-24T05:00:00Z'),
+      post(files([pin]), '2026-10-24T06:00:00Z'),
+    ])
+    expect(readBackPosts(withApproved(card), 'review', false)).toMatchObject([
+      { name: '1-story', needed: true },
+      { name: '4-review', needed: true },
+      { name: '6-qa', needed: false },
+    ])
+    const prBody = `Body.\n\n${footer('r0', [], undefined, [pin])}`
+    const pr = fakeItem({
+      source: 'github',
+      id: '9',
+      key: 'acme/api#9',
+      type: 'pr',
+      mine: true,
+      bodyMine: true,
+      description: prBody,
+      fields: { repo: 'acme/api', ours: true, updated: '2026-10-24T00:00:00Z' },
+    })
+    expect(readBackPosts(pr, 'review', false)).toMatchObject([{ name: 'pr', needed: true }])
+  })
+
+  it("keeps a post's folder in one path segment, whatever its heading says", async () => {
+    const edited = await pinned('EDITED', 'mine')
+    const out = await pinned('escaped.txt', 'out')
+    const posted = (skill: string, task: string | undefined, pins: Pin[]) =>
+      post(markComment(`${resultComment('T.', 'done', skill, task)}${pinBlock(pins)}`))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-heading-'))
+    const dir = join(root, 'a', 'b', 'files')
+    const onEdited = readBackPosts(yours(1, [posted('x/..', undefined, [edited])]), 'review', false)
+    const onOut = readBackPosts(yours(1, [posted('x/../../..', undefined, [out])]), 'review', false)
+    expect(onEdited.map((p) => p.name)).toEqual(['1-x-..'])
+    expect(onOut.map((p) => p.name)).toEqual(['1-x-..-..-..'])
+    await readBack(storeOf(store), process.env, onEdited, dir)
+    await readBack(storeOf(store), process.env, onOut, dir)
+    expect(existsSync(join(dir, 'EDITED'))).toBe(false)
+    expect(existsSync(join(dir, '1-x-..', 'EDITED'))).toBe(true)
+    expect(existsSync(join(root, 'a', 'escaped.txt'))).toBe(false)
+    expect(existsSync(join(dir, '1-x-..-..-..', 'escaped.txt'))).toBe(true)
+    const seen = { prompts: [] as string[], read: [] as string[] }
+    const ran = await run(
+      store,
+      '  - { skill: review, deliver: report }',
+      [yours(1, [posted('', 'x/../../../../..', [out])])],
+      writer({ 'report.md': 'ok' }, seen),
+    )
+    expect(existsSync(join(ran.root, 'run', 'escaped.txt'))).toBe(false)
+    expect(seen.read).toEqual([
+      'acme-api-1/files/1-task-x-..-..-..-..-..',
+      'acme-api-1/files/1-task-x-..-..-..-..-../escaped.txt',
+    ])
+  })
+
+  it('gets no pin whose name holds a control character, so EDITED lists only real paths', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-control-'))
+    const newline = await pinned('x\n/etc/passwd', 'edited', sha('as posted'))
+    const named = (name: string) => ({ name, url: newline.url, sha256: sha('as posted') })
+    const pins = [newline, named('x\0y'), named('x\u2028/etc/passwd'), named('x\u2029/etc/passwd')]
+    const posts = [{ name: '1-qa', what: 'a post', pins, edits: true, needed: true }]
+    expect(await readBack(storeOf(store), process.env, posts, dir)).toEqual([])
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it("caps a post's folder name, so a very long heading can't stop a unit that doesn't need it", async () => {
+    const gone = { name: 'z.md', url: 'file:///nowhere/z.md', sha256: sha('x') }
+    const heading = 'x'.repeat(300)
+    const card = yours(1, [
+      post(markComment(`${resultComment('T.', 'done', heading)}${pinBlock([gone])}`)),
+    ])
+    expect(readBackPosts(card, 'review', false).map((p) => p.name)).toEqual([`1-${'x'.repeat(64)}`])
+    const { report: r } = await run(
+      store,
+      '  - { skill: review, deliver: report }',
+      [card],
+      writer({ 'report.md': 'ok' }, { prompts: [], read: [] }),
+    )
+    expect(r.results[0]).toMatchObject({ status: 'done' })
+  })
+
+  it('gives back what a post left out had used of the cap, so a needed post still fits', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-budget-'))
+    const older = await pinned('older.md', 'o'.repeat(3000))
+    const gone = { name: 'z.md', url: 'file:///nowhere/z.md', sha256: sha('x') }
+    const need = await pinned('need.md', 'n'.repeat(2000))
+    const posts = [
+      { name: '1-qa', what: 'an older post', pins: [older, gone], edits: true, needed: false },
+      { name: '2-story', what: 'the covered post', pins: [need], edits: true, needed: true },
+    ]
+    const smallStore = storeOf(store.replace(' }', ', read: { max_mb: 0.004 } }'))
+    const notes = await readBack(smallStore, process.env, posts, dir)
+    expect(notes).toEqual([expect.stringMatching(/^left out an older post: /)])
+    expect(await readFile(join(dir, '2-story', 'need.md'), 'utf8')).toBe('n'.repeat(2000))
+  })
+
+  it('starts a unit whose post files all stay links', async () => {
+    const log = await pinned('run.log', 'log')
+    const { report: r } = await run(
+      store.replace(' }', ', read: { files: ["*.md"] } }'),
+      '  - { skill: review, deliver: report }',
+      [yours(1, [post(files([log]))])],
+      writer({ 'report.md': 'ok' }, { prompts: [], read: [] }),
+    )
+    expect(r.results[0]).toMatchObject({ status: 'done' })
+  })
+
+  it('tells the worker in the EDITED file which files changed, on every step, and names none in the prompt', async () => {
+    const edited = await pinned('second.md', 'edited', sha('as posted'))
+    const same = await pinned('report.md', 'same')
+    const seen = { prompts: [] as string[], read: [] as string[] }
+    let listed = ''
+    const inner = writer({ 'report.md': 'ok' }, seen)
+    const provider = {
+      ...inner,
+      async *run(...args: Parameters<Provider['run']>) {
+        const dir = args[0].dir
+        listed = await readFile(join(dir, '.away/context/acme-api-1/files/EDITED'), 'utf8')
+        yield* inner.run(...args)
+      },
+    } as Provider
+    await run(
+      store,
+      '  - { skill: review, deliver: report, then: [{ skill: fix }] }',
+      [yours(1, [post(files([edited, same]))])],
+      provider,
+    )
+    expect(listed).toBe('1-qa/second.md\n')
+    expect(seen.prompts).toHaveLength(2)
+    for (const prompt of seen.prompts) {
+      expect(prompt).toContain(
+        "`.away/context/acme-api-1/files/EDITED` lists the files changed since awaywork posted them, one per line: that change is feedback on this step's work",
+      )
+      expect(prompt).not.toContain('second.md')
+    }
+    const plain = { prompts: [] as string[], read: [] as string[] }
+    await run(
+      store,
+      '  - { skill: review, deliver: report }',
+      [yours(1, [post(files([same]))])],
+      writer({ 'report.md': 'ok' }, plain),
+    )
+    expect(plain.read).toEqual(['acme-api-1/files/1-qa', 'acme-api-1/files/1-qa/report.md'])
+    expect(plain.prompts[0]).not.toContain('EDITED')
+  })
+
+  it("leaves out a file that doesn't match its pin with get: false, edits or not, and the post stays stale", async () => {
+    const onlyPuts = storeOf("store: { command: 'true', get: false }")
+    await withHttp(
+      (_req, res) => res.end('edited'),
+      async (url) => {
+        const edited = { name: 'report.md', url, sha256: sha('as posted') }
+        const dir = await mkdtemp(join(tmpdir(), 'awaywork-get-false-'))
+        const posts = [{ name: '1-qa', what: 'a post', pins: [edited], edits: true, needed: true }]
+        expect(await readBack(onlyPuts, process.env, posts, dir)).toEqual([
+          'report.md of a post changed in the store since awaywork pinned it: left out',
+        ])
+        expect(await readdir(dir, { recursive: true })).toEqual(['1-qa'])
+        const waits = markComment(
+          `${resultComment('Story.', 'done', 'story', undefined, 0, true)}${pinBlock([edited])}`,
+          { waits: true },
+        )
+        const card = yours(1, [post(waits)])
+        await checkPins([card], onlyPuts, process.env)
+        expect(card.comments[0]?.pinned).toEqual({ files: {}, stale: 'report.md' })
+      },
+    )
   })
 
   it('pins what a PR step leaves besides its body in the footer', async () => {
@@ -526,10 +841,34 @@ describe('put', () => {
     ])
   })
 
+  it('gives up on an HTTP get whose body hangs, as a failed get', async () => {
+    const timeout = AbortSignal.timeout.bind(AbortSignal)
+    const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => timeout(50))
+    try {
+      await withHttp(
+        (_req, res) => {
+          res.writeHead(200)
+          res.write('half a file')
+        },
+        async (url) => {
+          const pin = { name: 'report.md', url, sha256: sha('x') }
+          const dir = await mkdtemp(join(tmpdir(), 'awaywork-hang-'))
+          const posts = [{ name: '1-qa', what: 'a post', pins: [pin], edits: true, needed: true }]
+          await expect(
+            readBack(storeOf("store: { command: 'true', get: false }"), process.env, posts, dir),
+          ).rejects.toThrow(/^couldn't read report\.md from the store: /)
+        },
+      )
+      expect(spy).toHaveBeenCalledWith(TIMEOUT_MS)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('leaves a file whose pinned size is over the cap as a link, getting nothing', async () => {
     const big = { name: 'big.bin', url: 'file:///nowhere/big.bin', sha256: sha('x'), size: 3000 }
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-cap-'))
-    const posts = [{ name: '1-qa', what: 'a post', pins: [big], edits: true }]
+    const posts = [{ name: '1-qa', what: 'a post', pins: [big], edits: true, needed: true }]
     const capped = storeOf(shared.config.replace(' }', ', read: { max_mb: 0.002 } }'))
     expect(await readBack(capped, process.env, posts, dir)).toEqual([
       "over the store's read.max_mb, left as links: big.bin of a post",
@@ -612,6 +951,125 @@ describe('stale posts', () => {
     expect(plan.skipped.map((s) => [s.kind, s.reason.split(':')[0]])).toEqual([
       ['store_failed', "couldn't read report.md from the store"],
     ])
+  })
+
+  describe('a get that fails', () => {
+    const queue =
+      '  - { skill: plan, deliver: plan }\n  - { skill: implement, where: { planned: true } }'
+    const config = parseConfig(
+      `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${shared.config}\nqueue:\n${queue}\n`,
+    )
+    const gone = { name: 'plan.yml', url: 'file:///nowhere/plan.yml', sha256: sha('x') }
+    // A model's fenced example in its summary, which must never read as the plan.
+    const summary = 'Two.\n\n```yaml\ntasks:\n  - { id: ghost, title: From the summary }\n```'
+    const leanPlan = (pins: Pin[], text = summary) =>
+      markComment(`${leanPlanComment(text, [{ id: 'api', title: 'A' }])}${pinBlock(pins)}`)
+    const planned = (items: Item[]) => {
+      const p = planRun({
+        config,
+        items,
+        allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+        skills: { builtin: builtinSkills },
+      })
+      return {
+        units: p.units.map((u) => [u.unit.skill, u.unit.items.map((i) => i.key)]),
+        skipped: p.skipped.map((s) => [s.item.key, s.kind]),
+      }
+    }
+
+    it("on an older plan only leaves it naming no tasks: the newest plan's card runs", async () => {
+      const yaml = await pinned('plan.yml', 'tasks:\n  - { id: api, title: A }\n')
+      const card = yours(1, [
+        post(leanPlan([gone])),
+        post('no', '2026-10-24T02:00:00Z'),
+        post(leanPlan([yaml], 'One.'), '2026-10-24T03:00:00Z'),
+        post('approve', '2026-10-24T04:00:00Z'),
+      ])
+      await checkPins([card], config.store as Store, process.env)
+      expect(card.comments[0]?.pinned).toEqual({ files: {} })
+      expect(cardTasks(card).map((t) => t.id)).toEqual(['api'])
+      expect(planned([card])).toEqual({
+        units: [['implement', ['acme/api#1/api']]],
+        skipped: [['acme/api#1', 'fanned_out']],
+      })
+      const seen = { prompts: [] as string[], read: [] as string[] }
+      const { report: r } = await run(shared.config, queue, [card], writer({}, seen))
+      expect(seen.prompts).toHaveLength(1)
+      expect(r.results[0]?.store?.[0]).toMatch(
+        /^left out awaywork's post of .*: couldn't read plan\.yml/,
+      )
+    })
+
+    it.each([
+      ['older', true],
+      ['the only plan', false],
+    ])("on a plan that went ahead (%s) doesn't stop a rule with no approved", async (_, older) => {
+      const yaml = await pinned('plan.yml', 'tasks:\n  - { id: api, title: A }\n')
+      const went = post(
+        markComment(
+          `${leanPlanComment('Two.', [{ id: 'api', title: 'A' }], true)}${pinBlock([gone])}`,
+          { went: true, gates: [] },
+        ),
+      )
+      const newer = post(leanPlan([yaml], 'One.'), '2026-10-24T03:00:00Z')
+      const card = yours(1, older ? [went, post('no', '2026-10-24T02:00:00Z'), newer] : [went])
+      expect(readBackPosts(card, 'review', false)[0]).toMatchObject({
+        name: '1-plan',
+        needed: false,
+      })
+      await checkPins([card], config.store as Store, process.env)
+      const seen = { prompts: [] as string[], read: [] as string[] }
+      const { report: r } = await run(
+        shared.config,
+        '  - { skill: review, deliver: report }',
+        [card],
+        writer({ 'report.md': 'ok' }, seen),
+      )
+      expect(r.results[0]).toMatchObject({ status: 'done' })
+      expect(seen.prompts).toHaveLength(1)
+      expect(r.results[0]?.store?.[0]).toMatch(
+        /^left out awaywork's post of .*: couldn't read plan\.yml/,
+      )
+    })
+
+    it('on the plan that decides skips the card as store_failed: no plan read, none made, no fan-out', async () => {
+      const card = yours(1, [post(leanPlan([gone])), post('approve', '2026-10-24T02:00:00Z')])
+      await checkPins([card], config.store as Store, process.env)
+      expect(card.comments[0]?.pinned?.failed).toMatch(/^couldn't read plan\.yml from the store: /)
+      expect(cardTasks(card)).toEqual([])
+      expect(planned([card])).toEqual({
+        units: [],
+        skipped: [['acme/api#1', 'store_failed']],
+      })
+    })
+
+    it("on a full plan's extras stops its tasks", async () => {
+      const extra = { name: 'shot.png', url: 'file:///nowhere/shot.png', sha256: sha('x') }
+      const body = planComment('N.', 'tasks:\n  - { id: api, title: A }\n')
+      const card = yours(1, [
+        post(markComment(`${body}${pinBlock([extra])}`)),
+        post('approve', '2026-10-24T02:00:00Z'),
+      ])
+      await checkPins([card], config.store as Store, process.env)
+      expect(planned([card]).skipped).toContainEqual(['acme/api#1/api', 'store_failed'])
+    })
+
+    it("on a post another rule left doesn't stop this one", async () => {
+      const other = parseConfig(
+        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${shared.config}\nqueue:\n  - { skill: review, deliver: report }\n`,
+      )
+      const expired = { name: 'report.md', url: 'file:///nowhere/report.md', sha256: sha('x') }
+      const card = yours(1, [waiting([expired])])
+      await checkPins([card], other.store as Store, process.env)
+      expect(card.comments[0]?.pinned?.failed).toBeTruthy()
+      const plan = planRun({
+        config: other,
+        items: [card],
+        allowances: { claude: allowance(other.budget, null, 0, other.windows) },
+        skills: { builtin: builtinSkills },
+      })
+      expect(plan.units.map((u) => u.unit.skill)).toEqual(['review'])
+    })
   })
 
   it('keeps a full plan as it was: its comment is the plan, its pins only extras', () => {
