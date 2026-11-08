@@ -785,7 +785,7 @@ test('a named draft that is not on disk, or a relative one, leaves the pane alon
   expect(await text(ui, /It'll read like this/)).toBe(true)
 })
 
-test('after a setup in a control folder, bare /away finds the moved config', async ($, on) => {
+test('after a setup in a control folder, bare /away, p and s use the moved config', async ($, on) => {
   let moved = false
   const { calls } = session(on, true, () => moved)
   await $.command.run(away('set up awaywork'))
@@ -796,9 +796,16 @@ test('after a setup in a control folder, bare /away finds the moved config', asy
   calls.length = 0
   const ran = await $.command.run(away())
   expect(ran.text).toBeUndefined()
-  expect(calls[0]).toEqual(['awaywork', '--config', `${OTHER}/config.yml`, 'config', 'path'])
+  const known = ['awaywork', '--config', `${OTHER}/config.yml`]
+  expect(calls[0]).toEqual([...known, 'config', 'path'])
   const ui = await mount($, 'terminal')
   expect(await text(ui, /setting up/)).toBe(false)
+  await ui.press({ key: 'plan' })
+  expect(calls).toContainEqual([...known, 'plan', '--json'])
+  await ui.press({ key: 'tab:last' })
+  await ui.press({ key: 'skip' })
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual([...known, 'skip', 'github:acme/shop#3'])
 })
 
 test('a mention of someone else’s draft never moves the pane', async ($, on) => {

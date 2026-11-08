@@ -59,6 +59,12 @@ type Row = {
   here?: string
 }
 
+/** A call on the config setup named, which the shell profile can't bring to this session. */
+async function onKnownConfig($: EngineInterface, args: string[]) {
+  const { named } = await read($, config)
+  return named ? ['--config', named, ...args] : args
+}
+
 async function readReport($: EngineInterface) {
   await update($, view, (v) => ({ ...v, status: undefined }))
   await update($, data, (d): Data => ({ ...d, loading: true }))
@@ -77,7 +83,7 @@ async function readPlan($: EngineInterface) {
   await update($, view, (v) => ({ ...v, status: undefined }))
   await update($, data, (d): Data => ({ ...d, planning: true }))
   const before = acts
-  const got = await json<Plan>($, ['plan', '--json'], 600_000)
+  const got = await json<Plan>($, await onKnownConfig($, ['plan', '--json']), 600_000)
   const patch: Data =
     'json' in got ? { plan: got.json } : 'error' in got ? { error: got.error } : {}
   await update($, data, (d) => ({ ...d, planning: undefined, ...patch }))
@@ -303,7 +309,7 @@ let acts = 0
 // The rows come from the last run's or plan's JSON, which an act doesn't change: a mark says what it did.
 async function act($: EngineInterface, action: Action, key: string) {
   await update($, view, (v) => ({ ...v, confirm: undefined, status: `${action}…` }))
-  const r = await awaywork($, [action, key])
+  const r = await awaywork($, await onKnownConfig($, [action, key]))
   if (r.exitCode === 0) acts++
   const said = firstLine(r.exitCode === 0 ? r.stdout : r.stderr) || `${action} exited ${r.exitCode}`
   await update($, view, (v) => ({
