@@ -47,7 +47,7 @@ The rules come from the default queue (https://andreaprovenzale.github.io/awaywo
 
 ## 5. Draft
 
-Where it goes: a single file at `<config>`, unless the config needs files beside it (a custom source, instructions, skills) or runs off this machine: then a control folder, a git repo they own. Propose one next to their clones (`~/projects/acme/awaywork`), say why, and once they agree, `git init` it with a `.gitignore` for `.env`. `<config>` becomes `<control>/.awaywork/config.yml`, where `schedule install --with …` keeps it; files it names go beside it. Pass `--config <config>` from then on, and print the `AWAYWORK_CONFIG` line for their shell profile.
+Where it goes: a single file at `<config>`, unless the config needs files beside it (a custom source, a store, instructions, skills) or runs off this machine: then a control folder, a git repo they own. Propose one next to their clones (`~/projects/acme/awaywork`), say why, and once they agree, `git init` it with a `.gitignore` for `.env`. `<config>` becomes `<control>/.awaywork/config.yml`, where `schedule install --with …` keeps it; files it names go beside it. Pass `--config <config>` from then on, and print the `AWAYWORK_CONFIG` line for their shell profile.
 
 ```sh
 awaywork --config <draft> init --yes --provider <theirs, first first> --source github --window <start>-<end>
@@ -69,11 +69,15 @@ sources:
 
 **Sprint cards,** when they picked them: one question in the round with the tracker's names (a custom tracker: on its own, once it reads), one pick:
 
-1. Plan, then implement across repos, waiting for them only when the judge finds a product decision the card leaves open: `deliver: plan` with `approve: gates` and the built-in `plan-judge`; the tasks fan out to an `implement` rule on `planned: true`, a repo's tasks stacked on each other, and they review the plan and the drafts in the morning.
-2. The same, waiting for their `approve` on every plan.
+1. Plan, then implement across repos, waiting for them only when the judge finds a product decision the card leaves open: `deliver: plan` with `wait: false` and `gates: { decisions: { skill: judge } }`; the tasks fan out to an `implement` rule on `planned: true`, one PR per task, waiting on each other as the plan's `after` says (`opened` stacks a PR on another's, `merged` holds it until they merge that one), and they review the plan and the drafts in the morning.
+2. The same with no `wait` and no `gates`: a plan waits by default, so every plan waits for their `approve`.
 3. A plan report, no code.
 
 1 and 2 are widening: the plan is posted on the card, or, when the source can't write there (a custom source without `write`, a token scoped to read, like Jira's `read:jira-work`), on an issue awaywork opens in the card's repo, assigned to them (`thread: github`). Their descriptions say which (https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#plans).
+
+**Plans in a doc tool,** when they say that's where plans live (Notion, Confluence and friends): a top-level `store` in the draft, `{command: node store.mjs, secrets: [<its token>]}`, its script in the control folder, written with them like a custom tracker: ask where the API docs are, and the token goes through `awaywork secret`. https://andreaprovenzale.github.io/awaywork/guide/configuration.md#store has its ops and what's the script's job. `get` must print the exact bytes `put` took, which a page that turns Markdown into blocks doesn't: keep the page for people and the file as its attachment. Give them one `put` and one `get` of a small file to run in their own terminal, the env file loaded (`set -a; . ~/.config/awaywork/env; set +a`), and have them compare the bytes. The rules need nothing more: with a store their posts are lean, a summary and a link per file.
+
+**A thread host of their own,** a custom source with `thread: true` named in the plan rule's `thread` (https://andreaprovenzale.github.io/awaywork/guide/custom-sources.md#thread-hosts): one that notifies nobody, a folder of Markdown files say, gets a `notify` hook next to it (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#notify), shown as the widening it is, or a plan there waits unseen.
 
 ## 6. First queue
 
