@@ -829,7 +829,7 @@ Pinned report.md: file:///…/cfg/files/a63b0dec-63e2-4701-968e-8350ad439bae/rep
 — awaywork · waits
 ```
 
-A lean plan shows its tasks instead of `plan.yml`, which is pinned with its contract and report, so the 30 KB comment limit is gone:
+A lean plan shows its tasks instead of `plan.yml`, which is pinned with its contract and report, so only its summary and task list count toward the 30 KB comment limit:
 
 ```
 VAT export in two tasks: the api first, then web against its contract.
@@ -851,7 +851,7 @@ Pinned report.md: https://… (1822 bytes, sha256 …)
 
 **What comes back.** Before a unit's worker starts, awaywork reads its items' threads and gets the pinned files into `.away/context/<item>/files/<post>/`, a folder per post named by its place in the thread, e.g. `2-story/`: the files of the post an approval covers (a task's plan, the result `approved: story` names), its own newest post when it runs again on your feedback or a `continue`, every post newer than that, and on a unit on a PR awaywork opened for you, its footer's. A footer file that changed since awaywork pinned it is left out, with a line in the morning report: nothing reruns on a PR body, and a stranger's PR carrying awaywork's marker gets nothing read back at all. The worker still holds no token, and its prompt calls those files data, like `item.md`: someone else wrote them. The rest of the plan's special cases fold in: a lean plan's tasks read its `plan.yml` and contract through `get`; what a task `ships` still comes from its PR's head. `read.max_mb` caps what one unit reads back, 10 by default, and the rest stay links, named in the morning report; a pin carries its file's size, so one over the cap isn't even fetched; `read.files` narrows it by name, `*.md` matching `notes/a.md` too.
 
-**An edit is feedback.** awaywork hashes each file as it puts it and checks the hash when it reads it back. Every `plan`, run and watch poll reads back the files of the posts that decide a rule, within the cap, a plan's and a waiting or approved report's, and one that doesn't match makes its post stale: it counts as your feedback, whoever edited the file. The step runs again, though the card didn't change, with the edited file in context, and posts again; a rule that waits needs a fresh `approve` on that new post, so you only approve what awaywork has seen. Here a teammate edited `report.md` in the store, and the next run went again:
+**An edit is feedback.** awaywork hashes each file as it puts it and checks the hash when it reads it back. Every `plan`, run and watch poll reads back the files of the posts that decide a rule, within the cap, a plan's and a waiting or approved report's, and one that doesn't match makes its post stale: it counts as your feedback, whoever edited the file. The step runs again, though the card didn't change, with the edited file in context and its path in `files/EDITED`, one per line, which its prompt calls feedback on the step's work, and posts again; a rule that waits needs a fresh `approve` on that new post, so you only approve what awaywork has seen. On a store with `get: false` the edit reruns the step but doesn't reach it: with no `get` to refuse a URL, awaywork leaves that file out. Here a teammate edited `report.md` in the store, and the next run went again:
 
 ```
   1  awaywork-sandbox#206  story  done    report

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -13,7 +13,7 @@ import { contractName } from '../core/plan.js'
 import { decisionPosts, type PinnedPost } from '../core/posts.js'
 import { itemState } from '../core/queue.js'
 import type { Item } from '../core/types.js'
-import { runShell } from '../sources/command.js'
+import { runShell, TIMEOUT_MS } from '../sources/command.js'
 
 /** `dir` is the folder of the config file that set the command, set when the config loads. */
 export type Store = NonNullable<Config['store']> & { dir?: string }
@@ -115,7 +115,7 @@ async function getFile(store: Store, env: NodeJS.ProcessEnv, url: string, to: st
     await runShell(store.command, store.dir, env, JSON.stringify({ op: 'get', url }), to)
     return
   }
-  const res = await fetch(url)
+  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
   if (!res.ok || !res.body) throw new Error(`GET ${url}: ${res.status} ${res.statusText}`)
   await pipeline(Readable.fromWeb(res.body as never), createWriteStream(to))
 }
@@ -179,7 +179,7 @@ const bytes = (store: Store) => store.read.max_mb * 1_000_000
 
 /**
  * Reads back the pins of the posts that decide a rule on each open item of yours, and every lean plan's `plan.yml` and
- * contract: a file whose hash no longer matches makes the post stale, a get that fails leaves why on it.
+ * contract: a file whose hash no longer matches makes the post stale, a get that fails leaves why on a post that decides.
  */
 export async function checkPins(items: Item[], store: Store, env: NodeJS.ProcessEnv) {
   for (const item of items) {
@@ -206,7 +206,11 @@ export async function checkPins(items: Item[], store: Store, env: NodeJS.Process
         const stale = [...first.stale, ...back.stale][0]
         post.pinned = { files, ...(stale && { stale }) }
       } catch (e) {
-        post.pinned = { files: {}, failed: (e as Error).message }
+        // An older plan unread names no tasks, and decides nothing.
+        post.pinned = {
+          files: {},
+          ...(deciding.includes(post) && { failed: (e as Error).message }),
+        }
       } finally {
         await rm(tmp, { recursive: true, force: true })
       }
@@ -226,7 +230,8 @@ function contractIn(yaml: string): string | undefined {
 
 /**
  * Reads back the files of a unit's `posts` into `dir`, a folder per post, within the store's cap; returns a line per file
- * edited since it was pinned, dropped unless the post takes `edits`, and for those left out, links still. Throws when a get fails.
+ * edited since it was pinned, and for those left out, links still. An edited file stays, named in `EDITED`, only when the post
+ * takes `edits` and the store's `get` can refuse a URL it didn't print. Throws when a get fails.
  */
 export async function readBack(
   store: Store,
@@ -236,12 +241,15 @@ export async function readBack(
 ): Promise<string[]> {
   const budget = { left: bytes(store) }
   const notes: string[] = []
+  const edited: string[] = []
   for (const post of posts) {
     const back = await readPins(store, env, post.pins, join(dir, post.name), budget)
+    const keep = post.edits && store.get
     for (const name of back.stale) {
-      if (!post.edits) await rm(join(dir, post.name, name))
+      if (keep) edited.push(`${post.name}/${name}`)
+      else await rm(join(dir, post.name, name))
       notes.push(
-        `${name} of ${post.what} changed in the store since awaywork pinned it${post.edits ? '' : ': left out'}`,
+        `${name} of ${post.what} changed in the store since awaywork pinned it${keep ? '' : ': left out'}`,
       )
     }
     if (back.over.length)
@@ -249,5 +257,6 @@ export async function readBack(
         `over the store's read.max_mb, left as links: ${back.over.join(', ')} of ${post.what}`,
       )
   }
+  if (edited.length) await writeFile(join(dir, 'EDITED'), `${edited.join('\n')}\n`)
   return notes
 }
