@@ -120,8 +120,9 @@ async function getFile(store: Store, env: NodeJS.ProcessEnv, url: string, to: st
   await pipeline(Readable.fromWeb(res.body as never), createWriteStream(to))
 }
 
-/** A name a file can have under a folder: relative, with no `.`, `..` or empty part. */
-const inside = (name: string) => name.split('/').every((p) => p && p !== '.' && p !== '..')
+/** A name a file can have under a folder: relative, with no `.`, `..` or empty part, and no control character. */
+const inside = (name: string) =>
+  !/\p{Cc}/u.test(name) && name.split('/').every((p) => p && p !== '.' && p !== '..')
 
 /** What came back of a post's pins: the files that match their hash, those edited since, those the cap left out. */
 export interface ReadBack {
@@ -231,7 +232,8 @@ function contractIn(yaml: string): string | undefined {
 /**
  * Reads back the files of a unit's `posts` into `dir`, a folder per post, within the store's cap; returns a line per file
  * edited since it was pinned, and for those left out, links still. An edited file stays, named in `EDITED`, only when the post
- * takes `edits` and the store's `get` can refuse a URL it didn't print. Throws when a get fails.
+ * takes `edits` and the store's `get` can refuse a URL it didn't print. Throws when a get fails on a post the unit needs;
+ * on any other that post is left out, none of its files kept, and gets a line.
  */
 export async function readBack(
   store: Store,
@@ -242,8 +244,17 @@ export async function readBack(
   const budget = { left: bytes(store) }
   const notes: string[] = []
   const edited: string[] = []
+  await mkdir(dir, { recursive: true })
   for (const post of posts) {
-    const back = await readPins(store, env, post.pins, join(dir, post.name), budget)
+    let back: ReadBack
+    try {
+      back = await readPins(store, env, post.pins, join(dir, post.name), budget)
+    } catch (e) {
+      if (post.needed) throw e
+      await rm(join(dir, post.name), { recursive: true, force: true })
+      notes.push(`left out ${post.what}: ${(e as Error).message}`)
+      continue
+    }
     const keep = post.edits && store.get
     for (const name of back.stale) {
       if (keep) edited.push(`${post.name}/${name}`)

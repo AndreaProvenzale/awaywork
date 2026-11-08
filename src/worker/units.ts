@@ -1456,7 +1456,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       if (!posts.length) continue
       const dir = join(input.runDir, 'units', head.unit.id, 'files', slug(item.key))
       try {
-        ready.notes.push(...(await readBack(store, input.ctx.env, posts, dir)))
+        const notes = await readBack(store, input.ctx.env, posts, dir)
+        ready.notes.push(...notes.map((n) => maskSecrets(n, secrets, input.ctx.env)))
       } catch (e) {
         return { skip: maskSecrets((e as Error).message, secrets, input.ctx.env) }
       }
