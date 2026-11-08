@@ -29,6 +29,8 @@ jobs:
       # Trusted publishing (OIDC): no token, provenance attached by npm.
       - run: npm install -g npm@latest
       - run: npm publish --tag ${{ contains(github.ref_name, '-') && 'next' || 'latest' }}
+      - if: contains(github.ref_name, '-')
+        run: npm dist-tag add "awaywork@${GITHUB_REF_NAME#v}" latest
       - run: >-
           gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes ${{ contains(github.ref_name, '-') && '--prerelease' || '' }}
         env:

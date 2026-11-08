@@ -189,7 +189,7 @@ describe('triage view', () => {
       '  ▾ acme/api 3',
       '    #31  PR 31  review PR',
       '    #33  PR 33  review PR',
-      '    #32  PR 32  approve plan',
+      '    #32  PR 32  approve',
     ])
   })
 

@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import type { DraftLeft, Left } from './footer.js'
+import type { DraftLeft, Left, Pin } from './footer.js'
 import type { Contract, PlanLimits } from './plan.js'
 
 /** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
@@ -43,7 +43,15 @@ export interface Item {
   reviewers: string[]
   labels: string[]
   /** `mine` when your own account wrote it and nobody else edited it since. */
-  comments: { author: string; body: string; at: string; mine?: true; bot?: true }[]
+  comments: {
+    author: string
+    body: string
+    at: string
+    mine?: true
+    bot?: true
+    /** What awaywork read back of the files this post of its pins: a lean plan's `plan.yml` and contract, the file whose hash no longer matches, or why it couldn't read one. */
+    pinned?: { files: Record<string, string>; stale?: string; failed?: string }
+  }[]
   /** A PR item links itself, so items sharing a PR dedupe into one unit. */
   linkedPrs: PrRef[]
   /** The line a PR body carries to link this item, rendered from its source's `link`. */
@@ -51,6 +59,8 @@ export interface Item {
   fields: Record<string, unknown>
   /** Yours: your PR, or an item assigned to you; awaywork writes only to these. */
   mine?: true
+  /** A PR whose body nobody but you, or awaywork as you, edited last: only its footer pins are read back. */
+  bodyMine?: true
   /** A task of the plan approved on the card `parent`: awaywork makes it, and writes to the card for it. */
   task?: {
     parent: Item
@@ -74,7 +84,22 @@ export interface Item {
   }
   /** On a card: the PRs its plans' tasks have, by task id; unset when none was looked up, null when reading failed. */
   taskPrs?: Record<string, TaskPr> | null
+  /** The thread awaywork opened for the card: its posts go there, and its comments follow the card's. */
+  thread?: Thread
   raw: unknown
+}
+
+/** A thread awaywork opened for an item, for posts the item's own tracker can't take. */
+export interface Thread {
+  /** Its host: `github`, or the custom source that opened it. */
+  host: string
+  /** Its key at the host, e.g. `acme/api#57`. */
+  key: string
+  /** A custom host's own id for it, when it isn't the key. */
+  id?: string
+  url: string
+  /** The card's own updated time, when a reply on the thread is newer and stands in for it. */
+  card?: string
 }
 
 /** A task's PR, found by the task's branch and its footer: open, merged, or closed unmerged at `closedAt`. */
@@ -239,6 +264,8 @@ export interface Provider {
 }
 
 export interface Forge {
+  /** Its thread issues, on GitHub. */
+  threads?: ThreadHost
   /** Why awaywork won't go on with its own drafts here, if it won't. */
   ownDraftsRefused?: string
   /** With `fork`, `branch` is on a fork: the clone checks out its pull ref, which must be at `fork.head` if given. */
@@ -276,6 +303,7 @@ export interface Forge {
     items: Pick<Item, 'source' | 'key'>[],
     draft: boolean,
     left?: Left,
+    pins?: Pin[],
   ): Promise<string>
   /** Rewrites PR `pr`'s title and body as `openPr` writes them, and marks it ready for review when `ready`. */
   updatePr(
@@ -286,6 +314,7 @@ export interface Forge {
     items: Pick<Item, 'source' | 'key'>[],
     ready: boolean,
     left?: Left,
+    pins?: Pin[],
   ): Promise<void>
   /** Puts PR `pr` on top of PR `below` in the forge's stacked PRs, without editing either PR. */
   stack(repo: string, below: string, pr: string): Promise<void>
@@ -294,6 +323,23 @@ export interface Forge {
    * one else; returns its URL. Throws why it didn't, e.g. a pending review of yours already there.
    */
   pendingReview(repo: string, pr: number, head: string, review: Review): Promise<string>
+}
+
+/** Where awaywork opens items' threads and reads them back: GitHub issues, or a custom source whose `write` answers `open`. */
+export interface ThreadHost {
+  /** Lists threads per repo, the card's: GitHub's issues are. */
+  byRepo?: boolean
+  /** The threads it opened, by item (`source:key`), each with its whole comment history; on GitHub, the open issues you opened in `repo`. */
+  threads(repo?: string): Promise<{ item: string; thread: Thread; comments: Item['comments'] }[]>
+  /** Opens a thread for the item; on GitHub an issue in `repo`, assigned to you. */
+  openThread(
+    repo: string | undefined,
+    item: Pick<Item, 'source' | 'key' | 'title' | 'url'>,
+  ): Promise<Thread>
+  /** Comments `body` on the thread; returns the comment's URL. */
+  threadComment(thread: Thread, body: string): Promise<string>
+  /** Comments `body` on the thread, then closes it. */
+  closeThread(thread: Thread, body: string): Promise<void>
 }
 
 /** A PR on a branch; `closedAt` when the forge says. */
@@ -345,10 +391,7 @@ export interface Step {
 
 /** A `then` or loop step as written: the settings it leaves unset are the rule's. */
 export type ThenStep = Omit<Step, 'provider' | 'skills' | 'instructions'> &
-  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>> & {
-    /** Starts a new slice: a new branch cut from the slice before, and a PR stacked on its PR. */
-    stack?: boolean
-  }
+  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>>
 
 /** What a loop checks after each of its steps, or a step before it runs; every key set must hold. */
 export interface Condition {
@@ -369,8 +412,6 @@ export interface Loop {
   loop: ThenStep[]
   until: Condition
   max: number
-  /** Starts a new slice at the loop's first round. */
-  stack?: boolean
 }
 
 export interface Rule extends Step {
@@ -381,12 +422,23 @@ export interface Rule extends Step {
   where: Where
   order?: Order
   units?: number
-  /** Steps run in turn after the rule's unit, in its clone; each slice of the chain publishes once, when it ends. */
+  /** Steps run in turn after the rule's unit, in its clone; the chain publishes once, when it ends. */
   then?: (ThenStep | Loop)[]
   /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted: its result as a comment, then the move. */
   on_done?: { move?: string; comment?: 'result' }
+  /** A plan or report rule's post waits for your approve; unset, a plan's does and a report's doesn't. */
+  wait?: boolean
+  /** A plan or report rule's post: `summary`, its summary and pinned files, or `full`, the report inline; default summary with a store. */
+  post?: 'summary' | 'full'
+  /** A plan or report rule's own gates, on what its step left; one that fires holds the post. */
+  gates?: Record<
+    string,
+    { changed?: string[]; command?: string; skill?: string; instructions?: string[] }
+  >
   /** `soon`: awaywork watch starts its units as soon as it sees them due, not only in a window. */
   run?: 'soon' | 'window'
+  /** Where its posts go: `item`, the item itself, `github`, an issue awaywork opens as the item's thread, or a custom source that opens threads. */
+  thread?: string
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */
@@ -406,9 +458,13 @@ export interface Unit {
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** Checks run before publishing commits, the top-level ones merged with the repo's: one that fires drafts a `deliver: pr` PR and goes on top of its body. */
+  /** Checks run before publishing commits, the top-level ones merged with the repo's: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own, on what its step left. */
   gates?: Record<string, Gate>
-  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the chain's slice before. */
+  /** A plan's or report's post: it waits for your approve, or goes ahead unless one of its gates fires; unset, a report posts as a plain result. */
+  waits?: boolean
+  /** A plan's or report's post is lean: its summary and pinned files, the rest in the store. */
+  lean?: true
+  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the task's this one stacks on. */
   stackedOn?: string
   /** `base` is awaywork's own draft for the unit, which a later run goes on with: the chain's commits go onto it. */
   resume?: { url: string; number: number; from: string; head: string; status: 'ask' | 'continue' }
@@ -433,11 +489,12 @@ export interface Unit {
   conflicted?: string[]
 }
 
-/** A gate fires when the slice's commits change a path matching one of `changed`, one of `commands` fails, or one of `skills` judges it should. */
+/** A gate fires when the slice's commits change a path matching one of `changed`, one of `commands` fails, or one of `skills` judges it should, reading `instructions` from the config. */
 export interface Gate {
   changed: string[]
   commands: string[]
   skills: string[]
+  instructions: string[]
 }
 
 export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push' | 'pending_review' | 'plan'
