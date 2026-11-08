@@ -146,7 +146,7 @@ describe('publish', () => {
     }
     const opened = async (deliver: Unit['deliver'], notReady?: string) => {
       forge.branches.clear()
-      return publish(unit(deliver), dir, forge, 'r1', start, undefined, false, notReady)
+      return publish(unit(deliver), dir, forge, 'r1', start, false, notReady)
     }
     expect(await opened('pr')).toMatchObject({ kind: 'pr', ready: true })
     expect(await opened('pr', 'verify failed')).toMatchObject({ draft: 'verify failed' })
@@ -168,7 +168,7 @@ describe('publish', () => {
     const issue = fakeItem({ source: 'github', type: 'issue', key: 'acme/api#7' })
     const task = fakeItem({ source: 'github', type: 'pr', key: 'acme/api#8' })
     const slice = { ...unit(), items: [issue, task] }
-    await publish(slice, dir, forge, 'r1', start, undefined, true)
+    await publish(slice, dir, forge, 'r1', start, true)
     expect(bodies).toEqual(['Fix the thing\n\nCloses acme/api#7\n'])
   })
 

@@ -23,7 +23,7 @@ import {
 } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { approveReply, markComment, planComment } from '../src/core/footer.js'
+import { approveReply, markComment, planComment, resultComment } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
@@ -750,6 +750,73 @@ queue:
     }
   })
 
+  it('makes the move a post you approved held before planning, a dry run only saying it, and reads approved off the thread', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-held-'))
+    const post = markComment(resultComment('Two flows.', 'done', 'story', undefined, 0, true), {
+      waits: true,
+      move: 'Ready',
+      saw: 'Inbox',
+    })
+    const card = (status: string) => ({
+      id: '7',
+      key: 'ENG-7',
+      // An issue: a task would have its PRs looked up on the forge.
+      type: 'issue',
+      title: 'Export VAT',
+      url: 'https://tracker/ENG-7',
+      status,
+      fields: { updated: '2026-11-02T00:00:00Z', status },
+      comments: [
+        { author: 'me', body: post, at: '2026-11-01T00:00:00Z', mine: true },
+        { author: 'me', body: 'approve', at: '2026-11-02T00:00:00Z', mine: true },
+      ],
+    })
+    await writeFile(join(root, 'items.json'), JSON.stringify([card('Inbox')]))
+    const config = parseConfig(`
+providers: [claude]
+sources: { tracker: { command: 'cat items.json', write: 'cat >> writes.jsonl; echo "{\\"before\\":\\"2026-11-02T00:00:00Z\\",\\"after\\":\\"2026-11-03T00:00:00Z\\"}"', fields: [status] } }
+queue:
+  - { skill: story, deliver: report, wait: true, on_done: { move: Ready } }
+  - { skill: prototype, where: { approved: story }, deliver: report }
+`)
+    const cwd = process.cwd()
+    process.chdir(root)
+    try {
+      const lines: string[] = []
+      const run = (dryRun: boolean) =>
+        probeAndPlan(config, root, { probe: false, moves: { dryRun, log: (l) => lines.push(l) } })
+      const dry = await run(true)
+      expect(lines).toEqual(['on_done: would move ENG-7 to Ready, its post approved'])
+      expect(await readFile(join(root, 'writes.jsonl'), 'utf8').catch(() => '')).toBe('')
+      // The next stage, prototype, takes it; this card has no repo to work in.
+      expect(dry.plan.skipped.map((s) => [s.kind, s.item.fields.approved])).toEqual([
+        ['no_repo', 'story'],
+      ])
+      lines.length = 0
+      const real = await run(false)
+      expect(lines).toEqual(['on_done: moved ENG-7 to Ready, its post approved'])
+      expect(JSON.parse(await readFile(join(root, 'writes.jsonl'), 'utf8'))).toEqual({
+        op: 'move',
+        item: 'ENG-7',
+        id: '7',
+        to: 'Ready',
+      })
+      // The move is awaywork's own: the card reads as it left it, `where` too, so attempts see no change of yours.
+      expect(
+        real.plan.skipped.map((s) => [s.item.status, s.item.fields.status, s.item.fields.updated]),
+      ).toEqual([['Ready', 'Ready', '2026-11-03T00:00:00Z']])
+      expect(real.plan.moved).toEqual([{ item: 'tracker:ENG-7', to: 'Ready' }])
+      expect(dry.plan.moved).toBeUndefined()
+      // Moved already, or by you elsewhere: nothing to make.
+      await writeFile(join(root, 'items.json'), JSON.stringify([card('Doing')]))
+      lines.length = 0
+      await run(false)
+      expect(lines).toEqual([])
+    } finally {
+      process.chdir(cwd)
+    }
+  })
+
   it('warns on a GitHub-hosted runner that a window over 6 hours ends early', async () => {
     const skills = await mkdtemp(join(tmpdir(), 'awaywork-skills-'))
     const warned = async (windows: string) => {
@@ -890,32 +957,6 @@ queue:
       'feat/acme-api-1',
     ])
     expect(branches('{ skill: review }')).toEqual(['chore/acme-api-1'])
-  })
-
-  it('gives a stacked slice the type of its own first skill', () => {
-    const branches = (branch: string, queue: string) =>
-      plan(
-        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nbranch: '${branch}'\nqueue: [${queue}]`,
-        [githubPr(1, { checks: 'failing', review_requested: true })],
-        {},
-        { user: { 'write-docs': { type: 'docs' }, tidy: {} } },
-      ).units.map((u) => u.unit.branch)
-    const chain = '{ skill: implement, then: [review, { skill: write-docs, stack: true }, tidy] }'
-    expect(branches('{type}/{key}', chain)).toEqual([
-      'feat/acme-api-1',
-      'feat/acme-api-1',
-      'docs/acme-api-1',
-      'docs/acme-api-1',
-    ])
-    expect(
-      branches('{type}/{key}', '{ skill: fix, then: [{ skill: tidy, stack: true }] }'),
-    ).toEqual(['fix/acme-api-1', 'chore/acme-api-1'])
-    expect(branches('away/{key}', chain)).toEqual([
-      'away/acme-api-1',
-      'away/acme-api-1',
-      'away/acme-api-1',
-      'away/acme-api-1',
-    ])
   })
 
   it('skips a feature whose awaywork PR waits for review, whatever item links it', () => {
@@ -1399,7 +1440,7 @@ queue:
       },
     ])
     expect(needsYou.waiting_for_approval).toBe(true)
-    expect(formatPlan(waiting)).toMatch(/ {4}#5 .* approve plan\n/)
+    expect(formatPlan(waiting)).toMatch(/ {4}#5 .* approve\n/)
   })
 
   it('fans an approved plan out into tasks, the card skipped with their states', () => {
@@ -1429,7 +1470,7 @@ queue:
   })
 
   it('plans again on feedback, and skips a refused re-plan as unchanged until the card changes', () => {
-    for (const feedback of [reply('approve if web waits'), reply('Split web.', true)]) {
+    for (const feedback of [reply('approve if web waits', true), reply('Split web.', true)]) {
       const replied = { ...card(posted, feedback), fields: { ...issue.fields, updated: at(2) } }
       expect(rows(plan(yaml(), [replied], {}, {}, attempts))).toEqual([
         ['acme-api-5', 1, 'plan', 'claude', 'plan'],

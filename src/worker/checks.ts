@@ -38,6 +38,8 @@ export interface CheckOptions {
   published?: boolean
   /** A gate's chain start: the check runs even when this commit's result is known, keeps nothing, and its git reads attributes from `start` on a fresh global config. */
   start?: string
+  /** A plan's or report's gate: the read-only copy of what its step left, the command's `AWAYWORK_OUT_DIR`. */
+  outDir?: string
 }
 
 export interface ChecksInput {
@@ -69,7 +71,7 @@ export function createChecks(input: ChecksInput) {
     unit: Unit,
     dir: string,
     log: (line: string) => void,
-    { from, published, start }: CheckOptions = {},
+    { from, published, start, outDir }: CheckOptions = {},
   ): Promise<Check> => {
     if (unit.untrusted) return refusal("not run on an untrusted author's PR")
     await restoreGit(dir)
@@ -81,9 +83,12 @@ export function createChecks(input: ChecksInput) {
     const key = `${dir} ${await head(dir)} ${from} ${command}`
     const known = left.length || start ? undefined : checks.get(key)
     if (known) return known
-    const env = start
-      ? await gateEnv(input.env, dir, input.secrets, from, start)
-      : checkEnv(input.env, dir, input.secrets, from)
+    const env = {
+      ...(start
+        ? await gateEnv(input.env, dir, input.secrets, from, start)
+        : checkEnv(input.env, dir, input.secrets, from)),
+      ...(outDir && { AWAYWORK_OUT_DIR: outDir }),
+    }
     const result = await runCommand(command, dir, env, {
       secrets: [],
       signal: input.signal,

@@ -120,7 +120,7 @@ export function taskItem(
     // Never a closing line: the card outlives each of its tasks' PRs.
     link: `Part of ${card.url}`,
     // A task takes no approval of its own: the card's plan approval covers it.
-    fields: { ...card.fields, approved: false, repo: task.repo ?? home },
+    fields: { ...card.fields, approved: undefined, repo: task.repo ?? home },
     ...(card.mine && { mine: card.mine }),
     task: {
       parent: card,

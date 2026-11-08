@@ -6,7 +6,6 @@ import { styleText } from 'node:util'
 import { type Command, Option } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import {
-  approvalsPath,
   attemptsPath,
   remoteDir,
   runLockPath,
@@ -15,7 +14,6 @@ import {
   watchLockPath,
 } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
-import { clearApprovals, loadApprovals, saveApprovals } from '../core/approvals.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import type { RunPlan } from '../core/foreman.js'
 import { isolateFor } from '../core/launch.js'
@@ -237,7 +235,7 @@ export function serial() {
 const inSaving = serial()
 
 /**
- * Plans and runs the units, writes the run's report, attempts and approvals, and notifies, a soon
+ * Plans and runs the units, writes the run's report and attempts, and notifies, a soon
  * run per unit only; false when the options name no unit. The caller holds the run lock.
  */
 export async function executeRun(a: RunArgs): Promise<boolean> {
@@ -249,6 +247,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     at: a.now,
     present: a.present,
     soon: a.soon,
+    moves: { dryRun: !!a.dryRun, log: (line) => log.info(`  ${line}`, true) },
   })
   const { warnings, ctx, sources, secrets } = planned
   for (const warning of warnings) log.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)
@@ -306,7 +305,6 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
   await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
   await inSaving(async () => {
     await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
-    await saveApprovals(approvalsPath, clearApprovals(await loadApprovals(approvalsPath), report))
   })
   log.info(summarize(report, reportPath), true)
   if (a.browseHint) log.info(styleText('dim', 'awaywork report browses this run'))

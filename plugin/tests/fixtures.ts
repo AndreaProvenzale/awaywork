@@ -91,7 +91,7 @@ const skipped = [
 
 const queue = [
   { skill: 'fix', where: { type: 'pr', checks: 'failing' } },
-  { skill: 'implement', where: { type: 'issue', approved: true } },
+  { skill: 'implement', where: { type: 'issue' } },
 ]
 
 export const busyReport = {

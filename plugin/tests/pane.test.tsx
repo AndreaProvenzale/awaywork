@@ -203,7 +203,7 @@ test('a card shows its ref and action on top and its title in two lines, the det
     })
     expect(await card(ui, SHOP8)).toEqual({
       ref: '#8',
-      word: 'approve plan',
+      word: 'approve',
       title: ['Split the checkout', 'service into cart, …'],
       selected: false,
     })
@@ -229,7 +229,7 @@ test('a card shows its ref and action on top and its title in two lines, the det
       'https://github.com/acme/shop/issues/9',
     ])
     expect(await label(ui, 'open')).toBe('open issue')
-    expect(await label(ui, 'approve')).toBe('mark approved')
+    expect(await ui.find({ key: 'approve' })).toBeFalsy()
     await ui.press({ key: 'tab:needs' })
     await ui.unmount()
   }
@@ -363,9 +363,6 @@ test('s and a ask yes or no in the buttons row first, then mark the card', async
     'report --json': ok(busyReport),
     'skip github:acme/shop#7': { stdout: 'github:acme/shop#7 is skipped until awaywork unskip' },
     'approve github:acme/shop#8': { stdout: 'plan approved: replied approve on the issue' },
-    'approve github:acme/shop#9': {
-      stdout: 'github:acme/shop#9 is approved until a unit on it finishes',
-    },
   })
   await $.command.run(away())
   const ui = await mount($, 'terminal')
@@ -388,7 +385,7 @@ test('s and a ask yes or no in the buttons row first, then mark the card', async
   // Another card drops the question.
   await ui.press({ key: 'nextCard' })
   await ui.press({ key: 'approve' })
-  expect(await text(ui, /approve #8's plan\? .* no undo$/)).toBe(true)
+  expect(await text(ui, /approve #8\? .* no undo$/)).toBe(true)
   await ui.press({ key: 'prev' })
   expect(await ui.find({ key: 'yes' })).toBeFalsy()
   await ui.press({ key: 'nextCard' })
@@ -398,13 +395,7 @@ test('s and a ask yes or no in the buttons row first, then mark the card', async
   expect((await card(ui, SHOP8))?.word).toBe('approved')
   await ui.press({ key: 'approve' })
   expect(await text(ui, 'already approved')).toBe(true)
-
-  await ui.press({ key: 'tab:skipped' })
-  await ui.press({ key: 'approve' })
-  expect(await text(ui, /mark #9 approved for approved: true rules, .* no undo$/)).toBe(true)
-  await ui.press({ key: 'yes' })
-  expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#9'])
-  expect(calls.filter((argv) => argv[1] === 'approve')).toHaveLength(2)
+  expect(calls.filter((argv) => argv[1] === 'approve')).toHaveLength(1)
 })
 
 test('v shows the report in the detail and b goes back; o opens the URL; c hands the unit to the chat', async ($, on) => {
@@ -429,7 +420,7 @@ test('v shows the report in the detail and b goes back; o opens the URL; c hands
     ])
     expect(await label(ui, 'report')).toBe('view report')
     expect([await hotkey(ui, 'report'), await hotkey(ui, 'here')]).toEqual(['v', 'c'])
-    expect(await label(ui, 'approve')).toBe('mark approved')
+    expect(await ui.find({ key: 'approve' })).toBeFalsy()
 
     await ui.press({ key: 'report' })
     expect(await detail(ui)).toEqual([
@@ -502,16 +493,15 @@ test('the confirm shows its whole question, taking its rows from the detail', as
       (await ui.find({ key: 'detail' }))?.props.height,
     ]
     expect(await heights()).toEqual([24, 2, 7])
-    await ui.press({ key: 'tab:skipped' })
+    await ui.press({ key: 'nextCard' })
     await ui.press({ key: 'approve' })
     const [asked] = ((await ui.find({ key: 'buttons' }))?.children ?? []) as { children: Node[] }[]
     expect(asked?.children.slice(0, -1).map(shown)).toEqual([
-      'mark #9 approved for',
-      'approved: true rules,',
-      'until a unit on it',
-      'finishes? no undo',
+      'approve #8? awaywork',
+      'replies approve on it, no',
+      'undo',
     ])
-    expect(await heights()).toEqual([24, 5, 4])
+    expect(await heights()).toEqual([24, 4, 5])
     await ui.press({ key: 'no' })
     expect(await heights()).toEqual([24, 2, 7])
     await ui.press({ key: 'tab:needs' })
@@ -741,25 +731,6 @@ test('reopening keeps the marks on the cards they correct', async ($, on) => {
   const again = await mount($, 'terminal')
   expect((await card(again, SHOP7))?.word).toBe('skipped')
   expect(await label(again, 'skip')).toBe('unskip')
-})
-
-test('mark approved shows only while a rule for the item takes approved items', async ($, on) => {
-  const [first] = busyReport.plan.queue
-  const nested = { skill: 'implement', where: { any: [{ any: [{ approved: [true] }] }] } }
-  let queue: unknown[] = [first, { ...nested, source: 'jira' }]
-  engine(on, { 'report --json': () => ok({ ...busyReport, plan: { ...busyReport.plan, queue } }) })
-  await $.command.run(away())
-  const ui = await mount($, 'terminal')
-  await ui.press({ key: 'tab:skipped' })
-  expect(await ui.find({ key: 'approve' })).toBeFalsy()
-  await ui.press({ key: 'tab:needs' })
-  await ui.press({ key: 'nextCard' })
-  expect(await label(ui, 'approve')).toBe('approve plan')
-
-  queue = [first, nested]
-  await ui.press({ key: 'refresh' })
-  await ui.press({ key: 'tab:skipped' })
-  expect(await label(ui, 'approve')).toBe('mark approved')
 })
 
 test('no run yet, and a run that found nothing, each say why and what next', async ($, on) => {
