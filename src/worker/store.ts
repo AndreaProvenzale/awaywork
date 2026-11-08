@@ -120,9 +120,9 @@ async function getFile(store: Store, env: NodeJS.ProcessEnv, url: string, to: st
   await pipeline(Readable.fromWeb(res.body as never), createWriteStream(to))
 }
 
-/** A name a file can have under a folder: relative, with no `.`, `..` or empty part, and no control character. */
+/** A name a file can have under a folder: relative, with no `.`, `..` or empty part, and no control character or line separator. */
 const inside = (name: string) =>
-  !/\p{Cc}/u.test(name) && name.split('/').every((p) => p && p !== '.' && p !== '..')
+  !/[\p{Cc}\u2028\u2029]/u.test(name) && name.split('/').every((p) => p && p !== '.' && p !== '..')
 
 /** What came back of a post's pins: the files that match their hash, those edited since, those the cap left out. */
 export interface ReadBack {
@@ -247,10 +247,12 @@ export async function readBack(
   await mkdir(dir, { recursive: true })
   for (const post of posts) {
     let back: ReadBack
+    const left = budget.left
     try {
       back = await readPins(store, env, post.pins, join(dir, post.name), budget)
     } catch (e) {
       if (post.needed) throw e
+      budget.left = left
       await rm(join(dir, post.name), { recursive: true, force: true })
       notes.push(`left out ${post.what}: ${(e as Error).message}`)
       continue

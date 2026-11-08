@@ -128,7 +128,9 @@ export function readBackPosts(item: Item, skill: string, plan: boolean): PinnedP
   const covered = task
     ? planThread(item)?.plan
     : item.comments.findLast((c, at) => {
-        const post = resultSkill(c) === item.fields.approved && postAt(item, at)
+        // A plan has no skill: it mustn't match an item with no `approved`.
+        const result = resultSkill(c)
+        const post = result && result === item.fields.approved && postAt(item, at)
         return !!post && postAnswer(post) === 'approved'
       })
   const ownPost = item.comments[own]
@@ -148,7 +150,7 @@ export function readBackPosts(item: Item, skill: string, plan: boolean): PinnedP
     return [
       {
         // The kind is the post's heading, which a teammate may have edited: one path segment, whatever it says.
-        name: `${at + 1}-${kind.replace(/[^a-z0-9._-]+/gi, '-')}`,
+        name: `${at + 1}-${kind.replace(/[^a-z0-9._-]+/gi, '-').slice(0, 64)}`,
         what: `awaywork's post of ${c.at}`,
         pins,
         edits: !!item.mine,

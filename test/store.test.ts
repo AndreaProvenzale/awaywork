@@ -583,12 +583,42 @@ describe('read-back', () => {
   it('gets no pin whose name holds a control character, so EDITED lists only real paths', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-control-'))
     const newline = await pinned('x\n/etc/passwd', 'edited', sha('as posted'))
-    const nul = { name: 'x\0y', url: newline.url, sha256: sha('as posted') }
-    const posts = [
-      { name: '1-qa', what: 'a post', pins: [newline, nul], edits: true, needed: true },
-    ]
+    const named = (name: string) => ({ name, url: newline.url, sha256: sha('as posted') })
+    const pins = [newline, named('x\0y'), named('x\u2028/etc/passwd'), named('x\u2029/etc/passwd')]
+    const posts = [{ name: '1-qa', what: 'a post', pins, edits: true, needed: true }]
     expect(await readBack(storeOf(store), process.env, posts, dir)).toEqual([])
     expect(await readdir(dir)).toEqual([])
+  })
+
+  it("caps a post's folder name, so a very long heading can't stop a unit that doesn't need it", async () => {
+    const gone = { name: 'z.md', url: 'file:///nowhere/z.md', sha256: sha('x') }
+    const heading = 'x'.repeat(300)
+    const card = yours(1, [
+      post(markComment(`${resultComment('T.', 'done', heading)}${pinBlock([gone])}`)),
+    ])
+    expect(readBackPosts(card, 'review', false).map((p) => p.name)).toEqual([`1-${'x'.repeat(64)}`])
+    const { report: r } = await run(
+      store,
+      '  - { skill: review, deliver: report }',
+      [card],
+      writer({ 'report.md': 'ok' }, { prompts: [], read: [] }),
+    )
+    expect(r.results[0]).toMatchObject({ status: 'done' })
+  })
+
+  it('gives back what a post left out had used of the cap, so a needed post still fits', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-budget-'))
+    const older = await pinned('older.md', 'o'.repeat(3000))
+    const gone = { name: 'z.md', url: 'file:///nowhere/z.md', sha256: sha('x') }
+    const need = await pinned('need.md', 'n'.repeat(2000))
+    const posts = [
+      { name: '1-qa', what: 'an older post', pins: [older, gone], edits: true, needed: false },
+      { name: '2-story', what: 'the covered post', pins: [need], edits: true, needed: true },
+    ]
+    const smallStore = storeOf(store.replace(' }', ', read: { max_mb: 0.004 } }'))
+    const notes = await readBack(smallStore, process.env, posts, dir)
+    expect(notes).toEqual([expect.stringMatching(/^left out an older post: /)])
+    expect(await readFile(join(dir, '2-story', 'need.md'), 'utf8')).toBe('n'.repeat(2000))
   })
 
   it('starts a unit whose post files all stay links', async () => {
@@ -964,6 +994,38 @@ describe('stale posts', () => {
       })
       const seen = { prompts: [] as string[], read: [] as string[] }
       const { report: r } = await run(shared.config, queue, [card], writer({}, seen))
+      expect(seen.prompts).toHaveLength(1)
+      expect(r.results[0]?.store?.[0]).toMatch(
+        /^left out awaywork's post of .*: couldn't read plan\.yml/,
+      )
+    })
+
+    it.each([
+      ['older', true],
+      ['the only plan', false],
+    ])("on a plan that went ahead (%s) doesn't stop a rule with no approved", async (_, older) => {
+      const yaml = await pinned('plan.yml', 'tasks:\n  - { id: api, title: A }\n')
+      const went = post(
+        markComment(
+          `${leanPlanComment('Two.', [{ id: 'api', title: 'A' }], true)}${pinBlock([gone])}`,
+          { went: true, gates: [] },
+        ),
+      )
+      const newer = post(leanPlan([yaml], 'One.'), '2026-10-24T03:00:00Z')
+      const card = yours(1, older ? [went, post('no', '2026-10-24T02:00:00Z'), newer] : [went])
+      expect(readBackPosts(card, 'review', false)[0]).toMatchObject({
+        name: '1-plan',
+        needed: false,
+      })
+      await checkPins([card], config.store as Store, process.env)
+      const seen = { prompts: [] as string[], read: [] as string[] }
+      const { report: r } = await run(
+        shared.config,
+        '  - { skill: review, deliver: report }',
+        [card],
+        writer({ 'report.md': 'ok' }, seen),
+      )
+      expect(r.results[0]).toMatchObject({ status: 'done' })
       expect(seen.prompts).toHaveLength(1)
       expect(r.results[0]?.store?.[0]).toMatch(
         /^left out awaywork's post of .*: couldn't read plan\.yml/,
