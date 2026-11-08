@@ -701,6 +701,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         deliver: 'report',
         foreign: true,
         stackedOn: undefined,
+        lean: undefined,
         // The gate's own instructions, from the config: the rule's are written for the worker it judges.
         rule: {
           ...unit.rule,
