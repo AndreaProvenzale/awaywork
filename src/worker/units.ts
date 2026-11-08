@@ -1,5 +1,6 @@
 import { createWriteStream, existsSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join, posix } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { Config } from '../config/schema.js'
@@ -8,7 +9,10 @@ import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
 import { byHand } from '../core/continue.js'
 import {
+  leanPlanComment,
+  type Pin,
   type PostState,
+  pinBlock,
   planComment,
   questionsComment,
   resultComment,
@@ -42,6 +46,7 @@ import {
   latestResult,
   planYaml,
 } from '../core/plan.js'
+import { readBackPosts } from '../core/posts.js'
 import {
   type Commented,
   counted,
@@ -95,6 +100,7 @@ import {
   setupEnv,
   snapshot,
 } from './steps.js'
+import { type Kind, outFiles, putFiles, readBack, type Store } from './store.js'
 import {
   concludeMerge,
   conflictsFile,
@@ -212,6 +218,27 @@ async function leftBy(
   return { files, ...(summary && { summary }) }
 }
 
+/** What a chain starts from: the files its tasks in other repos ship, the folder of each item's files read back from the store, and what didn't come back. */
+interface Ready {
+  shipped: Shipped[]
+  pinned: Record<string, string>
+  notes: string[]
+}
+
+/** A lean post's text: the gates' card, then the step's `summary.md`, else its report's first lines, saying so in `notes`. */
+async function leanText(
+  out: string,
+  outcome: Outcome | undefined,
+  reports: StepReport[],
+  notes: string[],
+): Promise<string> {
+  const written = (await readOutput(join(out, 'summary.md'))).trim()
+  if (!written) notes.push("no summary.md: the post shows the report's first lines")
+  const summary = written || (reports.at(-1)?.text ?? '').split('\n').slice(0, 5).join('\n').trim()
+  const card = outcome?.kind === 'report' ? outcome.gates?.card : undefined
+  return card ? `${card}\n\n${summary}` : summary
+}
+
 /** Under every tracker's comment limit as text; Jira's write also checks the longer ADF it sends. */
 const MAX_COMMENT_BYTES = 30_000
 
@@ -274,6 +301,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     .filter((p) => !p.chain && (!input.only || named.includes(p)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
+  const store = input.config.store as Store | undefined
   // The worker user can't reach the run dir: its plugins and each clone get a folder of their own under /tmp.
   const root = isolated() ? await workerRoot() : input.runDir
 
@@ -283,7 +311,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     signal: input.signal,
     until: input.until,
   })
-  const publisher: Omit<Publisher, 'judge'> = {
+  const publisher: Omit<Publisher, 'judge' | 'pin'> = {
     forge: input.forge,
     runId: input.runId,
     signal: input.signal,
@@ -297,6 +325,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     status: Status = 'done',
     continued = 0,
     post?: (item: Item) => PostState,
+    pins: Pin[] = [],
   ): Promise<Commented[]> => {
     const posted: Commented[] = []
     for (const item of ownItems(p)) {
@@ -316,7 +345,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const waits = !!state && 'waits' in state
         const write = {
           op: 'comment',
-          body: resultComment(text, status, p.unit.skill, item.task?.id, continued, waits),
+          body: `${resultComment(text, status, p.unit.skill, item.task?.id, continued, waits)}${pinBlock(pins)}`,
         } as const
         const cfg = input.config.sources[item.source]
         const { updated, url = item.url } = await writeItem(
@@ -437,12 +466,48 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       ? { unposted: `questions.md is over ${MAX_COMMENT_BYTES} bytes` }
       : postComment(p, 'questions', (item) => questionsComment(text, item.task?.id))
 
-  /** Checks the chain's `plan.yml` in its `out` folder and posts it with the report and its contract, saying it went ahead unless it waits; a refused plan posts nothing. */
+  /**
+   * Puts the files of `out` a post of `p` pins in the store, if there's one, but those `inline` in the post unless it's lean;
+   * a put that fails gets a line in `notes`.
+   */
+  const pinOut = async (
+    p: PlannedUnit,
+    out: string,
+    inline: string[],
+    notes: string[],
+    contract?: string,
+  ): Promise<Pin[]> => {
+    if (!store || input.dryRun) return []
+    const names = (await outFiles(out)).filter((name) => p.unit.lean || !inline.includes(name))
+    const kind = (name: string): Kind =>
+      name === 'plan.yml'
+        ? 'plan'
+        : name === outputFile.report
+          ? 'report'
+          : name === contract
+            ? 'contract'
+            : name
+    const files = names.map((name) => ({ name, kind: kind(name) }))
+    const item = (ownItems(p)[0] as Item).key
+    const { pins, failed } = await putFiles(store, input.ctx.env, out, files, {
+      item,
+      unit: p.unit.id,
+    })
+    notes.push(...failed.map((line) => maskSecrets(line, secrets, input.ctx.env)))
+    return pins
+  }
+
+  /**
+   * Checks the chain's `plan.yml` in its `out` folder and posts it with the report and its contract, saying it went ahead
+   * unless it waits, or, lean, its `summary` and tasks with those files pinned; a refused plan posts nothing.
+   */
   const postPlan = async (
     p: PlannedUnit,
     report: string,
     out: string,
     post: PostState | undefined,
+    summary: string | undefined,
+    notes: string[],
   ): Promise<PlanPost> => {
     const limits = p.unit.planLimits ?? { maxTasks: input.config.limits.plan_tasks }
     const yaml = await readOutput(join(out, 'plan.yml'))
@@ -452,12 +517,20 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const text = name ? (await readOutput(join(out, name))).replace(/\r\n/g, '\n').trimEnd() : ''
     if (name && !text.trim())
       return { unposted: `plan.yml: contract ${file.plan.contract} is missing or empty` }
-    const body = planComment(
-      report,
-      yaml,
-      name ? { name, text } : undefined,
-      !!post && 'went' in post,
-    )
+    const tasks = file.plan.tasks.map((t) => t.id)
+    const inline = [outputFile.report, 'plan.yml', ...(name ? [name] : [])]
+    const went = !!post && 'went' in post
+    if (summary !== undefined) {
+      const pins = await pinOut(p, out, inline, notes, name || undefined)
+      const missing = ['plan.yml', ...(name ? [name] : [])].find(
+        (n) => !pins.some((pin) => pin.name === n),
+      )
+      if (missing) return { tasks, unposted: `${missing} isn't in the store` }
+      const lean = `${leanPlanComment(summary, file.plan.tasks, went)}${pinBlock(pins)}`
+      const posted = await postComment(p, 'plan', () => lean, post)
+      return { tasks, ...posted, ...(posted.url && { post: post ?? { waits: true } }) }
+    }
+    const body = planComment(report, yaml, name ? { name, text } : undefined, went)
     // The plan an approve approves is the one the next run reads back, so it must be the file's.
     const read = checkPlan(planYaml(body), limits)
     if (!('plan' in read && isDeepStrictEqual(read.plan, file.plan)))
@@ -466,10 +539,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
     if (name && contractText(body, name) !== text)
       return { unposted: `the contract ${name} doesn't read back from its comment` }
-    const tasks = file.plan.tasks.map((t) => t.id)
     if (Buffer.byteLength(body) > MAX_COMMENT_BYTES)
       return { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
-    const posted = await postComment(p, 'plan', () => body, post)
+    const pins = await pinOut(p, out, inline, notes)
+    const posted = await postComment(p, 'plan', () => `${body}${pinBlock(pins)}`, post)
     return { tasks, ...posted, ...(posted.url && { post: post ?? { waits: true } }) }
   }
 
@@ -505,7 +578,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
   }
 
-  const runChain = async (chain: PlannedUnit[], shipped: Shipped[] = []): Promise<UnitResult[]> => {
+  const runChain = async (
+    chain: PlannedUnit[],
+    { shipped = [], pinned = {}, notes = [] }: Partial<Ready> = {},
+  ): Promise<UnitResult[]> => {
     const done: UnitResult[] = []
     const first = chain[0] as PlannedUnit
     const { repo, base } = first.unit
@@ -566,6 +642,20 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let finishByHand: string | undefined
     // The chain's first step, once it published the chain.
     let publishedBy: UnitResult | undefined
+    // What didn't go to the store or come back from it.
+    const storeNotes = [...notes]
+
+    /** Puts what the PR's `.away/out/` holds besides its body in the store, from a copy out of the clone. */
+    const pin: Publisher['pin'] = async (clone) => {
+      if (!store) return []
+      const copy = await mkdtemp(join(tmpdir(), 'awaywork-pin-'))
+      try {
+        await copyOut(join(clone, WORK_DIR, 'out'), copy)
+        return await pinOut(first, copy, [outputFile.report], storeNotes)
+      } finally {
+        await rm(copy, { recursive: true, force: true })
+      }
+    }
 
     /** Runs a gate's judge like a step, on the rule's providers and models, its worker log in the chain's `out/`. */
     const judge: Publisher['judge'] = async (gate, skill, unit, dir, on, instructions) => {
@@ -793,7 +883,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           lead.outcome = kept
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
-                { ...publisher, judge },
+                { ...publisher, judge, pin },
                 {
                   ...first.unit,
                   ...shape,
@@ -941,6 +1031,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           previous: previous ?? (reuse && !retryOf ? undefined : await lastReport(unit, chainDir)),
           reuse,
           shipped,
+          pinned,
           chain: steps,
           loop: p.loop,
         })
@@ -1231,8 +1322,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const waits = decides && (!!first.unit.waits || !!gates?.fired)
     const went: PostState | undefined =
       decides && !waits ? { went: true, gates: gates?.ran ?? [] } : undefined
+    const out = join(chainDir, 'out')
+    // Only what posts reads it, so only a post says it's missing.
+    const summary = () =>
+      first.unit.lean ? leanText(out, outcome, reports, storeNotes) : Promise.resolve(undefined)
     if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report')
-      lead.plan = await postPlan(first, lead.outcome.text, join(chainDir, 'out'), went)
+      lead.plan = await postPlan(first, lead.outcome.text, out, went, await summary(), storeNotes)
     // The chain ran and published, and only a `when`, or a report's `continue`, ended it early; a plan rule's plan was posted.
     const finished =
       !interrupted &&
@@ -1254,11 +1349,15 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           ? (item: Item): PostState =>
               went ?? { waits: true, ...(onDone?.move && { move: onDone.move, saw: item.status }) }
           : undefined
-        lead.result = await postResult(first, resultOf(outcome), status, leaves?.continued, post)
+        const pins =
+          deliver === 'report' ? await pinOut(first, out, [outputFile.report], storeNotes) : []
+        const text = (deliver === 'report' && (await summary())) || resultOf(outcome)
+        lead.result = await postResult(first, text, status, leaves?.continued, post, pins)
       }
       if (onDone?.move && !continues && !(report && waits))
         lead.moved = await moveItems(ownItems(first), onDone.move, lead.result)
     }
+    if (lead && storeNotes.length) lead.store = storeNotes
     for (const r of done) {
       // A committing chain that committed nothing published its reports.
       const published = r === publishedBy && r.outcome?.kind === 'report' ? 'report' : deliver
@@ -1318,6 +1417,27 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return { shipped }
   }
 
+  /** Reads back the files of the posts each of a chain's items holds for its first step, into the chain's `files/` in the run dir; why it can't start when a get fails. */
+  const readPosts = async (
+    head: PlannedUnit,
+    shipped: Shipped[],
+  ): Promise<{ skip: string } | Ready> => {
+    const ready: Ready = { shipped, pinned: {}, notes: [] }
+    if (!store) return ready
+    for (const item of head.unit.items) {
+      const posts = readBackPosts(item, head.unit.skill, head.unit.deliver === 'plan')
+      if (!posts.length) continue
+      const dir = join(input.runDir, 'units', head.unit.id, 'files', slug(item.key))
+      try {
+        ready.notes.push(...(await readBack(store, input.ctx.env, posts, dir)))
+      } catch (e) {
+        return { skip: maskSecrets((e as Error).message, secrets, input.ctx.env) }
+      }
+      ready.pinned[item.key] = dir
+    }
+    return ready
+  }
+
   try {
     const turn = input.turn ?? ((chain) => chain())
     for (const chain of chains) {
@@ -1327,7 +1447,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         input.ctx.log(
           `${head.unit.id}: prepared from the default branch; a real run clones ${head.unit.items[0]?.task?.onto}'s branch`,
         )
-      const ready = await blocked(head)
+      const blocker = await blocked(head)
+      const ready = 'skip' in blocker ? blocker : await readPosts(head, blocker.shipped)
       const done =
         'skip' in ready
           ? skipTask(chain, ready.skip)
@@ -1339,7 +1460,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                       unit: { ...p.unit, base: onto.branch, stackedOn: onto.url },
                     }))
                   : chain,
-                ready.shipped,
+                ready,
               ),
             )
       if (done.some((r) => r.status !== 'skipped')) started.add(head.unit.id)

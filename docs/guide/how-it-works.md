@@ -324,7 +324,7 @@ The run says where it went, and the rule's [`on_done`](./configuration.md#on-don
 - **Only you answer.** A plan's answer is your first reply after it, read off the card: a teammate's comment, a code owner's or a bot's is context in `item.md`, never an answer, and a later comment of yours changes nothing. Edit your reply to change your mind before the next run reads it; a reply someone else edited isn't yours anymore.
 - **`wait: false`** posts the plan and goes on: the post says so on its mark line (`— awaywork · went ahead`) and that a reply to it changes nothing, counts as its own answer, and the next run fans it out with no notes. Its [gates](./configuration.md#gates-of-a-rules-own) still run, and one that fires makes it wait, its decision card on top of the plan.
 - The plan is read off the card on every run, never the state dir: it's awaywork's newest plan comment, so a fresh runner waits too. Edit it to fix a task and the next run checks your edit again; an edit that breaks it skips the card as **plan refused** with the reason, under Needs you, instead of planning over your edit. A plan comment someone else edited isn't awaywork's anymore ([Safety](./safety.md#what-awaywork-publishes)), so the card has no plan and gets a new one. GitHub reads the card's whole thread, past its last 50 comments, so an old plan up a long thread still counts.
-- A plan that fails its checks, in the file or as the next run reads it back from the comment, a missing `plan.yml` or contract, or a comment over 30 KB, the contract included, is never posted: the reason stays in the morning report, as `plan not posted: plan.yml: task id "api" is used twice`, and `on_done` doesn't fire. Same for an item that isn't yours, a source that can't write, or a post that fails. A step that asks [questions](#questions) instead posts those, and the card waits for your answer as usual.
+- A plan that fails its checks, in the file or as the next run reads it back from the comment, a missing `plan.yml` or contract, or a comment over 30 KB, the contract included (a [lean](#files-that-come-back) one pins them instead), is never posted: the reason stays in the morning report, as `plan not posted: plan.yml: task id "api" is used twice`, and `on_done` doesn't fire. Same for an item that isn't yours, a source that can't write, or a post that fails. A step that asks [questions](#questions) instead posts those, and the card waits for your answer as usual.
 - A `deliver: plan` rule that matches only merged or closed items, names a `source` that can't write, or has no rule whose `where` names `planned` to take its tasks, is a config error.
 
 ### Tasks
@@ -580,7 +580,7 @@ To approve, reply with approve as the first line; the lines below it reach the t
 — awaywork
 ````
 
-It's part of the plan, so you approve it with the rest: it counts toward the 30 KB, it must read back from the comment as the file it was, and your edits to it are checked again on every read. A contract the file names but the step didn't write isn't posted (`plan not posted: plan.yml: contract .away/out/openapi.yaml is missing or empty`), and an edit that drops it from the comment refuses the plan (`plan refused: contract .away/out/openapi.yaml isn't in the plan comment`). Every task finds it in `.away/context/<task>/contract/openapi.yaml`, next to its `item.md`, and its prompt says it was approved with the plan.
+It's part of the plan, so you approve it with the rest: it counts toward the 30 KB unless the plan is [lean](#files-that-come-back), it must read back from the comment as the file it was, and your edits to it are checked again on every read. A contract the file names but the step didn't write isn't posted (`plan not posted: plan.yml: contract .away/out/openapi.yaml is missing or empty`), and an edit that drops it from the comment refuses the plan (`plan refused: contract .away/out/openapi.yaml isn't in the plan comment`). Every task finds it in `.away/context/<task>/contract/openapi.yaml`, next to its `item.md`, and its prompt says it was approved with the plan.
 
 Each task is a unit in its own repo: the clone, `setup`, `secrets`, `test`, branch template, gates and `units_per_repo` are that repo's, and its PR opens there, `Part of` the card like any task's. Questions and `on_done` still go to the card, and the forge looks the task's PR up in the task's repo.
 
@@ -757,6 +757,59 @@ To approve, reply with approve as the first line. Any other reply is feedback: a
 
 - **Gone ahead.** A report rule with [gates of its own](./configuration.md#gates-of-a-rules-own) and no `wait` goes ahead when they ran clear: it posts its result with the gates line on top (`Gates: none fired (taste)`), its mark line saying `— awaywork · went ahead · gates=taste`, and `on_done` moves the card at once. That post counts as approved. A gate that fires makes the post wait, with the decision card on top of it, as on a PR.
 - A report rule that waits, or has gates of its own, needs a source that can write: one that names a `source` that can't is a config error, and `doctor` warns about any it may match. `wait` and rule gates on a `pr`, `draft_pr`, `push` or `pending_review` rule are a config error for now: the PR is already the decision.
+
+## Files that come back
+
+With a [store](./configuration.md#store), a plan or report rule's post is lean: the step writes `.away/out/summary.md`, a few lines for whoever reads the thread (its prompt asks for it), and awaywork posts that, its own facts and a pin per file the step left, everything else in the store. A real one, from the example store on a sandbox issue:
+
+```
+Result of story
+
+A story in one line.
+
+Status: done
+
+To approve, reply with approve as the first line. Any other reply is feedback: awaywork runs this step again with it.
+
+Pinned big.bin: file:///…/cfg/files/ba03611f-0cce-4344-9b3e-11e7413084fa/big.bin (3000 bytes, sha256 e1630f843370f402870799e14abbf2b06af2d23b0153658e1211dffabc61ad8f)
+Pinned mock.png: file:///…/cfg/files/71e96381-7e32-4ee7-9aab-5f803b4de816/mock.png (7 bytes, sha256 2d4566582844690f8634a8b2534ea5221560038c6c0650c99140759bad603ae2)
+Pinned report.md: file:///…/cfg/files/a63b0dec-63e2-4701-968e-8350ad439bae/report.md (22 bytes, sha256 8ce3d4416e83b1da658e0404e2cf700108a3ed2e43b077fadad9eb5ccaa95c8e)
+
+— awaywork · waits
+```
+
+A lean plan shows its tasks instead of `plan.yml`, which is pinned with its contract and report, so the 30 KB comment limit is gone:
+
+```
+VAT export in two tasks: the api first, then web against its contract.
+
+Tasks:
+- api: VAT export endpoint
+- web: Export button
+
+To approve, reply with approve as the first line; the lines below it reach the tasks as notes. Any other reply is feedback: awaywork plans again with it.
+
+Pinned openapi.yaml: https://… (2140 bytes, sha256 …)
+Pinned plan.yml: https://… (311 bytes, sha256 …)
+Pinned report.md: https://… (1822 bytes, sha256 …)
+
+— awaywork
+```
+
+`post: full` keeps today's comment, the report inline, and pins only the other files. A step that wrote no `summary.md` gets its report's first five lines and a line saying so in the morning report. Pins sit below everything the model wrote, right above the mark, so a `Pinned` line in a report pins nothing. A PR step's files, screenshots say, are pinned in the PR body's footer the same way. Without a store nothing changes: posts are full, and the files stay in the run dir, where the [notify](./configuration.md#notify) hook reads them.
+
+**What comes back.** Before a unit's worker starts, awaywork reads its items' threads and gets the pinned files into `.away/context/<item>/files/<post>/`, a folder per post named by its place in the thread, e.g. `2-story/`: the files of the post an approval covers (a task's plan, the result `approved: story` names), its own newest post when it runs again on your feedback or a `continue`, every post newer than that, and on a unit on a PR awaywork opened for you, its footer's. A footer file that changed since awaywork pinned it is left out, with a line in the morning report: nothing reruns on a PR body, and a stranger's PR carrying awaywork's marker gets nothing read back at all. The worker still holds no token, and its prompt calls those files data, like `item.md`: someone else wrote them. The rest of the plan's special cases fold in: a lean plan's tasks read its `plan.yml` and contract through `get`; what a task `ships` still comes from its PR's head. `read.max_mb` caps what one unit reads back, 10 by default, and the rest stay links, named in the morning report; a pin carries its file's size, so one over the cap isn't even fetched; `read.files` narrows it by name, `*.md` matching `notes/a.md` too.
+
+**An edit is feedback.** awaywork hashes each file as it puts it and checks the hash when it reads it back. Every `plan`, run and watch poll reads back the files of the posts that decide a rule, within the cap, a plan's and a waiting or approved report's, and one that doesn't match makes its post stale: it counts as your feedback, whoever edited the file. The step runs again, though the card didn't change, with the edited file in context, and posts again; a rule that waits needs a fresh `approve` on that new post, so you only approve what awaywork has seen. Here a teammate edited `report.md` in the store, and the next run went again:
+
+```
+  1  awaywork-sandbox#206  story  done    report
+     Full report of story.
+     report.md of awaywork's post of 2026-11-07T19:31:26Z changed in the store since awaywork pinned it
+     result posted on https://github.com/AndreaProvenzale/awaywork-sandbox/issues/206#issuecomment-6712036203; it waits for your approve
+```
+
+So edit the plan in Notion freely, then approve what comes back. A full post on the card keeps the card's rule: your edit of the plan comment counts, someone else's voids it.
 
 ## The morning report
 

@@ -10,15 +10,78 @@ const marker = '<!-- awaywork'
  * Appended to every PR body awaywork opens; it discloses the author, marks the PR as ours and
  * names its items, each part URI-encoded so no key can end the comment, and what a draft `left` for a later run, if anything.
  */
-export function footer(runId: string, items: Pick<Item, 'source' | 'key'>[], left?: Left): string {
+export function footer(
+  runId: string,
+  items: Pick<Item, 'source' | 'key'>[],
+  left?: Left,
+  pins: Pin[] = [],
+): string {
   const named = items.map(
     (i) => ` item=${encodeURIComponent(i.source)}:${encodeURIComponent(i.key)}`,
   )
   const said = left
     ? ` status=${left.status} continued=${left.continued} head=${left.head} from=${left.from}`
     : ''
-  return `---\n${marker} run=${runId}${named.join('')}${said} -->\nOpened by awaywork (run \`${runId}\`): a coding agent worked on this unattended. Review it like any other contribution.`
+  return `---\n${marker} run=${runId}${named.join('')}${said} -->\nOpened by awaywork (run \`${runId}\`): a coding agent worked on this unattended. Review it like any other contribution.${pinBlock(pins)}`
 }
+
+/** A file awaywork put in the store for a post: its name under `.away/out/`, its URL, and its size and sha256 when put. */
+export interface Pin {
+  name: string
+  url: string
+  sha256: string
+  /** Bytes; a pin line written before awaywork wrote sizes has none. */
+  size?: number
+}
+
+/** E.g. `Pinned plan.yml: https://… (1234 bytes, sha256 9f86…)`, the name URI-encoded but for its slashes, so a space can't split the line. */
+const pinLine = ({ name, url, sha256, size }: Pin): string =>
+  `Pinned ${encodeURIComponent(name).replaceAll('%2F', '/')}: ${url} (${size === undefined ? '' : `${size} bytes, `}sha256 ${sha256})`
+
+/** The pins' lines, a paragraph after what they follow; '' for none. */
+export const pinBlock = (pins: Pin[]): string =>
+  pins.length ? `\n\n${pins.map(pinLine).join('\n')}` : ''
+
+function readPin(line: string | undefined): Pin | undefined {
+  const [, name = '', url = '', size, sha256 = ''] =
+    /^Pinned (\S+): (\S+) \((?:(\d+) bytes, )?sha256 ([0-9a-f]{64})\)$/.exec(line?.trim() ?? '') ??
+    []
+  try {
+    return name
+      ? { name: decodeURIComponent(name), url, sha256, ...(size && { size: Number(size) }) }
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** The pins at the end of `lines`, in order: awaywork writes them after anything a model wrote. */
+function trailingPins(lines: string[]): Pin[] {
+  const pins: Pin[] = []
+  for (let at = lines.length - 1; at >= 0; at--) {
+    const pin = readPin(lines[at])
+    if (!pin) break
+    pins.unshift(pin)
+  }
+  return pins
+}
+
+/** The files an awaywork PR's footer pins: only below its last marker, which the PR body above can't follow. */
+export const footerPins = (body: string | null | undefined): Pin[] => {
+  const at = (body ?? '').lastIndexOf(marker)
+  return at < 0
+    ? []
+    : trailingPins(
+        (body ?? '')
+          .slice(at)
+          .split('\n')
+          .filter((l) => l.trim()),
+      )
+}
+
+/** The files awaywork's post pins, right above its mark. */
+export const pinsOf = (c: Item['comments'][number]): Pin[] =>
+  isAwayworkComment(c) ? trailingPins(rawLines(c).slice(0, -1)) : []
 
 export const isOurs = (body: string | null | undefined): boolean => !!body?.includes(marker)
 
@@ -229,6 +292,14 @@ export const planComment = (
 ): string =>
   `${report.trim()}\n\n${contract ? `${contractBlock(contract)}\n\n` : ''}\`\`\`yaml\n${plan.trim()}\n\`\`\`\n\n${went ? planWent : planAnswer}`
 
+/** A lean plan post: its summary and its tasks, and how to answer, or that it went ahead; its `plan.yml`, contract and report are pinned files. */
+export const leanPlanComment = (
+  summary: string,
+  tasks: { id: string; title: string }[],
+  went = false,
+): string =>
+  `${summary.trim()}\n\nTasks:\n${tasks.map((t) => `- ${t.id}: ${t.title}`).join('\n')}\n\n${went ? planWent : planAnswer}`
+
 export const contractHeading = (name: string) => `### Contract: ${name}`
 
 /** The contract under its heading, in a fence longer than any run of backticks in it. */
@@ -257,11 +328,18 @@ export const answerTo = (
 
 export type CommentKind = 'plan' | 'questions' | 'approve' | 'result'
 
-const visibleLines = (c: Item['comments'][number]): string[] =>
+const rawLines = (c: Item['comments'][number]): string[] =>
   c.body
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
+
+/** A comment's lines as its kind and status are read: without the pins above its mark. */
+const visibleLines = (c: Item['comments'][number]): string[] => {
+  const lines = rawLines(c)
+  const pins = trailingPins(lines.slice(0, -1)).length
+  return pins ? [...lines.slice(0, -1 - pins), ...lines.slice(-1)] : lines
+}
 
 /**
  * Which of awaywork's comments this is, told by its visible text: the line above the mark, or an approve reply's first line.

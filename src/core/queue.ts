@@ -104,15 +104,15 @@ export function ruleFor(queue: Rule[], item: Item): number {
   return plan ?? queue.findIndex((r) => matches(r, item) && !doneWith(r, item))
 }
 
-/** Whether the rule's newest post on the item, a plan or a result, waits for your answer: it holds the item for that rule only. */
+/** Whether the rule's newest post on the item, a plan or a result, waits for your answer: it holds the item for that rule only. A file of it edited in the store is feedback. */
 export function waitsOn(rule: Rule, item: Item): boolean {
-  const post =
-    rule.deliver === 'plan'
-      ? planThread(item)
-      : rule.deliver === 'report'
-        ? reportPost(item, rule.skill)
-        : undefined
-  return !!post && !post.answer
+  const thread = rule.deliver === 'plan' ? planThread(item) : undefined
+  const post = thread
+    ? { post: thread.plan, answer: thread.answer }
+    : rule.deliver === 'report'
+      ? reportPost(item, rule.skill)
+      : undefined
+  return !!post && !post.answer && !post.post.pinned?.stale
 }
 
 /** A report rule's newest result on the item, once you approved it or it went ahead: the rule doesn't run on it again. */

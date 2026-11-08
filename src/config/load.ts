@@ -9,6 +9,7 @@ import { isCommandProvider } from '../providers/command.js'
 import { isCommand } from '../sources/command.js'
 import { routinesOf } from '../sources/routines.js'
 import type { ContextSource } from '../worker/context.js'
+import type { Store } from '../worker/store.js'
 import { defaultConfigPath } from './paths.js'
 import { type Config, configSchema, removedKeys } from './schema.js'
 
@@ -42,6 +43,7 @@ export async function loadConfig(path: string): Promise<Config> {
     const { context } = cfg as ContextSource
     if (context) context.dir = dirOf('sources', id, 'context', 'command')
   }
+  if (config.store) (config.store as Store).dir = dirOf('store', 'command')
   for (const { config: cfg } of config.providers)
     if (isCommandProvider(cfg)) cfg.dir = dirOf('providers')
   return config

@@ -39,6 +39,7 @@ with:
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
+| `store` | object |  | Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back |
 | `keep_runs` | string | `"30d"` | How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report |
 
 ## `windows[]`
@@ -379,6 +380,7 @@ First matching rule wins; top = highest priority.
 | `deliver` | "draft_pr" \| "pr" \| "report" \| "push" \| "pending_review" \| "plan" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, a step asks questions with ask in its status file, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans |
 | `wait` | boolean |  | deliver: plan or report: the post waits for your reply on the item, approve as its first line letting the next stage take it, anything else running the step again; default true for plan, false for report; a gate of the rule's own that fires makes it wait anyway |
 | `gates` | map |  | deliver: plan or report: gates of the rule's own, on top of the top-level ones, run on what the step left: a command reads AWAYWORK_OUT_DIR, a skill a read-only copy of .away/out; one that fires puts its line on the post and makes it wait |
+| `post` | "summary" \| "full" |  | deliver: plan, or a report that posts: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
@@ -587,3 +589,23 @@ Runs after each step of a finished unit and with the morning report when a run e
 |---|---|---|---|
 | `command` (required) | string |  | Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS, _ITEM_URL, _ITEM_KEY and _SOURCE (one line per item), _REPO and, when there is one, _VERDICT, _PR_URL, _REPORT or _OUT_DIR for a unit |
 | `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
+
+## `store`
+
+Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `command` (required) | string |  | Shell command run like a custom source's, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or reads {"op":"get","url"} and prints the file's bytes |
+| `secrets` | string[] | `[]` | Env vars the command reads; withheld from workers, listed in Actions |
+| `get` | boolean | `true` | false: the command only puts, and awaywork reads a file back with a plain HTTP GET of its URL |
+| `read` | object | `{}` | What comes back into a unit's context when it reads its item's thread |
+
+## `store.read`
+
+What comes back into a unit's context when it reads its item's thread.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `max_mb` | number | `10` | At most this many MB of a unit's files come back; the rest stay links |
+| `files` | string[] | `[]` | Globs of the file names that come back, e.g. ["*.md", "*.yml"]; default every file |

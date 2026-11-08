@@ -20,6 +20,7 @@ import { providerFor, providersOf } from '../providers/index.js'
 import { sourceFor, writeItem } from '../sources/index.js'
 import { nextOccurrences, type RoutinesConfig } from '../sources/routines.js'
 import { maskSecrets } from '../worker/setup.js'
+import { checkPins } from '../worker/store.js'
 import { configSecrets } from '../worker/workspace.js'
 import { interactive, itemCommands, openScreen } from './browse.js'
 import { reportConfigError } from './config.js'
@@ -277,9 +278,7 @@ export async function collectItems(
     onProgress?.({ name: id, state: 'running' })
     await source.items(cfg, ctx, finishedSince(queue, id)).then(
       (found) => {
-        items.push(
-          ...found.map((i) => withApproved(link ? { ...i, link: renderLink(link, i) } : i)),
-        )
+        items.push(...found.map((i) => (link ? { ...i, link: renderLink(link, i) } : i)))
         onProgress?.({ name: id, state: 'done', detail: counted(found.length, 'item') })
       },
       (e: Error) => {
@@ -290,7 +289,9 @@ export async function collectItems(
     )
   }
   await linkTasks(items, forgeFor(config), ctx, onProgress)
-  return items
+  // `approved` is read off the thread, an edited file in the store included.
+  if (config.store) await checkPins(items, config.store, ctx.env)
+  return items.map(withApproved)
 }
 
 const firstLine = (text: string) => text.split('\n')[0]

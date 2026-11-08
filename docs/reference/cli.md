@@ -146,10 +146,10 @@ Options:
                     (choices: "no_rule", "skipped_by_you", "unchanged",
                     "over_cap", "waiting_for_review", "waiting_for_answer",
                     "waiting_for_approval", "approved", "invalid_plan",
-                    "fanned_out", "waiting_for_task", "task_merged",
-                    "task_done", "all_tasks_done", "gave_up", "no_repo",
-                    "invalid_branch", "refused_delivery", "draft_moved",
-                    "continue_cap", "continues_later", "running")
+                    "store_failed", "fanned_out", "waiting_for_task",
+                    "task_merged", "task_done", "all_tasks_done", "gave_up",
+                    "no_repo", "invalid_branch", "refused_delivery",
+                    "draft_moved", "continue_cap", "continues_later", "running")
   --why <key>       say why an item is planned or skipped, by key, source:key or
                     the ref plan shows
   -h, --help        display help for command
@@ -267,10 +267,10 @@ Options:
                     "no_rule", "skipped_by_you", "unchanged", "over_cap",
                     "waiting_for_review", "waiting_for_answer",
                     "waiting_for_approval", "approved", "invalid_plan",
-                    "fanned_out", "waiting_for_task", "task_merged",
-                    "task_done", "all_tasks_done", "gave_up", "no_repo",
-                    "invalid_branch", "refused_delivery", "draft_moved",
-                    "continue_cap", "continues_later", "running")
+                    "store_failed", "fanned_out", "waiting_for_task",
+                    "task_merged", "task_done", "all_tasks_done", "gave_up",
+                    "no_repo", "invalid_branch", "refused_delivery",
+                    "draft_moved", "continue_cap", "continues_later", "running")
   -h, --help        display help for command
 ```
 

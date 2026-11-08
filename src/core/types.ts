@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import type { DraftLeft, Left } from './footer.js'
+import type { DraftLeft, Left, Pin } from './footer.js'
 import type { Contract, PlanLimits } from './plan.js'
 
 /** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
@@ -43,7 +43,15 @@ export interface Item {
   reviewers: string[]
   labels: string[]
   /** `mine` when your own account wrote it and nobody else edited it since. */
-  comments: { author: string; body: string; at: string; mine?: true; bot?: true }[]
+  comments: {
+    author: string
+    body: string
+    at: string
+    mine?: true
+    bot?: true
+    /** What awaywork read back of the files this post of its pins: a lean plan's `plan.yml` and contract, the file whose hash no longer matches, or why it couldn't read one. */
+    pinned?: { files: Record<string, string>; stale?: string; failed?: string }
+  }[]
   /** A PR item links itself, so items sharing a PR dedupe into one unit. */
   linkedPrs: PrRef[]
   /** The line a PR body carries to link this item, rendered from its source's `link`. */
@@ -51,6 +59,8 @@ export interface Item {
   fields: Record<string, unknown>
   /** Yours: your PR, or an item assigned to you; awaywork writes only to these. */
   mine?: true
+  /** A PR whose body nobody but you, or awaywork as you, edited last: only its footer pins are read back. */
+  bodyMine?: true
   /** A task of the plan approved on the card `parent`: awaywork makes it, and writes to the card for it. */
   task?: {
     parent: Item
@@ -272,6 +282,7 @@ export interface Forge {
     items: Pick<Item, 'source' | 'key'>[],
     draft: boolean,
     left?: Left,
+    pins?: Pin[],
   ): Promise<string>
   /** Rewrites PR `pr`'s title and body as `openPr` writes them, and marks it ready for review when `ready`. */
   updatePr(
@@ -282,6 +293,7 @@ export interface Forge {
     items: Pick<Item, 'source' | 'key'>[],
     ready: boolean,
     left?: Left,
+    pins?: Pin[],
   ): Promise<void>
   /** Puts PR `pr` on top of PR `below` in the forge's stacked PRs, without editing either PR. */
   stack(repo: string, below: string, pr: string): Promise<void>
@@ -378,6 +390,8 @@ export interface Rule extends Step {
   on_done?: { move?: string; comment?: 'result' }
   /** A plan or report rule's post waits for your approve; unset, a plan's does and a report's doesn't. */
   wait?: boolean
+  /** A plan or report rule's post: `summary`, its summary and pinned files, or `full`, the report inline; default summary with a store. */
+  post?: 'summary' | 'full'
   /** A plan or report rule's own gates, on what its step left; one that fires holds the post. */
   gates?: Record<
     string,
@@ -408,6 +422,8 @@ export interface Unit {
   gates?: Record<string, Gate>
   /** A plan's or report's post: it waits for your approve, or goes ahead unless one of its gates fires; unset, a report posts as a plain result. */
   waits?: boolean
+  /** A plan's or report's post is lean: its summary and pinned files, the rest in the store. */
+  lean?: true
   /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the task's this one stacks on. */
   stackedOn?: string
   /** `base` is awaywork's own draft for the unit, which a later run goes on with: the chain's commits go onto it. */

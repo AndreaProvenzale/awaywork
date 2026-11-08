@@ -123,6 +123,28 @@ const entry = z.object({
 })
 type Entry = z.output<typeof entry>
 
+/** Runs a command of the config as a custom source's runs: in its folder, on `env` alone, with `input` on stdin, its stdout into `file` when given. */
+export const runShell = (
+  command: string,
+  cwd: string | undefined,
+  env: NodeJS.ProcessEnv,
+  input?: string,
+  file?: string,
+) =>
+  // A timeout kills only the shell; kill its process group so no child keeps stdout open.
+  awaitGroup(
+    execa(command, {
+      shell: true,
+      cwd,
+      env,
+      extendEnv: false,
+      timeout: TIMEOUT_MS,
+      detached: true,
+      ...(input !== undefined && { input }),
+      ...(file !== undefined && { stdout: { file } }),
+    }),
+  )
+
 export function isCommand(cfg: unknown): cfg is CommandConfig {
   return typeof cfg === 'object' && cfg !== null && 'command' in cfg
 }
@@ -136,18 +158,7 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     ...Object.fromEntries(cfg.fields.map((name) => [name, scalar])),
   }
   const run = (command: string, c: CommandConfig, ctx: Ctx, input?: string) =>
-    // A timeout kills only the shell; kill its process group so no child keeps stdout open.
-    awaitGroup(
-      execa(command, {
-        shell: true,
-        cwd: c.dir,
-        env: ctx.env,
-        extendEnv: false,
-        timeout: TIMEOUT_MS,
-        detached: true,
-        ...(input !== undefined && { input }),
-      }),
-    )
+    runShell(command, c.dir, ctx.env, input)
   return {
     id,
     configSchema: commandConfig,
