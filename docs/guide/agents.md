@@ -26,7 +26,7 @@ r: refresh p: plan
 ──────────────────────────────────────────────────────────────
 acme/shop  1/14                                      h: ‹ l: ›
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ ╭────────────────────────────╮
-┃ #101             review PR ┃ │ #109          approve plan │
+┃ #101             review PR ┃ │ #109               approve │
 ┃ Coupon codes with          ┃ │ Split the checkout service │
 ┃ per-customer limits        ┃ │                            │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ ╰────────────────────────────╯
@@ -40,13 +40,13 @@ https://github.com/acme/shop/pull/401
 
 It lands on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else.
 
-A tab is a strip of cards, a page at a time: items under their repo, or their tracker and project key, and Needs you lists a repo's by what they ask of you, so the PRs to review sit together. A card has the ref and that word (`review PR`, `answer question`, `approve plan`, `add repo`, ...) or why the item waits (`no rule`, `over cap`, `skipped by you`, ...), then the title. The line above it says whose card you're on and where (`acme/shop  1/14`). Under the strip sit the card's buttons, and under the rule its detail: the title, the whole reason and the link. Every part keeps its height, so nothing jumps while you browse. The wheel over the cards steps through them; anywhere else it scrolls the detail. A pane too short for all that (a small window, or the pane above the prompt outside fullscreen) drops the fixed heights and scrolls as a whole.
+A tab is a strip of cards, a page at a time: items under their repo, or their tracker and project key, and Needs you lists a repo's by what they ask of you, so the PRs to review sit together. A card has the ref and that word (`review PR`, `answer question`, `approve`, `add repo`, ...) or why the item waits (`no rule`, `over cap`, `skipped by you`, ...), then the title. The line above it says whose card you're on and where (`acme/shop  1/14`). Under the strip sit the card's buttons, and under the rule its detail: the title, the whole reason and the link. Every part keeps its height, so nothing jumps while you browse. The wheel over the cards steps through them; anywhere else it scrolls the detail. A pane too short for all that (a small window, or the pane above the prompt outside fullscreen) drops the fixed heights and scrolls as a whole.
 
 `h` and `l` step card to card while the pane has the keyboard, as it does when it opens. Click a card and the strip takes every key: ←/→ (or Tab) move at once, ↑/↓ scroll the detail and the letters still press their buttons, until Esc hands the keyboard back to the prompt. That's how the desktop app gets keys too, where the prompt keeps them otherwise. In VS Code, click a card's ref to pick it; `h` and `l` work there too. The buttons are the card's own:
 
 - `o` opens its PR, issue or tracker item;
 - `s` skips the item in the coming runs, or unskips one you skipped;
-- `a` approves the plan the item waits on (`approve plan`), or, when one of your rules has `approved: true`, marks a last-run unit or a skipped item approved (`mark approved`);
+- `a` (`approve`) approves the plan or result the item waits on, replying `approve` on it;
 - `v` (`view report`) shows a last-run unit's `awaywork report <run> --unit <id>` in the detail, and `b` goes back. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
 - `c` (`ask Claude here`) hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`.
 

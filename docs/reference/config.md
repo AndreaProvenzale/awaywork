@@ -340,9 +340,10 @@ A custom source: any command that prints your open items as JSON.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `changed` | string \| string[] |  | Git globs from the repo root; fires when the slice's commits change a matching path |
-| `command` | string |  | A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with |
-| `skill` | string |  | A skill, yours or built in, that a model runs on the slice's commits after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops |
+| `changed` | string \| string[] |  | Git globs from the repo root; fires when the chain's commits change a matching path |
+| `command` | string |  | A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with |
+| `skill` | string |  | A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops |
+| `instructions` | string \| string[] |  | Instruction files a skill gate's judge reads, relative to the config file; never the repo's, and never the rule's |
 
 ## `gates.<key>`
 
@@ -376,12 +377,14 @@ First matching rule wins; top = highest priority.
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `deliver` | "draft_pr" \| "pr" \| "report" \| "push" \| "pending_review" \| "plan" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, a step asks questions with ask in its status file, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans |
+| `wait` | boolean |  | deliver: plan or report: the post waits for your reply on the item, approve as its first line letting the next stage take it, anything else running the step again; default true for plan, false for report; a gate of the rule's own that fires makes it wait anyway |
+| `gates` | map |  | deliver: plan or report: gates of the rule's own, on top of the top-level ones, run on what the step left: a command reads AWAYWORK_OUT_DIR, a skill a read-only copy of .away/out; one that fires puts its line on the post and makes it wait |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
-| `units` | integer |  | At most this many units per run from this rule; each of a chain's slices counts once |
-| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps |
-| `on_done` | object |  | Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported |
+| `units` | integer |  | At most this many units per run from this rule; a chain counts once |
+| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; the chain publishes once, when it ends; a {loop} repeats its steps |
+| `on_done` | object |  | Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported |
 | `run` | "soon" \| "window" |  | When its units start: window (default), in the next window run; soon, as soon as awaywork watch sees one due (a new item, or one changed since its last attempt), polling every watch.every |
 
 ## `queue[].where`
@@ -428,6 +431,10 @@ Matches items whose text field contains a match, e.g. `{ matches: '^\[bug\]' }`.
 |---|---|---|---|
 | `matches` (required) | string |  | A regular expression, case-insensitive |
 
+## `queue[].gates.<key>`
+
+Same keys as `repos.<key>.gates.<key>`.
+
 ## `queue[].when`
 
 Run this rule's unit only when the quota holds; otherwise skip it.
@@ -449,7 +456,6 @@ Run this rule's unit only when the quota holds; otherwise skip it.
 | `instructions` | string \| string[] |  | Instruction files added for this step; default the rule's, [] none |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `when` | object |  | Run this step only when every key holds; otherwise skip it |
-| `stack` | boolean |  | Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR |
 
 ## `queue[].then.when`
 
@@ -478,7 +484,6 @@ Steps repeated until a condition holds.
 | `loop` (required) | string \| object \| (string \| object)[] |  | Steps run in turn every round, in the chain's clone |
 | `until` (required) | object |  | Ends the loop as soon as it holds; checked after every step |
 | `max` (required) | integer |  | At most this many rounds, up to 5 |
-| `stack` | boolean |  | Start a new slice at the loop's first round: a new branch cut from the slice before, published as a PR stacked on its PR |
 
 ## `queue[].then.loop`
 
@@ -567,7 +572,7 @@ Same keys as `queue[].then.when.verdict`.
 
 ## `queue[].on_done`
 
-Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported.
+Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported.
 
 | Key | Type | Default | Description |
 |---|---|---|---|

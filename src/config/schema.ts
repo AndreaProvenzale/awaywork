@@ -5,7 +5,6 @@ import {
   bounds,
   DEFAULT_LOOKBACK,
   isAge,
-  isLoop,
   isMatch,
   lookback,
   matchesOpen,
@@ -38,6 +37,12 @@ const oneOrMany = z
   .transform((v) => (typeof v === 'string' ? [v] : v))
 
 const units = z.int().positive()
+
+/** Keys a release dropped, with what to write instead: the config refuses them with this. */
+export const removedKeys: Record<string, string> = {
+  stack: 'stack was removed: split work into tasks with a deliver: plan rule',
+}
+
 /** A built-in skill whose merge awaywork makes itself, like `sync`. */
 const merges = (skill: string) => !!builtinSkills[skill]?.merge
 
@@ -312,12 +317,6 @@ const stepObject = z.strictObject({
     .optional()
     .describe("Instruction files added for this step; default the rule's, [] none"),
   when: when.optional().describe('Run this step only when every key holds; otherwise skip it'),
-  stack: z
-    .boolean()
-    .optional()
-    .describe(
-      'Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR',
-    ),
 })
 const step = z
   .union([
@@ -329,7 +328,7 @@ const step = z
     stepObject,
   ])
   .describe(
-    "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack",
+    "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when",
   )
 const loop = z
   .strictObject({
@@ -339,14 +338,56 @@ const loop = z
       .describe("Steps run in turn every round, in the chain's clone"),
     until: condition.describe('Ends the loop as soon as it holds; checked after every step'),
     max: z.int().min(1).max(MAX_ROUNDS).describe(`At most this many rounds, up to ${MAX_ROUNDS}`),
-    stack: z
-      .boolean()
-      .optional()
-      .describe(
-        "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a PR stacked on its PR",
-      ),
   })
   .describe('Steps repeated until a condition holds')
+
+const gate = z
+  .strictObject({
+    changed: oneOrMany
+      .refine((globs) => globs.length > 0, 'expected at least one glob')
+      .optional()
+      .describe(
+        "Git globs from the repo root; fires when the chain's commits change a matching path",
+      ),
+    command: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+      ),
+    skill: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+      ),
+    instructions: oneOrMany
+      .optional()
+      .describe(
+        "Instruction files a skill gate's judge reads, relative to the config file; never the repo's, and never the rule's",
+      ),
+  })
+  .superRefine((g, ctx) => {
+    const set = [g.changed, g.command, g.skill].filter((d) => d !== undefined).length
+    if (set !== 1)
+      ctx.addIssue({
+        code: 'custom',
+        message: set
+          ? 'expected one of changed, command or skill'
+          : 'expected changed, command or skill',
+      })
+    if (g.instructions && !g.skill)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['instructions'],
+        message: 'instructions go to a judge: they need skill',
+      })
+  })
+const gates = z
+  .record(z.string().regex(/^[\w-]+$/, 'expected a name like schema'), gate)
+  .prefault({})
 
 const rule: z.ZodType<Rule, unknown> = z
   .strictObject({
@@ -364,6 +405,18 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, a step asks questions with ask in its status file, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans",
       ),
+    wait: z
+      .boolean()
+      .optional()
+      .describe(
+        "deliver: plan or report: the post waits for your reply on the item, approve as its first line letting the next stage take it, anything else running the step again; default true for plan, false for report; a gate of the rule's own that fires makes it wait anyway",
+      ),
+    gates: z
+      .record(z.string().regex(/^[\w-]+$/, 'expected a name like schema'), gate)
+      .optional()
+      .describe(
+        "deliver: plan or report: gates of the rule's own, on top of the top-level ones, run on what the step left: a command reads AWAYWORK_OUT_DIR, a skill a read-only copy of .away/out; one that fires puts its line on the post and makes it wait",
+      ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z
       .enum(['oldest', 'newest', 'updated'])
@@ -374,16 +427,14 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe("Run this rule's unit only when the quota holds; otherwise skip it"),
     units: units
       .optional()
-      .describe(
-        "At most this many units per run from this rule; each of a chain's slices counts once",
-      ),
+      .describe('At most this many units per run from this rule; a chain counts once'),
     // biome-ignore lint/suspicious/noThenProperty: the key users write; never a function
     then: z
       .union([step, loop, z.array(z.union([step, loop])).min(1)])
       .transform((steps) => [steps].flat())
       .default([])
       .describe(
-        "Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps",
+        "Steps run in turn after this rule's unit, in its clone; the chain publishes once, when it ends; a {loop} repeats its steps",
       ),
     on_done: z
       .strictObject({
@@ -404,7 +455,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .refine((d) => Object.keys(d).length > 0, 'expected move or comment')
       .optional()
       .describe(
-        "Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported",
+        "Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported",
       ),
     run: z
       .enum(['soon', 'window'])
@@ -486,43 +537,6 @@ const mcpServer = z
           `${name}: an HTTP server gets a secret only in a header, like Bearer \${${name}}`,
         )
   })
-
-const gate = z
-  .strictObject({
-    changed: oneOrMany
-      .refine((globs) => globs.length > 0, 'expected at least one glob')
-      .optional()
-      .describe(
-        "Git globs from the repo root; fires when the slice's commits change a matching path",
-      ),
-    command: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
-      ),
-    skill: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        "A skill, yours or built in, that a model runs on the slice's commits after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
-      ),
-  })
-  .superRefine((g, ctx) => {
-    const set = [g.changed, g.command, g.skill].filter((d) => d !== undefined).length
-    if (set !== 1)
-      ctx.addIssue({
-        code: 'custom',
-        message: set
-          ? 'expected one of changed, command or skill'
-          : 'expected changed, command or skill',
-      })
-  })
-const gates = z
-  .record(z.string().regex(/^[\w-]+$/, 'expected a name like schema'), gate)
-  .prefault({})
 
 const repo = z.strictObject({
   branch: branch.optional().describe('Branch name template for this repo'),
@@ -764,24 +778,6 @@ export const configSchema = z
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
-      if (Array.isArray(r.then))
-        r.then.forEach((entry, j) => {
-          if (entry.stack && r.deliver && r.deliver !== 'draft_pr' && r.deliver !== 'pr')
-            ctx.addIssue({
-              code: 'custom',
-              path: [...at, 'then', j, 'stack'],
-              message: `stack needs deliver: draft_pr or pr, not ${r.deliver}: a stacked slice opens a PR`,
-            })
-          if (isLoop(entry))
-            entry.loop.forEach((step, k) => {
-              if (step.stack)
-                ctx.addIssue({
-                  code: 'custom',
-                  path: [...at, 'then', j, 'loop', k, 'stack'],
-                  message: 'a loop sits inside one slice: set stack on the loop',
-                })
-            })
-        })
       // Round ids (`<unit>-<skill>-<n>`) can't collide with plain steps', only with other rounds'.
       const inLoop = (path: (string | number)[]) => path[2] === 'loop'
       chain.forEach(({ step: s, at: path }, j) => {
@@ -868,6 +864,39 @@ export const configSchema = z
           path: [...at, 'deliver'],
           message: `plan posts on the item, and ${r.source} can't write to its items; use report`,
         })
+      // A post waits only as a plan's or a report's, never a task's, and the PR rules' PR is already the decision.
+      const posts = (r.deliver === 'plan' || r.deliver === 'report') && !('planned' in r.where)
+      for (const key of ['wait', 'gates'] as const)
+        if (r[key] !== undefined && !posts)
+          ctx.addIssue({
+            code: 'custom',
+            path: [...at, key],
+            message:
+              'planned' in r.where
+                ? `${key} goes on the plan's rule: a task's approval is the plan's`
+                : `${key} needs deliver: plan or report; a PR is already the decision, and commits take top-level or repo gates`,
+          })
+      if (r.deliver === 'report' && (r.wait || r.gates) && silent)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, r.wait ? 'wait' : 'gates'],
+          message: `a report that waits posts on the item, and ${r.source} can't write to its items`,
+        })
+      const shared = [cfg.gates, ...Object.values(cfg.repos).map((p) => p.gates)]
+      for (const [name, g] of Object.entries(r.gates ?? {})) {
+        if (g.changed)
+          ctx.addIssue({
+            code: 'custom',
+            path: [...at, 'gates', name, 'changed'],
+            message: `a ${r.deliver} has no diff: changed needs commits, in a top-level or repo gate`,
+          })
+        if (shared.some((gates) => Object.hasOwn(gates, name)))
+          ctx.addIssue({
+            code: 'custom',
+            path: [...at, 'gates', name],
+            message: `a top-level or repo gate is named ${name} too: name this one otherwise`,
+          })
+      }
       if (r.source === routines.id && r.on_done)
         ctx.addIssue({
           code: 'custom',
@@ -967,6 +996,14 @@ export const configSchema = z
             continue
           }
           const v = value as WhereValue
+          if (key === 'approved' && whereValues(v).some((x) => typeof x === 'boolean')) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [...path, key],
+              message: "approved names the approved post's skill now, e.g. approved: story",
+            })
+            continue
+          }
           const field = itemFields[key] ?? fieldFor(cfg.sources, scope, key)
           if (!field) {
             ctx.addIssue({

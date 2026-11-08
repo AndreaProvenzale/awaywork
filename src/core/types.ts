@@ -341,10 +341,7 @@ export interface Step {
 
 /** A `then` or loop step as written: the settings it leaves unset are the rule's. */
 export type ThenStep = Omit<Step, 'provider' | 'skills' | 'instructions'> &
-  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>> & {
-    /** Starts a new slice: a new branch cut from the slice before, and a PR stacked on its PR. */
-    stack?: boolean
-  }
+  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>>
 
 /** What a loop checks after each of its steps, or a step before it runs; every key set must hold. */
 export interface Condition {
@@ -365,8 +362,6 @@ export interface Loop {
   loop: ThenStep[]
   until: Condition
   max: number
-  /** Starts a new slice at the loop's first round. */
-  stack?: boolean
 }
 
 export interface Rule extends Step {
@@ -377,10 +372,17 @@ export interface Rule extends Step {
   where: Where
   order?: Order
   units?: number
-  /** Steps run in turn after the rule's unit, in its clone; each slice of the chain publishes once, when it ends. */
+  /** Steps run in turn after the rule's unit, in its clone; the chain publishes once, when it ends. */
   then?: (ThenStep | Loop)[]
   /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted: its result as a comment, then the move. */
   on_done?: { move?: string; comment?: 'result' }
+  /** A plan or report rule's post waits for your approve; unset, a plan's does and a report's doesn't. */
+  wait?: boolean
+  /** A plan or report rule's own gates, on what its step left; one that fires holds the post. */
+  gates?: Record<
+    string,
+    { changed?: string[]; command?: string; skill?: string; instructions?: string[] }
+  >
   /** `soon`: awaywork watch starts its units as soon as it sees them due, not only in a window. */
   run?: 'soon' | 'window'
 }
@@ -402,9 +404,11 @@ export interface Unit {
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** Checks run before publishing commits, the top-level ones merged with the repo's: one that fires drafts a `deliver: pr` PR and goes on top of its body. */
+  /** Checks run before publishing commits, the top-level ones merged with the repo's: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own, on what its step left. */
   gates?: Record<string, Gate>
-  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the chain's slice before. */
+  /** A plan's or report's post: it waits for your approve, or goes ahead unless one of its gates fires; unset, a report posts as a plain result. */
+  waits?: boolean
+  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the task's this one stacks on. */
   stackedOn?: string
   /** `base` is awaywork's own draft for the unit, which a later run goes on with: the chain's commits go onto it. */
   resume?: { url: string; number: number; from: string; head: string; status: 'ask' | 'continue' }
@@ -429,11 +433,12 @@ export interface Unit {
   conflicted?: string[]
 }
 
-/** A gate fires when the slice's commits change a path matching one of `changed`, one of `commands` fails, or one of `skills` judges it should. */
+/** A gate fires when the slice's commits change a path matching one of `changed`, one of `commands` fails, or one of `skills` judges it should, reading `instructions` from the config. */
 export interface Gate {
   changed: string[]
   commands: string[]
   skills: string[]
+  instructions: string[]
 }
 
 export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push' | 'pending_review' | 'plan'

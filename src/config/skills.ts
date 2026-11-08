@@ -33,6 +33,9 @@ export async function unknownSkills(config: Config, userDir: string): Promise<st
     ...Object.entries(config.repos).flatMap(([repo, r]) =>
       Object.entries(r.gates).map(([name, g]) => [`repos.${repo}.gates.${name}`, g] as const),
     ),
+    ...(config.queue ?? []).flatMap((r, i) =>
+      Object.entries(r.gates ?? {}).map(([name, g]) => [`queue[${i}].gates.${name}`, g] as const),
+    ),
   ]
   for (const [at, gate] of gates)
     if (gate.skill && !resolveSkill(gate.skill, catalog))

@@ -251,6 +251,26 @@ it('reports a run with no provider and a multi-line warning', () => {
   )
 })
 
+it('reports the moves held on posts you approved, made before any unit, and those that failed', () => {
+  const at = new Date(2026, 9, 12, 22, 34, 18)
+  const moved = [
+    { item: 'linear:NIG-21', to: 'In Progress' },
+    { item: 'jira:ENG-7', to: 'Ready', failed: 'no transition to Ready' },
+  ]
+  const plan = { queue: [], defaultQueue: true, units: [], skipped: [], allowances: {}, moved }
+  const run = { runId: 'r', dryRun: false, startedAt: at, finishedAt: at, plan, results: [] }
+  expect(formatReport({ ...run, quotas: {} })).toContain(
+    [
+      '## Held moves (2)',
+      '',
+      '- on_done moved NIG-21 to "In Progress", its post approved',
+      `- on_done couldn't move ENG-7 to "Ready": no transition to Ready, its post approved`,
+      '',
+      '## Units (0)',
+    ].join('\n'),
+  )
+})
+
 it('prepares workspaces without running a worker or context command on a dry run, for one unit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-dry-'))
   const forge = {
@@ -3880,19 +3900,6 @@ it('runs the gate script the chain started with, and fires without running one t
   )
   expect(byVerify.outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
   expect(byVerify.opened[0]?.body).toContain(swapped)
-
-  const stacked = await gated(
-    `${routesGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
-    (dir, skill) =>
-      skill === 'implement'
-        ? commitFile(dir, 'scripts/gate.sh', 'exit 0\n')
-        : commitFile(dir, 'src/routes.ts', 'x'),
-  )
-  expect(stacked.outcomes).toMatchObject([
-    { draft: 'gate routes fired' },
-    { draft: 'gate routes fired' },
-  ])
-  expect(stacked.opened[1]?.body).toContain(swapped)
 })
 
 it("fires a changed gate on the commits as pushed, whatever the clone's replace refs say", async () => {
@@ -4085,59 +4092,6 @@ it('drops what the judge changed and fires its gate, publishing the steps’ com
   expect((await git(origin, 'show', `${tip}:src/app.ts`)).stdout).toBe('x')
 })
 
-it("gives the slice stacked after a judge the repo's config and skill the judge hid", async () => {
-  const seen: string[] = []
-  const { origin, outcomes } = await gated(
-    `${riskGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
-    async (dir, skill) => {
-      if (skill === 'judge') return verdict('clear')(dir)
-      const read = (file: string) => readFile(join(dir, file), 'utf8').catch(() => '-')
-      const files = ['.claude/settings.json', '.cursor/hooks.json', judgeSkill]
-      seen.push(`${skill}: ${(await Promise.all(files.map(read))).join(' ')}`)
-      await commitFile(dir, '.claude/settings.json', skill)
-      await commitFile(dir, judgeSkill, skill)
-      await mkdir(join(dir, '.cursor'), { recursive: true })
-      await writeFile(join(dir, '.cursor/hooks.json'), 'uncommitted')
-    },
-    {
-      provider: { repoConfig: ['.claude/settings.json', '.cursor/hooks.json'] },
-      items: async (origin) => {
-        await commitFile(origin, judgeSkill, 'mine')
-        return [issue(1)]
-      },
-    },
-  )
-  expect(seen).toEqual(['implement: - - mine', 'fix: implement uncommitted implement'])
-  expect(outcomes).toMatchObject([{ ready: true }, { ready: true }])
-  const tip = outcomes[1]?.kind === 'pr' ? outcomes[1].head : ''
-  for (const file of ['.claude/settings.json', judgeSkill])
-    expect((await git(origin, 'show', `${tip}:${file}`)).stdout).toBe('fix')
-})
-
-it('fires the gate of a judge that rewrites a config it hid, keeping each slice its own', async () => {
-  const seen: string[] = []
-  const { origin, outcomes } = await gated(
-    `${riskGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
-    async (dir, skill) => {
-      const settings = join(dir, '.claude/settings.json')
-      if (skill === 'judge') {
-        await mkdir(join(dir, '.claude'), { recursive: true })
-        await writeFile(settings, 'JUDGE')
-        return verdict('clear')(dir)
-      }
-      seen.push(`${skill}: ${await readFile(settings, 'utf8').catch(() => '-')}`)
-      await commitFile(dir, '.claude/settings.json', skill)
-    },
-    { provider: { repoConfig: ['.claude/settings.json'] } },
-  )
-  expect(seen).toEqual(['implement: -', 'fix: implement'])
-  expect(outcomes).toMatchObject([{ draft: 'gate risk fired' }, { draft: 'gate risk fired' }])
-  for (const [i, own] of ['implement', 'fix'].entries()) {
-    const tip = outcomes[i]?.kind === 'pr' ? outcomes[i].head : ''
-    expect((await git(origin, 'show', `${tip}:.claude/settings.json`)).stdout).toBe(own)
-  }
-})
-
 it('fires the gate of a judge that turns the folder of a config it hid into a file', async () => {
   const { outcomes } = await gated(
     `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
@@ -4151,8 +4105,6 @@ it('fires the gate of a judge that turns the folder of a config it hid into a fi
   )
   expect(outcomes[0]).toMatchObject({ draft: 'gate risk fired' })
 })
-
-const judgeSkill = '.fake/skills/judge/SKILL.md'
 
 it("fires the gate when its judge can't run", async () => {
   const { opened, outcomes } = await gated(
@@ -4962,56 +4914,7 @@ it('stops the chain on continue, its commits opening as a draft whose footer cou
   expect(formatReport(report)).toContain('(1 commit, draft: the agent will continue)')
 })
 
-it('leaves a stacked slice that says continue or ask to you: a draft no later run goes on with', async () => {
-  const slices = (status: 'continue' | 'ask'): Provider => ({
-    ...fakeProvider('claude'),
-    async *run(job, signal) {
-      const said = asker(status === 'ask' ? 'Which?' : '', true, status)
-      yield* (job.unit.skill === 'fix' ? said : committer).run(job, signal)
-    },
-  })
-  for (const status of ['continue', 'ask'] as const) {
-    const { report, writes, opened } = await finishedRun(
-      '  - { skill: implement, deliver: pr, on_done: { comment: result, move: QA }, then: [{ skill: fix, stack: true }] }',
-      [yours(1)],
-      slices(status),
-    )
-    const [head, fix] = report.results
-    expect(opened.map((o) => [o.head, o.left])).toEqual([
-      ['away/acme-api-1', undefined],
-      ['away/acme-api-1-2', undefined],
-    ])
-    expect(opened[1]?.body).toMatch(/^Add a\n\nDone\.\n/)
-    expect(fix?.outcome).toMatchObject({ kind: 'pr', draft: "a stacked slice can't go on" })
-    const byHand = `a stacked slice can't go on: finish https://example.com/acme/api/pull/away/acme-api-1-2 by hand`
-    if (status === 'ask')
-      expect(head?.questions).toMatchObject({ text: 'Which?', unposted: byHand })
-    else expect(head?.byHand).toBe(byHand)
-    expect(formatReport(report)).toContain(
-      `- **api#1**: ${status === 'ask' ? 'questions not posted: ' : ''}${byHand}`,
-    )
-    // It isn't done: no result, no move.
-    expect(writes).toEqual([])
-  }
-  // Asked without committing, its questions stay in the report too: no later run reads the answer.
-  const idle: Provider = {
-    ...fakeProvider('claude'),
-    async *run(job, signal) {
-      yield* (job.unit.skill === 'fix' ? asker('Which?', false, 'ask') : committer).run(job, signal)
-    },
-  }
-  const { report, writes, opened } = await finishedRun(
-    '  - { skill: implement, deliver: pr, on_done: { comment: result }, then: [{ skill: fix, stack: true }] }',
-    [yours(1)],
-    idle,
-  )
-  expect(opened.map((o) => [o.head, o.left])).toEqual([['away/acme-api-1', undefined]])
-  const byHand = `a stacked slice can't go on: finish it on https://example.com/acme/api/pull/away/acme-api-1 by hand`
-  expect(report.results[0]?.questions).toMatchObject({ text: 'Which?', unposted: byHand })
-  expect(writes).toEqual([])
-})
-
-it("leaves a draft to you where awaywork can't push onto it, as a stacked slice's, but posts an ask without commits", async () => {
+it("leaves a draft to you where awaywork can't push onto it, but posts an ask without commits", async () => {
   const queue =
     '  - { skill: implement, deliver: pr, on_done: { comment: result, move: QA }, then: [review] }'
   const byHand = `${GITHUB_ONLY}: finish https://example.com/acme/api/pull/away/acme-api-1 by hand`
@@ -5371,6 +5274,7 @@ it("posts a plan rule's plan once on your card with its report, and fires on_don
   expect(head?.plan).toEqual({
     tasks: ['api', 'web'],
     item: 'github:acme/api#1',
+    post: { waits: true },
     url: 'https://example.com/1',
   })
   expect(lines).toContain('acme-api-1: plan posted on https://example.com/1')
@@ -5518,8 +5422,10 @@ queue:
   const waiting = [
     ['waiting_for_approval', 'waiting for your approval of the plan on https://example.com/1'],
   ]
+  // A teammate's comment is context, never an answer.
+  comment('approve')
   expect(await round(tasks, 2)).toEqual({ skipped: waiting, posted: undefined })
-  comment('approve if web waits for the API to merge')
+  comment('approve if web waits for the API to merge', true)
   expect(await round('tasks:\n  - { id: api, title: A }\n  - { id: api, title: B }\n', 3)).toEqual({
     skipped: [],
     posted: { unposted: 'plan.yml: task id "api" is used twice' },
@@ -5528,12 +5434,12 @@ queue:
     skipped: [['unchanged', 'unchanged since run r3']],
     posted: undefined,
   })
-  comment('Split web in two.')
+  comment('Split web in two.', true)
   expect(await round('tasks:\n  - { id: api, title: VAT export endpoint }\n', 5)).toMatchObject({
     skipped: [],
     posted: { tasks: ['api'] },
   })
-  expect(kinds()).toEqual(['plan', 'sam', 'sam', 'plan'])
+  expect(kinds()).toEqual(['plan', 'sam', 'me', 'me', 'plan'])
   expect(await round(tasks, 6)).toEqual({ skipped: waiting, posted: undefined })
   expect(
     await approveItem('github:acme/api#1', config, 'Keep the old route.', {
@@ -5541,7 +5447,7 @@ queue:
       ctx,
     }),
   ).toBe('plan approved: replied approve, with your notes, on https://example.com/1')
-  expect(kinds()).toEqual(['plan', 'sam', 'sam', 'plan', 'approve'])
+  expect(kinds()).toEqual(['plan', 'sam', 'me', 'me', 'plan', 'approve'])
   expect(await round(tasks, 7)).toEqual({
     skipped: [['fanned_out', 'fanned out: api no PR yet']],
     posted: undefined,
@@ -5552,4 +5458,126 @@ queue:
       ctx,
     }),
   ).rejects.toThrow('was already answered by me')
+})
+
+it("posts a report that waits with how to answer, holding on_done's move until you approve", async () => {
+  const { report, writes } = await finishedRun(
+    '  - { skill: review, deliver: report, wait: true, on_done: { move: QA } }',
+    [yours(1)],
+  )
+  const body = resultComment('acme-api-1 says nothing.', 'done', 'review', undefined, 0, true)
+  expect(writes).toEqual([
+    [
+      'acme/api#1',
+      { op: 'comment', body: markComment(body, { waits: true, move: 'QA', saw: 'open' }) },
+    ],
+  ])
+  expect(body).toMatch(/\n\nStatus: done\n\nTo approve, reply with approve as the first line\./)
+  expect(report.results[0]?.moved).toBeUndefined()
+  expect(formatReport(report)).toContain(
+    '- **api#1**: result posted on https://example.com/1; it waits for your approve, holding the move to "QA"',
+  )
+})
+
+it("runs a report rule's own command gate on a read-only copy of what the step left: one that fires holds the post, one that holds lets it go ahead", async () => {
+  const gate = (exit: number) =>
+    `  - { skill: review, deliver: report, on_done: { move: QA }, gates: { taste: { command: '(echo hacked >> "$AWAYWORK_OUT_DIR/report.md" || touch "$AWAYWORK_OUT_DIR/new") 2>/dev/null || cat "$AWAYWORK_OUT_DIR/report.md"; exit ${exit}' } } }`
+  const fired = await finishedRun(gate(1), [yours(1)])
+  const card =
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- taste: acme-api-1 says nothing.\n\n---'
+  const held = resultComment(
+    `${card}\n\nacme-api-1 says nothing.`,
+    'done',
+    'review',
+    undefined,
+    0,
+    true,
+  )
+  expect(fired.writes).toEqual([
+    [
+      'acme/api#1',
+      { op: 'comment', body: markComment(held, { waits: true, move: 'QA', saw: 'open' }) },
+    ],
+  ])
+  expect(fired.report.results[0]?.outcome).toMatchObject({
+    gates: { ran: ['taste'], fired: 'gate taste fired' },
+  })
+  const clear = await finishedRun(gate(0), [yours(1)])
+  const went = resultComment(
+    'Gates: none fired (taste)\n\n---\n\nacme-api-1 says nothing.',
+    'done',
+    'review',
+  )
+  expect(clear.writes).toEqual([
+    ['acme/api#1', { op: 'comment', body: markComment(went, { went: true, gates: ['taste'] }) }],
+    ['acme/api#1', { op: 'move', to: 'QA' }],
+  ])
+})
+
+it('posts a plan that went ahead saying a reply changes nothing, not how to approve', async () => {
+  const provider: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      const out = join(job.dir, '.away/out')
+      await writeFile(join(out, 'report.md'), 'One task.')
+      await writeFile(join(out, 'plan.yml'), 'tasks:\n  - { id: api, title: API }\n')
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const { writes } = await finishedRun(
+    '  - { skill: plan, deliver: plan, wait: false }\n  - { skill: implement, where: { planned: true } }',
+    [yours(1)],
+    provider,
+  )
+  const [[, write]] = writes as [[string, Write]]
+  expect(write.op === 'comment' && write.body).toMatch(
+    /```\n\nThis plan went ahead without your approve: a reply to it changes nothing\.\n\n— awaywork · went ahead$/,
+  )
+})
+
+it("gives a plan's judge a read-only copy of the step's out files and its gate's instructions, not the rule's, and posts the plan as the step left it", async () => {
+  const notes = join(await mkdtemp(join(tmpdir(), 'awaywork-judges-')), 'product.md')
+  await writeFile(notes, 'Copy changes need design.')
+  const rules = join(await mkdtemp(join(tmpdir(), 'awaywork-rule-')), 'plan.md')
+  await writeFile(rules, 'Plan small.')
+  const seen: string[] = []
+  const provider: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      const out = join(job.dir, '.away/out')
+      if (job.unit.skill === 'judge') {
+        const prompt = await readFile(join(job.dir, '.away/prompt.md'), 'utf8')
+        seen.push(await readFile(join(job.dir, '.away/context/out/plan.yml'), 'utf8'))
+        seen.push(prompt.includes('Copy changes need design.') ? 'gate notes' : 'no notes')
+        seen.push(prompt.includes('Plan small.') ? 'rule notes' : 'no rule notes')
+        seen.push(prompt.includes('a read-only copy of its `.away/out/`') ? 'out files' : 'a diff')
+        await writeFile(join(out, 'plan.yml'), 'tasks: []\n')
+        await writeFile(join(out, 'verdict'), 'fires\n')
+        await writeFile(join(out, 'report.md'), '- Export button copy → design decides')
+      } else {
+        await writeFile(join(out, 'report.md'), 'One task.')
+        await writeFile(join(out, 'plan.yml'), 'tasks:\n  - { id: api, title: API }\n')
+      }
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const { report, writes } = await finishedRun(
+    `  - { skill: plan, deliver: plan, wait: false, instructions: [${rules}], gates: { product: { skill: judge, instructions: [${notes}] } } }\n  - { skill: implement, where: { planned: true } }`,
+    [yours(1)],
+    provider,
+  )
+  expect(seen).toEqual([
+    'tasks:\n  - { id: api, title: API }\n',
+    'gate notes',
+    'no rule notes',
+    'out files',
+  ])
+  const [[, write]] = writes as [[string, Write]]
+  const body = write.op === 'comment' ? write.body : ''
+  expect(body).toMatch(
+    /^## Needs a decision\n\n### Judge\n\n- product: the judge changed the clone; awaywork dropped its changes\n- product: Export button copy → design decides\n\n---\n\nOne task\.\n\n```yaml\ntasks:\n {2}- \{ id: api, title: API \}\n```\n/,
+  )
+  // A fired gate holds a plan that would go ahead: a plan with no post state waits.
+  expect(body.endsWith('\n\n— awaywork')).toBe(true)
+  expect(report.results[0]?.plan).toMatchObject({ tasks: ['api'], post: { waits: true } })
 })

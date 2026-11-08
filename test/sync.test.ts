@@ -189,7 +189,12 @@ describe('sync', () => {
     expect(plan(pr())).toEqual([['main', 'push', undefined, undefined]])
     expect(plan(pr({ conflicts: undefined }))).toEqual([['main', 'push', undefined, undefined]])
     expect(plan(pr({ conflicts: true }))).toEqual([
-      ['main', 'push', 'claude', { anything: { changed: ['**'], commands: [], skills: [] } }],
+      [
+        'main',
+        'push',
+        'claude',
+        { anything: { changed: ['**'], commands: [], skills: [], instructions: [] } },
+      ],
     ])
     const why = (item: Item) =>
       formatWhy(planRun({ config, items: [item], allowances: {}, skills }), item)

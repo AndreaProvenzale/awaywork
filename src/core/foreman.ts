@@ -9,21 +9,26 @@ import { branchName, committingStep, expandPlans, planLimits, stepReports } from
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
 import { elsewhere, latestResult, planState } from './plan.js'
+import { postAnswer, reportPost } from './posts.js'
 import {
   closestRule,
   defaultRules,
   describeComparison,
+  doneWith,
   failedIn,
   fieldValue,
   implicitWhere,
   isAwayworkPr,
   isLoop,
   isMatch,
+  matches,
   type Ranked,
   rank,
   TOP,
+  waitsOn,
   within,
 } from './queue.js'
+import type { Moved } from './report.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
 import type {
@@ -31,7 +36,6 @@ import type {
   Deliver,
   Gate,
   Item,
-  Loop,
   Rule,
   Step,
   TaskPr,
@@ -52,11 +56,7 @@ export interface PlannedUnit {
   quotaUnmet?: string
   /** The rule's unit whose chain this step is part of, by id: it works in that unit's clone. */
   chain?: string
-  /** The chain's slice this step is in, counted from 0; unset in the first. */
-  slice?: number
   loop?: LoopRound
-  /** On a chain's first step: the slice a cap left out, and the cap. */
-  capped?: string
   /** On a task's first step: the chain, by id, earlier in this run whose PR it stacks on. */
   after?: string
   /** On a task's first step: its `opened` tasks in other repos that open their PR earlier in this run, which it waits for. */
@@ -83,6 +83,7 @@ export type SkipKind =
   | 'waiting_for_review'
   | 'waiting_for_answer'
   | 'waiting_for_approval'
+  | 'approved'
   | 'invalid_plan'
   | 'fanned_out'
   | 'waiting_for_task'
@@ -93,7 +94,6 @@ export type SkipKind =
   | 'no_repo'
   | 'invalid_branch'
   | 'refused_delivery'
-  | 'unstackable'
   | 'draft_moved'
   | 'continue_cap'
   | 'continues_later'
@@ -108,6 +108,7 @@ export const needsYou: Record<SkipKind, boolean> = {
   waiting_for_review: true,
   waiting_for_answer: true,
   waiting_for_approval: true,
+  approved: false,
   invalid_plan: true,
   fanned_out: false,
   waiting_for_task: false,
@@ -118,7 +119,6 @@ export const needsYou: Record<SkipKind, boolean> = {
   no_repo: true,
   invalid_branch: true,
   refused_delivery: true,
-  unstackable: true,
   draft_moved: true,
   continue_cap: true,
   continues_later: false,
@@ -143,6 +143,8 @@ export interface RunPlan {
   present?: boolean
   /** Each routine's next occurrence, by name, as an ISO time. */
   routines?: Record<string, string>
+  /** The moves on_done held on posts you approved since, made before planning. */
+  moved?: Moved[]
 }
 
 /** Match, dedupe and route this run's items; no I/O. */
@@ -174,7 +176,9 @@ export function planRun(input: {
   const perRule: Record<number, number> = {}
   let counted = 0
 
-  for (const found of inBlocks(dedupe(ranked), expanded.items)) {
+  // A post that waits holds its card for its rule only: the card's linked items rank on their own.
+  const waiting = (e: Ranked) => waitsOn(queue[e.rule] as Rule, e.item)
+  for (const found of inBlocks(dedupe(ranked, waiting), expanded.items)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
     // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
     const pickup = ours && found.find((e) => isAwayworkPr(e.item))
@@ -198,7 +202,7 @@ export function planRun(input: {
     // awaywork's own draft for these items, which it left for a later run.
     const keys = items.map((i) => `${i.source}:${i.key}`)
     const draft = !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
-    if (ours && !pickup && !draft) {
+    if (ours && !pickup && !draft && !found.some(waiting)) {
       skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
       continue
     }
@@ -219,12 +223,12 @@ export function planRun(input: {
       skip('continues_later', `goes on from ${where} in the next window run`, where)
       continue
     }
-    const held = pushedOnto(items, input.attempts ?? {})
-    if (held) {
+    const pushed = pushedOnto(items, input.attempts ?? {})
+    if (pushed) {
       skip(
         'waiting_for_review',
-        `waiting for review: awaywork pushed onto your PR ${held.url}`,
-        held.url,
+        `waiting for review: awaywork pushed onto your PR ${pushed.url}`,
+        pushed.url,
       )
       continue
     }
@@ -241,10 +245,10 @@ export function planRun(input: {
         ? stack.onto
         : waitsFor.find((id) => !taskChain(units, items[0] as Item, id))
     if (unplanned) {
-      const held = items[0]?.task?.parent.taskPrs?.[unplanned]?.left
+      const taskDraft = items[0]?.task?.parent.taskPrs?.[unplanned]?.left
       skip(
         'waiting_for_task',
-        `waiting for task ${unplanned}'s ${held ? `draft, which says ${held.status}` : 'PR to open'}`,
+        `waiting for task ${unplanned}'s ${taskDraft ? `draft, which says ${taskDraft.status}` : 'PR to open'}`,
       )
       continue
     }
@@ -270,8 +274,26 @@ export function planRun(input: {
       skip('invalid_plan', `plan refused: ${card.problem}`, card.item.url)
       continue
     }
+    // A report's post that waits holds its rule, whatever else changed on the card.
+    const posted =
+      rule.deliver === 'report' && !items[0]?.task
+        ? items.flatMap((item) => {
+            const post = reportPost(item, rule.skill)
+            return post ? [{ item, answer: postAnswer(post) }] : []
+          })[0]
+        : undefined
+    if (posted?.answer === 'waiting') {
+      skip(
+        'waiting_for_approval',
+        `waiting for your approval of ${rule.skill}'s result on ${posted.item.url}`,
+        posted.item.url,
+      )
+      continue
+    }
+    // Closing a task's PR doesn't touch the card: its re-plan is due all the same.
+    const replan = card?.state === 'replan'
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
-    if (since.every(Boolean) && !goesOn) {
+    if (since.every(Boolean) && !goesOn && !replan) {
       skip('unchanged', `unchanged since run ${since.sort().at(-1)}`)
       continue
     }
@@ -302,10 +324,8 @@ export function planRun(input: {
       continue
     }
     const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
-    // A slice's name takes the type of its first committing step; the list's words keep it a valid ref.
-    const branchOf = (step: ThenStep | undefined) =>
-      branchName(config, rule, repo, items[0] as Item, step, input.skills)
-    const branch = branchOf(committing)
+    // A chain's name takes the type of its first committing step; the list's words keep it a valid ref.
+    const branch = branchName(config, rule, repo, items[0] as Item, committing, input.skills)
     if (!isValidRef(branch)) {
       skip('invalid_branch', `branch template ${template} renders an invalid name "${branch}"`)
       continue
@@ -334,11 +354,6 @@ export function planRun(input: {
       skip('refused_delivery', `${rule.skill}: ${pr?.url} names no base branch to merge`)
       continue
     }
-    const unstackable = stackRefusal(rule, reports)
-    if (unstackable) {
-      skip('unstackable', unstackable)
-      continue
-    }
     const overCap = () => {
       const cap = [
         { name: 'limits.units', max: config.limits.units, count: counted },
@@ -358,6 +373,11 @@ export function planRun(input: {
     }
 
     const id = slug(items[0]?.key ?? '')
+    // A post after your feedback, or a task's PR closed, waits for you whatever `wait` says.
+    const again = card?.state === 'feedback' || replan || posted?.answer === 'feedback'
+    // A report that neither waits nor has gates of its own posts as a plain result, `wait: false` too.
+    const decides = planned || (rule.deliver === 'report' && (rule.wait === true || !!rule.gates))
+    const waits = decides ? again || (rule.wait ?? planned) : undefined
     // A resumed task's draft stays stacked on the task below it while that one is open.
     const below =
       draft && items[0]?.task?.onto && items[0].task.parent.taskPrs?.[items[0].task.onto]
@@ -382,7 +402,6 @@ export function planRun(input: {
         }),
       ...(left && { continued: left.continued }),
     }
-    let slice = 0
     const add = (written: ThenStep, unitId: string, loop?: LoopRound) => {
       const step = written === rule ? rule : inherit(rule, written)
       const skill = resolveSkill(step.skill, input.skills)
@@ -396,8 +415,13 @@ export function planRun(input: {
         ...at,
         id: unitId,
         verify: config.repos[repo]?.verify,
-        // Gates check what a model wrote, and a merge with no model has nothing of its.
-        gates: at.merge && !provider ? undefined : gatesFor(config, repo),
+        // Gates check what a model wrote, and a merge with no model has nothing of its; a plan's or report's are its rule's own, on what it left.
+        gates: decides
+          ? ruleGates(rule)
+          : at.merge && !provider
+            ? undefined
+            : gatesFor(config, repo),
+        ...(waits !== undefined && { waits }),
         items,
         repo,
         rule: step,
@@ -422,41 +446,27 @@ export function planRun(input: {
         passed,
         ...(unmet && { quotaUnmet: unmet }),
         ...(written !== rule && { chain: id }),
-        ...(slice > 0 && { slice }),
         ...(loop && { loop }),
         ...(written === rule && after && { after: after.unit.id }),
         ...(written === rule && waitsFor.length > 0 && { waitsFor }),
       })
       return !!provider || !!at.merge
     }
-    // A slice publishes once, so it counts once, when its first step runs.
-    const count = (runs: boolean) => {
-      if (!runs) return
+    // A chain publishes once, so it counts once, when its first step runs.
+    if (add(rule, id)) {
       counted++
       perRepo[repo] = (perRepo[repo] ?? 0) + 1
       perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
     }
-    count(add(rule, id))
     for (const [j, entry] of (rule.then ?? []).entries()) {
-      if (entry.stack) {
-        const left = overCap()
-        if (left) {
-          const head = units.find((u) => u.unit.id === id) as PlannedUnit
-          head.capped = `stack ${isLoop(entry) ? 'loop' : entry.skill}: ${left}`
-          break
-        }
-        slice++
-        at.branch = branchOf(stepsOf(entry)[0])
-      }
       if (!isLoop(entry)) {
-        const routed = add(entry, `${id}-${slug(entry.skill)}`)
-        if (entry.stack) count(routed)
+        add(entry, `${id}-${slug(entry.skill)}`)
         continue
       }
       const skills = entry.loop.map((s) => s.skill)
       for (let round = 1; round <= entry.max; round++)
-        for (const [s, step] of entry.loop.entries()) {
-          const routed = add(step, `${id}-${slug(step.skill)}-${round}`, {
+        for (const [s, step] of entry.loop.entries())
+          add(step, `${id}-${slug(step.skill)}-${round}`, {
             at: j,
             round,
             step: s,
@@ -464,8 +474,6 @@ export function planRun(input: {
             until: entry.until,
             max: entry.max,
           })
-          if (entry.stack && round === 1 && s === 0) count(routed)
-        }
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
@@ -531,23 +539,34 @@ function gatesFor(config: Config, repo: string): Record<string, Gate> | undefine
     ...Object.entries(config.gates),
     ...Object.entries(config.repos[repo]?.gates ?? {}),
   ]) {
-    const gate = gates.get(name) ?? { changed: [], commands: [], skills: [] }
+    const gate = gates.get(name) ?? { changed: [], commands: [], skills: [], instructions: [] }
     gate.changed.push(...(g.changed ?? []))
     if (g.command) gate.commands.push(g.command)
     if (g.skill) gate.skills.push(g.skill)
+    gate.instructions.push(...(g.instructions ?? []))
     gates.set(name, gate)
   }
   return gates.size ? Object.fromEntries(gates) : undefined
+}
+
+/** A plan or report rule's own gates, which run on what its step left. */
+function ruleGates(rule: Rule): Record<string, Gate> | undefined {
+  const gates = Object.entries(rule.gates ?? {}).map(([name, g]) => [
+    name,
+    {
+      changed: [],
+      commands: g.command ? [g.command] : [],
+      skills: g.skill ? [g.skill] : [],
+      instructions: g.instructions ?? [],
+    },
+  ])
+  return gates.length ? Object.fromEntries(gates) : undefined
 }
 
 function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {
   if (!when || !a) return undefined
   if (a.kind === 'fallback') return 'no quota reading'
   return holds(when, quotaFacts(a)) ? undefined : "doesn't hold on the probe"
-}
-
-function stepsOf(entry: ThenStep | Loop): ThenStep[] {
-  return isLoop(entry) ? entry.loop : [entry]
 }
 
 /** The model a rule sets for a provider on this attempt: the list's entry for it. */
@@ -568,19 +587,6 @@ function inherit(rule: Rule, step: ThenStep): Step {
   }
 }
 
-/** Why a `stack` can't start a slice: its first step reports, or every step before it does. */
-function stackRefusal(rule: Rule, reports: (step: ThenStep) => boolean): string | undefined {
-  const steps: ThenStep[] = [rule]
-  for (const entry of rule.then ?? []) {
-    const first = stepsOf(entry)[0] as ThenStep
-    if (entry.stack && reports(first))
-      return `stack on ${first.skill}: it reports, so its PR would have nothing in it`
-    if (entry.stack && steps.every(reports))
-      return `stack on ${first.skill}: every step before it reports, so there is nothing to stack on`
-    steps.push(...stepsOf(entry))
-  }
-}
-
 /** Why a chain can't publish commits onto its base: only onto the developer's own PR in the repo. */
 function deliveryRefusal(
   deliver: Exclude<Deliver, 'report' | 'pending_review' | 'plan'>,
@@ -593,8 +599,18 @@ function deliveryRefusal(
   if (fork) return `deliver ${deliver}: ${base} is on a fork`
 }
 
-/** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`. */
+/** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`, or the last report rule done with it. */
 export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
+  const done = queue.findLastIndex((r) => matches(r, item) && doneWith(r, item))
+  const post = done >= 0 && !isAwayworkPr(item) && doneWith(queue[done] as Rule, item)
+  if (post) {
+    const how = 'went' in post.state ? 'its result went ahead' : 'you approved its result'
+    return {
+      kind: 'approved',
+      reason: `#${done + 1} ${queue[done]?.skill} doesn't run again: ${how}; to run it again, delete that post on ${item.url}`,
+      url: item.url,
+    }
+  }
   const closest = closestRule(item, queue)
   const ours = isAwayworkPr(item)
   const kind = ours ? 'waiting_for_review' : 'no_rule'
@@ -638,25 +654,12 @@ function describeValue(value: unknown): string {
   return Array.isArray(value) ? value.join('|') || 'empty' : String(value)
 }
 
-/** E.g. `implement → loop(review ⇄ fix) → stack docs`. */
+/** E.g. `implement → loop(review ⇄ fix) → docs`. */
 export function describeChain(chain: PlannedUnit[]): string {
   return chain
     .filter((p) => !p.loop || (p.loop.round === 1 && p.loop.step === 0))
-    .map((p, i, listed) => {
-      const step = p.loop ? `loop(${p.loop.skills.join(' ⇄ ')})` : p.unit.skill
-      return i > 0 && p.slice !== listed[i - 1]?.slice ? `stack ${step}` : step
-    })
+    .map((p) => (p.loop ? `loop(${p.loop.skills.join(' ⇄ ')})` : p.unit.skill))
     .join(' → ')
-}
-
-/** A chain's steps, or their results, grouped by slice in order. */
-export function bySlice<T>(steps: T[], sliceOf: (step: T) => number | undefined): T[][] {
-  const slices: T[][] = []
-  for (const step of steps) {
-    const at = sliceOf(step) ?? 0
-    slices[at] = [...(slices[at] ?? []), step]
-  }
-  return slices.filter(Boolean)
 }
 
 export function slug(key: string): string {

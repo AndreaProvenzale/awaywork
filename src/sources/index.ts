@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { markComment } from '../core/footer.js'
+import { markComment, type PostState } from '../core/footer.js'
 import { itemStates } from '../core/queue.js'
 import type { Ctx, Item, Source, Write } from '../core/types.js'
 import { asana } from './asana.js'
@@ -25,7 +25,7 @@ export const itemFields: Record<string, z.ZodType> = {
   type: z.enum(['pr', 'issue', 'task']),
   title: z.string(),
   description: z.string(),
-  approved: z.boolean(),
+  approved: z.string(),
   state: z.enum(itemStates),
   closed: z.iso.datetime({ offset: true }),
   /** A task of an approved plan, which only a rule naming it takes. */
@@ -51,7 +51,7 @@ export function unwritable(item: Item, source: Source | undefined): string | und
 }
 
 /**
- * Writes to one of your items through its source, a comment with awaywork's mark; a plan's task
+ * Writes to one of your items through its source, a comment with awaywork's mark, saying what `post` says of it; a plan's task
  * writes to its card, the only item there is. Returns the item's updated time after it, unless
  * someone changed the item since it was read: then none, so their change still counts as one;
  * and a comment's link when the source returns it.
@@ -63,10 +63,11 @@ export async function writeItem(
   item: Item,
   write: Write,
   ctx: Ctx,
+  post?: PostState,
 ): Promise<{ updated?: string; url?: string }> {
   const refused = unwritable(item, source)
   if (refused || !source?.write) throw new Error(refused)
-  const marked = write.op === 'comment' ? { ...write, body: markComment(write.body) } : write
+  const marked = write.op === 'comment' ? { ...write, body: markComment(write.body, post) } : write
   const { before, after, url } = await source.write(cfg, item.task?.parent ?? item, marked, ctx)
   const read = item.fields.updated
   const unchanged = before && typeof read === 'string' && Date.parse(before) === Date.parse(read)

@@ -1,4 +1,4 @@
-import { mkdir, rm } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { MAX_ATTEMPTS } from '../core/attempts.js'
 import { footerItems, hasTrailer, type Left } from '../core/footer.js'
@@ -9,11 +9,10 @@ import {
   checkDetails,
   checkLog,
   commitsSince,
-  git,
   type RanCheck,
 } from './checks.js'
-import { describeFired, gatesSection, runGates, runJudges } from './gates.js'
-import { type Outcome, publish, type Stack } from './publish.js'
+import { describeFired, gateOut, gatesSection, type Judged, runGates, runJudges } from './gates.js'
+import { type Outcome, publish } from './publish.js'
 import { leaveReview } from './review.js'
 import {
   outputFile,
@@ -49,19 +48,17 @@ export type StepReport = { id: string; skill: string; text: string; out: string 
  * whose PR, open or closed unmerged, awaywork opened for one of the unit's items means it tried
  * already (a merged one landed, so the next pickup is a new round and takes a suffix), and
  * one with no PR whose tip has awaywork's trailer is a push whose PR failed: either way the unit
- * is skipped until that branch is deleted, even where no attempts are kept. A branch the chain
- * `published` in this run is only taken; the first one anything else holds comes back as `taken`.
+ * is skipped until that branch is deleted, even where no attempts are kept. The first name
+ * anything else holds comes back as `taken`.
  */
 export async function freeBranch(
   forge: Forge,
   unit: Unit,
-  published: Set<string>,
 ): Promise<{ branch: string; taken?: string } | { skip: string }> {
   const items = unit.items.map((i) => `${i.source}:${i.key}`)
   let taken: string | undefined
   for (let n = 1; n <= MAX_SUFFIX; n++) {
     const branch = n === 1 ? unit.branch : `${unit.branch}-${n}`
-    if (published.has(branch)) continue
     if (!(await forge.branchExists(unit.repo, branch))) return { branch, taken }
     const prs = await forge.prsOn(unit.repo, branch)
     if (prs.length === 0 && hasTrailer(await forge.tipMessage(unit.repo, branch)))
@@ -79,18 +76,6 @@ export async function freeBranch(
   return { skip: `${unit.branch} to ${unit.branch}-${MAX_SUFFIX} already exist on ${unit.repo}` }
 }
 
-/**
- * Puts the clone on a new `branch` at its HEAD. Git writes only the branch, HEAD and the index there,
- * each through a lock file it renames, so with the symlinks a worker may plant refused (the index's by
- * restoreGitConfig) and no reflog left to append to, nothing outside the clone is written; no hook or
- * fsmonitor runs.
- */
-export async function cutBranch(dir: string, branch: string): Promise<void> {
-  await refuseSymlinks(dir, ['.git/HEAD', `.git/refs/heads/${branch}`])
-  await rm(join(dir, '.git', 'logs'), { recursive: true, force: true })
-  await git(dir, '-c', 'core.logAllRefUpdates=false', 'checkout', '-q', '-b', branch)
-}
-
 export interface Publisher {
   forge: Forge
   runId: string
@@ -102,13 +87,14 @@ export interface Publisher {
     log: (line: string) => void,
     options?: CheckOptions,
   ) => Promise<Check>
-  /** Runs gate `gate`'s judge `skill` on the slice's commits since `from` in the clone, as a step runs; why it didn't run or finish, if so. */
+  /** Runs gate `gate`'s judge `skill`, reading the gate's `instructions`, on the chain's commits since a commit in the clone, or on what a step left, as a step runs; why it didn't run or finish, if so. */
   judge: (
     gate: string,
     skill: string,
     unit: Unit,
     dir: string,
-    from: string,
+    on: Judged,
+    instructions: string[],
   ) => Promise<string | undefined>
 }
 
@@ -128,7 +114,6 @@ export async function publishSlice(
   start: string,
   reports: StepReport[],
   loops: Record<number, OpenLoop>,
-  stack?: Stack,
   closes = false,
   failedStep?: string,
   held?: Held,
@@ -136,9 +121,14 @@ export async function publishSlice(
   const { deliver } = unit
   const out = join(dir, WORK_DIR, 'out')
   if (reportsOnly(deliver) || (!unit.resume && (await commitsSince(dir, from)) === 0)) {
-    const text = reports.length === 1 ? (reports[0]?.text ?? '') : joinReports(reports)
-    if (!text)
+    const joined = reports.length === 1 ? (reports[0]?.text ?? '') : joinReports(reports)
+    if (!joined)
       return { kind: 'none', reason: reportsOnly(deliver) ? 'no report written' : 'nothing' }
+    // A plan's or report's own gates judge what its step left, their card atop the post.
+    const ran = unit.waits !== undefined && unit.gates && Object.keys(unit.gates)
+    const fired = ran ? await gateOut(deps, unit, dir, start, joined) : []
+    if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
+    const text = ran ? `${gatesSection(ran, fired)}\n\n${joined}` : joined
     await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile.report}`])
     await writeOutput(join(out, outputFile.report), `${text}\n`)
     const last = reports.at(-1)
@@ -146,7 +136,8 @@ export async function publishSlice(
       return failedStep
         ? { kind: 'report', text, unposted: failedStep }
         : leaveReview(deps.forge, unit, from, text, last)
-    return { kind: 'report', text }
+    const gated = describeFired(fired)
+    return { kind: 'report', text, ...(ran && { gates: { ran, ...(gated && { fired: gated }) } }) }
   }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
@@ -155,7 +146,7 @@ export async function publishSlice(
   // A resolved merge's gates read only what the worker wrote on top of git's automatic merge.
   const gatesFrom = unit.automatic ?? checked
   const fired = await runGates(deps.check, unit, dir, gatesFrom, unit.automatic ?? start)
-  fired.push(...(await runJudges(deps.judge, unit, dir, gatesFrom)))
+  fired.push(...(await runJudges(deps.judge, unit, dir, { from: gatesFrom })))
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   if (unit.gates) {
@@ -178,17 +169,7 @@ export async function publishSlice(
   const gated = describeFired(fired)
   const said = held && (held.status === 'ask' ? 'asked questions' : 'the agent will continue')
   const notReady = failedStep ?? said ?? failed ?? why ?? gated
-  const outcome = await publish(
-    unit,
-    dir,
-    deps.forge,
-    deps.runId,
-    from,
-    stack,
-    closes,
-    notReady,
-    held,
-  )
+  const outcome = await publish(unit, dir, deps.forge, deps.runId, from, closes, notReady, held)
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }
 

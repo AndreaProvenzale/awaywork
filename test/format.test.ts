@@ -94,6 +94,18 @@ queue:
       'type=pr draft=false any(checks=failing label=urgent | any(mine=true))',
     )
   })
+
+  it("shows a post's wait and its rule's own gates", () => {
+    const cfg = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: story, where: { type: issue }, deliver: report, wait: true, gates: { taste: { skill: judge }, size: { command: 'true' } } }
+`)
+    expect(describeRule(cfg.queue?.[0] as Rule)).toBe(
+      'type=issue deliver=report wait=true gates=taste,size',
+    )
+  })
 })
 
 describe('listedUnits', () => {

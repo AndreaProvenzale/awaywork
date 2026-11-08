@@ -36,11 +36,9 @@ Commands:
                             items
   unskip <key>              let awaywork pick up a skipped item (source:key)
                             again
-  approve <key> [notes...]  approve the plan an item (source:key, e.g.
+  approve <key> [notes...]  approve the plan or result an item (source:key, e.g.
                             github:acme/api#5) waits on, replying approve on it
-                            with the notes below; otherwise mark it approved,
-                            for rules with `where: { approved: true }`, until a
-                            unit on it finishes
+                            with the notes below
   skills                    list skills and eject built-ins to tweak
   run [options]             plan the units, start a worker per unit and publish
                             PRs and reports
@@ -147,10 +145,10 @@ Options:
   --skipped [kind]  list the skipped items and why, or those of one kind
                     (choices: "no_rule", "skipped_by_you", "unchanged",
                     "over_cap", "waiting_for_review", "waiting_for_answer",
-                    "waiting_for_approval", "invalid_plan", "fanned_out",
-                    "waiting_for_task", "task_merged", "task_done",
-                    "all_tasks_done", "gave_up", "no_repo", "invalid_branch",
-                    "refused_delivery", "unstackable", "draft_moved",
+                    "waiting_for_approval", "approved", "invalid_plan",
+                    "fanned_out", "waiting_for_task", "task_merged",
+                    "task_done", "all_tasks_done", "gave_up", "no_repo",
+                    "invalid_branch", "refused_delivery", "draft_moved",
                     "continue_cap", "continues_later", "running")
   --why <key>       say why an item is planned or skipped, by key, source:key or
                     the ref plan shows
@@ -188,9 +186,8 @@ Options:
 ```text
 Usage: awaywork approve [options] <key> [notes...]
 
-approve the plan an item (source:key, e.g. github:acme/api#5) waits on, replying
-approve on it with the notes below; otherwise mark it approved, for rules with
-`where: { approved: true }`, until a unit on it finishes
+approve the plan or result an item (source:key, e.g. github:acme/api#5) waits
+on, replying approve on it with the notes below
 
 Options:
   -h, --help  display help for command
@@ -269,10 +266,10 @@ Options:
   --skipped [kind]  list the skipped items, or those of one kind (choices:
                     "no_rule", "skipped_by_you", "unchanged", "over_cap",
                     "waiting_for_review", "waiting_for_answer",
-                    "waiting_for_approval", "invalid_plan", "fanned_out",
-                    "waiting_for_task", "task_merged", "task_done",
-                    "all_tasks_done", "gave_up", "no_repo", "invalid_branch",
-                    "refused_delivery", "unstackable", "draft_moved",
+                    "waiting_for_approval", "approved", "invalid_plan",
+                    "fanned_out", "waiting_for_task", "task_merged",
+                    "task_done", "all_tasks_done", "gave_up", "no_repo",
+                    "invalid_branch", "refused_delivery", "draft_moved",
                     "continue_cap", "continues_later", "running")
   -h, --help        display help for command
 ```
