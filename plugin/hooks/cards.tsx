@@ -1,6 +1,14 @@
 import type { ClientElements, ClientModule, RenderNode } from 'claude-code'
 
-export type Card = { id: string; ref: string; word: string; title: string[]; color?: string }
+export type Card = {
+  id: string
+  ref: string
+  /** The skill of a card whose word is its status, in the skill's color. */
+  skill?: { name: string; color: string }
+  word: string
+  title: string[]
+  color?: string
+}
 /** `n` cards a page, each `w` wide, as the hooks laid them out. */
 type Props = { cards: Card[]; at: number; n: number; w: number }
 
@@ -30,8 +38,11 @@ export const card = (
     <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
       {ref}
       <Box flexShrink={0}>
-        <Text color={c.color} dimColor={!c.color}>
-          {c.word}
+        <Text>
+          {c.skill && <Text color={c.skill.color}>{c.skill.name} </Text>}
+          <Text color={c.color} dimColor={!c.color}>
+            {c.word}
+          </Text>
         </Text>
       </Box>
     </Box>

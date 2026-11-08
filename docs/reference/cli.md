@@ -92,6 +92,8 @@ Options:
 Commands:
   path            print the config file awaywork reads; exit 1 when it does not
                   exist
+  explain         print what the config says as JSON, without reading a source
+                  or a provider
   schema          print the config JSON Schema, for editor autocompletion
   edit            open the config in $VISUAL or $EDITOR; it is saved only once
                   valid
@@ -104,6 +106,17 @@ Commands:
 Usage: awaywork config path [options]
 
 print the config file awaywork reads; exit 1 when it does not exist
+
+Options:
+  -h, --help  display help for command
+```
+
+## awaywork config explain
+
+```text
+Usage: awaywork config explain [options]
+
+print what the config says as JSON, without reading a source or a provider
 
 Options:
   -h, --help  display help for command

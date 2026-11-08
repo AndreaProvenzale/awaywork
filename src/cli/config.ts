@@ -10,6 +10,7 @@ import { skillsDirOf } from '../config/paths.js'
 import { configSchema } from '../config/schema.js'
 import { unknownSkillsWarning } from '../config/skills.js'
 import { printBrand, terminalAsk } from './ask.js'
+import { explainConfig } from './explain.js'
 import { staleSchedules } from './schedule.js'
 
 export function configCommand(program: Command): void {
@@ -24,6 +25,17 @@ export function configCommand(program: Command): void {
       const path = configPath(program.opts().config)
       console.log(path)
       if (existsSync(path)) return
+      console.error(`${path} not found; awaywork init writes one`)
+      process.exitCode = 1
+    })
+
+  config
+    .command('explain')
+    .description('print what the config says as JSON, without reading a source or a provider')
+    .action(async () => {
+      const path = configPath(program.opts().config)
+      const text = await readFile(path, 'utf8').catch(() => undefined)
+      if (text !== undefined) return console.log(JSON.stringify(explainConfig(text, path), null, 2))
       console.error(`${path} not found; awaywork init writes one`)
       process.exitCode = 1
     })

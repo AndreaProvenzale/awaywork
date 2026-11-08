@@ -2,7 +2,7 @@
 
 There's no config yet: write one with the developer, check it on their real items, and write it only on their yes. The [ground rules](SKILL.md#ground-rules) hold throughout (no credentials through you, real names only, widening shown on its own).
 
-`<config>` is the path `awaywork config path` printed; `<draft>` is `config.draft.yml` in the same folder, made with `mkdir -p` on a first setup. Every command on the draft takes `--config <draft>`.
+`<config>` is the path `awaywork config path` printed; `<draft>` is `config.draft.yml` in the same folder, made with `mkdir -p` on a first setup. Every command on the draft takes `--config <draft>`. The developer watches it fill in beside the chat, and may edit it too: read it again before each edit, and keep what they changed.
 
 ## How to ask
 
@@ -27,7 +27,7 @@ Tracker hints: an MCP server named after a tracker, or one pointing at an in-hou
 - **Subscription,** with more than one Claude login: one option per login, its account and plan; recommended is the one whose folder holds most of that work's sessions. The same for Codex logins.
 - **Runs on:** this machine (launchd or systemd; on macOS awaywork runs as them, or in a container with Docker), GitHub Actions (a fresh VM each run, from a control repo, with a token secret), a box with Docker (Coolify or a VPS: the worker user is forced, and the CLI reaches it from the laptop over `AWAYWORK_REMOTE`). One machine runs one awaywork daemon: when one is already scheduled here, this machine isn't the default, and its description says why.
 
-Pin the logins in the draft (step 5): the gh account as `sources.github.user` when gh holds more than one; the login runs use, chosen or the only one, as that provider's `config_dir` when its folder isn't `~/.claude` or `~/.codex` (`providers: [{claude: {config_dir: ~/.claude-work}}, codex]`), one found through `$CLAUDE_CONFIG_DIR` or `$CODEX_HOME` included, since a scheduled job doesn't get those. Off this machine, or in a container here, the login comes from the environment instead (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#which-login).
+Pin the logins in the draft (at the end of step 3): the gh account as `sources.github.user` when gh holds more than one; the login runs use, chosen or the only one, as that provider's `config_dir` when its folder isn't `~/.claude` or `~/.codex` (`providers: [{claude: {config_dir: ~/.claude-work}}, codex]`), one found through `$CLAUDE_CONFIG_DIR` or `$CODEX_HOME` included, since a scheduled job doesn't get those. Off this machine, or in a container here, the login comes from the environment instead (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#which-login).
 
 ## 3. What it works on
 
@@ -35,6 +35,16 @@ Pin the logins in the draft (step 5): the gh account as `sources.github.user` wh
 - **Tracker:** a hint first; then Asana, Linear, Jira; none. One that isn't built in becomes a custom source (step 5).
 - **Window:** default 01:00–07:00 their time.
 - **Providers,** only with more than one ready: the order, the first taking units and the next taking over when its quota runs out. Cursor also needs `CURSOR_API_KEY`.
+
+### Write the draft
+
+As soon as this round is answered, before the next one, so the developer sees it take shape. Where it goes: a single file at `<config>`, unless the config needs files beside it (a custom source, instructions, skills) or runs off this machine: then a control folder, a git repo they own. Propose one next to their clones (`~/projects/acme/awaywork`), say why, and once they agree, `git init` it with a `.gitignore` for `.env`. `<config>` becomes `<control>/.awaywork/config.yml`, where `schedule install --with …` keeps it; files it names go beside it. Pass `--config <config>` from then on, and print the `AWAYWORK_CONFIG` line for their shell profile.
+
+```sh
+awaywork --config <draft> init --yes --provider <theirs, first first> --source github --window <start>-<end>
+```
+
+It writes the providers, `github: {repos: [<login>/*]}`, the default GitHub rules and the window; ignore its `Next:` line. Then set `sources.github.repos` to their list and add the pins from step 2. A draft left by an earlier setup makes init refuse: ask whether to carry on from it or start over (`--force`).
 
 ## 4. What to take off their plate
 
@@ -45,15 +55,11 @@ The rules come from the default queue (https://andreaprovenzale.github.io/awaywo
 - **Tracker cards,** multi-select: QA notes fixed, in-progress cards implemented, the current sprint's cards planned. How the sprint's are taken is asked in step 5, with the tracker's real names.
 - **Learn from my sessions:** yes or no, default no. The yes carries the scope as [`suggest.md`](suggest.md)'s step 1 asks it, numbers included, summed from `folders.sh` over the chosen repos' folders only: "84 Claude Code sessions (31.4 MB) in 3 folders, 12 memory files, your global `CLAUDE.md`; it goes to Anthropic". Never say it stays on this machine. No sessions there: say so in the lead-in and don't ask. Their yes is suggest's consent for this run: it won't ask again.
 
-## 5. Draft
+Once they've answered, drop the draft's rules they didn't pick, so what they see is their queue; step 6 puts in the real names.
 
-Where it goes: a single file at `<config>`, unless the config needs files beside it (a custom source, instructions, skills) or runs off this machine: then a control folder, a git repo they own. Propose one next to their clones (`~/projects/acme/awaywork`), say why, and once they agree, `git init` it with a `.gitignore` for `.env`. `<config>` becomes `<control>/.awaywork/config.yml`, where `schedule install --with …` keeps it; files it names go beside it. Pass `--config <config>` from then on, and print the `AWAYWORK_CONFIG` line for their shell profile.
+## 5. Fill in the draft
 
-```sh
-awaywork --config <draft> init --yes --provider <theirs, first first> --source github --window <start>-<end>
-```
-
-It writes the providers, `github: {repos: [<login>/*]}`, the default GitHub rules and the window; ignore its `Next:` line. Then edit the draft: `sources.github.repos` to their list, the pins from step 2, and one `repos` entry per repo with `setup`, `test` and `verify` from its clone (the lockfile says the package manager: `bun.lock` is `bun install --frozen-lockfile`, not yarn; the scripts in `package.json`, `pyproject.toml` or the `Makefile` say the rest; `{files}` where the test runner takes paths). A clone you can't find: leave its entry out and say so. A draft left by an earlier setup makes init refuse: ask whether to carry on from it or start over (`--force`).
+Then one `repos` entry per repo with `setup`, `test` and `verify` from its clone (the lockfile says the package manager: `bun.lock` is `bun install --frozen-lockfile`, not yarn; the scripts in `package.json`, `pyproject.toml` or the `Makefile` say the rest; `{files}` where the test runner takes paths). A clone you can't find: leave its entry out and say so.
 
 **Built-in trackers:** for each, `awaywork --config <draft> sources <id> --json`. Jira's site and email are config: add `jira: {site, email}` first, plus `cloud_id` for a scoped token (`curl -s https://<site>/_edge/tenant_info`). A missing token fails naming its variable: in one message, `awaywork secret <NAME>` in their terminal, or `! pbpaste | awaywork secret <NAME>` here once copied, and where each is made (Asana: Settings > Apps; Linear: Settings > Account > Security & access; Jira: id.atlassian.com > Security > API tokens, scoped to `read:jira-work`); wait and rerun. Then one round from the real names: Asana's workspace and projects, Linear's teams, Jira's projects, and each one's repo. Write them in init's flow style:
 

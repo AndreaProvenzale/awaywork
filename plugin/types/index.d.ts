@@ -43,7 +43,7 @@ export type Data = {
   planning?: true
 }
 
-export type Tab = 'needs' | 'last' | 'next' | 'skipped'
+export type Tab = 'needs' | 'last' | 'next' | 'skipped' | 'config'
 
 export type Action = 'skip' | 'unskip' | 'approve'
 
@@ -60,10 +60,65 @@ export type View = {
   reading?: { title: string; text: string }
   status?: string
   marks?: Record<string, Mark>
+  /** The config tab's selected rule, and what it shows. */
+  rule?: number
+  source?: 'flow' | 'yaml' | 'diff'
+}
+
+/** What `awaywork config explain` prints. */
+export type ConfigStep = { skill: string } | { loop: string[]; until: string; max: number }
+
+export type ConfigRule = {
+  rule: number
+  lines?: [number, number]
+  takes: string
+  skill: string
+  steps: ConfigStep[]
+  leaves: string
+  waits: boolean
+  plan: boolean
+  planned: boolean
+  soon: boolean
+}
+
+export type ConfigView = {
+  valid: true
+  windows: string[]
+  providers: string[]
+  sources: string[]
+  reserve?: string
+  defaultQueue: boolean
+  rules: ConfigRule[]
+}
+
+export type Explained = ConfigView | { valid: false; problems: string[] }
+
+/** What the pane reads of `awaywork plan --rules --json`. */
+export type RuleTakes = {
+  rules: { rule: number; taken: ItemRef[]; takenBy: { rule: number; items: ItemRef[] }[] }[]
+  unmatched: (ItemRef & { reason: string })[]
+}
+
+export type ConfigState = {
+  path?: string
+  draft?: string
+  /** The file shown: the draft while there is one, else the config. */
+  file?: string
+  isDraft?: boolean
+  /** No config yet: the pane opens on this tab, and it's the only one. */
+  setup?: boolean
+  text?: string
+  previous?: string
+  view?: ConfigView
+  problems?: string[]
+  wantTakes?: boolean
+  takes?: RuleTakes
+  readingTakes?: boolean
+  takesError?: string
 }
 
 declare module 'claude-code' {
   interface PluginState {
-    awaywork: { data: Shaped<Data>; view: Shaped<View> }
+    awaywork: { data: Shaped<Data>; view: Shaped<View>; config: Shaped<ConfigState> }
   }
 }

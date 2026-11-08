@@ -3,6 +3,7 @@ import { atom, read, update } from 'claude-code'
 
 import type {
   Action,
+  ConfigState,
   Data,
   ItemRef,
   Mark,
@@ -15,12 +16,25 @@ import type {
   View,
 } from '../types'
 import { CARD_ROWS, type Card, card } from './cards'
+import { awaywork, firstLine, json } from './cli'
+import {
+  configBody,
+  configPaths,
+  draftNamed,
+  mentionsConfig,
+  skillColor,
+  syncConfig,
+  useDraft,
+  wantTakes,
+} from './config'
 
 const PANE = 'away'
-const FIX = 'npm i -g awaywork@latest'
 
 const data = atom({ plugin: 'awaywork', key: 'data' } as const, {} as Data, { shape: 'data-2' })
 const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-3' })
+const config = atom({ plugin: 'awaywork', key: 'config' } as const, {} as ConfigState, {
+  shape: 'config-1',
+})
 
 /** One item of a tab under its group: its card, its detail, and the buttons it has. */
 type Row = {
@@ -31,6 +45,8 @@ type Row = {
   ref: string
   word: string
   color?: Color
+  /** A card whose word is its status also says the skill. */
+  skill?: string
   item?: ItemRef
   title: string
   /** The detail's lines under the title: the reason, or the unit's items and links. */
@@ -41,41 +57,6 @@ type Row = {
   skip?: 'skip' | 'unskip'
   approve?: true
   here?: string
-}
-
-type Got<T> = { json: T } | { error: string } | { failed: string }
-
-const firstLine = (text: string) => text.trim().split('\n')[0] ?? ''
-
-async function awaywork($: EngineInterface, args: string[], timeoutMs = 60_000) {
-  try {
-    return await $.process.run(['awaywork', ...args], { timeoutMs })
-  } catch (e) {
-    const why = String(e)
-    return /ENOENT|not found|no such file/i.test(why)
-      ? { exitCode: 127, stdout: '', stderr: '', missing: `awaywork isn't on your PATH: ${FIX}` }
-      : { exitCode: 1, stdout: '', stderr: why }
-  }
-}
-
-async function json<T>($: EngineInterface, args: string[], timeoutMs?: number): Promise<Got<T>> {
-  const r = await awaywork($, args, timeoutMs)
-  if ('missing' in r && r.missing) return { error: r.missing }
-  if (/unknown option '--json'/.test(r.stderr))
-    return { error: `this awaywork is too old for the pane (no --json): ${FIX}` }
-  if (r.exitCode !== 0)
-    return { failed: firstLine(r.stderr) || `awaywork ${args.join(' ')} exited ${r.exitCode}` }
-  try {
-    return { json: JSON.parse(r.stdout) as T }
-  } catch {
-    return { failed: `awaywork ${args.join(' ')} printed no JSON` }
-  }
-}
-
-/** No config, so the skill sets awaywork up; any other failure (too old, a remote down) gets the pane as before. */
-async function unconfigured($: EngineInterface) {
-  const r = await awaywork($, ['config', 'path'], 10_000)
-  return r.exitCode === 1 && /not found; awaywork init writes one/.test(r.stderr)
 }
 
 async function readReport($: EngineInterface) {
@@ -207,6 +188,7 @@ function resultRow(runId: string, r: Result): Row {
     group: repo,
     rank: 0,
     ref: top ? refIn(repo, top.key) : id,
+    skill,
     word: r.status,
     color: r.status === 'done' ? 'success' : r.status === 'failed' ? 'error' : undefined,
     item: top,
@@ -219,16 +201,25 @@ function resultRow(runId: string, r: Result): Row {
   }
 }
 
+/** What a unit leaves, in the Config tab's words. */
+const leavesWords: Record<string, string> = {
+  draft_pr: 'draft PR',
+  pr: 'PR',
+  pending_review: 'pending review',
+}
+
 function unitRow(p: Planned): Row {
   const { id, repo, skill, deliver, items } = p.unit
   const top = items[0]
-  const note = [deliver && `deliver ${deliver}`, p.provider].filter(Boolean).join(' · ')
+  const leaves = deliver && `${skill} ▶ ${leavesWords[deliver] ?? deliver}`
+  const note = [leaves, p.provider].filter(Boolean).join(' · ')
   return {
     id: `row:next:${id}`,
     group: repo,
     rank: 0,
     ref: top ? refIn(repo, top.key) : id,
     word: skill,
+    color: skillColor(skill),
     item: top,
     title: top?.title ?? note,
     detail: lines(
@@ -259,12 +250,14 @@ function layout(d: Data, v: View) {
     last: report ? grouped(heads.map((r) => resultRow(report.runId, r))) : [],
     next: grouped(d.plan?.units.filter((p) => !p.chain).map(unitRow) ?? []),
     skipped: grouped(skips.filter((s) => !s.needsYou).map((s) => skipRow('skipped', s))),
+    config: [],
   }
   const landing =
     (['needs', 'last', 'skipped'] as const).find((t) => rows[t].length) ??
     (rows.next.length ? 'next' : undefined)
-  const tab = v.tab === 'next' || (v.tab && rows[v.tab].length) ? v.tab : landing
-  const order = ['needs', 'last', 'next', 'skipped'] as const
+  const tab =
+    v.tab === 'next' || v.tab === 'config' || (v.tab && rows[v.tab].length) ? v.tab : landing
+  const order = ['needs', 'last', 'next', 'skipped', 'config'] as const
   const shown = order.filter((t) => t === 'next' || rows[t].length)
   const list = tab ? rows[tab] : []
   const row = list.find((r) => r.id === v.row) ?? list[0]
@@ -290,6 +283,7 @@ const titles: Record<Tab, string> = {
   last: 'Last run',
   next: 'Next run',
   skipped: 'Skipped',
+  config: 'Config',
 }
 
 const questions = {
@@ -334,6 +328,11 @@ async function readRow($: EngineInterface, what: string[]) {
 
 let opener: string | undefined
 
+async function openInEditor($: EngineInterface, file: string, line: number) {
+  const code = await $.process.run(['code', '-g', `${file}:${line}`]).catch(() => undefined)
+  if (code?.exitCode !== 0) await openUrl($, file)
+}
+
 async function openUrl($: EngineInterface, url: string) {
   opener ??= (await $.process.run(['uname'])).stdout.trim() === 'Darwin' ? 'open' : 'xdg-open'
   await $.process.run([opener, url])
@@ -348,6 +347,7 @@ const opens = (url: string) =>
 
 async function showTab($: EngineInterface, tab: Tab) {
   await update($, view, (v) => ({ ...v, tab, row: undefined, at: 0, status: undefined }))
+  if (tab === 'config') await wantTakes($)
 }
 
 type Key = { key: string; hotkey: string; label: string; run: () => unknown }
@@ -500,21 +500,84 @@ function rowsOf(parts: string[], width: number, gap = 2) {
   return rows
 }
 
+async function inFlow($: EngineInterface) {
+  const v = await read($, view)
+  const rules = (await read($, config)).view?.rules
+  return v.tab === 'config' && (v.source ?? 'flow') === 'flow' && !!rules?.length
+}
+
+async function stepRule($: EngineInterface, by: number) {
+  const rules = (await read($, config)).view?.rules ?? []
+  await update($, view, (v) => {
+    const at = Math.max(
+      0,
+      rules.findIndex((r) => r.rule === v.rule),
+    )
+    return { ...v, rule: rules[Math.min(rules.length - 1, Math.max(0, at + Math.sign(by)))]?.rule }
+  })
+}
+
+const paneOpen = async ($: EngineInterface) => (await $.ui.panes()).some((p) => p.id === PANE)
+
 export const register: Register = (on) => {
   on('command.run', { command: ['away', 'awaywork:away'] }, async ($, e, next) => {
     // A request goes to the skill, and so does a run nobody typed with no surface to draw on (`-p`).
     // The desktop app attaches only once the pane asks to draw, so a typed /away opens it anyway.
     const headless = e.origin.kind !== 'composer' && (await $.session.surfaces()).length === 0
-    if (e.args.trim() || headless || (await unconfigured($))) return next(e)
-    await update($, view, (v) => ({ marks: v.marks }))
+    if (headless) return next(e)
+    const where = await configPaths($)
+    if (where.missing) {
+      await update($, view, (v): View => ({ marks: v.marks, tab: 'config' }))
+      await $.ui.open({ id: PANE, title: 'awaywork' })
+      void wantTakes($)
+      return next(e)
+    }
+    if (e.args.trim()) return next(e)
+    const drafting = !!where.draft && (await $.fs.exists(where.draft))
+    await update($, view, (v): View => ({ marks: v.marks, tab: drafting ? 'config' : undefined }))
     await update($, data, (d): Data => ({ ...d, loading: true, planning: planCall && true }))
     await $.ui.open({ id: PANE, title: 'awaywork', focus: true, closeOnEscape: true })
     void refresh($)
+    void (drafting ? wantTakes($) : syncConfig($))
     return {}
+  })
+
+  // Watchers start only here. The folder, so a first setup's files show up too; it must exist.
+  on('classic.SessionStart', async ($, e, next) => {
+    const r = await next(e)
+    const { path } = await configPaths($)
+    if (!path) return r
+    const folder = path.slice(0, path.lastIndexOf('/'))
+    await $.process.run(['mkdir', '-p', folder])
+    return { ...r, watchPaths: [...(r.watchPaths ?? []), folder] }
+  })
+
+  on('classic.FileChanged', async ($, e, next) => {
+    if (/\/config(\.draft)?\.yml$/.test(e.file_path) && (await paneOpen($))) void syncConfig($)
+    return next(e)
+  })
+
+  // The agent's writes where no watcher looks yet: a draft in a control folder picked during setup.
+  on('tool.call', async ($, e, next) => {
+    const r = await next(e)
+    const text =
+      e.tool === 'Write' || e.tool === 'Edit' ? e.file_path : e.tool === 'Bash' ? e.command : ''
+    if (!text || !mentionsConfig(text, await read($, config))) return r
+    if (!(await paneOpen($))) return r
+    const named = draftNamed(e.tool === 'Bash' ? text : ` ${text}`)
+    if (named) await useDraft($, named)
+    void syncConfig($)
+    return r
   })
 
   // A body that fits its window: the wheel over the strip steps the cards, anything else scrolls the detail.
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
+    if (await inFlow($)) {
+      // The wheel still scrolls a body that overflows past the one spare row.
+      if (e.pointer && e.contentRows > e.bodyRows + 1) return next(e)
+      if (e.origin.kind === 'person') await stepRule($, e.by)
+      return { deny: 'the arrows move between rules' }
+    }
     if (!drawn.strip) return next(e)
     const r = e.pointer?.row
     const [top, bottom] = drawn.strip
@@ -550,28 +613,36 @@ export const register: Register = (on) => {
         : undefined
     const d = await read($, data)
     const v = await read($, view)
+    const c = await read($, config)
     const width = e.props.bodyColumns
     const now = await $.clock.now()
     const press: Record<string, () => unknown> = {}
 
-    const { report, heads, rows, tab, order, shown, list, row } = layout(d, v)
+    const { report, heads, rows, tab, order, shown: reviews, list, row } = layout(d, v)
+    const shown = c.setup
+      ? (['config'] as const)
+      : c.file
+        ? [...reviews, 'config' as const]
+        : reviews
 
     const prs = heads.filter((r) => r.outcome?.kind === 'pr').length
     const needs = rows.needs.length
     const noRunsYet = d.noReport && /^no runs in /.test(d.noReport)
-    const facts = d.error
-      ? []
-      : [
-          report
-            ? `last run ${when(report.finishedAt, now)}${report.dryRun ? ' (dry run)' : ''}`
-            : d.loading
-              ? 'reading the last run…'
-              : d.noReport && !noRunsYet
-                ? d.noReport
-                : 'no run yet',
-          prs > 0 && counted(prs, 'PR'),
-          d.planning && 'planning…',
-        ].filter(Boolean)
+    const facts = c.setup
+      ? ['setting up']
+      : d.error
+        ? []
+        : [
+            report
+              ? `last run ${when(report.finishedAt, now)}${report.dryRun ? ' (dry run)' : ''}`
+              : d.loading
+                ? 'reading the last run…'
+                : d.noReport && !noRunsYet
+                  ? d.noReport
+                  : 'no run yet',
+            prs > 0 && counted(prs, 'PR'),
+            d.planning && 'planning…',
+          ].filter(Boolean)
 
     /** A plain Button whose hotkey the strip can press too. */
     const button = (key: string, hotkey: string | undefined, label: string, run: () => unknown) => {
@@ -596,14 +667,14 @@ export const register: Register = (on) => {
           {needs > 0 && <Text color="warning">{needsYou}</Text>}
         </Text>
         <Box flexDirection="row" gap={1} flexShrink={0}>
-          {button('refresh', 'r', 'refresh', () => refresh($))}
-          {button('plan', 'p', 'plan', () => loadPlan($))}
+          {button('refresh', 'r', 'refresh', () => (tab === 'config' ? wantTakes($) : refresh($)))}
+          {!c.setup && button('plan', 'p', 'plan', () => loadPlan($))}
         </Box>
       </Box>
     )
 
     const label = (t: Tab) =>
-      t === 'next' && !d.plan ? titles[t] : `${titles[t]} (${rows[t].length})`
+      (t === 'next' && !d.plan) || t === 'config' ? titles[t] : `${titles[t]} (${rows[t].length})`
     const tabs = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         {shown.map((t) => {
@@ -632,10 +703,10 @@ export const register: Register = (on) => {
       </Text>
     )
 
-    const done = (body?: RenderChildren) => {
+    const done = (body?: RenderChildren, minHeight?: number) => {
       drawn = { press, detailMax: 0 }
       return (
-        <Box flexDirection="column" rowGap={gap}>
+        <Box flexDirection="column" rowGap={gap} minHeight={minHeight}>
           {header}
           {tabs}
           {rule}
@@ -645,6 +716,21 @@ export const register: Register = (on) => {
       )
     }
 
+    if (tab === 'config')
+      return done(
+        configBody({
+          fill: (text) => $.prompt.fill({ text }),
+          els,
+          c,
+          v,
+          width,
+          button,
+          setView: (patch) => update($, view, (x) => ({ ...x, ...patch })),
+          open: (file, line) => openInEditor($, file, line),
+        }),
+        // Arrows reach `ui.scroll` only while there's a row to scroll, so the flow keeps one spare.
+        (v.source ?? 'flow') === 'flow' && c.view ? e.props.scroll.bodyRows + 1 : undefined,
+      )
     if (d.error) return done(<Text>{d.error}</Text>)
     if (!tab) {
       if (d.loading) return done(<Text dimColor>reading the last run…</Text>)
@@ -682,6 +768,7 @@ export const register: Register = (on) => {
         word,
         title: twoLines(r.title, w - 4),
         ...(color && { color }),
+        ...(r.skill && { skill: { name: r.skill, color: skillColor(r.skill) } }),
       }
     })
 

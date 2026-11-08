@@ -412,7 +412,12 @@ test('v shows the report in the detail and b goes back; o opens the URL; c hands
   for (const surface of ALL) {
     const ui = await mount($, surface)
     await ui.press({ key: 'tab:last' })
-    expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'failed' })
+    expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({
+      ref: '#5',
+      word: 'implement failed',
+    })
+    const colors = (await ui.findAll({ type: 'Text', ...strip(ui) })).map((n) => n.props.color)
+    expect(colors).toEqual(expect.arrayContaining(['suggestion', 'error']))
     expect(await detail(ui)).toEqual([
       'Flaky cart test',
       'fix · Pinned the clock in the cart test',
@@ -603,13 +608,60 @@ test('/away with a request goes to the skill', async ($, on) => {
   expect(opened).toEqual([])
 })
 
-test('bare /away with no config goes to the skill, which sets awaywork up', async ($, on) => {
-  const { calls, opened } = engine(on, { 'config path': noConfig })
-  on('command.run', () => ({ text: 'the skill ran' }))
-  const ran = await $.command.run(away())
-  expect(ran.text).toBe('the skill ran')
-  expect(opened).toEqual([])
-  expect(calls).toEqual([['awaywork', 'config', 'path']])
+for (const args of ['', 'set up awaywork'])
+  test(`/away ${args} with no config opens the pane and goes to the skill`, async ($, on) => {
+    const { opened } = engine(on, { 'config path': noConfig })
+    on('fs.exists', () => ({ value: false }))
+    on('command.run', () => ({ text: 'the skill ran' }))
+    const ran = await $.command.run(away(args))
+    expect(ran.text).toBe('the skill ran')
+    expect(opened).toEqual(['away'])
+    const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'terminal' })
+    expect(await text(ui, /It'll read like this/)).toBe(true)
+  })
+
+const CONFIG = '/home/me/.config/awaywork/config.yml'
+const explained = {
+  valid: true,
+  windows: ['01:00–07:00'],
+  providers: ['claude'],
+  sources: ['github'],
+  defaultQueue: false,
+  rules: [
+    ['my PRs, checks failing', 'fix', 'draft PR'],
+    ['PRs, review requested', 'review', 'report'],
+  ].map(([takes, skill, leaves], i) => ({
+    rule: i + 1,
+    takes,
+    skill,
+    leaves,
+    steps: [],
+    waits: false,
+    plan: false,
+    planned: false,
+    soon: false,
+  })),
+}
+
+test('on the Config tab the arrows move between rules and each skill has its color', async ($, on) => {
+  engine(on, {
+    'config path': { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    [`--config ${CONFIG} config explain`]: ok(explained),
+    [`--config ${CONFIG} plan --rules --json`]: ok({ rules: [], unmatched: [] }),
+  })
+  on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
+  on('fs.read', () => ({ value: 'queue: []\n' }))
+  await $.command.run(away())
+  const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'terminal' })
+  await ui.press({ key: 'tab:config' })
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+  expect(await $.ui.scroll({ ...SCROLL, by: 1 })).toEqual({
+    deny: 'the arrows move between rules',
+  })
+  expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
+  const colors = (await ui.findAll({ type: 'Text' })).map((n) => n.props.color)
+  expect(colors).toEqual(expect.arrayContaining(['claude', 'merged']))
 })
 
 test('an awaywork too old for config path still opens the pane', async ($, on) => {
@@ -676,7 +728,7 @@ test('p plans once however often it is pressed; r reads only the report', async 
     })
     expect(await detail(ui)).toEqual([
       'Coupon codes',
-      'deliver draft_pr · claude',
+      'implement ▶ draft PR · claude',
       'github:acme/shop#12  Coupon codes',
       'https://github.com/acme/shop/issues/12',
     ])
