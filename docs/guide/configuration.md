@@ -284,7 +284,6 @@ Run 20261022-174313: 1 draft PR, 0 reports, 1 unit
 - **Going on with its own draft.** GitHub only: a draft that says `continue`, or asked, is yours to finish by hand ([Continue](./how-it-works.md#continue)).
 - **GitHub Actions or a container.** `schedule install` refuses both for a Bitbucket config: use launchd, systemd or cron.
 - **PRs from forks.** Bitbucket has no pull refs to fetch them from, so a unit on one fails.
-- **Stacks.** A [stacked](./chains.md#stack) slice still opens its PR into the one below, but Bitbucket has no stack to add it to.
 
 One forge per config: `github` and `bitbucket` together is an error.
 
@@ -345,7 +344,7 @@ Times are the machine's local time, as for windows; on GitHub Actions, the workf
 
 ## Branch names
 
-`branch` is a template rendered per unit, set globally, per repo or per rule (the most specific wins). It needs `{key}`, `{title}` (the item's title as a slug of at most 40 characters) or both: `feat/work` would name every unit the same, so it's refused. `{type}` is optional; it fills in the conventional-commit type of the first skill that commits, per [slice](./chains.md#stack) of a chain (see [`metadata.type`](./skills.md#write-your-own)).
+`branch` is a template rendered per unit, set globally, per repo or per rule (the most specific wins). It needs `{key}`, `{title}` (the item's title as a slug of at most 40 characters) or both: `feat/work` would name every unit the same, so it's refused. `{type}` is optional; it fills in the conventional-commit type of the chain's first skill that commits (see [`metadata.type`](./skills.md#write-your-own)).
 
 | Item                               | `{key}`       |
 | ---------------------------------- | ------------- |
@@ -365,7 +364,7 @@ queue:
 
 The name is cosmetic: awaywork finds its own PRs by their footer, and yours as [Linking PRs](#linking-prs) says. Jira is the exception, since it links a PR only by the key in its branch or title: for Jira items keep the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
 
-The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push), or it goes on with its own draft, fast-forwarding it while its head is still the one it left, to [continue](./how-it-works.md#continue) work it started. When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it; a [stacked slice](./chains.md#stack) renders its own name, with its own `{type}`, and takes the next free one when that's taken, as it always is with `away/{key}`. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`, unless it's awaywork's draft the unit [goes on](./how-it-works.md#continue) with. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix. A [plan's task](./how-it-works.md#tasks) takes no suffix: its PR is looked up by its branch, so when the name is taken it's skipped until you delete it. For the same reason a `planned` rule's template, its own or the one it inherits, renders from `{key}` alone: a re-plan may retitle a task, so `{title}` or `{type}` there is a config error, and a `branch` on the `planned` rule fixes it. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does; anything else is a config error.
+The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push), or it goes on with its own draft, fast-forwarding it while its head is still the one it left, to [continue](./how-it-works.md#continue) work it started. When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`, unless it's awaywork's draft the unit [goes on](./how-it-works.md#continue) with. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix. A [plan's task](./how-it-works.md#tasks) takes no suffix: its PR is looked up by its branch, so when the name is taken it's skipped until you delete it. For the same reason a `planned` rule's template, its own or the one it inherits, renders from `{key}` alone: a re-plan may retitle a task, so `{title}` or `{type}` there is a config error, and a `branch` on the `planned` rule fixes it. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does; anything else is a config error.
 
 ## Linking PRs
 
@@ -394,7 +393,7 @@ sources:
 
 `secrets` names the env vars setup needs, such as a private registry token: setup gets them and no other secret, the agent never sees them, and the GitHub Actions workflow passes them from repository secrets. Their values are masked in setup's output. Setup gets the placeholder `GH_TOKEN` and `GH_ENTERPRISE_TOKEN` (`none`) too, so a `gh` call in it fails with a 401 even against a public repo, and so does git over https through gh's credential helper (a private dependency in `pnpm install`); list `GH_TOKEN` in `secrets` to give it yours (gh reads `GH_TOKEN` first). On a PR someone else opened, setup runs the author's install scripts, so it gets none of them, and it runs only when the author has write access or org membership; otherwise the agent is told it didn't run. It gets none of them either on the branch of an awaywork PR a rule took up again, which a worker wrote. Read them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather than writing them to your home directory, which the agent shares.
 
-`verify` runs in the clone once each slice ends, outside the model, before it is published; it's a repo setting. Use it for lint, format or the repo's tests. A failure doesn't stop the publish: the PR body or the push's summary gets the tail of its output, and a [`deliver: pr`](#queue-rules) PR opens as a draft. Pass or fail, that tail lands in `verify.log` next to what the slice published, the run's `~/.local/state/awaywork/runs/<id>/units/<unit>/out/` (`out-2/` on for a [stacked slice](./chains.md#stack)), not in your terminal. It runs once per commit, with none of the secrets. A `report` delivery has nothing to publish and skips it.
+`verify` runs in the clone once the chain ends, outside the model, before it is published; it's a repo setting. Use it for lint, format or the repo's tests. A failure doesn't stop the publish: the PR body or the push's summary gets the tail of its output, and a [`deliver: pr`](#queue-rules) PR opens as a draft. Pass or fail, that tail lands in `verify.log` next to what the chain published, the run's `~/.local/state/awaywork/runs/<id>/units/<unit>/out/`, not in your terminal. It runs once per commit, with none of the secrets. A `report` delivery has nothing to publish and skips it.
 
 `image` is the Docker image the repo's units run in under [`isolation: container`](#in-a-container).
 
@@ -406,15 +405,15 @@ Every command in your config that touches a unit's clone, side by side. All of t
 
 | Command | When | Secrets | A failure |
 | --- | --- | --- | --- |
-| `repos.<repo>.setup` | Once per unit, in the fresh clone before the first step's agent; not again for later steps or [stacked slices](./chains.md#stack), and not at all on an untrusted author's PR | That repo's `secrets` only, and none on someone else's PR or an awaywork PR's branch a rule took up | Exit non-zero, over 15 minutes or the window's end skips the unit, with the tail of its output in the report |
+| `repos.<repo>.setup` | Once per unit, in the fresh clone before the first step's agent; not again for later steps, and not at all on an untrusted author's PR | That repo's `secrets` only, and none on someone else's PR or an awaywork PR's branch a rule took up | Exit non-zero, over 15 minutes or the window's end skips the unit, with the tail of its output in the report |
 | `sources.<id>.context.command` | Per item, before setup and the first step's agent, in the config file's folder; its files go to `extra/` of the item's context; not on a dry run | Its own `secrets` only | Logged; the unit runs without `extra/`. Over two minutes or the window's end, over 1 MB, or a symlink or other non-file in the output counts as a failure |
 | `repos.<repo>.test` | Never by awaywork: it's a line in the agent's prompt, and the agent runs it if it wants | The agent's: its provider's secret and those of the MCP servers its rule names | Up to the agent |
-| `repos.<repo>.verify` | Once per slice, when it ends with commits, before it's published; not for `deliver: report` | None | The tail of its output goes into the PR body or the push's summary, and a `deliver: pr` PR opens as a draft; the work is still published |
+| `repos.<repo>.verify` | Once per chain, when it ends with commits, before it's published; not for `deliver: report` | None | The tail of its output goes into the PR body or the push's summary, and a `deliver: pr` PR opens as a draft; the work is still published |
 | `when.command` | Before a step's agent starts, in the chain's clone; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain instead, which publishes what it has |
 | `until.command` | After every step of a loop; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain, and a loop that ends failing puts the tail in the PR body |
-| `gates.<name>.command` | Once per slice, right after `verify`, when it ends with commits; not for `deliver: report` or `pending_review`, nor on a dry run | None | The gate fires: its stdout goes in the decision card, and a `deliver: pr` PR opens as a draft. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted author's PR; see [Gates](#gates) |
+| `gates.<name>.command` | Once per chain, right after `verify`, when it ends with commits; not for `deliver: report` or `pending_review`, nor on a dry run. A plan or report rule's own gate, once its step left its report, with `$AWAYWORK_OUT_DIR` | None | The gate fires: its stdout goes in the decision card, and a `deliver: pr` PR opens as a draft, a plan or report waits. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted author's PR; see [Gates](#gates) |
 
-`verify`, `when` and `until` share their results: the same command on the same commit runs once. A gate's command always runs afresh. All four get the commit the slice started from as `$AWAYWORK_FROM`, and their git ignores the clone's replace refs. Only a gate's git reads attributes from the commit the chain started from; the other three keep the worktree's, so an eol or LFS rule the chain adds doesn't trip a `git status` or `git diff --exit-code` in your `verify`. [Loops](./chains.md#loops) has the rest of their rules.
+`verify`, `when` and `until` share their results: the same command on the same commit runs once. A gate's command always runs afresh. All four get the commit the chain started from as `$AWAYWORK_FROM`, and their git ignores the clone's replace refs. Only a gate's git reads attributes from the commit the chain started from; the other three keep the worktree's, so an eol or LFS rule the chain adds doesn't trip a `git status` or `git diff --exit-code` in your `verify`. [Loops](./chains.md#loops) has the rest of their rules.
 
 `skills` at the top level adds skills to every unit, like a rule's `skills`; see [Skills](./skills.md#where-skills-come-from).
 
@@ -422,14 +421,14 @@ PR titles, bodies and commit messages have no config: the agent follows the repo
 
 ## Gates
 
-Some changes want a human before they go anywhere: a migration, a new public route, a bumped dependency. A gate spots one and changes what gets delivered. Each gate has a name and one of `changed`, git globs from the repo root that fire when the slice's commits touch a matching path, `command`, a script that fires when it exits non-zero, its stdout becoming the gate's line, or `skill`, a [judge](#judges):
+Some changes want a human before they go anywhere: a migration, a new public route, a bumped dependency. A gate spots one and changes what gets delivered. Each gate has a name and one of `changed`, git globs from the repo root that fire when the chain's commits touch a matching path, `command`, a script that fires when it exits non-zero, its stdout becoming the gate's line, or `skill`, a [judge](#judges):
 
 ```yaml
 gates:
   schema: { changed: ["**/migrations/**", "**/*.prisma"] }
   routes: { command: scripts/route-diff.sh } # non-zero exit = fires, stdout = the line
   deps: { changed: [package.json, pnpm-lock.yaml] }
-  risk: { skill: judge } # a model reads the slice and may fire it
+  risk: { skill: judge } # a model reads the chain's commits and may fire it
 repos:
   acme/backend:
     gates:
@@ -437,11 +436,11 @@ repos:
       queues: { changed: ["src/jobs/**"] } # only this repo has it
 ```
 
-A command gate diffs the slice from `$AWAYWORK_FROM`, the commit the slice started from, or git's automatic merge on a [`sync`](./chains.md#conflicts) a model resolved:
+A command gate diffs the chain's commits from `$AWAYWORK_FROM`, the commit the chain started from, or git's automatic merge on a [`sync`](./chains.md#conflicts) a model resolved:
 
 ```sh
 #!/bin/sh
-# scripts/route-diff.sh: fires when the slice adds a route
+# scripts/route-diff.sh: fires when the chain adds a route
 routes=$(git diff --text "$AWAYWORK_FROM" HEAD -- src/routes | grep -E '^\+ *router\.(get|post)')
 [ -z "$routes" ] || { echo "$routes"; exit 1; }
 ```
@@ -450,7 +449,7 @@ Diff from `$AWAYWORK_FROM`, never from a branch like `origin/main`: the clone's 
 
 Top-level gates apply to every repo, and a repo's `gates` can only add to them. A gate both define fires on either's globs, and when both have a `command` or a `skill`, both run and either one fires it. There's no way for a repo to turn off or loosen a top-level gate.
 
-Gates run on every slice that publishes commits, once its chain's steps are done, right after `verify`, judges last, on that slice's own commits. A fired gate puts a decision card first in the PR body, right under the title, above the agent's own text and awaywork's chain notes:
+Gates run on every chain that publishes commits, once its steps are done, right after `verify`, judges last, on the chain's own commits. A fired gate puts a decision card first in the PR body, right under the title, above the agent's own text and awaywork's chain notes:
 
 ```markdown
 ## Needs a decision
@@ -476,7 +475,7 @@ So whenever a repo has gates, awaywork's section comes first in the body and any
 - `deliver: pr` opens the PR as a draft, and the report says which gates fired, like `draft: gate schema fired`.
 - `deliver: draft_pr` was a draft anyway: only the card is new.
 - `deliver: push` still pushes onto your PR. Its body is yours, so the section tops the push's summary in the morning report instead: `1 commit pushed onto feat/vat-export, gate schema fired, report below`.
-- `report` and `pending_review` commit nothing, so no gate runs.
+- `report`, `plan` and `pending_review` commit nothing, so none of these gates runs: a plan or report rule takes [gates of its own](#gates-of-a-rules-own).
 
 A `deliver: pr` run where the schema gate fired ends like this, the card's lines under the unit:
 
@@ -487,7 +486,7 @@ Run 20261024-031502: 1 draft PR, 0 reports, 1 unit
      - schema: migrations/20261023_add_vat_mode.ts
 ```
 
-Gates fail closed: a command that can't run, times out, is stopped or isn't run on an untrusted author's PR fires its gate with the reason, like ``- routes: `scripts/route-diff.sh` not checked: timed out after 15 min``. The agent could also rewrite the script that judges its work, so right before a command runs, awaywork compares each file it names with the same path at the commit the clone started from, before `setup` or any agent ran, or, on an awaywork PR a rule took up, where that PR left the default branch. A file that differs, is new or is gone fires the gate without running the command, as ``- routes: `scripts/route-diff.sh` changed, not run``, whether the change is committed in this slice or an earlier [stacked](./chains.md#stack) one, left uncommitted, hidden from `git status`, or made by `verify`.
+Gates fail closed: a command that can't run, times out, is stopped or isn't run on an untrusted author's PR fires its gate with the reason, like ``- routes: `scripts/route-diff.sh` not checked: timed out after 15 min``. The agent could also rewrite the script that judges its work, so right before a command runs, awaywork compares each file it names with the same path at the commit the clone started from, before `setup` or any agent ran, or, on an awaywork PR a rule took up, where that PR left the default branch. A file that differs, is new or is gone fires the gate without running the command, as ``- routes: `scripts/route-diff.sh` changed, not run``, whether the change is committed, left uncommitted, hidden from `git status`, or made by `verify`.
 
 That only works when the command names its script by its path from the repo root, as a word of its own: `scripts/route-diff.sh` in `bash ./scripts/route-diff.sh` or `(scripts/route-diff.sh) && echo ok` counts, but `cd scripts && sh route-diff.sh` doesn't. A file the command names that wasn't there when the chain started always fires it, so don't name one the command writes.
 
@@ -495,7 +494,7 @@ Only the named files are compared, though, and a command gate runs repo code the
 
 ### Judges
 
-A `skill` gate is a judge: once the scripts ran, awaywork runs that skill in the slice's clone as one more model run, routed on the rule's providers and models like a step, and tells it which commit to diff from and to change nothing. The built-in `judge` looks for what a human must decide: schema and data changes, public routes and API contracts, money and rounding, auth, infra, performance-sensitive paths, dependency changes, anything irreversible. Name your own skill to judge by your rules; it comes from your skills or the built-ins, never the repo's.
+A `skill` gate is a judge: once the scripts ran, awaywork runs that skill in the chain's clone as one more model run, routed on the rule's providers and models like a step, and tells it which commit to diff from and to change nothing. The built-in `judge` looks for what a human must decide: schema and data changes, public routes and API contracts, money and rounding, auth, infra, performance-sensitive paths, dependency changes, anything irreversible. Name your own skill to judge by your rules; it comes from your skills or the built-ins, never the repo's. A gate's `instructions`, files relative to the config file, reach its judge's prompt: your rules for what needs a decision, `risk: { skill: judge, instructions: [judges/money.md] }`. The rule's instructions and the repo's stay hidden from it, as they're written for the agent it judges.
 
 A judge that writes `fires` to `.away/out/verdict` fires its gate, the first ten lines of its `report.md` going into a Judge part of the card, after the scripts':
 
@@ -515,7 +514,26 @@ A judge that writes `fires` to `.away/out/verdict` fires its gate, the first ten
 
 Any other verdict, or none, adds nothing. Scripts set the minimum and a judge can only add: it can't clear a script's gate, even one with its name. It reads what the agent wrote, `// reviewed: safe` comments included, so it can be fooled, and then it just doesn't fire. It can't change what gets published: when it leaves a commit, a moved HEAD, an uncommitted change or a changed file in `.away/out/`, awaywork puts it all back as it was and fires the gate with `the judge changed the clone; awaywork dropped its changes`, though a worker process that outlived the watchdog could still change a file after that. It fails closed too: a judge that errors, times out, is stopped or can't run fires with `judge didn't run: <why>`, so a run out of quota drafts its `deliver: pr` PR.
 
-Each judge is one more model run per published slice, on the same quota as the steps. The run's log says `acme-backend-412: gate risk, judge on claude`, and the judge's worker log sits next to what the slice published, as `out/judge-risk-judge.log`.
+Each judge is one more model run per published chain, on the same quota as the steps. The run's log says `acme-backend-412: gate risk, judge on claude`, and the judge's worker log sits next to what the chain published, as `out/judge-risk-judge.log`.
+
+### Gates of a rule's own
+
+A `deliver: plan` or `deliver: report` rule takes `gates` of its own, on top of the top-level ones, which never run there: there's no diff. They run once the step left its report, on what it left, and one that fires makes the [post wait](./how-it-works.md#posts-that-wait) for your approve, with the decision card on top of it:
+
+```yaml
+queue:
+  - skill: plan
+    deliver: plan
+    wait: false # goes ahead unless a gate fires
+    gates:
+      product: { skill: judge, instructions: [judges/product.md] } # your rules, from the config only
+      size: { command: scripts/plan-size.sh } # reads $AWAYWORK_OUT_DIR/plan.yml
+```
+
+- A command gets `$AWAYWORK_OUT_DIR`, a read-only copy of the step's `.away/out/`: its `report.md`, the post's text, a plan's `plan.yml` and any other file it wrote. A judge gets the same copy, and its prompt says it judges those files against the item, not a diff; the built-in `judge` looks there for product calls: acceptance criteria that can go two ways, UX or copy, scope the card doesn't settle, data kept or shown to someone new, a contract another team owns.
+- Whatever a gate changes, the post is what the step left: awaywork puts `.away/out/` back before posting, and a judge that changed it fires.
+- None fired: the post carries `Gates: none fired (product, size)` on top and goes ahead under `wait: false`, its mark line naming the gates that ran clear.
+- A rule gate takes `command` or `skill`, never `changed`, and no name a top-level or repo gate has; on any other `deliver` gates are a config error for now.
 
 ## Queue rules
 
@@ -536,7 +554,11 @@ Each judge is one more model run per published slice, on the same quota as the s
 | `units` | At most this many units per run from this rule; a chain counts once |
 | `then` | Steps that run after this rule's skill, in the same clone; see [`then`](./chains.md#then) |
 | `when` | Quota checks, `runs_until_reset` and `headroom`, that skip the rule's whole chain; see [`when`](./chains.md#when) |
-| `on_done` | `{ comment: result, move: <where> }`, either or both: posts the unit's result on its items that are yours, then moves them, once its chain published, or its plan was posted; see [`on_done`](#on-done) |
+| `on_done` | `{ comment: result, move: <where> }`, either or both: posts the unit's result on its items that are yours, then moves them, once its chain published, or its plan was posted; a report that waits holds the move until you approve it; see [`on_done`](#on-done) |
+| `wait` | `deliver: plan` or `report` only: the post waits for your reply on the item, `true` by default for a plan, `false` for a report; see [Posts that wait](./how-it-works.md#posts-that-wait) |
+| `gates` | `deliver: plan` or `report` only: gates of the rule's own, on what its step left; see [Gates of a rule's own](#gates-of-a-rules-own) |
+| `post` | `deliver: plan`, or a `report` that posts (`wait: true`, `gates` or `on_done: { comment: result }`): `summary`, the step's `summary.md` with a link per file it left, put in the [store](#store), or `full`, the report inline as without a store; default `summary` with a store; see [Files that come back](./how-it-works.md#files-that-come-back) |
+| `thread` | `item` (default), the item itself, `github`, or a custom source with `thread: true`: its posts go to a thread awaywork opens for the item, an issue in its repo assigned to you or one the source's `write` opens, and replies are read there, for a tracker that can't take them; not on a `planned` rule, and `github` not on a Bitbucket config; see [Threads](./how-it-works.md#threads) and [Thread hosts](./custom-sources.md#thread-hosts) |
 | `run` | `window` (default) or `soon`: start its units within minutes of them coming due, not only in the windows; see [`run: soon`](#run-soon) |
 
 ### `where`
@@ -561,7 +583,7 @@ where:
 
 Strings compare ignoring case, like `matches`, so `section: In progress` catches a section called `In Progress`. Numbers and booleans compare exactly, and fixed values like `type` and `checks` stay lowercase.
 
-`title`, `description`, `approved` (whether you ran [`awaywork approve`](./how-it-works.md#units) on the item), `state` and `closed` (see [Finished items](#finished-items)), and `planned` (see below) are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
+`title`, `description`, `approved` (the skill of the newest result awaywork posted on the item that you approved or that went ahead, see [Posts that wait](./how-it-works.md#posts-that-wait); `approved: true` is a config error that says so), `state` and `closed` (see [Finished items](#finished-items)), and `planned` (see below) are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
 
 A PR awaywork opened only matches a rule whose top-level `where` names `ours` (inside `any` it is a config error), so rules written for your own PRs leave it waiting for your review. To act on it once you've reviewed it:
 
@@ -621,7 +643,7 @@ Within a rule, units run in the order the source returns items; for GitHub that 
 
 Every step runs on `sonnet`. One that fails there (a failed turn or the turn cap) runs once more, right away, on `opus`. That holds for a one-step rule like this one and for each step of a [`then`](./chains.md#then) chain or loop, where a step's own `model` can bring its own pair. A provider set to a plain name never retries.
 
-The retry starts from the clone as the failed step found it: that attempt's commits, edits and `.away/out/` changes are dropped (gitignored files like `node_modules` and `.away/context/` stay as it left them), and only that step runs again, on the same provider, without checking its [`when`](./chains.md#when) again. Only a failure retries: not a quota stop, the time limit, Ctrl-C, or a chain that already published a [stacked slice](./chains.md#stack). If the provider has no budget left for the retry, the failed attempt stands, as without a list.
+The retry starts from the clone as the failed step found it: that attempt's commits, edits and `.away/out/` changes are dropped (gitignored files like `node_modules` and `.away/context/` stay as it left them), and only that step runs again, on the same provider, without checking its [`when`](./chains.md#when) again. Only a failure retries: not a quota stop, the time limit or Ctrl-C. If the provider has no budget left for the retry, the failed attempt stands, as without a list.
 
 Both attempts show in the report and count against the budget. Towards [giving up](./how-it-works.md#units) on an item the retry speaks for the step, unless a quota, session or window stop cut it short: then the first failure counts. `notify` hears only about the retry:
 
@@ -663,7 +685,7 @@ A [report task](./how-it-works.md#report-tasks) posts its result on the card whe
   on_done: couldn't move ENG-12 to In Review: ENG-12 has no transition to "In Review", only to "QA", "Done"
 ```
 
-It runs once the chain finished and every slice published: a PR opened, a push landed, a report written, a pending review left. Not when a step failed or stopped, the run ended before a step ran, a loop ran out of rounds before its `until` held, or a step left nothing for the chain or asked [questions](./how-it-works.md#questions) instead. On a `deliver: plan` rule it runs once the [plan](./how-it-works.md#plans) is posted, never when it was refused or couldn't be. On a `planned` rule it moves the task's card, the only item a task writes to; the card [stays with its plan rule](./how-it-works.md#tasks) wherever it moves. A step its `when` passed over doesn't hold it back. Gates that fired and a failed `verify` don't either: the PR is out, and its card or note waits on it.
+It runs once the chain finished and published: a PR opened, a push landed, a report written, a pending review left. Not when a step failed or stopped, the run ended before a step ran, a loop ran out of rounds before its `until` held, or a step left nothing for the chain or asked [questions](./how-it-works.md#questions) instead. On a `deliver: plan` rule it runs once the [plan](./how-it-works.md#plans) is posted, never when it was refused or couldn't be. On a report rule whose post [waits](./how-it-works.md#posts-that-wait), the result is posted and the move held until you approve it, made by the first run that sees your `approve` while the card is still where the post saw it. On a `planned` rule it moves the task's card, the only item a task writes to; the card [stays with its plan rule](./how-it-works.md#tasks) wherever it moves. A step its `when` passed over doesn't hold it back. Gates that fired and a failed `verify` don't either: the PR is out, and its card or note waits on it.
 
 It moves the unit's items that are yours and come from the rule's own tracker: its `source`, or, on a rule without one, the source of the item the rule matched. `In Review` is a Jira status, not a label, so a Jira card's rule leaves the PR it links alone, even when another rule put that PR in the unit. Yours is your PR, an issue assigned to you, a Jira, Linear or Asana item, or a custom source's. Never a PR you were asked to review or an item only an extra GitHub `search` found; those are logged as `not moved, not yours`. Yours is checked again right before the move, in the read the move makes anyway, so an item reassigned or unassigned during the run stays put: `couldn't move ENG-12 to In Review: ENG-12 is no longer yours: not assigned to you`. A custom source's `write` checks that itself. Bitbucket and a custom source without `write` can't move anything, and `doctor` warns about a rule whose items may come from one. The token needs write scope: `write:jira-work` on a scoped Jira token, write access on a Linear key; Asana's has it, and `gh`'s login or `GH_TOKEN` (`repo` scope) adds labels already.
 
@@ -705,7 +727,7 @@ A rule can run more steps after its skill, such as a review and a fix until the 
 `notify.command` runs in a shell, as you and with your environment, on two events. `AWAYWORK_EVENT` says which:
 
 - `run`, once when a run ends, dry runs included: the morning report's path is in `AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`; the same results as JSON sit next to it, in `$(dirname "$AWAYWORK_REPORT")/report.json`.
-- `unit`, once for every step of a unit, as soon as the unit published, before the next unit starts. A dry run fires none, and Ctrl-C stops the running one and fires no more. Its env has `AWAYWORK_RUN_ID`, `AWAYWORK_UNIT` (the step's, e.g. `acme-api-12-review-1`), `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`, `failed`, `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit, or of a [slice](./chains.md#stack), that opened a PR (not on a [`push`](./chains.md#push), so a command that readies or labels `$AWAYWORK_PR_URL` never touches your own PR), and `AWAYWORK_REPORT`, the path of what the step wrote: its report, or for a step that commits, the PR body as it left it. The unit's items arrive as `AWAYWORK_ITEM_URL`, `AWAYWORK_ITEM_KEY` and `AWAYWORK_SOURCE`, one line per item in the unit's order (one item is the common case); the first two are named as in a [`context`](#sources) command and `AWAYWORK_SOURCE` is the source each item came from; `AWAYWORK_REPO` is its `owner/name`. `AWAYWORK_VERDICT` is the word the step wrote to `.away/out/verdict`, if it did, and `AWAYWORK_OUT_DIR` the folder where the step's `.away/out/` was kept, if it exists. It also holds what earlier steps of the slice left, so a hook acting on an extra file should check `$AWAYWORK_SKILL` first.
+- `unit`, once for every step of a unit, as soon as the unit published, before the next unit starts. A dry run fires none, and Ctrl-C stops the running one and fires no more. Its env has `AWAYWORK_RUN_ID`, `AWAYWORK_UNIT` (the step's, e.g. `acme-api-12-review-1`), `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`, `failed`, `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit that opened a PR (not on a [`push`](./chains.md#push), so a command that readies or labels `$AWAYWORK_PR_URL` never touches your own PR), and `AWAYWORK_REPORT`, the path of what the step wrote: its report, or for a step that commits, the PR body as it left it. The unit's items arrive as `AWAYWORK_ITEM_URL`, `AWAYWORK_ITEM_KEY` and `AWAYWORK_SOURCE`, one line per item in the unit's order (one item is the common case); the first two are named as in a [`context`](#sources) command and `AWAYWORK_SOURCE` is the source each item came from; `AWAYWORK_REPO` is its `owner/name`. `AWAYWORK_VERDICT` is the word the step wrote to `.away/out/verdict`, if it did, and `AWAYWORK_OUT_DIR` the folder where the step's `.away/out/` was kept, if it exists. It also holds what earlier steps of the chain left, so a hook acting on an extra file should check `$AWAYWORK_SKILL` first.
 
 The command gets both events. One that's only for the morning report starts with `[ "$AWAYWORK_EVENT" = run ] || exit 0`, or it also fires on every step.
 
@@ -764,9 +786,59 @@ notify:
 
 `set -e` stops at a `gh` that fails, a missing label say: the hook's failure is logged and the next step tries again.
 
-`gh pr edit "$AWAYWORK_PR_URL" --base develop` moves the base too; leave it out on a chain with [`stack`](./chains.md#stack), whose PRs sit on each other, and on a rule that takes up an awaywork PR, whose new PR sits on that one's branch.
+`gh pr edit "$AWAYWORK_PR_URL" --base develop` moves the base too; leave it out on a plan's [stacked tasks](./how-it-works.md#the-feature-block), whose PRs sit on each other, and on a rule that takes up an awaywork PR, whose new PR sits on that one's branch.
 
 That's your command with your token, not a worker: workers never comment or ping anyone. A requested reviewer gets a notification, and so can the CODEOWNERS a ready PR asks, so treat those two like a comment you'd post.
+
+## Store
+
+A post on the card is a fine place for a decision and a bad one for a 400-line plan, a contract or three screenshots: the team reads that thread at standup, and on a fresh runner whatever stayed in the run dir is gone. `store` is one command awaywork hands each file a post pins; it puts the file wherever you like, Notion, a bucket, a folder, and prints a link. The post gets a short summary and those links, and the next unit that reads the thread gets the files back, on any machine.
+
+```yaml
+store:
+  command: node store.mjs # runs in the config file's folder, like a custom source's command
+  secrets: [STORE_TOKEN] # withheld from workers, listed in Actions
+  read: { max_mb: 10, files: ["*.md", "*.yml", "*.png"] } # what comes back; default 10 MB of everything
+```
+
+The command gets one JSON op on stdin per call, and runs with your environment like a [custom source](./custom-sources.md)'s:
+
+- `{"op": "put", "item": "ENG-2101", "unit": "eng-2101", "path": "/…/units/eng-2101/out/plan.yml", "kind": "plan"}` prints `{"url": "…"}`. `path` is a copy awaywork made out of the clone, readable while the put runs. `kind` is `plan`, `contract`, `report`, or the file's name under `.away/out/` for anything else the step left, so one script can send recordings to a bucket and plans to Notion.
+- `{"op": "get", "url": "…"}` prints the file's bytes, exactly as put. A store that only puts sets `get: false`, and awaywork reads the file back with a plain HTTP GET of its URL.
+
+Right after each put awaywork gets the file back once and compares its sha256: a pin is that hash, so a store that hands back other bytes, a CMS adding a newline, Notion turning markdown into a page and back, would make every post look edited. Such a file isn't pinned, and the morning report says `report.md not stored: the store gave back different bytes than awaywork put`. Keep such a store's page for people, and the bytes awaywork reads somewhere that keeps them as they are.
+
+The model never sees a URL before awaywork writes it, and never picks where a file goes. A tiny one that keeps the files in a folder next to it, at `file://` URLs, which is enough for one machine:
+
+```js
+// store.mjs: keeps each file awaywork puts in a folder next to it, at a file:// URL.
+import { randomUUID } from 'node:crypto'
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const op = JSON.parse(readFileSync(0, 'utf8'))
+if (op.op === 'put') {
+  const to = join(dirname(fileURLToPath(import.meta.url)), 'files', randomUUID(), basename(op.path))
+  mkdirSync(dirname(to), { recursive: true })
+  copyFileSync(op.path, to)
+  console.log(JSON.stringify({ url: pathToFileURL(to).href }))
+} else {
+  const path = fileURLToPath(op.url)
+  // A pin line anyone could write names this URL: read only this store's files.
+  if (!path.startsWith(join(dirname(fileURLToPath(import.meta.url)), 'files', '/')))
+    throw new Error(`not in this store: ${op.url}`)
+  process.stdout.write(readFileSync(path))
+}
+```
+
+Three things are the script's job, not awaywork's:
+
+- **A URL that lasts.** The link is read back days later, from the post. An S3 presigned link expires within a week, so sign it again in `get` from a key you put in the URL, or pick a host whose links don't expire.
+- **Secrets in what leaves.** A log or a recording can hold a token the agent saw on screen. Redact before the file leaves the machine, or keep those kinds out of the store.
+- **Only its own URLs.** awaywork reads pins only off its own posts and the PRs it opened for you, and on GitHub and Jira it skips any of those someone else edited last, so a teammate can't swap in a pin there. Asana, Linear and a custom source don't say who edited a comment, so a teammate who can edit yours can edit a pin line too. A `get` that refuses any URL it didn't print, as above, keeps the store from fetching whatever they name.
+
+A put that fails leaves the file in the run dir, pins nothing for it and gets a line in the morning report (`fail.bin not stored: Command failed with exit code 1: …`, or `printed 11 characters that aren't JSON, not {"url": "…"}`, never quoting what it printed); the post and the PR still go out. A get that fails skips the unit with why, as `fix store`, and counts no attempt. What comes back and when is in [Files that come back](./how-it-works.md#files-that-come-back).
 
 ## MCP servers
 
