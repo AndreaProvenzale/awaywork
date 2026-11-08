@@ -652,13 +652,12 @@ test('on the Config tab the arrows move between rules and each skill has its col
   })
   on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
   on('fs.read', () => ({ value: 'queue: []\n' }))
+  on('ui.scroll', () => ({}))
   await $.command.run(away())
   const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'terminal' })
   await ui.press({ key: 'tab:config' })
   expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
-  expect(await $.ui.scroll({ ...SCROLL, by: 1 })).toEqual({
-    deny: 'the arrows move between rules',
-  })
+  expect(await $.ui.scroll({ ...SCROLL, by: 1 })).toEqual({})
   expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
   const colors = (await ui.findAll({ type: 'Text' })).map((n) => n.props.color)
   expect(colors).toEqual(expect.arrayContaining(['claude', 'merged']))
@@ -715,6 +714,7 @@ test('session start makes the folder only when config path says missing, and wat
 
 const OTHER = '/home/me/acme/ctl/.awaywork'
 const DRAFT = `${OTHER}/config.draft.yml`
+const GONE = '/home/me/gone/config.draft.yml'
 const missing = (path: string) => ({
   exitCode: 1,
   stdout: `${path}\n`,
@@ -722,21 +722,22 @@ const missing = (path: string) => ({
 })
 
 /** A setup, or a working config, with the pane open, its tool calls answered. */
-function session(on: On, setup: boolean) {
+function session(on: On, setup: boolean, moved: () => boolean = () => false) {
   const draft = `--config ${DRAFT} config explain`
+  const named = `${OTHER}/config.yml`
   const e = engine(on, {
     'config path': setup ? noConfig : { stdout: `${CONFIG}\n` },
     'report --json': ok(busyReport),
-    '--config ~/acme/ctl/.awaywork/config.draft.yml config path': missing(DRAFT),
-    '--config /home/me/acme/ctl/.awaywork/config.draft.yml config path': missing(DRAFT),
-    [`--config ${OTHER}/config.yml config path`]: missing(`${OTHER}/config.yml`),
+    '--config ~/acme/ctl/.awaywork/config.draft.yml config path': { stdout: `${DRAFT}\n` },
+    [`--config ${DRAFT} config path`]: { stdout: `${DRAFT}\n` },
+    [`--config ${GONE} config path`]: missing(GONE),
+    [`--config ${named} config path`]: () => (moved() ? { stdout: `${named}\n` } : missing(named)),
     [`--config ${CONFIG} config explain`]: ok(explained),
     [draft]: ok(explained),
   })
   on('ui.panes', () => ({ value: [{ id: 'away' }] as never }))
   on('command.run', () => ({ text: 'the skill ran' }))
   on('tool.call', () => ({ result: {} }))
-  on('session.cwd', () => ({ value: '/home/me/acme/ctl' }))
   on('fs.exists', (_, x) => ({ value: x.path === DRAFT || (!setup && x.path === CONFIG) }))
   on('fs.read', () => ({ value: 'queue: []\n' }))
   return e
@@ -757,14 +758,6 @@ for (const [what, call] of [
     'an awaywork --config with ~/',
     { tool: 'Bash', command: 'awaywork --config ~/acme/ctl/.awaywork/config.draft.yml init --yes' },
   ],
-  [
-    'a relative --config',
-    {
-      tool: 'Bash',
-      command:
-        'cd /home/me/acme/ctl && awaywork --config .awaywork/config.draft.yml plan --rules --json',
-    },
-  ],
   ['a Write of the draft', { tool: 'Write', file_path: DRAFT, content: 'x' }],
 ] as const)
   test(`during setup, ${what} repoints the pane to the control folder`, async ($, on) => {
@@ -775,6 +768,38 @@ for (const [what, call] of [
     await settle($)
     expect(explainedHere(calls, DRAFT)).toBe(true)
   })
+
+test('a named draft that is not on disk, or a relative one, leaves the pane alone', async ($, on) => {
+  const { calls } = session(on, true)
+  await $.command.run(away('set up awaywork'))
+  await settle($)
+  await $.tool.call({ tool: 'Bash', command: `awaywork --config ${GONE} init --yes` })
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'cd /home/me/acme/ctl && awaywork --config .awaywork/config.draft.yml plan',
+  })
+  await settle($)
+  expect(calls.some((argv) => argv.includes('/home/me/gone/config.yml'))).toBe(false)
+  expect(calls.some((argv) => argv.includes('.awaywork/config.draft.yml'))).toBe(false)
+  const ui = await mount($, 'terminal')
+  expect(await text(ui, /It'll read like this/)).toBe(true)
+})
+
+test('after a setup in a control folder, bare /away finds the moved config', async ($, on) => {
+  let moved = false
+  const { calls } = session(on, true, () => moved)
+  await $.command.run(away('set up awaywork'))
+  await settle($)
+  await $.tool.call({ tool: 'Write', file_path: DRAFT, content: 'x' })
+  await settle($)
+  moved = true
+  calls.length = 0
+  const ran = await $.command.run(away())
+  expect(ran.text).toBeUndefined()
+  expect(calls[0]).toEqual(['awaywork', '--config', `${OTHER}/config.yml`, 'config', 'path'])
+  const ui = await mount($, 'terminal')
+  expect(await text(ui, /setting up/)).toBe(false)
+})
 
 test('a mention of someone else’s draft never moves the pane', async ($, on) => {
   const { calls } = session(on, true)
@@ -830,6 +855,80 @@ test('a failed explain tries again on the next look, and an old awaywork says th
   expect(calls.filter((argv) => argv.slice(3).join(' ') === 'config explain')).toHaveLength(4)
 })
 
+/** The Config tab on a real file, its text and explain's answer the test's to change. */
+async function configTab(
+  $: Engine,
+  on: On,
+  start: { text: string; reply: Reply },
+  size: Size = {},
+) {
+  const file = { ...start }
+  engine(on, {
+    'config path': { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    [`--config ${CONFIG} config explain`]: () => file.reply,
+    [`--config ${CONFIG} plan --rules --json`]: ok({ rules: [], unmatched: [] }),
+  })
+  on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
+  on('fs.read', () => ({ value: file.text }))
+  await $.command.run(away())
+  const ui = await $.ui.mount({ ...PANE, props: sized(size), surface: 'terminal' })
+  await ui.press({ key: 'tab:config' })
+  return { ui, file }
+}
+
+test('a failed explain goes away once the file is back to what was explained', async ($, on) => {
+  const { ui, file } = await configTab($, on, { text: 'a: 1\n', reply: ok(explained) })
+  file.text = 'b: 1\n'
+  file.reply = { exitCode: 1, stderr: 'boom\n' }
+  await ui.press({ key: 'refresh' })
+  expect(await text(ui, /boom/)).toBe(true)
+  file.text = 'a: 1\n'
+  file.reply = ok(explained)
+  await ui.press({ key: 'refresh' })
+  expect(await text(ui, /boom/)).toBe(false)
+  expect(await text(ui, '✓ valid')).toBe(true)
+})
+
+test('an invalid file keeps its problems and its diff across looks at the same text', async ($, on) => {
+  const { ui, file } = await configTab($, on, { text: 'a: 1\n', reply: ok(explained) })
+  file.text = 'bogus: 1\n'
+  file.reply = ok({ valid: false, problems: ['queue[0]: Unrecognized key: "bogus"'] })
+  await ui.press({ key: 'refresh' })
+  await ui.press({ key: 'refresh' })
+  expect(await text(ui, 'queue[0]: Unrecognized key: "bogus"')).toBe(true)
+  expect(await text(ui, '✗ 1 problem')).toBe(true)
+  expect(await label(ui, 'diff')).toBe('diff')
+  // The filename is what truncates; the state sits in a box that doesn't shrink.
+  expect((await ui.find({ type: 'Text', text: 'config.yml' }))?.props.wrap).toBe('truncate-end')
+})
+
+test('a plan rule keeps where its tasks go when the flow falls back to one line', async ($, on) => {
+  const planned = {
+    ...explained,
+    rules: [
+      {
+        ...explained.rules[0],
+        skill: 'plan',
+        leaves: 'plan',
+        plan: true,
+        waits: true,
+        steps: [{ loop: ['implement', 'review'], until: 'approve', max: 3 }],
+      },
+      { ...explained.rules[1], planned: true },
+    ],
+  }
+  const { ui } = await configTab(
+    $,
+    on,
+    { text: 'queue: []\n', reply: ok(planned) },
+    { bodyColumns: 40 },
+  )
+  expect(await text(ui, /⟲ \(implement ▶ review\) until approve, max 3 ▶ ◆ plan ▶ rule 2$/)).toBe(
+    true,
+  )
+})
+
 test('on a pane that overflows the arrows still step the rule, the wheel scrolls', async ($, on) => {
   engine(on, {
     'config path': { stdout: `${CONFIG}\n` },
@@ -840,8 +939,10 @@ test('on a pane that overflows the arrows still step the rule, the wheel scrolls
   on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
   on('fs.read', () => ({ value: 'queue: []\n' }))
   const scrolled: number[] = []
+  const offsets: number[] = []
   on('ui.scroll', (_, e) => {
     scrolled.push(e.by)
+    offsets.push(e.offset)
     return {}
   })
   await $.command.run(away())
@@ -857,11 +958,21 @@ test('on a pane that overflows the arrows still step the rule, the wheel scrolls
   expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
   expect(scrolled).toEqual([1])
 
-  // At the spare rows the flow fits: the wheel still steps the rule.
-  expect(await $.ui.scroll({ ...over, contentRows: 13, by: -1, pointer: wheel })).toEqual({
-    deny: 'the arrows move between rules',
-  })
+  // A page key, Home or End scrolls and leaves the rule where it is.
+  expect(await $.ui.scroll({ ...over, by: 12 })).toEqual({})
+  expect(await $.ui.scroll({ ...over, by: -60 })).toEqual({})
+  expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
+  expect(scrolled).toEqual([1, 12, -60])
+
+  // At the spare rows the flow fits: the wheel still steps the rule, and the window goes back to the top.
+  offsets.length = 0
+  expect(
+    await $.ui.scroll({ ...over, contentRows: 13, by: -1, pointer: wheel, offset: 1 }),
+  ).toEqual({})
   expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+  expect(await $.ui.scroll({ ...over, contentRows: 13, by: 12, offset: 1 })).toEqual({})
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+  expect(offsets).toEqual([0, 0])
 })
 
 test('a Last run card too narrow for the skill keeps its ref', async ($, on) => {

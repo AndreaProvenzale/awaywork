@@ -530,7 +530,8 @@ export const register: Register = (on) => {
     // The desktop app attaches only once the pane asks to draw, so a typed /away opens it anyway.
     const headless = e.origin.kind !== 'composer' && (await $.session.surfaces()).length === 0
     if (headless) return next(e)
-    const where = await configPaths($)
+    // A config a setup moved into a control folder counts, before the shell profile names it.
+    const where = await configPaths($, (await read($, config)).named)
     if (where.missing) {
       await update($, view, (v): View => ({ marks: v.marks, tab: 'config' }))
       await $.ui.open({ id: PANE, title: 'awaywork' })
@@ -580,11 +581,13 @@ export const register: Register = (on) => {
   // A body that fits its window: the wheel over the strip steps the cards, anything else scrolls the detail.
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
     if (e.origin.kind === 'person' && (await inFlow($))) {
-      // Past the rows `done` keeps spare, the body doesn't fit: the wheel scrolls it.
+      // Past the rows `done` keeps spare, the body doesn't fit: the wheel and page keys scroll it.
       const overflows = e.contentRows > e.bodyRows + 1
-      if (e.pointer && overflows) return next(e)
-      await stepRule($, e.by, overflows)
-      return { deny: 'the arrows move between rules' }
+      const arrow = !e.pointer && Math.abs(e.by) === 1
+      if (overflows && !arrow) return next(e)
+      if (arrow || e.pointer) await stepRule($, e.by, overflows)
+      // A body that fits stays at its top: a reveal left scrolled would hide the header.
+      return overflows ? { deny: 'the arrows move between rules' } : next({ ...e, offset: 0 })
     }
     if (!drawn.strip) return next(e)
     const r = e.pointer?.row

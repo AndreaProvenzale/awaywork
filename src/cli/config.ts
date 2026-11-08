@@ -41,7 +41,9 @@ export function configCommand(program: Command): void {
         process.exitCode = 1
         return
       }
-      const skills = { user: await loadSkills(skillsDirOf(path)), builtin: builtinSkills }
+      // A broken SKILL.md is the run's problem; the rules still read, from the built-in logic.
+      const user = await loadSkills(skillsDirOf(path)).catch(() => ({}))
+      const skills = { user, builtin: builtinSkills }
       console.log(JSON.stringify(explainConfig(text, path, skills), null, 2))
     })
 

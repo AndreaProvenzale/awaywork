@@ -73,7 +73,8 @@ async function fetchConfig($: EngineInterface) {
   const hasConfig = await $.fs.exists(where.path)
   const file = isDraft ? where.draft : where.path
   const text = isDraft || hasConfig ? await $.fs.read(file) : undefined
-  if (text === c.text) {
+  // A file with problems is asked about again, so a failed explain doesn't outlive the file it failed on.
+  if (text === c.text && !c.problems) {
     await update($, config, (x) => ({ ...x, ...located, file: text && file }))
     return
   }
@@ -89,7 +90,7 @@ async function fetchConfig($: EngineInterface) {
     ...located,
     file: text === undefined ? undefined : file,
     text: seen ? text : x.text,
-    previous: seen ? x.text : x.previous,
+    previous: seen && text !== x.text ? x.text : x.previous,
     view: said?.valid ? said : text === undefined ? undefined : x.view,
     problems:
       said && !said.valid
@@ -115,10 +116,10 @@ export async function wantTakes($: EngineInterface) {
   void readTakes($)
 }
 
-/** The draft a tool call is working on: a Write or Edit of `config.draft.yml`, or an `awaywork --config` at one. */
+/** The draft a tool call is working on: a Write or Edit of `config.draft.yml`, or an `awaywork --config` at one by a path that says where it is. */
 export function draftNamed(isFile: boolean, text: string) {
   if (isFile) return nameOf(text) === DRAFT ? text : undefined
-  return /(?:^|[\s;&|(])awaywork\s[^;&|\n]*?--config(?:=|\s+)['"]?((?:[^\s'"$]*\/)?config\.draft\.yml)(?=$|[\s'"])/.exec(
+  return /(?:^|[\s;&|(])awaywork\s[^;&|\n]*?--config(?:=|\s+)['"]?(~?\/(?:[^\s'"$]*\/)?config\.draft\.yml)(?=$|[\s'"])/.exec(
     text,
   )?.[1]
 }
@@ -126,12 +127,11 @@ export function draftNamed(isFile: boolean, text: string) {
 export const mentionsConfig = (text: string, c: ConfigState) =>
   text.includes(DRAFT) || (!!c.path && text.includes(c.path))
 
-/** Follows setup's draft: the CLI expands a `~/`, and a relative path is from where the session now is. */
+/** Follows setup's draft once it's on disk: the CLI expands a `~/` and says whether the file is there. */
 export async function useDraft($: EngineInterface, named: string) {
-  const at = /^~?\//.test(named) ? named : `${await $.session.cwd()}/${named}`
-  const draft = firstLine((await awaywork($, ['--config', at, 'config', 'path'])).stdout)
-  if (draft.startsWith('/'))
-    await update($, config, (c) => ({ ...c, named: `${folderOf(draft)}/config.yml` }))
+  const { path, missing } = await configPaths($, named)
+  if (path && !missing)
+    await update($, config, (c) => ({ ...c, named: `${folderOf(path)}/config.yml` }))
 }
 
 /** One hunk from the first changed line to the last, what a single write changes. */
@@ -229,9 +229,9 @@ function flowOf(r: ConfigRule, rules: ConfigRule[], width: number) {
       add([arrow(` until ${s.until}, max ${s.max}`)])
     } else add([skillPart(s.skill)])
   }
-  add(endParts(r))
   const tasks = r.plan && rules.find((x) => x.planned)
-  if (tasks) add([arrow(), { text: `rule ${tasks.rule}` }])
+  const tail = [...endParts(r), ...(tasks ? [arrow(), { text: `rule ${tasks.rule}` }] : [])]
+  add(tail)
   if (lengthOf(line) <= width)
     return { line, under: r.steps.some((s) => 'loop' in s) ? under : undefined }
   const flat = [
@@ -241,7 +241,7 @@ function flowOf(r: ConfigRule, rules: ConfigRule[], width: number) {
         ? [arrow(' ▶ ⟲ ('), ...joined(s.loop, ' ▶ '), arrow(`) until ${s.until}, max ${s.max}`)]
         : [arrow(), skillPart(s.skill)],
     ),
-    ...endParts(r),
+    ...tail,
   ]
   return { line: flat, under: undefined }
 }
@@ -410,11 +410,14 @@ export function configBody(input: Input): RenderChildren {
   const head = (
     <Box flexDirection="column">
       <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
-        <Text wrap="truncate-end">
-          <Text bold>{name}</Text>
-          {'  '}
-          <Text color={problems ? 'error' : 'success'}>{state}</Text>
-        </Text>
+        <Box flexDirection="row" columnGap={2}>
+          <Text bold wrap="truncate-end">
+            {name}
+          </Text>
+          <Box flexShrink={0}>
+            <Text color={problems ? 'error' : 'success'}>{state}</Text>
+          </Box>
+        </Box>
         {toggles}
       </Box>
       {facts && (
