@@ -38,7 +38,7 @@ Pin the logins in the draft (at the end of step 3): the gh account as `sources.g
 
 ### Write the draft
 
-As soon as this round is answered, before the next one, so the developer sees it take shape. Where it goes: a single file at `<config>`, unless the config needs files beside it (a custom source, instructions, skills) or runs off this machine: then a control folder, a git repo they own. Propose one next to their clones (`~/projects/acme/awaywork`), say why, and once they agree, `git init` it with a `.gitignore` for `.env`. `<config>` becomes `<control>/.awaywork/config.yml`, where `schedule install --with …` keeps it; files it names go beside it. Pass `--config <config>` from then on, and print the `AWAYWORK_CONFIG` line for their shell profile.
+As soon as this round is answered, before the next one, so the developer sees it take shape. Where it goes: a single file at `<config>`, unless the config needs files beside it (a custom source, a store, instructions, skills) or runs off this machine: then a control folder, a git repo they own. Propose one next to their clones (`~/projects/acme/awaywork`), say why, and once they agree, `git init` it with a `.gitignore` for `.env`. `<config>` becomes `<control>/.awaywork/config.yml`, where `schedule install --with …` keeps it; files it names go beside it. Pass `--config <config>` from then on, and print the `AWAYWORK_CONFIG` line for their shell profile.
 
 ```sh
 awaywork --config <draft> init --yes --provider <theirs, first first> --source github --window <start>-<end>
@@ -75,11 +75,15 @@ sources:
 
 **Sprint cards,** when they picked them: one question in the round with the tracker's names (a custom tracker: on its own, once it reads), one pick:
 
-1. Plan, then implement across repos, waiting for them only when the judge finds a product decision the card leaves open: `deliver: plan` with `wait: false` and `gates: {product: {skill: judge}}`, the built-in `judge`; the tasks fan out to an `implement` rule on `planned: true`, a repo's tasks stacked on each other, and they review the plan and the drafts in the morning.
-2. The same, waiting for their `approve` on every plan.
+1. Plan, then implement across repos, waiting for them only when the judge finds a product decision the card leaves open: `deliver: plan` with `wait: false` and `gates: { decisions: { skill: judge } }`; the tasks fan out to an `implement` rule on `planned: true`, one PR per task, waiting on each other as the plan's `after` says (`opened` stacks a PR on another's in the same repo, `merged` holds it until they merge that one), and they read the plan in the morning and the drafts after the next run, which fans it out.
+2. The same with no `wait` and no `gates`: a plan waits by default, so every plan waits for their `approve`.
 3. A plan report, no code.
 
 1 and 2 are widening: the plan is posted on the card, or, when the source can't write there (a custom source without `write`, a token scoped to read, like Jira's `read:jira-work`), on an issue awaywork opens in the card's repo, assigned to them (`thread: github`). Their descriptions say which (https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#plans).
+
+**Plans in a doc tool,** when they say that's where plans live (Notion, Confluence and friends): a top-level `store` in the draft, `{command: node store.mjs, secrets: [<its token>]}`, shown as the widening it is (it sends the step's files off the machine), its script beside the config (`<control>/.awaywork/store.mjs`: the command runs in the config's folder), written with them like a custom tracker: ask where the API docs are, and the token goes through `awaywork secret`. https://andreaprovenzale.github.io/awaywork/guide/configuration.md#store has its ops and what's the script's job. `get` must print the exact bytes `put` took, which a page that turns Markdown into blocks doesn't: keep the page for people and the file as its attachment. Give them one `put` and one `get` of a small file to run from `<control>/.awaywork` in their own terminal, each its JSON op piped to `node --env-file=$HOME/.config/awaywork/env store.mjs`, and have them compare the bytes. Sprint options 1 and 2 need nothing more: with a store their posts are lean, a summary and a link per file. Option 3 posts nothing, so a store has nothing to keep for it.
+
+**A thread host of their own,** a custom source with `thread: true` named in the plan rule's `thread` (https://andreaprovenzale.github.io/awaywork/guide/custom-sources.md#thread-hosts): one that notifies nobody, a folder of Markdown files say, gets a `notify` hook next to it (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#notify), shown as the widening it is, or a plan there waits unseen.
 
 ## 6. First queue
 

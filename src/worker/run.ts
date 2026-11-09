@@ -80,6 +80,7 @@ export async function runWorker(
           if (event.type === 'done') {
             result.turns = event.turns
             if (event.ok) result.status = 'done'
+            else result.reason = event.reason
           }
         }
       },

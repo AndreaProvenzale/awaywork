@@ -1,12 +1,21 @@
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { execa } from 'execa'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkArgs, forward, servedRemotely, serveRemote } from '../src/cli/remote.js'
+import {
+  checkArgs,
+  forward,
+  remoteCall,
+  servedRemotely,
+  serveRemote,
+  sshArgs,
+} from '../src/cli/remote.js'
 import { runsDir } from '../src/config/paths.js'
 
 vi.mock('../src/config/paths.js', async (original) => {
@@ -418,5 +427,235 @@ describe('the CLI forwarding to a remote', () => {
         '',
       ].join('\n'),
     )
+  })
+
+  it('takes ssh:// and http(s):// remotes, an http one only with a token, and says so for anything else', async () => {
+    const out = output()
+    expect(remoteCall(['plan'], { url: 'https://away.example.com' })).toBeUndefined()
+    expect(remoteCall(['plan', '--help'], { url: 'ssh://box' })).toBeUndefined()
+    expect(remoteCall(['init'], { url: 'ssh://box' })).toBeUndefined()
+    expect(remoteCall(['plan', '-c', 'x.yml'], { url: 'ssh://box' })).toBeUndefined()
+    expect(await remoteCall(['plan'], { url: 'box', token: TOKEN })).toBe(1)
+    expect(await remoteCall(['plan'], { url: 'ssh://' })).toBe(1)
+    expect(out.stderr).toBe(
+      'AWAYWORK_REMOTE (box) is neither ssh:// nor http(s)://\nAWAYWORK_REMOTE (ssh://) names no host\n',
+    )
+  })
+
+  describe('over ssh', () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const free = async () => {
+      const server = createServer().listen(0)
+      await once(server, 'listening')
+      const { port } = server.address() as AddressInfo
+      server.close()
+      return `http://127.0.0.1:${port}`
+    }
+
+    /** A laptop with a stand-in ssh, which hands the command to sh as the box's login shell would, and a box with this awaywork, its env file holding `boxEnv`. */
+    async function box(boxEnv = `AWAYWORK_REMOTE_TOKEN=${TOKEN}\n`) {
+      const dir = await mkdtemp(join(tmpdir(), 'awaywork-ssh-'))
+      const bin = join(dir, 'bin')
+      const boxBin = join(dir, 'box-bin')
+      const home = join(dir, 'box-home')
+      await mkdir(join(home, '.config', 'awaywork'), { recursive: true })
+      await mkdir(boxBin)
+      await mkdir(bin)
+      await writeFile(join(home, '.config', 'awaywork', 'env'), boxEnv)
+      const ssh = `#!/bin/sh
+while [ "$1" != -- ]; do shift; done
+if [ "$2" = down ]; then printf "kex_exchange_identification: read: Connection reset by peer\\nssh: connect to host down " >&2; sleep 0.1; echo "port 22: Connection refused" >&2; exit 255; fi
+if [ "$2" = chatty ]; then echo warn >&2; sleep 2; echo out; exit 0; fi
+exec env PATH="$BOX_PATH" sh -c "$3"
+`
+      // The box's daemon is on its own port here, not 7480.
+      const awaywork = `#!/bin/sh
+exec env AWAYWORK_REMOTE="$BOX_URL" HOME=${home} ${process.execPath} --experimental-transform-types --disable-warning=ExperimentalWarning --import ${root}scripts/ts-resolve.mjs ${root}src/cli/index.ts "$@"
+`
+      await writeFile(join(bin, 'ssh'), ssh, { mode: 0o755 })
+      await writeFile(join(boxBin, 'awaywork'), awaywork, { mode: 0o755 })
+      vi.stubEnv('PATH', `${bin}:${process.env.PATH}`)
+      vi.stubEnv('BOX_PATH', `${boxBin}:/usr/bin:/bin`)
+      return dir
+    }
+    afterEach(() => vi.unstubAllEnvs())
+
+    /** What sh, bash, zsh, fish or csh would read as more than one word, or as code, `pwned` the file it would touch. */
+    const nasty = (pwned: string) => [
+      '',
+      `it's`,
+      'a\nb',
+      'end\\',
+      `; touch ${pwned} #`,
+      '\\',
+      '\\\\',
+      `\\'`,
+      `'\\`,
+      `'`,
+      `''`,
+      `$(touch ${pwned})`,
+      `\`touch ${pwned}\``,
+      `(touch ${pwned})`,
+      `x\ntouch ${pwned}`,
+      `y\r\ntouch ${pwned}`,
+      'tab\there',
+      '{a,b}',
+      '$HOME',
+      '!x',
+      '%1',
+      '^',
+      '*',
+      '?',
+      '[a]',
+      '~',
+      '#',
+      '=ls',
+      'ünï ✓ 日本',
+      '"double"',
+      'a  b',
+      ' ',
+      `| touch ${pwned} &`,
+      'tail\\',
+      `\\\n; touch ${pwned}`,
+    ]
+
+    it('runs ssh with no terminal nor prompt, the box user, host and port as the URL names them, the call one base64url word', () => {
+      const call = ['approve', ...nasty('/tmp/pwned')]
+      const argv = sshArgs('ssh://box', call) as string[]
+      expect(argv.slice(0, -1)).toEqual(['-T', '-o', 'BatchMode=yes', '--', 'box'])
+      const command = (argv.at(-1) as string).split(' ')
+      expect(command.slice(0, -1)).toEqual([
+        'env',
+        'AWAYWORK_REMOTE=http://127.0.0.1:7480',
+        'awaywork',
+        '--from-ssh',
+      ])
+      const word = command.at(-1) as string
+      expect(word).toMatch(/^[\w-]+$/)
+      expect(JSON.parse(Buffer.from(word, 'base64url').toString())).toEqual(['ssh://box', ...call])
+      expect(sshArgs('ssh://me@box.example.com:2222', [])?.slice(3, -1)).toEqual([
+        '-p',
+        '2222',
+        '--',
+        'me@box.example.com',
+      ])
+      expect(sshArgs('ssh://', [])).toBeUndefined()
+    })
+
+    it("refuses on the box a --from-ssh call that isn't an array of strings", async () => {
+      const { url, log } = await serve()
+      const word = (call: unknown) => Buffer.from(JSON.stringify(call)).toString('base64url')
+      const words = ['', 'not-json', word({ args: ['stats'] }), word([]), word(['ssh://box', 1])]
+      const out = output()
+      for (const w of words)
+        expect(await remoteCall(['--from-ssh', w], { url, token: TOKEN })).toBe(1)
+      expect(await remoteCall(['--from-ssh'], { url, token: TOKEN })).toBe(1)
+      expect(out.stderr).toBe(
+        'awaywork --from-ssh: not a call as awaywork sends it over ssh\n'.repeat(words.length + 1),
+      )
+      expect(log).toEqual([])
+    })
+
+    it('hands the box every argument as it is, and its exit code and output, stdout and stderr apart', async () => {
+      await box()
+      const pwned = join(await mkdtemp(join(tmpdir(), 'awaywork-pwned-')), 'pwned')
+      const { url, log } = await serve(
+        'console.log(JSON.stringify(process.argv.slice(1))); console.error("err"); process.exit(3)',
+      )
+      vi.stubEnv('BOX_URL', url)
+      const calls = [
+        ['approve', 'chores:CH-1', ...nasty(pwned)],
+        ['skip', 'x', `--reason=-${nasty(pwned).join('')}`],
+      ]
+      const out = output()
+      for (const args of calls) expect(await remoteCall(args, { url: 'ssh://box' })).toBe(3)
+      expect(out).toEqual({
+        stdout: calls
+          .map((args) => `${JSON.stringify(['--config', '/daemon/config.yml', ...args])}\n`)
+          .join(''),
+        stderr: 'err\nerr\n',
+      })
+      expect(existsSync(pwned)).toBe(false)
+      expect(log).toEqual(calls.map((args) => `remote: ${JSON.stringify(args)}: exit 3`))
+    }, 20_000)
+
+    it("fails in one line naming AWAYWORK_REMOTE when ssh can't connect, awaywork isn't on the box's PATH or its daemon isn't serving", async () => {
+      await box()
+      vi.stubEnv('BOX_URL', await free())
+      const out = output()
+      expect(await remoteCall(['plan'], { url: 'ssh://down' })).toBe(1)
+      expect(await remoteCall(['plan'], { url: 'ssh://box' })).toBe(1)
+      vi.stubEnv('BOX_PATH', '/usr/bin:/bin')
+      expect(await remoteCall(['plan'], { url: 'ssh://box' })).toBe(1)
+      expect(out.stderr.split('\n')).toEqual([
+        "can't reach AWAYWORK_REMOTE (ssh://down): ssh: connect to host down port 22: Connection refused",
+        expect.stringMatching(
+          /^AWAYWORK_REMOTE \(ssh:\/\/box\): the box's daemon isn't serving \(connect ECONNREFUSED 127\.0\.0\.1:\d+\); is awaywork watch running there, with AWAYWORK_REMOTE_TOKEN in its env file\?$/,
+        ),
+        "AWAYWORK_REMOTE (ssh://box): awaywork isn't on the box's PATH for non-interactive ssh; install it and node system-wide there, or link both into /usr/local/bin",
+        '',
+      ])
+    }, 20_000)
+
+    it("refuses here, as the box's daemon would, a call over its body cap, without ssh", async () => {
+      await box()
+      const out = output()
+      const reason = `--reason=${'x'.repeat(16 * 1024)}`
+      expect(await remoteCall(['skip', 'x', reason], { url: 'ssh://down' })).toBe(1)
+      expect(out.stderr).toBe('AWAYWORK_REMOTE (ssh://down): the body is over 16384 bytes\n')
+    })
+
+    it("says the box's daemon runs with another token than its env file, and passes a lone stderr line on", async () => {
+      await box(`AWAYWORK_REMOTE_TOKEN=${'b'.repeat(64)}\n`)
+      const { url } = await serve()
+      vi.stubEnv('BOX_URL', url)
+      const out = output()
+      expect(await remoteCall(['plan'], { url: 'ssh://box' })).toBe(1)
+      expect(out.stderr).toBe(
+        "AWAYWORK_REMOTE (ssh://box): the box's daemon runs with another AWAYWORK_REMOTE_TOKEN than its env file; restart awaywork watch there\n",
+      )
+      out.stderr = ''
+      const chatty = remoteCall(['plan'], { url: 'ssh://chatty' })
+      await vi.waitFor(() => expect(out).toEqual({ stdout: '', stderr: 'warn\n' }), {
+        timeout: 1500,
+      })
+      expect(await chatty).toBe(0)
+      expect(out).toEqual({ stdout: 'out\n', stderr: 'warn\n' })
+    }, 20_000)
+
+    it("says the box's daemon isn't serving when its env file has no token", async () => {
+      const dir = await box('')
+      const out = output()
+      expect(await remoteCall(['plan'], { url: 'ssh://box' })).toBe(1)
+      expect(out.stderr).toBe(
+        `AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving, the box's ${join(dir, 'box-home', '.config', 'awaywork', 'env')} has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch\n`,
+      )
+    }, 20_000)
+
+    it("stops the box's command when the laptop's awaywork goes, with no terminal to pass a Ctrl-C", async () => {
+      const dir = await box()
+      const pid = join(dir, 'pid')
+      const { url, log } = await serve(
+        `require('node:fs').writeFileSync(${JSON.stringify(pid)}, String(process.pid)); setTimeout(() => {}, 30000)`,
+      )
+      vi.stubEnv('BOX_URL', url)
+      const laptop = execa(
+        process.execPath,
+        [
+          '--experimental-transform-types',
+          '--disable-warning=ExperimentalWarning',
+          '--import',
+          './scripts/ts-resolve.mjs',
+          'src/cli/index.ts',
+          'stats',
+        ],
+        { cwd: root, env: { HOME: dir, AWAYWORK_REMOTE: 'ssh://box' }, reject: false },
+      )
+      await vi.waitFor(() => expect(existsSync(pid)).toBe(true), { timeout: 10_000 })
+      laptop.kill('SIGKILL')
+      const running = Number(await readFile(pid, 'utf8'))
+      await vi.waitFor(() => expect(() => process.kill(running, 0)).toThrow())
+      await vi.waitFor(() => expect(log).toEqual(['remote: ["stats"]: stopped, the client left']))
+    }, 20_000)
   })
 })

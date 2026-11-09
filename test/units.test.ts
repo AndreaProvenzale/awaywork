@@ -5737,3 +5737,53 @@ it("gives a plan's judge a read-only copy of the step's out files and its gate's
   expect(body.endsWith('\n\n— awaywork')).toBe(true)
   expect(report.results[0]?.plan).toMatchObject({ tasks: ['api'], post: { waits: true } })
 })
+
+const couldntStart = (reason: string) => ({
+  type: 'done' as const,
+  ok: false,
+  turns: 1,
+  reason,
+})
+
+it("fails a unit whose worker couldn't start, the report saying why with secrets masked, and counts the attempt", async () => {
+  const provider: Provider = {
+    ...fakeProvider('claude'),
+    async *run() {
+      yield couldntStart('Not logged in as s3cret · Please run /login')
+    },
+  }
+  const { report } = await finishedRun(
+    '  - { skill: review, deliver: report, on_done: { comment: result } }',
+    [yours(1)],
+    provider,
+  )
+  expect(report.results[0]).toMatchObject({
+    status: 'failed',
+    reason: 'Not logged in as *** · Please run /login',
+  })
+  expect(formatReport(report)).toContain(
+    'failed, 1 turn (Not logged in as *** · Please run /login)',
+  )
+  expect(formatReport(report)).not.toContain('s3cret')
+  expect(Object.values(recordAttempts({}, report))[0]).toMatchObject({ failed: 1 })
+})
+
+it("fires a post's gate with its judge's reason, masked, when the judge couldn't start", async () => {
+  const provider: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      if (job.unit.skill === 'judge') return yield couldntStart('Not logged in as s3cret')
+      await writeFile(join(job.dir, '.away/out/report.md'), 'Fine.')
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const { writes } = await finishedRun(
+    '  - { skill: review, deliver: report, wait: false, on_done: { comment: result }, gates: { risk: { skill: judge } } }',
+    [yours(1)],
+    provider,
+  )
+  const [[, write]] = writes as [[string, Write]]
+  expect(write.op === 'comment' && write.body).toContain(
+    "- risk: judge didn't run: Not logged in as ***\n",
+  )
+})
