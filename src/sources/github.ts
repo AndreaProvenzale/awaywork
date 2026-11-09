@@ -309,21 +309,6 @@ export function githubSource(base: Exec = exec): Source<Config> {
       ])
     },
 
-    /** Suggests my own repos and names my orgs, which `owner/*` can cover. */
-    async init(ask) {
-      const { login, orgs } = await account(base)
-      const hint = orgs.length > 0 ? `; your orgs: ${orgs.join(', ')}` : ''
-      const answer = await ask.text(
-        `GitHub repos to watch, comma-separated (owner/name or owner/*${hint})`,
-        { initial: `${login}/*` },
-      )
-      const repos = answer
-        .split(',')
-        .map((r) => r.trim())
-        .filter(Boolean)
-      return { config: { repos: repos.length > 0 ? repos : [`${login}/*`] } }
-    },
-
     /** The gh login and its orgs. */
     discover: (cfg) => account(onHost(base, cfg.host)),
 

@@ -247,44 +247,6 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
       return { before, after: (await read()).modified_at }
     },
 
-    /** Picks a workspace and projects from the account and lists their real section names. */
-    async init(ask, ctx) {
-      const token =
-        ctx.env.ASANA_TOKEN ||
-        (await ask.secret('ASANA_TOKEN', 'Asana personal access token (Settings > Apps)'))
-      if (!token) return { config: { workspace: await ask.text('Asana workspace gid') } }
-
-      const found = await workspaces(token)
-      const [only] = found
-      if (!only) throw new Error('this token sees no workspace')
-      const workspace =
-        found.length === 1
-          ? only.gid
-          : await ask.select(
-              'Asana workspace',
-              found.map((w) => ({ value: w.gid, label: w.name })),
-            )
-      const listed = await projects(workspace, token)
-      const picked = await ask.multiselect(
-        'Asana projects to watch (none: every project with my tasks)',
-        listed.map((p) => ({ value: p.gid, label: p.name })),
-      )
-      const repos: Record<string, string> = {}
-      for (const gid of picked) {
-        const name = listed.find((p) => p.gid === gid)?.name
-        const repo = await ask.text(`GitHub repo for tasks in ${name} (owner/repo, blank: none)`)
-        if (repo.trim()) repos[gid] = repo.trim()
-      }
-      return {
-        config: {
-          workspace,
-          ...(picked.length > 0 && { projects: picked }),
-          ...(Object.keys(repos).length > 0 && { repo_map: repos }),
-        },
-        values: { section: await sections(workspace, picked, token) },
-      }
-    },
-
     /** The workspaces; the configured one's projects and sections, or every workspace's when unset. */
     async discover(cfg, ctx) {
       const token = tokenFrom({ token_env: config.shape.token_env.parse(cfg.token_env) }, ctx)
