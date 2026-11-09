@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -324,5 +324,22 @@ describe('saveSecret', () => {
     await writeFile(file, 'A=1\nB=2')
     await saveSecret('C', '3', file)
     expect(await readFile(file, 'utf8')).toBe('A=1\nB=2\nC=3\n')
+  })
+
+  it('replaces a name already in the file, and closes a file left open to others', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'awaywork-env-')), 'env')
+    await writeFile(file, 'A=1\nB=2\nAB=3\n')
+    await chmod(file, 0o644)
+    await saveSecret('A', 'new', file)
+    expect(await readFile(file, 'utf8')).toBe('B=2\nAB=3\nA=new\n')
+    expect((await stat(file)).mode & 0o777).toBe(0o600)
+  })
+
+  it('drops the export and spaced forms of the name too, keeping every other line as it was', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'awaywork-env-')), 'env')
+    const others = '# A=comment\n  B = 2\r\nexport AB=3\n\t\n'
+    await writeFile(file, `export A=1\n${others}  A = 2\r\n  export\tA=3`)
+    await saveSecret('A', 'new', file)
+    expect(await readFile(file, 'utf8')).toBe(`${others}A=new\n`)
   })
 })

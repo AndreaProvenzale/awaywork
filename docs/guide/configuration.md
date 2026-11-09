@@ -947,7 +947,7 @@ A dir it can't remove is a `warning:`, never a failed run. `report --list`, `sta
 
 ## Secrets
 
-The config holds env var **names** only. Values come from the environment or `~/.config/awaywork/env` (the environment wins).
+The config holds env var **names** only. Values come from the environment or `~/.config/awaywork/env` (the environment wins). `awaywork secret ASANA_TOKEN` saves one there without it touching your shell history: it asks at a hidden prompt, or takes a pipe (`pbpaste | awaywork secret ASANA_TOKEN`), and replaces the line if it's already set.
 
 | Variable | Used by |
 | --- | --- |

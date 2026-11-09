@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -12,7 +13,20 @@ import { printBrand, terminalAsk } from './ask.js'
 import { staleSchedules } from './schedule.js'
 
 export function configCommand(program: Command): void {
-  const config = program.command('config').description('print the config schema or edit the config')
+  const config = program
+    .command('config')
+    .description("print the config's path or its schema, or edit the config")
+
+  config
+    .command('path')
+    .description('print the config file awaywork reads; exit 1 when it does not exist')
+    .action(() => {
+      const path = configPath(program.opts().config)
+      console.log(path)
+      if (existsSync(path)) return
+      console.error(`${path} not found; awaywork init writes one`)
+      process.exitCode = 1
+    })
 
   config
     .command('schema')
