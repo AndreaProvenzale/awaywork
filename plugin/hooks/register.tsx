@@ -163,7 +163,7 @@ const ranks = Object.keys(actions)
 
 const lines = (...text: (string | null | undefined)[]) => text.filter((t): t is string => !!t)
 
-// By name: `run --unit` drops attempts, so it would also run past "awaywork pushed onto your PR". The planner reads these after that hold.
+// By name: `run --unit` lifts its unit's attempts, so it would also run past "awaywork pushed onto your PR". The planner reads these after that hold.
 const startable = ['unchanged', 'skipped_by_you', 'over_cap', 'gave_up']
 
 function startQuestion(ref: string, skill?: string, deliver?: string) {

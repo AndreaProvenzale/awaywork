@@ -274,7 +274,6 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
     const config = await loadConfig(path).catch((e) => reason(e))
     if (typeof config === 'string') return refuse(config)
     const { plan } = await probeAndPlan(config, skillsDirOf(path), {
-      retry: true,
       probe: false,
       unit: key,
     })

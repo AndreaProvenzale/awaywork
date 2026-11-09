@@ -27,8 +27,20 @@ import { approveReply, markComment, planComment, resultComment } from '../src/co
 import { needsYou, planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
+import type { Skip } from '../src/core/skips.js'
 import type { Item, PrRef, Quota, Rule } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
+
+vi.mock('../src/config/paths.js', async (original) => {
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
+  return {
+    ...(await original<typeof import('../src/config/paths.js')>()),
+    attemptsPath: `${state}/attempts.json`,
+    skipsPath: `${state}/skips.json`,
+  }
+})
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')
 const now = new Date(2026, 0, 1, 1).getTime()
@@ -47,6 +59,7 @@ function plan(
   attempts: Attempts = {},
   time = now,
   only?: { named: string },
+  skips?: Record<string, Skip>,
 ) {
   const config = parseConfig(yaml)
   const allowances: Record<string, Allowance> = {}
@@ -60,6 +73,7 @@ function plan(
     attempts,
     now: time,
     only,
+    skips,
   })
 }
 const rows = (p: ReturnType<typeof plan>) =>
@@ -754,6 +768,66 @@ queue:
     expect(named('acme/ops').capped).toEqual(['acme/api#2', 'acme/api#4', 'acme/ops#7'])
   })
 
+  it('lifts your skip and its attempts for the named unit only, every other item planned as without the name', () => {
+    const yaml = `
+limits: { units: 1 }
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix, deliver: push }]`
+    const updated = '2026-01-02T00:00:00Z'
+    const at = (n: number, head: string) => {
+      const item = githubPr(n, { updated })
+      return { ...item, linkedPrs: [{ ...(item.linkedPrs[0] as PrRef), head }] }
+    }
+    const items = [
+      at(1, 'held'),
+      at(2, 'held'),
+      at(3, 'a'),
+      at(4, 'b'),
+      at(5, 'c'),
+      at(6, 'd'),
+      at(7, 'e'),
+    ]
+    const last = { runId: 'r1', skill: 'fix', updated: '2026-01-01T00:00:00Z' }
+    const attempts: Attempts = {
+      'github:acme/api#1': { ...last, pushed: 'held' },
+      'github:acme/api#2': { ...last, pushed: 'held' },
+      'github:acme/api#3': { ...last, updated },
+      'github:acme/api#4': { ...last, updated },
+      'github:acme/api#5': { ...last, failed: 3, failedAt: new Date(now).toISOString() },
+    }
+    const skips = { 'github:acme/api#2': {}, 'github:acme/api#7': {} }
+    const planned = (name?: string) =>
+      plan(
+        yaml,
+        items,
+        { claude: week(0.1) },
+        {},
+        attempts,
+        now,
+        name ? { named: name } : undefined,
+        skips,
+      )
+    const held = (p: ReturnType<typeof plan>) => p.skipped.map((s) => [s.item.key, s.kind, s.url])
+    const plain = planned()
+    expect(plain.units.map((u) => u.unit.id)).toEqual(['acme-api-6'])
+    expect(held(plain)).toEqual([
+      ['acme/api#1', 'waiting_for_review', 'https://github.com/acme/api/pull/1'],
+      ['acme/api#2', 'skipped_by_you', 'https://github.com/acme/api/pull/2'],
+      ['acme/api#3', 'unchanged', undefined],
+      ['acme/api#4', 'unchanged', undefined],
+      ['acme/api#5', 'gave_up', undefined],
+      ['acme/api#7', 'skipped_by_you', undefined],
+    ])
+    for (const n of [1, 2, 3, 5, 7]) {
+      const named = planned(`acme/api#${n}`)
+      expect(named.units.map((u) => u.unit.id).sort()).toEqual(
+        [`acme-api-${n}`, 'acme-api-6'].sort(),
+      )
+      expect(held(named)).toEqual(held(plain).filter(([key]) => key !== `acme/api#${n}`))
+    }
+  })
+
   it('takes a chain past the cap by the id of one of its steps', () => {
     const yaml = `
 limits: { units: 1 }
@@ -807,9 +881,7 @@ queue:
       const { plan, warnings } = await probeAndPlan(
         parseConfig(yaml),
         await mkdtemp(join(tmpdir(), 'awaywork-skills-')),
-        {
-          retry: true,
-        },
+        {},
       )
       expect(plan.allowances).toEqual({})
       expect(warnings).toEqual([
@@ -893,7 +965,7 @@ queue:
       const yaml = `windows: ${windows}\nproviders: [claude]\nsources: { tracker: { command: "echo []", fields: [column] } }\n`
       // No provider, so none is probed.
       const config = { ...parseConfig(yaml), providers: [] }
-      const { warnings } = await probeAndPlan(config, skills, { retry: true })
+      const { warnings } = await probeAndPlan(config, skills)
       return warnings.filter((w) => w.startsWith('GitHub-hosted'))
     }
     vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
@@ -918,7 +990,6 @@ queue:
     vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
     try {
       await probeAndPlan(parseConfig(yaml), await mkdtemp(join(tmpdir(), 'awaywork-skills-')), {
-        retry: true,
         onProgress: (step) => steps.push(step),
       })
     } finally {
@@ -946,7 +1017,7 @@ queue:
       const { warnings } = await probeAndPlan(
         parseConfig(yaml),
         await mkdtemp(join(tmpdir(), 'awaywork-skills-')),
-        { retry: true },
+        {},
       )
       expect(warnings).toContainEqual(expect.stringMatching(/\nauth failed for \*\*\*$/))
       expect(warnings.join('\n')).not.toContain('s3cr3t-value')
@@ -1535,6 +1606,22 @@ queue:
     ])
     expect(needsYou.fanned_out).toBe(false)
     expect(why(fanned, 'acme/api#5')).toContain('skipped: fanned_out')
+  })
+
+  it('runs a task you name of a card you skipped, the card and its other tasks staying skipped', () => {
+    const approved = { ...card(posted, reply(approveReply('Go.'), true)), taskPrs: {} }
+    const skips = { 'github:acme/api#5': {} }
+    const named = (name: string) =>
+      plan(yaml(), [approved], {}, {}, {}, now, { named: name }, skips)
+    const ofTask = named('acme/api#5/api')
+    expect(rows(ofTask)).toEqual([['acme-api-5-api', 2, 'implement', 'claude', 'draft_pr']])
+    expect(ofTask.skipped.map((s) => [s.item.key, s.kind])).toEqual([
+      ['acme/api#5', 'skipped_by_you'],
+    ])
+    // The card itself is planned out into tasks, so naming it doesn't plan it again.
+    const ofCard = named('github:acme/api#5')
+    expect(ofCard.units).toEqual([])
+    expect(ofCard.skipped.map((s) => s.kind)).toEqual(['skipped_by_you'])
   })
 
   it('needs you for a plan you edited into one that fails its checks', () => {

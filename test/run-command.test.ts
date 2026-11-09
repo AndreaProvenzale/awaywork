@@ -6,8 +6,19 @@ import { Command } from 'commander'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { abortOnSignals, executeRun, type RunArgs, runCommand } from '../src/cli/run.js'
 import { loadConfig } from '../src/config/load.js'
-import { runLockPath, runsDir, watchLockPath } from '../src/config/paths.js'
+import {
+  attemptsPath,
+  runLockPath,
+  runsDir,
+  skipsPath,
+  watchLockPath,
+} from '../src/config/paths.js'
+import { saveAttempts } from '../src/core/attempts.js'
 import { claimUnits } from '../src/core/poll.js'
+import { saveSkips } from '../src/core/skips.js'
+import type { PrRef } from '../src/core/types.js'
+import { github } from '../src/sources/github.js'
+import { githubPr } from './fakes/items.js'
 
 vi.mock('../src/providers/index.js', async () => {
   const { fakeProvider } = await import('./fakes/provider.js')
@@ -231,6 +242,49 @@ describe('run command', () => {
     expect(plan).toContain('Chore 2')
     expect(await at('20261025-120301', 'CH-9')).toBe(false)
     expect(errors.at(-1)).toBe(`no unit "CH-9" in this run's plan; awaywork plan lists them`)
+  })
+
+  it('keeps your skip and an unreviewed push in the plan of a --unit run, and runs the one it names', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-run-'))
+    const path = join(dir, 'config.yml')
+    await writeFile(
+      path,
+      `providers: [claude]\nwindows: []\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix, deliver: push }]\n`,
+    )
+    const pr = (n: number) => {
+      const item = githubPr(n)
+      return { ...item, linkedPrs: [{ ...(item.linkedPrs[0] as PrRef), head: 'pushed' }] }
+    }
+    vi.spyOn(github, 'items').mockResolvedValue([pr(1), pr(2), pr(3)])
+    const last = { runId: 'r1', skill: 'fix', updated: '2026-01-01T00:00:00Z' }
+    await saveAttempts(attemptsPath, {
+      'github:acme/api#1': { ...last, pushed: 'pushed' },
+      'github:acme/api#3': { ...last, pushed: 'pushed' },
+    })
+    await saveSkips(skipsPath, { 'github:acme/api#2': {}, 'github:acme/api#3': {} })
+    const runId = '20261025-120400'
+    expect(
+      await executeRun({
+        path,
+        config: await loadConfig(path),
+        runId,
+        now: new Date(),
+        log: { info: () => {}, error: () => {} },
+        signal: () => new AbortController().signal,
+        unit: 'acme/api#3',
+        dryRun: true,
+      }),
+    ).toBe(true)
+    const report = JSON.parse(await readFile(join(runsDir, runId, 'report.json'), 'utf8'))
+    const { plan, results } = report as {
+      plan: { skipped: { item: { key: string }; kind: string; url?: string }[] }
+      results: { planned: { unit: { id: string } } }[]
+    }
+    expect(plan.skipped.map((s) => [s.item.key, s.kind, s.url])).toEqual([
+      ['acme/api#1', 'waiting_for_review', 'https://github.com/acme/api/pull/1'],
+      ['acme/api#2', 'skipped_by_you', undefined],
+    ])
+    expect(results.map((r) => r.planned.unit.id)).toEqual(['acme-api-3'])
   })
 
   it("masks the notify command's secret in its failure", async () => {

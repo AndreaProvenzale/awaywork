@@ -340,7 +340,6 @@ const inSaving = serial()
 export async function executeRun(a: RunArgs): Promise<boolean> {
   const { config, path, runId, log } = a
   const planned = await probeAndPlan(config, skillsDirOf(path), {
-    retry: !!a.unit,
     unit: a.unit,
     repo: a.repo,
     rule: a.rule,
@@ -486,9 +485,12 @@ export async function printReport(
     }
     return
   }
-  // A run still going, or one that died, has no report.json: the last one that does stands.
+  // A run still going, or one that died, has no report.json: the last one that does stands for what reads it.
+  const readsResults = json || !!view.unit || !!view.skipped
   const latest = (from: Run[]) =>
-    json ? from.findLast((r) => r.uploaded || existsSync(join(r.dir, reportJsonFile))) : from.at(-1)
+    readsResults
+      ? from.findLast((r) => r.uploaded || existsSync(join(r.dir, reportJsonFile)))
+      : from.at(-1)
   let picked = id ? runs.find((r) => r.id === id) : latest(runs)
   if (picked?.uploaded) {
     const name = `run ${picked.id}`
@@ -509,7 +511,7 @@ export async function printReport(
   for (const warning of held) console.error(`warning: ${warning}`)
   const which = id ?? picked?.id
   if (!which) {
-    const going = json && runs.findLast((r) => !r.uploaded)
+    const going = readsResults && runs.findLast((r) => !r.uploaded)
     console.error(
       going
         ? `no finished run yet: run ${going.id} is going, or stopped without a report`
