@@ -268,7 +268,7 @@ describe('lean posts', () => {
         const judging = job.unit.skill === 'judge'
         if (judging) judges.push(job.prompt)
         if (job.prompt.includes('out/summary.md'))
-          await writeFile(join(out, 'summary.md'), 'Short.')
+          await writeFile(join(out, 'summary.md'), judging ? 'The judge wrote this.' : 'Short.')
         await writeFile(join(out, 'report.md'), judging ? 'Nothing to decide.' : 'Long report.')
         if (judging) await writeFile(join(out, 'verdict'), 'clear\n')
         yield { type: 'done', ok: true, turns: 1 }

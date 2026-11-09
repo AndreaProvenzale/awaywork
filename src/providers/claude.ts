@@ -141,8 +141,9 @@ export function toEvents(line: string): WorkerEvent[] {
       String(event.result ?? '')
         .split('\n')[0]
         ?.slice(0, 200)
+    const outcome = event.is_error && event.subtype === 'success' ? 'failed' : event.subtype
     return [
-      { type: 'log', line: reason ? `result: failed: ${reason}` : `result: ${event.subtype}` },
+      { type: 'log', line: `result: ${reason ? `failed: ${reason}` : outcome}` },
       {
         type: 'done',
         ok: event.subtype === 'success' && !event.is_error,

@@ -79,6 +79,17 @@ describe('claude provider', () => {
       { type: 'log', line: 'result: failed: Not logged in · Please run /login' },
       { type: 'done', ok: false, turns: 1, reason: 'Not logged in · Please run /login' },
     ])
+    const noText = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: true,
+      num_turns: 4,
+      result: '',
+    })
+    expect(toEvents(noText)).toEqual([
+      { type: 'log', line: 'result: failed' },
+      { type: 'done', ok: false, turns: 4 },
+    ])
     const fine = JSON.stringify({
       type: 'result',
       subtype: 'success',
