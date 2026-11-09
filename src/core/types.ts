@@ -200,7 +200,7 @@ export interface Quota {
 export type WorkerEvent =
   | { type: 'quota'; quota: Quota }
   | { type: 'log'; line: string }
-  | { type: 'done'; ok: boolean; turns: number }
+  | { type: 'done'; ok: boolean; turns: number; reason?: string }
 
 export interface Job {
   unit: Unit

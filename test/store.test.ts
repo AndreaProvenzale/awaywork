@@ -258,6 +258,34 @@ describe('lean posts', () => {
     expect(formatReport(r)).toContain("no summary.md: the post shows the report's first lines")
   })
 
+  it("doesn't ask a gate's judge for summary.md, so a clear judge lets the post go ahead", async () => {
+    const store = await folderStore()
+    const judges: string[] = []
+    const provider = {
+      ...fakeProvider('claude'),
+      async *run(job: { dir: string; prompt: string; unit: { skill: string } }) {
+        const out = join(job.dir, '.away/out')
+        const judging = job.unit.skill === 'judge'
+        if (judging) judges.push(job.prompt)
+        if (job.prompt.includes('out/summary.md'))
+          await writeFile(join(out, 'summary.md'), judging ? 'The judge wrote this.' : 'Short.')
+        await writeFile(join(out, 'report.md'), judging ? 'Nothing to decide.' : 'Long report.')
+        if (judging) await writeFile(join(out, 'verdict'), 'clear\n')
+        yield { type: 'done', ok: true, turns: 1 }
+      },
+    } as Provider
+    const { body } = await run(
+      store.config,
+      '  - { skill: review, deliver: report, wait: false, on_done: { comment: result }, gates: { risk: { skill: judge } } }',
+      [yours(1)],
+      provider,
+    )
+    expect(judges).toHaveLength(1)
+    expect(judges[0]).not.toContain('summary.md')
+    expect(body()).not.toContain('changed the clone')
+    expect(resultOf(post(body()))?.text).toContain('Short.')
+  })
+
   it('posts a full report with only its other files pinned, and the post without a failed put', async () => {
     const store = await folderStore()
     const files = { 'report.md': 'The report.', 'notes.txt': 'n', 'fail.bin': 'x' }
