@@ -134,11 +134,24 @@ export function toEvents(line: string): WorkerEvent[] {
         const arg = block.input.command ?? block.input.file_path ?? block.input.pattern ?? mcp
         return { type: 'log', line: `${block.name}: ${String(arg)}` }
       })
-  if (event?.type === 'result')
+  if (event?.type === 'result') {
+    // A run that couldn't start, logged out say, still ends with subtype `success`.
+    const reason =
+      event.is_error &&
+      String(event.result ?? '')
+        .split('\n')[0]
+        ?.slice(0, 200)
+    const outcome = event.is_error && event.subtype === 'success' ? 'failed' : event.subtype
     return [
-      { type: 'log', line: `result: ${event.subtype}` },
-      { type: 'done', ok: event.subtype === 'success', turns: event.num_turns ?? 0 },
+      { type: 'log', line: `result: ${reason ? `failed: ${reason}` : outcome}` },
+      {
+        type: 'done',
+        ok: event.subtype === 'success' && !event.is_error,
+        turns: event.num_turns ?? 0,
+        reason: reason || undefined,
+      },
     ]
+  }
   return []
 }
 
