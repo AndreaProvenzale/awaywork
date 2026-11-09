@@ -180,8 +180,7 @@ const resultGlyphs: Record<string, Glyph> = {
   stopped: { word: '■' },
 }
 
-const toFix: Glyph = { word: '✎', color: 'error' }
-const toTakeOver: Glyph = { word: '⚑', color: 'error' }
+const stuck: Glyph = { word: '⚑', color: 'error' }
 
 /** A Needs you card's glyph; `on` is the key that does what it asks, without one the detail says it first. */
 const needsGlyphs: Record<string, Glyph & { on?: 'o' | 'a' }> = {
@@ -189,14 +188,14 @@ const needsGlyphs: Record<string, Glyph & { on?: 'o' | 'a' }> = {
   waiting_for_answer: { word: '?', color: 'warning', on: 'o' },
   waiting_for_approval: { word: '◆', color: 'warning', on: 'a' },
   all_tasks_done: { word: '✓', color: 'success' },
-  invalid_plan: toFix,
-  store_failed: toFix,
-  invalid_branch: toFix,
-  refused_delivery: toFix,
-  no_repo: toFix,
-  gave_up: toTakeOver,
-  draft_moved: toTakeOver,
-  continue_cap: toTakeOver,
+  invalid_plan: stuck,
+  store_failed: stuck,
+  invalid_branch: stuck,
+  refused_delivery: stuck,
+  no_repo: stuck,
+  gave_up: stuck,
+  draft_moved: stuck,
+  continue_cap: stuck,
 }
 
 const lines = (...text: (string | null | undefined)[]) => text.filter((t): t is string => !!t)
