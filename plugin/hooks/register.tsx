@@ -825,7 +825,8 @@ export const register: Register = (on) => {
     const d = await read($, data)
     const v = await read($, view)
     const c = await read($, config)
-    const width = e.props.bodyColumns
+    const padding = e.surface === 'desktop' ? { x: 2, y: 1 } : { x: 0, y: 0 }
+    const width = e.props.bodyColumns - padding.x * 2
     const now = await $.clock.now()
     const press: Record<string, () => unknown> = {}
 
@@ -918,7 +919,13 @@ export const register: Register = (on) => {
     const done = (body?: RenderChildren, minHeight?: number) => {
       drawn = { press, detailMax: 0, nativeScroll: e.surface === 'desktop' }
       return (
-        <Box flexDirection="column" rowGap={gap} minHeight={minHeight}>
+        <Box
+          flexDirection="column"
+          rowGap={gap}
+          minHeight={minHeight}
+          paddingX={padding.x}
+          paddingY={padding.y}
+        >
           {header}
           {tabs}
           {rule}
@@ -1059,8 +1066,9 @@ export const register: Register = (on) => {
     // header, tabs, rule, nav, strip, buttons, rule, body, status; too short for that, the engine scrolls it all.
     const total = Math.min(e.props.scroll.bodyRows, MAX_ROWS)
     const top = headRows + tabRows + 2
-    const fits = total - top - CARD_ROWS - buttonRows - 2 >= MIN_DETAIL
-    const room = fits ? total - top - CARD_ROWS - buttonRows - 2 : body.length
+    const spare = total - padding.y * 2 - top - CARD_ROWS - buttonRows - 2
+    const fits = spare >= MIN_DETAIL
+    const room = fits ? spare : body.length
     const detailMax = Math.max(0, body.length - room)
     const offset = Math.min(v.at ?? 0, detailMax)
     const shownBody = body.slice(offset, offset + room)
@@ -1084,7 +1092,13 @@ export const register: Register = (on) => {
 
     drawn = fits ? { press, strip: [top, top + CARD_ROWS - 1], detailMax } : { press, detailMax }
     return (
-      <Box flexDirection="column" height={fits ? total : undefined} rowGap={gap}>
+      <Box
+        flexDirection="column"
+        height={fits ? total : undefined}
+        rowGap={gap}
+        paddingX={padding.x}
+        paddingY={padding.y}
+      >
         {header}
         {tabs}
         {rule}

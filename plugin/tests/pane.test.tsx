@@ -97,7 +97,15 @@ const sized = ({ bodyColumns = 100, bodyRows = 30, placement = 'dock' }: Size = 
 
 /** Draws the pane once the report /away started reading is in: a refresh settles with it. */
 async function mount<S extends Surface>($: Engine, surface: S, size?: Size) {
-  const ui = await $.ui.mount({ ...PANE, props: sized(size), surface })
+  // Desktop's padding comes off the body: the layouts below assert what's left.
+  const [x, y] = surface === 'desktop' ? [4, 2] : [0, 0]
+  const bodyColumns = (size?.bodyColumns ?? 100) + x
+  const bodyRows = (size?.bodyRows ?? 30) + y
+  const ui = await $.ui.mount({
+    ...PANE,
+    props: sized({ ...size, bodyColumns, bodyRows }),
+    surface,
+  })
   await ui.press({ key: 'refresh' })
   return ui
 }
@@ -359,14 +367,15 @@ test('the wheel over the strip steps the cards, anywhere else it scrolls the det
     await ui.press({ key: 'tab:last' })
     await ui.press({ key: 'report' })
     const all = ['awaywork report 20990101-050000 --unit acme-shop-3', ...REPORT_TEXT.split('\n')]
-    expect(await detail(ui)).toEqual([...all.slice(0, 14), '↓ 17 more'])
+    const rows = surface === 'desktop' ? 13 : 15
+    expect(await detail(ui)).toEqual([...all.slice(0, rows - 1), `↓ ${all.length - rows + 1} more`])
     await wheel($, 20, 2)
-    expect(await detail(ui)).toEqual([...all.slice(2, 16), '↓ 15 more'])
+    expect(await detail(ui)).toEqual([...all.slice(2, rows + 1), `↓ ${all.length - rows - 1} more`])
     await ui.key({ key: 'down', in: 'cards' })
     await ui.key({ key: 'pagedown', in: 'cards' })
     expect((await detail(ui))?.[0]).toBe('line 8')
     await wheel($, 20, 99)
-    expect(await detail(ui)).toEqual(all.slice(16))
+    expect(await detail(ui)).toEqual(all.slice(all.length - rows))
     await wheel($, 0, -99)
     expect((await detail(ui))?.[0]).toBe(all[0])
 
@@ -888,7 +897,8 @@ test('every region keeps its height while you browse, ask and read', async ($, o
         box?.props.height,
       ]
     }
-    const fixed = [28, 2, 15]
+    // At the row cap, Desktop's padding comes out of the detail.
+    const fixed = [28, 2, surface === 'desktop' ? 13 : 15]
     for (let i = 0; i < 6; i++) {
       expect(await heights()).toEqual(fixed)
       await ui.press({ key: 'nextCard' })
@@ -918,7 +928,7 @@ test('the confirm shows its whole question, taking its rows from the detail', as
       (await ui.find({ key: 'buttons' }))?.props.height,
       (await ui.find({ key: 'detail' }))?.props.height,
     ]
-    expect(await heights()).toEqual([24, 2, 7])
+    expect(await heights()).toEqual([surface === 'desktop' ? 26 : 24, 2, 7])
     await ui.press({ key: 'nextCard' })
     await ui.press({ key: 'approve' })
     const [asked] = ((await ui.find({ key: 'buttons' }))?.children ?? []) as { children: Node[] }[]
@@ -927,9 +937,9 @@ test('the confirm shows its whole question, taking its rows from the detail', as
       'replies approve on it, no',
       'undo',
     ])
-    expect(await heights()).toEqual([24, 4, 5])
+    expect(await heights()).toEqual([surface === 'desktop' ? 26 : 24, 4, 5])
     await ui.press({ key: 'no' })
-    expect(await heights()).toEqual([24, 2, 7])
+    expect(await heights()).toEqual([surface === 'desktop' ? 26 : 24, 2, 7])
     await ui.press({ key: 'tab:needs' })
     await ui.unmount()
   }
@@ -1099,6 +1109,9 @@ test('on the desktop app j and k step the rule and the pane keeps its own scroll
   await ui.press({ key: 'tab:config' })
   const boxes = await ui.findAll({ type: 'Box' })
   expect(boxes.some((b) => b.props.minHeight !== undefined)).toBe(false)
+  expect(boxes.some((b) => b.props.paddingX === 2 && b.props.paddingY === 1)).toBe(true)
+  expect(await text(ui, /^─{96}$/)).toBe(true)
+  expect((await ui.find({ key: 'rule:2' }))?.props.label).toBe('2')
 
   expect(await $.ui.scroll({ ...SCROLL, by: 1 })).toEqual({})
   expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
