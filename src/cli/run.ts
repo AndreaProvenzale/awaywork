@@ -1,10 +1,12 @@
-import { existsSync } from 'node:fs'
-import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { closeSync, existsSync, openSync } from 'node:fs'
+import { appendFile, mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from 'node:fs/promises'
 import { constants } from 'node:os'
 import { basename, dirname, join } from 'node:path'
+import { setTimeout } from 'node:timers/promises'
 import { styleText } from 'node:util'
 import { type Command, Option } from 'commander'
-import { configPath, loadConfig } from '../config/load.js'
+import { ConfigError, configPath, loadConfig } from '../config/load.js'
 import {
   attemptsPath,
   remoteDir,
@@ -15,7 +17,8 @@ import {
 } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
-import type { RunPlan } from '../core/foreman.js'
+import { type Allowance, route } from '../core/budget.js'
+import type { PlannedUnit, RunPlan } from '../core/foreman.js'
 import { isolateFor } from '../core/launch.js'
 import {
   type Chain,
@@ -62,7 +65,14 @@ type RunOptions = {
   repo?: string
   rule?: number
   scheduled?: boolean
+  detach?: boolean
 }
+
+/** What a `--detach` child tells the parent waiting on it, once. */
+type Said = { started: true } | { refused: string }
+
+// Hands the child its run id: the parent has already made its run dir and log.
+const DETACHED_RUN = 'AWAYWORK_DETACHED_RUN'
 
 export function runCommand(program: Command): void {
   program
@@ -73,7 +83,20 @@ export function runCommand(program: Command): void {
     .option('--repo <glob>', 'run only units in repos matching owner/name, * globs')
     .option('--rule <n>', 'run only units of this queue rule, counted from 1', ruleNumber)
     .option('--scheduled', 'run only inside a window and start no unit after it ends')
+    .option('--detach', 'with --unit: return once the unit has started, leaving it running')
     .action(async (opts: RunOptions) => {
+      if (opts.detach) {
+        if (opts.unit) process.exitCode = await detachRun(opts.unit)
+        else {
+          console.error('--detach needs --unit <id>')
+          process.exitCode = 1
+        }
+        return
+      }
+      // Off the environment at once, so nothing this run starts reads it.
+      const detachedId = process.env[DETACHED_RUN]
+      delete process.env[DETACHED_RUN]
+      const tell = detachedId ? tellParent() : undefined
       console.log(`awaywork run at ${localTime(new Date())}`)
       let release: (() => Promise<void>) | undefined
       try {
@@ -92,15 +115,16 @@ export function runCommand(program: Command): void {
           )
           return
         }
-        const runId = newRunId()
+        const runId = detachedId ?? newRunId()
         if (!opts.dryRun) {
           const lock = await takeRunLock(runLockPath, runId)
           if (!('release' in lock)) {
-            console.error(
+            const held =
               lock.pid === (await lockHolder(watchLockPath))
                 ? `awaywork watch holds the run lock (pid ${lock.pid}); try again once its runs end, awaywork schedule status lists them`
-                : `already running (pid ${lock.pid}, run ${lock.runId}); if that is stale, delete ${runLockPath}`,
-            )
+                : `already running (pid ${lock.pid}, run ${lock.runId}); if that is stale, delete ${runLockPath}`
+            console.error(held)
+            tell?.({ refused: held })
             process.exitCode = 1
             return
           }
@@ -117,9 +141,11 @@ export function runCommand(program: Command): void {
           log: consoleLog,
           browseHint: interactive(),
           signal: abortOnSignals,
+          tell,
         })
         if (!ran) process.exitCode = 1
       } catch (e) {
+        if (e instanceof ConfigError) tell?.({ refused: e.message })
         reportConfigError(e)
       } finally {
         await release?.()
@@ -186,6 +212,81 @@ export function abortOnSignals(): AbortSignal {
   return abort.signal
 }
 
+/** Tells the `--detach` parent what became of the run, the first report only, then lets go of it. */
+function tellParent() {
+  let told = false
+  return (said: Said) => {
+    if (told) return
+    told = true
+    process.send?.(said, undefined, undefined, () => {
+      if (process.connected) process.disconnect()
+    })
+  }
+}
+
+/** A new run's dir, empty: a run's id is its start to the second, and another run can have just taken this one. */
+async function newRunDir(): Promise<string> {
+  await mkdir(runsDir, { recursive: true, mode: 0o700 })
+  for (;;) {
+    const runId = newRunId()
+    const made = await mkdir(join(runsDir, runId), { mode: 0o700 }).then(
+      () => true,
+      (e: NodeJS.ErrnoException) => {
+        if (e.code !== 'EEXIST') throw e
+        return false
+      },
+    )
+    if (made) return runId
+    await setTimeout(1000 - (Date.now() % 1000))
+  }
+}
+
+/**
+ * Starts this `run --unit` again as a process of its own, its output in its run's `run.log`, and
+ * says what that process reported about the unit; its exit code. The process outlives this one.
+ */
+async function detachRun(unit: string): Promise<number> {
+  const runId = await newRunDir()
+  const runDir = join(runsDir, runId)
+  const logPath = join(runDir, 'run.log')
+  const log = openSync(logPath, 'a')
+  const child = spawn(
+    process.execPath,
+    [
+      ...process.execArgv,
+      process.argv[1] as string,
+      ...process.argv.slice(2).filter((arg) => arg !== '--detach'),
+    ],
+    {
+      detached: true,
+      stdio: ['ignore', log, log, 'ipc'],
+      env: { ...process.env, [DETACHED_RUN]: runId },
+    },
+  )
+  closeSync(log)
+  // A disconnect, not an exit: it can't overtake a report the child sent as it ended.
+  const said = await new Promise<Said | undefined>((done) => {
+    child.once('message', (m) => done(m as Said))
+    child.once('disconnect', () => done(undefined))
+    child.once('error', () => done(undefined))
+  })
+  if (child.connected) child.disconnect()
+  child.unref()
+  if (!said) {
+    console.error(`the run stopped before it said whether ${unit} started; see ${logPath}`)
+    return 1
+  }
+  if ('refused' in said) {
+    console.error(said.refused)
+    // Not the whole dir: it may be another run's, started in the same second.
+    await rm(logPath, { force: true })
+    await rmdir(runDir).catch(() => {})
+    return 1
+  }
+  console.log(`Started ${unit} as run ${runId}; awaywork report ${runId} shows it once it ends`)
+  return 0
+}
+
 /** A run's id: its start in UTC, as `YYYYMMDD-HHMMSS`. */
 export const newRunId = () =>
   new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
@@ -219,6 +320,8 @@ export interface RunArgs extends Pick<RunOptions, 'dryRun' | 'unit' | 'repo' | '
   /** Takes the planned units from the daemon's other runs, returning the plan this run runs. */
   claim?: (plan: RunPlan) => RunPlan
   turn?: RunInput['turn']
+  /** For `--detach`: told once whether the named unit starts, before it does. */
+  tell?: (said: Said) => void
 }
 
 /** Runs each function it's given once the ones before it have settled. */
@@ -242,6 +345,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
   const { config, path, runId, log } = a
   const planned = await probeAndPlan(config, skillsDirOf(path), {
     retry: !!a.unit,
+    unit: a.unit,
     repo: a.repo,
     rule: a.rule,
     at: a.now,
@@ -251,9 +355,14 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
   })
   const { warnings, ctx, sources, secrets } = planned
   for (const warning of warnings) log.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)
+  const refuse = (why: string) => {
+    log.error(why)
+    a.tell?.({ refused: why })
+    return false
+  }
   const named = a.unit ? namedChains(planned.plan, a.unit) : []
-  if (a.unit && named.length !== 1) {
-    log.error(
+  if (a.unit && named.length !== 1)
+    return refuse(
       named.length
         ? ambiguous(
             a.unit,
@@ -261,7 +370,10 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
           )
         : `no unit "${a.unit}" in this run's plan; awaywork plan lists them`,
     )
-    return false
+  if (a.tell && named[0]) {
+    const idle = wontStart(named[0], planned.plan.allowances)
+    if (idle) return refuse(idle)
+    a.tell({ started: true })
   }
   if (!planned.plan.units.length && (a.repo !== undefined || a.rule !== undefined)) {
     log.error('no unit matches --repo/--rule; awaywork plan lists them')
@@ -313,6 +425,16 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     if (failure) log.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
   }
   return true
+}
+
+/** Why running only `head`'s chain now would do nothing, as `runUnits` will decide it; undefined when it can start. */
+function wontStart(head: PlannedUnit, allowances: Record<string, Allowance>): string | undefined {
+  if (head.after || head.waitsFor?.length)
+    return `${head.unit.id} waits for another task's PR, which this run won't open`
+  if (head.unit.merge) return undefined
+  const { provider, passed } = route(head.unit.providers, allowances, {})
+  if (!provider) return `no provider left: ${passed.join('; ') || 'none configured'}`
+  return head.quotaUnmet && `the rule's quota \`when\` won't hold: ${head.quotaUnmet}`
 }
 
 type ReportOptions = {

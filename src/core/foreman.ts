@@ -160,8 +160,8 @@ export function planRun(input: {
   attempts?: Attempts
   /** The time attempts are judged at; defaults to now. */
   now?: number
-  /** Plans only the units of a repo glob, a 1-based rule, `run: soon` rules and these unit ids, under the full run's caps. */
-  only?: { repo?: string; rule?: number; soon?: boolean; units?: string[] }
+  /** Plans only the units of a repo glob, a 1-based rule, `run: soon` rules and these unit ids, under the full run's caps, none of which holds back the unit `named` names. */
+  only?: { repo?: string; rule?: number; soon?: boolean; units?: string[]; named?: string }
 }): RunPlan {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
@@ -367,6 +367,11 @@ export function planRun(input: {
       skip('refused_delivery', `${rule.skill}: ${pr?.url} names no base branch to merge`)
       continue
     }
+    const id = slug(items[0]?.key ?? '')
+    const steps = thenSteps(rule, id)
+    const named =
+      only.named !== undefined &&
+      [id, ...steps.map((s) => s.id)].some((u) => namesUnit(u, items, only.named as string))
     const overCap = () => {
       const cap = [
         { name: 'limits.units', max: config.limits.units, count: counted },
@@ -380,12 +385,11 @@ export function planRun(input: {
       return cap && `over the cap: ${cap.name} is ${cap.max}`
     }
     const capped = overCap()
-    if (capped) {
+    if (capped && !named) {
       skip('over_cap', capped)
       continue
     }
 
-    const id = slug(items[0]?.key ?? '')
     // A post after your feedback, or a task's PR closed, waits for you whatever `wait` says.
     const again = card?.state === 'feedback' || replan || posted?.answer === 'feedback'
     // A report that neither waits nor has gates of its own posts as a plain result, `wait: false` too.
@@ -472,30 +476,32 @@ export function planRun(input: {
       return !!provider || !!at.merge
     }
     // A chain publishes once, so it counts once, when its first step runs.
-    if (add(rule, id)) {
+    if (add(rule, id) && !capped) {
       counted++
       perRepo[repo] = (perRepo[repo] ?? 0) + 1
       perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
     }
-    for (const [j, entry] of (rule.then ?? []).entries()) {
-      if (!isLoop(entry)) {
-        add(entry, `${id}-${slug(entry.skill)}`)
-        continue
-      }
-      const skills = entry.loop.map((s) => s.skill)
-      for (let round = 1; round <= entry.max; round++)
-        for (const [s, step] of entry.loop.entries())
-          add(step, `${id}-${slug(step.skill)}-${round}`, {
-            at: j,
-            round,
-            step: s,
-            skills,
-            until: entry.until,
-            max: entry.max,
-          })
-    }
+    for (const step of steps) add(step.written, step.id, step.loop)
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+/** A rule's `then` steps with their unit ids, a loop's round by round. */
+function thenSteps(rule: Rule, id: string) {
+  return (rule.then ?? []).flatMap(
+    (entry, at): { written: ThenStep; id: string; loop?: LoopRound }[] => {
+      if (!isLoop(entry)) return [{ written: entry, id: `${id}-${slug(entry.skill)}` }]
+      const { until, max } = entry
+      const skills = entry.loop.map((s) => s.skill)
+      return Array.from({ length: max }, (_, r) =>
+        entry.loop.map((written, step) => {
+          const round = r + 1
+          const loop = { at, round, step, skills, until, max }
+          return { written, id: `${id}-${slug(written.skill)}-${round}`, loop }
+        }),
+      ).flat()
+    },
+  )
 }
 
 /** Where a task after another's `opened` starts: on that task's open PR, else after its chain earlier in this run. */
@@ -694,6 +700,10 @@ export function slug(key: string): string {
 /** `api#5` for an `owner/repo#n` key, its repo's name without the owner; any other key as is. */
 export const shortRef = ({ key }: Pick<Item, 'key'>) =>
   key.replace(/^[^/\s]+\/(?=[^/\s]+#\d+$)/, '')
+
+/** Whether `name` names a unit with this id and these items: the id or an item, in any case. */
+export const namesUnit = (id: string, items: Item[], name: string) =>
+  id === name.toLowerCase() || items.some((i) => isNamed(i, name))
 
 /** Whether `name` is the item's key, `source:key` or short ref, in any case, and nothing looser. */
 export const isNamed = (item: Item, name: string) =>

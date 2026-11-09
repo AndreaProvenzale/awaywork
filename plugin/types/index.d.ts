@@ -45,10 +45,10 @@ export type Data = {
 
 export type Tab = 'needs' | 'last' | 'next' | 'skipped' | 'config'
 
-export type Action = 'skip' | 'unskip' | 'approve'
+export type Action = 'skip' | 'unskip' | 'approve' | 'run'
 
 /** What the pane did to an item, drawn on its cards since the loaded JSON can't show it. */
-export type Mark = { skip?: 'skipped' | 'unskipped'; approved?: true }
+export type Mark = { skip?: 'skipped' | 'unskipped'; approved?: true; started?: true }
 
 export type View = {
   tab?: Tab

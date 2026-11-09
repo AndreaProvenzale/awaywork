@@ -46,6 +46,7 @@ describe('the remote allowlist', () => {
       ['approve', 'github:acme/api#5', 'ship', 'it'],
       ['run', '--unit', 'API-12'],
       ['run', '--unit=API-12'],
+      ['run', '--unit', 'API-12', '--detach'],
     ])
       expect(refused(argv), argv.join(' ')).toBeUndefined()
     expect(checkArgs(['report', '--skipped', 'quota', 'x'])).toEqual({
@@ -72,6 +73,7 @@ describe('the remote allowlist', () => {
     expect(refused(['plan', 'extra'])).toBe('extra')
     expect(refused(['skip', 'a', 'b'])).toBe('b')
     expect(refused(['run'])).toBe('run without --unit <key>')
+    expect(refused(['run', '--detach'])).toBe('run without --unit <key>')
     expect(refused(['run', '--dry-run', '--unit', 'x'])).toBe('--dry-run')
     expect(refused('plan')).toBe('args, which must be an array of strings')
     expect(refused(['plan', 1])).toBe('args, which must be an array of strings')

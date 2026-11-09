@@ -322,7 +322,7 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
     await writeFile(join(dirname(path), 'items.json'), JSON.stringify([item(1), item(2)]))
     await writeFile(
       path,
-      `providers: [claude]\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
+      `providers: [claude]\nwindows: []\nlimits: { units: 1 }\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
     )
     const stop = new AbortController()
     const done = watch(path, stop.signal, { token: 'a'.repeat(32) })
@@ -349,9 +349,10 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
       stderr: 'no unit "CH-9" in the plan; awaywork plan --why CH-9 says why\n',
       code: 1,
     })
-    const { stdout } = await post(['run', '--unit', 'CH-1'])
+    // Past `limits.units`, as the name is: only the item named is taken.
+    const { stdout } = await post(['run', '--unit', 'CH-2'])
     const runId =
-      /^Queued CH-1 as run (\d{8}-\d{6}); awaywork report \1 shows it once it ends\n$/.exec(
+      /^Queued CH-2 as run (\d{8}-\d{6}); awaywork report \1 shows it once it ends\n$/.exec(
         stdout,
       )?.[1]
     await vi.waitFor(async () => expect(await daemonLog()).toContain('Report: '), {
@@ -360,12 +361,12 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
     stop.abort()
     await done
     const log = await daemonLog()
-    expect(log).toContain(`unit run ${runId} started for CH-1\n`)
-    expect(log).toContain('remote: ["run","--unit","CH-1"]: exit 0')
+    expect(log).toContain(`unit run ${runId} started for CH-2\n`)
+    expect(log).toContain('remote: ["run","--unit","CH-2"]: exit 0')
     const plan = await readFile(join(runsDir, runId ?? '', 'plan.txt'), 'utf8')
     expect(plan).toContain('present run (outside the windows)')
-    expect(plan).toContain('Chore 1')
-    expect(plan).not.toContain('Chore 2')
+    expect(plan).toContain('Chore 2')
+    expect(plan).not.toContain('Chore 1')
   })
 
   it('switches isolation only with no run in progress, and again after a switch failed', async () => {

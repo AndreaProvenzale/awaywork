@@ -53,7 +53,7 @@ const allowed: Record<string, { flags: Record<string, Value>; args: number }> = 
   skip: { flags: { '--until': 'required', '--reason': 'required' }, args: 1 },
   unskip: { flags: {}, args: 1 },
   approve: { flags: {}, args: Number.POSITIVE_INFINITY },
-  run: { flags: { '--unit': 'required' }, args: 0 },
+  run: { flags: { '--unit': 'required', '--detach': 'none' }, args: 0 },
 }
 
 export type Checked =

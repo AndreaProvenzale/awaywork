@@ -154,6 +154,8 @@ export async function probeAndPlan(
   userSkillsDir: string,
   opts: {
     retry?: boolean
+    /** A unit by name, which no cap holds back. */
+    unit?: string
     repo?: string
     rule?: number
     onProgress?: OnProgress
@@ -238,7 +240,7 @@ export async function probeAndPlan(
     skills,
     attempts,
     skips,
-    only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
+    only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units, named: opts.unit },
   })
   return {
     plan: {

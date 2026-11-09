@@ -197,6 +197,42 @@ describe('run command', () => {
     expect(report).toContain('CH-1: running in run 20261025-115900')
   })
 
+  it('takes a unit past the run cap by name, and refuses nothing else for being named', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-run-'))
+    const path = join(dir, 'config.yml')
+    const item = (n: number) => ({
+      id: String(n),
+      key: `CH-${n}`,
+      title: `Chore ${n}`,
+      url: `https://e.com/${n}`,
+      fields: { repo: 'a/b' },
+    })
+    await writeFile(join(dir, 'items.json'), JSON.stringify([item(1), item(2)]))
+    await writeFile(
+      path,
+      `providers: [claude]\nwindows: []\nlimits: { units: 1 }\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
+    )
+    const errors: string[] = []
+    const at = (runId: string, unit: string) =>
+      loadConfig(path).then((config) =>
+        executeRun({
+          path,
+          config,
+          runId,
+          now: new Date(),
+          log: { info: () => {}, error: (line) => void errors.push(line) },
+          signal: () => new AbortController().signal,
+          unit,
+          dryRun: true,
+        }),
+      )
+    expect(await at('20261025-120300', 'CH-2')).toBe(true)
+    const plan = await readFile(join(runsDir, '20261025-120300', 'plan.txt'), 'utf8')
+    expect(plan).toContain('Chore 2')
+    expect(await at('20261025-120301', 'CH-9')).toBe(false)
+    expect(errors.at(-1)).toBe(`no unit "CH-9" in this run's plan; awaywork plan lists them`)
+  })
+
   it("masks the notify command's secret in its failure", async () => {
     vi.stubEnv('NOTIFY_TOKEN', 's3cr3t-value')
     const { err } = await run(

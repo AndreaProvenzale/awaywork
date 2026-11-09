@@ -103,10 +103,11 @@ A tab is a strip of cards, a page at a time: items under their repo, or their tr
 - `o` opens its PR, issue or tracker item;
 - `s` skips the item in the coming runs, or unskips one you skipped;
 - `a` (`approve`) approves the plan or result the item waits on, replying `approve` on it;
+- `g` (`run now`) starts the item right away, in the background, with `awaywork run --unit <source:key> --detach`. It's on Next run's cards and on the skips that only the schedule was holding: `unchanged`, `skipped by you`, `over cap`, `gave up`;
 - `v` (`view report`) shows a last-run unit's `awaywork report <run> --unit <id>` in the detail, and `b` goes back. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
 - `c` (`ask Claude here`) hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`.
 
-`s` and `a` ask `yes`/`no` in place of the buttons first (`y` or `n`), saying what they'll do and whether there's an undo (`skip #101 in the coming runs? awaywork unskip undoes it`), then mark the card `skipped`, `unskipped` or `approved` in place of its word: the cards are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json` or `config explain`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
+`s`, `a` and `g` ask `yes`/`no` in place of the buttons first (`y` or `n`), saying what they'll do and whether there's an undo (`skip #101 in the coming runs? awaywork unskip undoes it`, `Run #109 now with fix? Draft PR, uses your quota.`), then mark the card `skipped`, `unskipped`, `approved` or `started` in place of its word: the cards are what the last run or `p` saw, so the next `p` is what shows the change. A `g` that can't start, the run lock taken or no provider for it, says why in the status line and leaves the card as it was. `g` is the only thing here that starts a run, and only on your press; the pane schedules nothing. No `awaywork` on your `PATH`, or one too old for `--json` or `config explain`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
 
 ### The Config tab
 
@@ -246,7 +247,7 @@ What each command does:
 | `sources [id]` | Read-only on sources; prints no token |
 | `skills eject <name>` | Copies a skill into the user's skills dir |
 | `run --dry-run` | Clones repos and writes workspaces; no agent, nothing pushed |
-| `run`, `run --unit <id>` | Runs agents on the user's quota; pushes branches and opens draft PRs. Ask first. |
+| `run`, `run --unit <id>`, `run --unit <id> --detach` | Runs agents on the user's quota; pushes branches and opens draft PRs. `--detach` returns once the unit has started. Ask first. |
 | `schedule install` | Installs a scheduled job, or writes a workflow with `--with github-actions`, or a container's files with `--with docker`. Ask first. |
 | `init --yes` | Writes the config from detected defaults; `--force` replaces one |
 | `secret <NAME>` | Writes the env file from a hidden prompt or a pipe; prints no value. The user runs it, not you |

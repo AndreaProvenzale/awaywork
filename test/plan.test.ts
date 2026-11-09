@@ -46,6 +46,7 @@ function plan(
   skills: SkillCatalog = {},
   attempts: Attempts = {},
   time = now,
+  only?: { named: string },
 ) {
   const config = parseConfig(yaml)
   const allowances: Record<string, Allowance> = {}
@@ -58,6 +59,7 @@ function plan(
     skills: { builtin: builtinSkills, ...skills },
     attempts,
     now: time,
+    only,
   })
 }
 const rows = (p: ReturnType<typeof plan>) =>
@@ -703,6 +705,74 @@ queue:
       ['acme/api#4', 'over_cap', 'over the cap: limits.units_per_repo is 2'],
       ['acme/ops#7', 'over_cap', 'over the cap: limits.units is 4'],
     ])
+  })
+
+  it('holds no cap against the unit --unit names, by any of its names, and still caps the rest', () => {
+    const yaml = `
+limits: { units: 4, units_per_repo: 2 }
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: fix, where: { checks: failing }, units: 1 }
+  - { skill: implement, where: { type: issue } }
+`
+    const inRepo = (repo: string, n: number) =>
+      fakeItem({ source: 'github', key: `${repo}#${n}`, type: 'issue', fields: { repo } })
+    const items = [
+      githubPr(1, { checks: 'failing' }),
+      githubPr(2, { checks: 'failing' }),
+      inRepo('acme/api', 3),
+      inRepo('acme/api', 4),
+      inRepo('acme/web', 5),
+      inRepo('acme/app', 6),
+      inRepo('acme/ops', 7),
+    ]
+    const named = (name: string) => {
+      const result = plan(yaml, items, { claude: week(0.1) }, {}, {}, now, { named: name })
+      return {
+        ids: result.units.map((u) => u.unit.id),
+        capped: result.skipped.filter((s) => s.kind === 'over_cap').map((s) => s.item.key),
+      }
+    }
+    // Past its rule's cap; the others are held as before, no cap counting the named one.
+    expect(named('acme/api#2')).toEqual({
+      ids: ['acme-api-1', 'acme-api-2', 'acme-api-3', 'acme-web-5', 'acme-app-6'],
+      capped: ['acme/api#4', 'acme/ops#7'],
+    })
+    // Past limits.units_per_repo, by short ref, in another case.
+    expect(named('API#4')).toEqual({
+      ids: ['acme-api-1', 'acme-api-3', 'acme-api-4', 'acme-web-5', 'acme-app-6'],
+      capped: ['acme/api#2', 'acme/ops#7'],
+    })
+    // Past limits.units, by source:key, then by unit id.
+    for (const name of ['github:acme/ops#7', 'ACME-OPS-7'])
+      expect(named(name)).toEqual({
+        ids: ['acme-api-1', 'acme-api-3', 'acme-web-5', 'acme-app-6', 'acme-ops-7'],
+        capped: ['acme/api#2', 'acme/api#4'],
+      })
+    // Nothing looser than the name.
+    expect(named('acme/ops').capped).toEqual(['acme/api#2', 'acme/api#4', 'acme/ops#7'])
+  })
+
+  it('takes a chain past the cap by the id of one of its steps', () => {
+    const yaml = `
+limits: { units: 1 }
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: fix
+    then:
+      - skill: review
+      - { loop: [{ skill: fix }], until: { command: 'true' }, max: 2 }
+`
+    const items = [githubPr(1), githubPr(2)]
+    const named = (name: string) =>
+      plan(yaml, items, { claude: week(0.1) }, {}, {}, now, { named: name }).units.flatMap((u) =>
+        u.chain ? [] : [u.unit.id],
+      )
+    expect(named('acme-api-2-review')).toEqual(['acme-api-1', 'acme-api-2'])
+    expect(named('acme-api-2-fix-2')).toEqual(['acme-api-1', 'acme-api-2'])
+    expect(named('acme-api-2-nope')).toEqual(['acme-api-1'])
   })
 
   it('counts only units routed to a provider against the caps', () => {

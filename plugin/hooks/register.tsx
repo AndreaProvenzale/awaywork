@@ -29,6 +29,7 @@ import {
 } from './config'
 
 const PANE = 'away'
+const PLAN_TIMEOUT = 600_000
 
 const data = atom({ plugin: 'awaywork', key: 'data' } as const, {} as Data, { shape: 'data-2' })
 const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-3' })
@@ -56,6 +57,8 @@ type Row = {
   report?: string[]
   skip?: 'skip' | 'unskip'
   approve?: true
+  /** What `g` asks before running the item now. */
+  start?: string
   here?: string
 }
 
@@ -83,7 +86,7 @@ async function readPlan($: EngineInterface) {
   await update($, view, (v) => ({ ...v, status: undefined }))
   await update($, data, (d): Data => ({ ...d, planning: true }))
   const before = acts
-  const got = await json<Plan>($, await onKnownConfig($, ['plan', '--json']), 600_000)
+  const got = await json<Plan>($, await onKnownConfig($, ['plan', '--json']), PLAN_TIMEOUT)
   const patch: Data =
     'json' in got ? { plan: got.json } : 'error' in got ? { error: got.error } : {}
   await update($, data, (d) => ({ ...d, planning: undefined, ...patch }))
@@ -160,15 +163,35 @@ const ranks = Object.keys(actions)
 
 const lines = (...text: (string | null | undefined)[]) => text.filter((t): t is string => !!t)
 
+// By name: `run --unit` drops attempts, so it would also run past "awaywork pushed onto your PR".
+const startable = ['unchanged', 'skipped_by_you', 'over_cap', 'gave_up']
+
+/** What a unit leaves, in the Config tab's words. */
+const leavesWords: Record<string, string> = {
+  draft_pr: 'draft PR',
+  pr: 'PR',
+  pending_review: 'pending review',
+}
+
+function startQuestion(ref: string, skill?: string, deliver?: string) {
+  const leaves = deliver && (leavesWords[deliver] ?? deliver)
+  const cost = leaves
+    ? `${leaves[0]?.toUpperCase()}${leaves.slice(1)}, uses your quota.`
+    : 'Uses your quota.'
+  return `Run ${ref} now${skill ? ` with ${skill}` : ''}? ${cost}`
+}
+
 function skipRow(tab: Tab, s: Skip): Row {
   const key = itemKey(s.item)
   const group = groupOf(s.item)
   const url = s.url ?? s.item.url ?? undefined
+  const ref = refIn(group, s.item.key)
+  const stays = s.kind === 'skipped_by_you' ? ' Your skip stays for the coming runs.' : ''
   return {
     id: `row:${tab}:${key}`,
     group,
     rank: s.kind ? ranks.indexOf(s.kind) : ranks.length,
-    ref: refIn(group, s.item.key),
+    ref,
     word: (s.kind && actions[s.kind]) || s.kind || 'skipped',
     color: s.needsYou ? 'warning' : undefined,
     item: s.item,
@@ -177,6 +200,7 @@ function skipRow(tab: Tab, s: Skip): Row {
     url,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
     approve: s.kind === 'waiting_for_approval' || undefined,
+    start: s.kind && startable.includes(s.kind) ? `${startQuestion(ref)}${stays}` : undefined,
   }
 }
 
@@ -207,23 +231,17 @@ function resultRow(runId: string, r: Result): Row {
   }
 }
 
-/** What a unit leaves, in the Config tab's words. */
-const leavesWords: Record<string, string> = {
-  draft_pr: 'draft PR',
-  pr: 'PR',
-  pending_review: 'pending review',
-}
-
 function unitRow(p: Planned): Row {
   const { id, repo, skill, deliver, items } = p.unit
   const top = items[0]
   const leaves = deliver && `${skill} ▶ ${leavesWords[deliver] ?? deliver}`
   const note = [leaves, p.provider].filter(Boolean).join(' · ')
+  const ref = top ? refIn(repo, top.key) : id
   return {
     id: `row:next:${id}`,
     group: repo,
     rank: 0,
-    ref: top ? refIn(repo, top.key) : id,
+    ref,
     word: skill,
     color: skillColor(skill),
     item: top,
@@ -234,6 +252,7 @@ function unitRow(p: Planned): Row {
     ),
     url: top?.url ?? undefined,
     skip: top && 'skip',
+    start: top && startQuestion(ref, skill, deliver),
   }
 }
 
@@ -302,14 +321,25 @@ const marked: Record<Action, Mark> = {
   skip: { skip: 'skipped' },
   unskip: { skip: 'unskipped' },
   approve: { approved: true },
+  run: { started: true },
+}
+
+const declined: Record<Action, string> = {
+  skip: 'not skipped',
+  unskip: 'not unskipped',
+  approve: 'not approved',
+  run: 'not started',
 }
 
 let acts = 0
 
 // The rows come from the last run's or plan's JSON, which an act doesn't change: a mark says what it did.
 async function act($: EngineInterface, action: Action, key: string) {
-  await update($, view, (v) => ({ ...v, confirm: undefined, status: `${action}…` }))
-  const r = await awaywork($, await onKnownConfig($, [action, key]))
+  const starting = action === 'run'
+  const status = starting ? 'starting… it plans first' : `${action}…`
+  await update($, view, (v) => ({ ...v, confirm: undefined, status }))
+  const args = starting ? ['run', '--unit', key, '--detach'] : [action, key]
+  const r = await awaywork($, await onKnownConfig($, args), starting ? PLAN_TIMEOUT : undefined)
   if (r.exitCode === 0) acts++
   const said = firstLine(r.exitCode === 0 ? r.stdout : r.stderr) || `${action} exited ${r.exitCode}`
   await update($, view, (v) => ({
@@ -372,7 +402,7 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
           update($, view, (x) => ({
             ...x,
             confirm: undefined,
-            status: `not ${confirm.action === 'approve' ? 'approved' : `${confirm.action}ped`}`,
+            status: declined[confirm.action],
           })),
       },
     ]
@@ -391,11 +421,11 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
   const skip = mark?.skip ? (mark.skip === 'skipped' ? 'unskip' : 'skip') : row.skip
   const ask = (action: Action, question: string) => () =>
     item &&
-    update($, view, (x) =>
-      action === 'approve' && mark?.approved
-        ? { ...x, status: 'already approved' }
-        : { ...x, confirm: { action, key: item, question } },
-    )
+    update($, view, (x) => {
+      if (action === 'approve' && mark?.approved) return { ...x, status: 'already approved' }
+      if (action === 'run' && mark?.started) return { ...x, status: 'already started' }
+      return { ...x, confirm: { action, key: item, question } }
+    })
   const keys: (Key | '' | undefined)[] = [
     url && { key: 'open', hotkey: 'o', label: opens(url), run: () => openUrl($, url) },
     report && { key: 'report', hotkey: 'v', label: 'view report', run: () => readRow($, report) },
@@ -407,6 +437,7 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
         label: 'approve',
         run: ask('approve', questions.approve(ref)),
       },
+    row.start && item && { key: 'run', hotkey: 'g', label: 'run now', run: ask('run', row.start) },
     here && {
       key: 'here',
       hotkey: 'c',
@@ -778,7 +809,9 @@ export const register: Register = (on) => {
     // Client props are JSON: no undefined in them.
     const cards = list.map((r): Card => {
       const m = r.item && v.marks?.[itemKey(r.item)]
-      const word = m ? [m.skip, m.approved && 'approved'].filter(Boolean).join(', ') : r.word
+      const word = m
+        ? [m.skip, m.approved && 'approved', m.started && 'started'].filter(Boolean).join(', ')
+        : r.word
       const color = m ? 'warning' : r.color
       return {
         id: r.id,
