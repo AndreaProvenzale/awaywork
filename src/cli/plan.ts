@@ -153,7 +153,8 @@ export async function probeAndPlan(
   config: Config,
   userSkillsDir: string,
   opts: {
-    retry?: boolean
+    /** A unit by name, which no cap, skip or attempt holds back. */
+    unit?: string
     repo?: string
     rule?: number
     onProgress?: OnProgress
@@ -229,8 +230,8 @@ export async function probeAndPlan(
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
   await linkPlanTasks(items, config, skills, forge, ctx, onProgress)
-  const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
-  const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
+  const attempts = await loadAttempts(attemptsPath)
+  const skips = activeSkips(await loadSkips(skipsPath), Date.now())
   const planned = planRun({
     config,
     items,
@@ -238,7 +239,7 @@ export async function probeAndPlan(
     skills,
     attempts,
     skips,
-    only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
+    only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units, named: opts.unit },
   })
   return {
     plan: {

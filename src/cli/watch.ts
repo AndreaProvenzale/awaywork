@@ -273,7 +273,10 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
     const refuse = (why: string) => ({ stdout: '', stderr: `${why}\n`, code: 1 })
     const config = await loadConfig(path).catch((e) => reason(e))
     if (typeof config === 'string') return refuse(config)
-    const { plan } = await probeAndPlan(config, skillsDirOf(path), { retry: true, probe: false })
+    const { plan } = await probeAndPlan(config, skillsDirOf(path), {
+      probe: false,
+      unit: key,
+    })
     const [named, ...more] = namedChains(plan, key)
     if (!named || more.length)
       return refuse(

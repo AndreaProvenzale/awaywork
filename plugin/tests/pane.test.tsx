@@ -131,6 +131,12 @@ const hotkey = async (ui: Ui, key: string) => (await ui.find({ key }))?.props.ho
 const text = async (ui: Ui, pattern: string | RegExp) =>
   !!(await ui.find({ type: 'Text', text: pattern }))
 
+/** Selects the card `id` by stepping through the strip. */
+async function goTo(ui: Awaited<ReturnType<typeof mount<Surface>>>, id: string) {
+  await ui.press({ key: 'prev' })
+  for (let i = 0; i < 20 && (await selected(ui)) !== id; i++) await ui.press({ key: 'nextCard' })
+}
+
 const SCROLL = {
   component: 'Pane',
   requestId: 'away',
@@ -398,6 +404,140 @@ test('s and a ask yes or no in the buttons row first, then mark the card', async
   await ui.press({ key: 'approve' })
   expect(await text(ui, 'already approved')).toBe(true)
   expect(calls.filter((argv) => argv[1] === 'approve')).toHaveLength(1)
+})
+
+const NEXT = 'row:next:acme-shop-12'
+const START = 'run --unit github:acme/shop#12 --detach'
+const STARTED =
+  'Started github:acme/shop#12 as run 20990102-120000; awaywork report 20990102-120000 shows it once it ends'
+
+test('g asks with the skill and delivery, runs the plan unit detached and marks the card', async ($, on) => {
+  const { calls, timeouts } = engine(on, {
+    'report --json': ok(busyReport),
+    'plan --json': ok(busyPlan),
+    [START]: { stdout: `${STARTED}\n` },
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'plan' })
+  await ui.press({ key: 'tab:next' })
+
+  expect(await hotkey(ui, 'run')).toBe('g')
+  expect(await label(ui, 'run')).toBe('run now')
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'Run #12 now with implement? Draft PR, uses your quota.')).toBe(true)
+  await ui.press({ key: 'no' })
+  expect(await text(ui, 'not started')).toBe(true)
+  expect(calls.some((argv) => argv[1] === 'run')).toBe(false)
+
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual(['awaywork', 'run', '--unit', 'github:acme/shop#12', '--detach'])
+  expect(timeouts.at(-1)).toBe(600_000)
+  expect(await text(ui, /^Started github:acme\/shop#12 as run/)).toBe(true)
+  expect((await card(ui, NEXT))?.word).toBe('started')
+
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'already started')).toBe(true)
+  expect(calls.filter((argv) => argv[1] === 'run')).toHaveLength(1)
+})
+
+test('a refused g shows the CLI line and leaves the card as it was', async ($, on) => {
+  const refused = 'no provider left: claude sits out a present run (no quota reading)'
+  engine(on, {
+    'report --json': ok(busyReport),
+    'plan --json': ok(busyPlan),
+    [START]: { exitCode: 1, stderr: `${refused}\n` },
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'plan' })
+  await ui.press({ key: 'tab:next' })
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'yes' })
+  expect(await text(ui, refused)).toBe(true)
+  expect((await card(ui, NEXT))?.word).toBe('implement')
+  expect(await text(ui, 'already started')).toBe(false)
+})
+
+test('g is on the unchanged, skipped, over-cap and gave-up skips only, never on a last-run card', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+
+  await ui.press({ key: 'tab:skipped' })
+  const on_ = async (id: string) => {
+    await ui.press({ key: 'nextCard' })
+    return (await selected(ui)) === id
+  }
+  const skips: Record<string, boolean> = {
+    'github:acme/shop#10': true,
+    'github:acme/shop#9': false,
+    'github:acme/api#30': true,
+    'github:acme/web#5': true,
+    'jira:SHOP-14': false,
+  }
+  // The strip lists them grouped, so walk it to its end.
+  const seen: Record<string, boolean> = {}
+  for (let i = 0; i < Object.keys(skips).length; i++) {
+    const id = (await selected(ui)) ?? ''
+    seen[id.replace('row:skipped:', '')] = !!(await ui.find({ key: 'run' }))
+    await on_(id)
+  }
+  expect(seen).toEqual(skips)
+
+  await ui.press({ key: 'tab:last' })
+  expect(await ui.find({ key: 'run' })).toBeFalsy()
+
+  await ui.press({ key: 'tab:needs' })
+  const needsSeen: Record<string, boolean> = {}
+  for (let i = 0; i < 6; i++) {
+    const id = (await selected(ui)) ?? ''
+    needsSeen[id] = !!(await ui.find({ key: 'run' }))
+    await ui.press({ key: 'nextCard' })
+  }
+  expect(
+    Object.entries(needsSeen)
+      .filter(([, has]) => has)
+      .map(([id]) => id),
+  ).toEqual([API22])
+})
+
+test('g is not on a skip of yours whose PR awaywork pushed onto, which still waits on review', async ($, on) => {
+  const skipped = busyReport.plan.skipped.map((s) =>
+    s.item.key === 'acme/shop#10' ? { ...s, url: 'https://github.com/acme/shop/pull/10' } : s,
+  )
+  engine(on, { 'report --json': ok({ ...busyReport, plan: { ...busyReport.plan, skipped } }) })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, 'row:skipped:github:acme/shop#10')
+  expect(await ui.find({ key: 'run' })).toBeFalsy()
+})
+
+test('g on a skip asks without a skill, and on your skip says the skip stays', async ($, on) => {
+  const { calls } = engine(on, {
+    'report --json': ok(busyReport),
+    'run --unit github:acme/shop#10 --detach': { stdout: 'Started github:acme/shop#10 as run x' },
+    'run --unit github:acme/api#30 --detach': { stdout: 'Started github:acme/api#30 as run y' },
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+
+  await goTo(ui, 'row:skipped:github:acme/api#30')
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'Run #30 now? Uses your quota.')).toBe(true)
+  await ui.press({ key: 'no' })
+
+  await goTo(ui, 'row:skipped:github:acme/shop#10')
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'Run #10 now? Uses your quota. Your skip stays for the coming runs.')).toBe(
+    true,
+  )
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual(['awaywork', 'run', '--unit', 'github:acme/shop#10', '--detach'])
+  expect((await card(ui, 'row:skipped:github:acme/shop#10'))?.word).toBe('started')
 })
 
 test('v shows the report in the detail and b goes back; o opens the URL; c hands the unit to the chat', async ($, on) => {

@@ -293,6 +293,8 @@ Options:
   --repo <glob>  run only units in repos matching owner/name, * globs
   --rule <n>     run only units of this queue rule, counted from 1
   --scheduled    run only inside a window and start no unit after it ends
+  --detach       with --unit: return once the unit has started, leaving it
+                 running
   -h, --help     display help for command
 ```
 

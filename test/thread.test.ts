@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
 import { finishedSince, linkThreads, probeAndPlan } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
@@ -12,6 +12,17 @@ import { sourceFor, writeItem } from '../src/sources/index.js'
 import { fakeForge } from './fakes/forge.js'
 import { fixture, recorded } from './fakes/gh.js'
 import { fakeItem } from './fakes/items.js'
+
+vi.mock('../src/config/paths.js', async (original) => {
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
+  return {
+    ...(await original<typeof import('../src/config/paths.js')>()),
+    attemptsPath: `${state}/attempts.json`,
+    skipsPath: `${state}/skips.json`,
+  }
+})
 
 type Found = { item: string; thread: Thread; comments: Item['comments'] }
 
@@ -221,7 +232,6 @@ queue:
     const lines: string[] = []
     const { plan, warnings } = await probeAndPlan(config, root, {
       probe: false,
-      retry: true,
       forge,
       moves: { dryRun, log: (l) => lines.push(l) },
     })
@@ -456,7 +466,6 @@ queue:
     const lines: string[] = []
     const { plan, warnings } = await probeAndPlan(config, root, {
       probe: false,
-      retry: true,
       forge: fakeForge(),
       moves: { dryRun, log: (l) => lines.push(l) },
     })

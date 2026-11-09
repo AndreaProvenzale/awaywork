@@ -20,8 +20,8 @@ import {
 } from '../core/footer.js'
 import {
   describeChain,
-  isNamed,
   modelFor,
+  namesUnit,
   type PlannedUnit,
   type RunPlan,
   slug,
@@ -275,7 +275,7 @@ function skipTask(chain: PlannedUnit[], reason: string): UnitResult[] {
 /** The chains `name` names by a unit id or an item, in any case: each chain's first step. */
 export function namedChains(plan: RunPlan, name: string): PlannedUnit[] {
   const heads = plan.units
-    .filter((p) => p.unit.id === name.toLowerCase() || p.unit.items.some((i) => isNamed(i, name)))
+    .filter((p) => namesUnit(p.unit.id, p.unit.items, name))
     .map((p) => p.chain ?? p.unit.id)
   return plan.units.filter((p) => !p.chain && heads.includes(p.unit.id))
 }

@@ -24,6 +24,7 @@ import {
   matches,
   type Ranked,
   rank,
+  ruleFor,
   TOP,
   waitsOn,
   within,
@@ -160,14 +161,30 @@ export function planRun(input: {
   attempts?: Attempts
   /** The time attempts are judged at; defaults to now. */
   now?: number
-  /** Plans only the units of a repo glob, a 1-based rule, `run: soon` rules and these unit ids, under the full run's caps. */
-  only?: { repo?: string; rule?: number; soon?: boolean; units?: string[] }
+  /** Plans only the units of a repo glob, a 1-based rule, `run: soon` rules and these unit ids, under the full run's caps; neither they nor its skip or attempts hold back the unit `named` names. */
+  only?: { repo?: string; rule?: number; soon?: boolean; units?: string[]; named?: string }
 }): RunPlan {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const expanded = expandPlans(input.items, config, queue, input.skills, skips)
-  const { ranked, unmatched } = rank(expanded.items, queue)
+  const name = only.named
+  // A task you name of a card you skipped runs; the card and its other tasks stay skipped.
+  const namedTasks =
+    name === undefined
+      ? []
+      : expandPlans(input.items, config, queue, input.skills).items.filter((item) => {
+          const card = item.task?.parent
+          const taking = queue[ruleFor(queue, item)]
+          return (
+            card &&
+            taking &&
+            skips[`${card.source}:${card.key}`] &&
+            namesChain(slug(item.key), taking, [item], name)
+          )
+        })
+  const candidates = [...expanded.items, ...namedTasks]
+  const { ranked, unmatched } = rank(candidates, queue)
   const skipped: Skipped[] = [
     ...expanded.skipped,
     ...unmatched.map((item) => ({ item, ...noRuleReason(item, queue) })),
@@ -180,7 +197,7 @@ export function planRun(input: {
 
   // A post that waits holds its card for its rule only: the card's linked items rank on their own.
   const waiting = (e: Ranked) => waitsOn(queue[e.rule] as Rule, e.item)
-  for (const found of inBlocks(dedupe(ranked, waiting), expanded.items)) {
+  for (const found of inBlocks(dedupe(ranked, waiting), candidates)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
     // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
     const pickup = ours && found.find((e) => isAwayworkPr(e.item))
@@ -193,13 +210,39 @@ export function planRun(input: {
     if (only.units && !only.units.includes(slug(items[0]?.key ?? ''))) continue
     const skip = (kind: SkipKind, reason: string, url?: string) =>
       skipped.push(...items.map((item) => ({ item, kind, reason, ...(url && { url }) })))
+    const limits = (item: Item) => planLimits(config, queue, item, input.skills)
+    const card =
+      rule.deliver === 'plan'
+        ? items.flatMap((item) => {
+            const state = planState(item, limits(item))
+            return state ? [{ item, ...state }] : []
+          })[0]
+        : undefined
+    const id = slug(items[0]?.key ?? '')
+    const steps = thenSteps(rule, id)
+    // An approved plan runs as its tasks, so naming its card lifts nothing.
+    const named =
+      name !== undefined && card?.state !== 'approved' && namesChain(id, rule, items, name)
+    let lifted = !!items[0] && namedTasks.includes(items[0])
+    // True when it stays held; a unit you name goes past, taking no room under the caps a run without the name would have left.
+    const hold = (kind: SkipKind, reason: string, url?: string) => {
+      if (named) lifted = true
+      else skip(kind, reason, url)
+      return !named
+    }
+    const attempts = input.attempts ?? {}
     const skippedByUser = items
       .map((item) => `${item.source}:${item.key}`)
       .find((key) => skips[key])
-    if (skippedByUser) {
-      skip('skipped_by_you', describeSkip(skippedByUser, skips[skippedByUser] as Skip))
+    if (
+      skippedByUser &&
+      hold(
+        'skipped_by_you',
+        describeSkip(skippedByUser, skips[skippedByUser] as Skip),
+        pushedOnto(items, attempts)?.url,
+      )
+    )
       continue
-    }
     // A post the unit depends on that awaywork couldn't read back decides nothing yet: no attempt counts.
     const unread = items.flatMap((i) => dependedPosts(i, rule)).find((c) => c?.pinned?.failed)
       ?.pinned?.failed
@@ -232,15 +275,16 @@ export function planRun(input: {
       skip('continues_later', `goes on from ${where} in the next window run`, where)
       continue
     }
-    const pushed = pushedOnto(items, input.attempts ?? {})
-    if (pushed) {
-      skip(
+    const pushed = pushedOnto(items, attempts)
+    if (
+      pushed &&
+      hold(
         'waiting_for_review',
         `waiting for review: awaywork pushed onto your PR ${pushed.url}`,
         pushed.url,
       )
+    )
       continue
-    }
     // Read off the item, not attempts, so a runner without state waits too, and awaywork's comment doesn't count as a change; a task's questions wait on its card.
     const asked = items.find((i) => !i.task && awaitsAnswer(i))
     if (asked) {
@@ -263,14 +307,6 @@ export function planRun(input: {
     }
     const ontoPr = stack?.pr
     const after = stack?.after
-    const limits = (item: Item) => planLimits(config, queue, item, input.skills)
-    const card =
-      rule.deliver === 'plan'
-        ? items.flatMap((item) => {
-            const state = planState(item, limits(item))
-            return state ? [{ item, ...state }] : []
-          })[0]
-        : undefined
     if (card?.state === 'waiting') {
       skip(
         'waiting_for_approval',
@@ -302,20 +338,24 @@ export function planRun(input: {
     // Closing a task's PR doesn't touch the card, nor editing a pinned file: its re-plan is due all the same.
     const replan = card?.state === 'replan'
     const stale = items.some((i) => rulePost(i, rule)?.pinned?.stale)
-    const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
-    if (since.every(Boolean) && !goesOn && !replan && !stale) {
-      skip('unchanged', `unchanged since run ${since.sort().at(-1)}`)
+    const since = items.map((item) => unchangedSince(item, rule.skill, attempts))
+    if (
+      since.every(Boolean) &&
+      !goesOn &&
+      !replan &&
+      !stale &&
+      hold('unchanged', `unchanged since run ${since.sort().at(-1)}`)
+    )
       continue
-    }
-    const retries = items.map((i) => gaveUpUntil(i, rule.skill, input.attempts ?? {}, now))
-    if (retries.every(Boolean)) {
-      const next = Math.min(...retries.map(Number))
-      skip(
+    const retries = items.map((i) => gaveUpUntil(i, rule.skill, attempts, now))
+    if (
+      retries.every(Boolean) &&
+      hold(
         'gave_up',
-        `gave up after ${MAX_ATTEMPTS} attempts; next try on ${new Date(next).toLocaleDateString('sv-SE')}`,
+        `gave up after ${MAX_ATTEMPTS} attempts; next try on ${new Date(Math.min(...retries.map(Number))).toLocaleDateString('sv-SE')}`,
       )
+    )
       continue
-    }
     // A skill commits unless it reports; `deliver: report`, `pending_review` and `plan` make every step report.
     const review = rule.deliver === 'pending_review'
     const planned = rule.deliver === 'plan'
@@ -377,12 +417,11 @@ export function planRun(input: {
       return cap && `over the cap: ${cap.name} is ${cap.max}`
     }
     const capped = overCap()
-    if (capped) {
+    if (capped && !named) {
       skip('over_cap', capped)
       continue
     }
 
-    const id = slug(items[0]?.key ?? '')
     // A post after your feedback, or a task's PR closed, waits for you whatever `wait` says.
     const again = card?.state === 'feedback' || replan || posted?.answer === 'feedback'
     // A report that neither waits nor has gates of its own posts as a plain result, `wait: false` too.
@@ -469,30 +508,32 @@ export function planRun(input: {
       return !!provider || !!at.merge
     }
     // A chain publishes once, so it counts once, when its first step runs.
-    if (add(rule, id)) {
+    if (add(rule, id) && !capped && !lifted) {
       counted++
       perRepo[repo] = (perRepo[repo] ?? 0) + 1
       perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
     }
-    for (const [j, entry] of (rule.then ?? []).entries()) {
-      if (!isLoop(entry)) {
-        add(entry, `${id}-${slug(entry.skill)}`)
-        continue
-      }
-      const skills = entry.loop.map((s) => s.skill)
-      for (let round = 1; round <= entry.max; round++)
-        for (const [s, step] of entry.loop.entries())
-          add(step, `${id}-${slug(step.skill)}-${round}`, {
-            at: j,
-            round,
-            step: s,
-            skills,
-            until: entry.until,
-            max: entry.max,
-          })
-    }
+    for (const step of steps) add(step.written, step.id, step.loop)
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+/** A rule's `then` steps with their unit ids, a loop's round by round. */
+function thenSteps(rule: Rule, id: string) {
+  return (rule.then ?? []).flatMap(
+    (entry, at): { written: ThenStep; id: string; loop?: LoopRound }[] => {
+      if (!isLoop(entry)) return [{ written: entry, id: `${id}-${slug(entry.skill)}` }]
+      const { until, max } = entry
+      const skills = entry.loop.map((s) => s.skill)
+      return Array.from({ length: max }, (_, r) =>
+        entry.loop.map((written, step) => {
+          const round = r + 1
+          const loop = { at, round, step, skills, until, max }
+          return { written, id: `${id}-${slug(written.skill)}-${round}`, loop }
+        }),
+      ).flat()
+    },
+  )
 }
 
 /** The rule's own post on the item: its plan, or its skill's newest result. */
@@ -702,6 +743,14 @@ export function slug(key: string): string {
 /** `api#5` for an `owner/repo#n` key, its repo's name without the owner; any other key as is. */
 export const shortRef = ({ key }: Pick<Item, 'key'>) =>
   key.replace(/^[^/\s]+\/(?=[^/\s]+#\d+$)/, '')
+
+/** Whether `name` names the chain with this head id, rule and items: a step's id or an item. */
+const namesChain = (id: string, rule: Rule, items: Item[], name: string) =>
+  [id, ...thenSteps(rule, id).map((s) => s.id)].some((u) => namesUnit(u, items, name))
+
+/** Whether `name` names a unit with this id and these items: the id or an item, in any case. */
+export const namesUnit = (id: string, items: Item[], name: string) =>
+  id === name.toLowerCase() || items.some((i) => isNamed(i, name))
 
 /** Whether `name` is the item's key, `source:key` or short ref, in any case, and nothing looser. */
 export const isNamed = (item: Item, name: string) =>

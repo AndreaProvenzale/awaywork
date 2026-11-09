@@ -236,7 +236,16 @@ awaywork report --list         # recent runs, to pick an id for report <id>
 awaywork report --unit 2       # one unit in full: its files, PR body or report
 ```
 
-`--unit` takes an item as `plan` shows it (`api#1`), its key (`acme/api#1`, or `github:acme/api#1`) or the unit id (`acme-api-1`), in any case. A step of a rule's `then` runs its whole chain, from the first step.
+`--unit` takes an item as `plan` shows it (`api#1`), its key (`acme/api#1`, or `github:acme/api#1`) or the unit id (`acme-api-1`), in any case. A step of a rule's `then` runs its whole chain, from the first step. A unit you name goes past `limits.units`, `limits.units_per_repo` and its rule's `units`; the rest of the plan stays capped as it was.
+
+`--unit` holds your terminal until the unit ends, hours sometimes. `--detach` starts it and hands the terminal back, one line when it's started, with its output in that run's `run.log`:
+
+```text
+$ awaywork run --unit api#1 --detach
+Started api#1 as run 20261109-095329; awaywork report 20261109-095329 shows it once it ends
+```
+
+It plans first, so a unit that can't start says so and exits 1: not in the plan, the run lock taken, or no provider for it. No Ctrl-C now, so to stop it kill the pid in `~/.local/state/awaywork/run.lock`: it ends the way Ctrl-C would, report included.
 
 Outside your windows that's a present run: workers stop at 40% of the 5-hour window, and a provider whose quota awaywork can't read, like a command provider without a `probe`, sits it out. Run it inside a window or add a probe.
 
