@@ -535,14 +535,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const tasks = file.plan.tasks.map((t) => t.id)
     const inline = [outputFile.report, 'plan.yml', ...(name ? [name] : [])]
     const went = !!post && 'went' in post
+    const tooLong = { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
     if (summary !== undefined) {
+      const lean = leanPlanComment(summary, file.plan.tasks, went)
+      if (Buffer.byteLength(lean) > MAX_COMMENT_BYTES) return tooLong
       const pins = await pinOut(p, out, inline, notes, name || undefined)
       const missing = ['plan.yml', ...(name ? [name] : [])].find(
         (n) => !pins.some((pin) => pin.name === n),
       )
       if (missing) return { tasks, unposted: `${missing} isn't in the store` }
-      const lean = `${leanPlanComment(summary, file.plan.tasks, went)}${pinBlock(pins)}`
-      const posted = await postComment(p, 'plan', () => lean, post)
+      const posted = await postComment(p, 'plan', () => `${lean}${pinBlock(pins)}`, post)
       return { tasks, ...posted, ...(posted.url && { post: post ?? { waits: true } }) }
     }
     const body = planComment(report, yaml, name ? { name, text } : undefined, went)
@@ -554,8 +556,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
     if (name && contractText(body, name) !== text)
       return { unposted: `the contract ${name} doesn't read back from its comment` }
-    if (Buffer.byteLength(body) > MAX_COMMENT_BYTES)
-      return { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
+    if (Buffer.byteLength(body) > MAX_COMMENT_BYTES) return tooLong
     const pins = await pinOut(p, out, inline, notes)
     const posted = await postComment(p, 'plan', () => `${body}${pinBlock(pins)}`, post)
     return { tasks, ...posted, ...(posted.url && { post: post ?? { waits: true } }) }
@@ -700,6 +701,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         deliver: 'report',
         foreign: true,
         stackedOn: undefined,
+        lean: undefined,
         // The gate's own instructions, from the config: the rule's are written for the worker it judges.
         rule: {
           ...unit.rule,
@@ -754,7 +756,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           quotas[id] = worker.quota
           allowances[id] = withQuota(a, worker.quota)
         }
-        if (worker.status !== 'done') why = worker.reason ?? 'its worker failed'
+        if (worker.status !== 'done')
+          why = maskSecrets(worker.reason ?? 'its worker failed', secrets, input.ctx.env)
       } catch (e) {
         why = (e as Error).message
         log(`error: ${(e as Error).stack}`)
@@ -1185,6 +1188,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         })
         await restoreGit(dir)
         Object.assign(result, worker)
+        if (worker.reason) result.reason = maskSecrets(worker.reason, secrets, input.ctx.env)
         if (loop && p.loop) loop.rounds = p.loop.round
         if (worker.quota) {
           quotas[id] = worker.quota
@@ -1370,7 +1374,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           : undefined
         const pins =
           deliver === 'report' ? await pinOut(first, out, [outputFile.report], storeNotes) : []
-        const text = (deliver === 'report' && (await summary())) || resultOf(outcome)
+        // A lean post links its report: one the store didn't take goes in the post whole, the gates' card with it.
+        const whole =
+          deliver === 'report' &&
+          first.unit.lean &&
+          !pins.some((pin) => pin.name === outputFile.report)
+        if (whole)
+          storeNotes.push(`${outputFile.report} isn't in the store: the post shows all of it`)
+        const text = (deliver === 'report' && !whole && (await summary())) || resultOf(outcome)
         lead.result = await postResult(first, text, status, leaves?.continued, post, pins)
       }
       if (onDone?.move && !continues && !(report && waits))
@@ -1448,7 +1459,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       if (!posts.length) continue
       const dir = join(input.runDir, 'units', head.unit.id, 'files', slug(item.key))
       try {
-        ready.notes.push(...(await readBack(store, input.ctx.env, posts, dir)))
+        const notes = await readBack(store, input.ctx.env, posts, dir)
+        ready.notes.push(...notes.map((n) => maskSecrets(n, secrets, input.ctx.env)))
       } catch (e) {
         return { skip: maskSecrets((e as Error).message, secrets, input.ctx.env) }
       }

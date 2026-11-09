@@ -243,8 +243,9 @@ export function planRun(input: {
       )
     )
       continue
-    // A post awaywork couldn't read back from the store decides nothing yet: no attempt counts.
-    const unread = items.flatMap((i) => i.comments).find((c) => c.pinned?.failed)?.pinned?.failed
+    // A post the unit depends on that awaywork couldn't read back decides nothing yet: no attempt counts.
+    const unread = items.flatMap((i) => dependedPosts(i, rule)).find((c) => c?.pinned?.failed)
+      ?.pinned?.failed
     if (unread) {
       skip('store_failed', unread)
       continue
@@ -336,11 +337,7 @@ export function planRun(input: {
     }
     // Closing a task's PR doesn't touch the card, nor editing a pinned file: its re-plan is due all the same.
     const replan = card?.state === 'replan'
-    const stale = items.some(
-      (i) =>
-        (rule.deliver === 'plan' ? planThread(i)?.plan : reportPost(i, rule.skill)?.post)?.pinned
-          ?.stale,
-    )
+    const stale = items.some((i) => rulePost(i, rule)?.pinned?.stale)
     const since = items.map((item) => unchangedSince(item, rule.skill, attempts))
     if (
       since.every(Boolean) &&
@@ -538,6 +535,17 @@ function thenSteps(rule: Rule, id: string) {
     },
   )
 }
+
+/** The rule's own post on the item: its plan, or its skill's newest result. */
+const rulePost = (i: Item, rule: Rule) =>
+  rule.deliver === 'plan' ? planThread(i)?.plan : reportPost(i, rule.skill)?.post
+
+/** The posts a unit of the rule on the item stands on: the rule's own, a task's plan on its card, and the result `approved` names. */
+const dependedPosts = (i: Item, rule: Rule) => [
+  rulePost(i, rule),
+  i.task && planThread(i)?.plan,
+  typeof i.fields.approved === 'string' ? reportPost(i, i.fields.approved)?.post : undefined,
+]
 
 /** Where a task after another's `opened` starts: on that task's open PR, else after its chain earlier in this run. */
 function stackTarget(
