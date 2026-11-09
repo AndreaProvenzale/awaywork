@@ -587,7 +587,13 @@ async function step($: EngineInterface, by: number) {
 }
 
 /** No `strip` when the pane is too short for its regions: the engine scrolls it then. */
-type Drawn = { press: Record<string, () => unknown>; strip?: [number, number]; detailMax: number }
+type Drawn = {
+  press: Record<string, () => unknown>
+  strip?: [number, number]
+  detailMax: number
+  /** The desktop app scrolls the pane itself: an arrow there is a smooth scroll, many events and none upward from the top. */
+  nativeScroll?: boolean
+}
 
 /** The last drawing's hotkeys, strip rows and detail end: `ui.scroll` and the strip's posts see no drawing. */
 let drawn: Drawn = { press: {}, detailMax: 0 }
@@ -730,7 +736,7 @@ export const register: Register = (on) => {
 
   // A body that fits its window: the wheel over the strip steps the cards, anything else scrolls the detail.
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
-    if (e.origin.kind === 'person' && (await inFlow($))) {
+    if (e.origin.kind === 'person' && !drawn.nativeScroll && (await inFlow($))) {
       // Past the rows `done` keeps spare, the body doesn't fit: the wheel and page keys scroll it.
       const overflows = e.contentRows > e.bodyRows + 1
       const arrow = !e.pointer && Math.abs(e.by) === 1
@@ -869,7 +875,7 @@ export const register: Register = (on) => {
     )
 
     const done = (body?: RenderChildren, minHeight?: number) => {
-      drawn = { press, detailMax: 0 }
+      drawn = { press, detailMax: 0, nativeScroll: e.surface === 'desktop' }
       return (
         <Box flexDirection="column" rowGap={gap} minHeight={minHeight}>
           {header}
@@ -893,9 +899,12 @@ export const register: Register = (on) => {
           button,
           setView: (patch) => update($, view, (x) => ({ ...x, ...patch })),
           open: (file, line) => openInEditor($, file, line),
+          step: e.surface === 'desktop' ? (by) => stepRule($, by, true) : undefined,
         }),
         // Arrows reach `ui.scroll` only with a row to scroll: a spare one, and a blank last row so overflow is exact.
-        (v.source ?? 'flow') === 'flow' && c.view ? e.props.scroll.bodyRows + 1 : undefined,
+        e.surface !== 'desktop' && (v.source ?? 'flow') === 'flow' && c.view
+          ? e.props.scroll.bodyRows + 1
+          : undefined,
       )
     if (d.error) return done(<Text>{d.error}</Text>)
     if (!tab) {

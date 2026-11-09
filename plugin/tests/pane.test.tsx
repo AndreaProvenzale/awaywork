@@ -1084,6 +1084,32 @@ test('on the Config tab the arrows move between rules and each skill has its col
   expect(colors).toEqual(expect.arrayContaining(['claude', 'merged']))
 })
 
+test('on the desktop app j and k step the rule and the pane keeps its own scroll', async ($, on) => {
+  engine(on, {
+    'config path': { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    [`--config ${CONFIG} config explain`]: ok(explained),
+    [`--config ${CONFIG} plan --rules --json`]: ok({ rules: [], unmatched: [] }),
+  })
+  on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
+  on('fs.read', () => ({ value: 'queue: []\n' }))
+  on('ui.scroll', () => ({}))
+  await $.command.run(away())
+  const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'desktop' })
+  await ui.press({ key: 'tab:config' })
+  const boxes = await ui.findAll({ type: 'Box' })
+  expect(boxes.some((b) => b.props.minHeight !== undefined)).toBe(false)
+
+  expect(await $.ui.scroll({ ...SCROLL, by: 1 })).toEqual({})
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+
+  expect(await hotkey(ui, 'nextRule')).toBe('j')
+  await ui.press({ key: 'nextRule' })
+  expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
+  await ui.press({ key: 'previousRule' })
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+})
+
 const SERVER = '/srv/awaywork/config.yml'
 
 test('a config only the remote has keeps the run tabs: no setup, no Config tab', async ($, on) => {
