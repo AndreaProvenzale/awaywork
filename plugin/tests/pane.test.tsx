@@ -51,6 +51,7 @@ function engine(
 ) {
   const calls: string[][] = []
   const opened: string[] = []
+  const timeouts: (number | undefined)[] = []
   const clock = mock.clock(on, { now: NOW })
   on('session.surfaces', () => ({ value: surfaces }))
   on('ui.open', (_, e) => {
@@ -59,12 +60,13 @@ function engine(
   })
   on('process.run', async (_, e) => {
     calls.push([...e.argv])
+    timeouts.push(e.init?.timeoutMs)
     const reply = replies[e.argv.slice(1).join(' ')] ?? replies[e.argv[1] ?? ''] ?? {}
     const r = typeof reply === 'function' ? await reply() : reply
     const value = { exitCode: 0, stdout: '', stderr: '', ...r }
     return { value: { ...value, isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  return { calls, opened, clock }
+  return { calls, opened, timeouts, clock }
 }
 
 const ok = (json: unknown) => ({ stdout: JSON.stringify(json) })
@@ -413,6 +415,9 @@ test('v shows the report in the detail and b goes back; o opens the URL; c hands
     const ui = await mount($, surface)
     await ui.press({ key: 'tab:last' })
     expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'failed' })
+    expect(await card(ui, 'row:last:acme-shop-3')).toMatchObject({ ref: '#3', word: 'fix done' })
+    const colors = (await ui.findAll({ type: 'Text', ...strip(ui) })).map((n) => n.props.color)
+    expect(colors).toEqual(expect.arrayContaining(['claude', 'error']))
     expect(await detail(ui)).toEqual([
       'Flaky cart test',
       'fix · Pinned the clock in the cart test',
@@ -603,13 +608,395 @@ test('/away with a request goes to the skill', async ($, on) => {
   expect(opened).toEqual([])
 })
 
-test('bare /away with no config goes to the skill, which sets awaywork up', async ($, on) => {
-  const { calls, opened } = engine(on, { 'config path': noConfig })
-  on('command.run', () => ({ text: 'the skill ran' }))
-  const ran = await $.command.run(away())
-  expect(ran.text).toBe('the skill ran')
-  expect(opened).toEqual([])
+for (const args of ['', 'set up awaywork'])
+  test(`/away ${args} with no config opens the pane and goes to the skill`, async ($, on) => {
+    const { opened } = engine(on, { 'config path': noConfig })
+    on('fs.exists', () => ({ value: false }))
+    on('command.run', () => ({ text: 'the skill ran' }))
+    const ran = await $.command.run(away(args))
+    expect(ran.text).toBe('the skill ran')
+    expect(opened).toEqual(['away'])
+    const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'terminal' })
+    expect(await text(ui, /It'll read like this/)).toBe(true)
+  })
+
+const CONFIG = '/home/me/.config/awaywork/config.yml'
+const explained = {
+  valid: true,
+  windows: ['01:00–07:00'],
+  providers: ['claude'],
+  sources: ['github'],
+  defaultQueue: false,
+  rules: [
+    ['my PRs, checks failing', 'fix', 'draft PR'],
+    ['PRs, review requested', 'review', 'report'],
+  ].map(([takes, skill, leaves], i) => ({
+    rule: i + 1,
+    takes,
+    skill,
+    leaves,
+    steps: [],
+    waits: false,
+    plan: false,
+    planned: false,
+    soon: false,
+  })),
+}
+
+test('on the Config tab the arrows move between rules and each skill has its color', async ($, on) => {
+  engine(on, {
+    'config path': { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    [`--config ${CONFIG} config explain`]: ok(explained),
+    [`--config ${CONFIG} plan --rules --json`]: ok({ rules: [], unmatched: [] }),
+  })
+  on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
+  on('fs.read', () => ({ value: 'queue: []\n' }))
+  on('ui.scroll', () => ({}))
+  await $.command.run(away())
+  const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'terminal' })
+  await ui.press({ key: 'tab:config' })
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+  expect(await $.ui.scroll({ ...SCROLL, by: 1 })).toEqual({})
+  expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
+  const colors = (await ui.findAll({ type: 'Text' })).map((n) => n.props.color)
+  expect(colors).toEqual(expect.arrayContaining(['claude', 'merged']))
+})
+
+const SERVER = '/srv/awaywork/config.yml'
+
+test('a config only the remote has keeps the run tabs: no setup, no Config tab', async ($, on) => {
+  const { calls } = engine(on, {
+    'config path': { stdout: `${SERVER}\n` },
+    'report --json': ok(busyReport),
+  })
+  on('fs.exists', () => ({ value: false }))
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  expect(await label(ui, 'tab:needs')).toBe('Needs you (6)')
+  expect(await label(ui, 'tab:last')).toBe('Last run (2)')
+  expect(await ui.find({ key: 'tab:config' })).toBeFalsy()
+  expect(await label(ui, 'plan')).toBe('plan')
+  expect(await text(ui, /setting up/)).toBe(false)
+  expect(calls.some((argv) => argv[0] === 'mkdir')).toBe(false)
+})
+
+test('session start makes the folder only when config path says missing, and watches nothing of a remote', async ($, on) => {
+  let reply: Reply = noConfig
+  let here = false
+  const { calls, timeouts } = engine(on, { 'config path': () => reply })
+  on('fs.exists', () => ({ value: here }))
+  on('classic.SessionStart', () => ({}))
+
+  expect(await $.classic.SessionStart({ source: 'startup' })).toMatchObject({
+    watchPaths: ['/home/me/.config/awaywork'],
+  })
+  expect(calls).toEqual([
+    ['awaywork', 'config', 'path'],
+    ['mkdir', '-p', '/home/me/.config/awaywork'],
+  ])
+  expect(timeouts[0]).toBe(2000)
+
+  calls.length = 0
+  reply = { stdout: `${CONFIG}\n` }
+  here = true
+  expect(await $.classic.SessionStart({ source: 'startup' })).toMatchObject({
+    watchPaths: ['/home/me/.config/awaywork'],
+  })
   expect(calls).toEqual([['awaywork', 'config', 'path']])
+
+  calls.length = 0
+  reply = { stdout: `${SERVER}\n` }
+  here = false
+  expect(await $.classic.SessionStart({ source: 'startup' })).not.toHaveProperty('watchPaths')
+  expect(calls).toEqual([['awaywork', 'config', 'path']])
+})
+
+const OTHER = '/home/me/acme/ctl/.awaywork'
+const DRAFT = `${OTHER}/config.draft.yml`
+const GONE = '/home/me/gone/config.draft.yml'
+const missing = (path: string) => ({
+  exitCode: 1,
+  stdout: `${path}\n`,
+  stderr: `${path} not found; awaywork init writes one\n`,
+})
+
+/** A setup, or a working config, with the pane open, its tool calls answered. */
+function session(on: On, setup: boolean, moved: () => boolean = () => false) {
+  const draft = `--config ${DRAFT} config explain`
+  const named = `${OTHER}/config.yml`
+  const e = engine(on, {
+    'config path': setup ? noConfig : { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    '--config ~/acme/ctl/.awaywork/config.draft.yml config path': { stdout: `${DRAFT}\n` },
+    [`--config ${DRAFT} config path`]: { stdout: `${DRAFT}\n` },
+    [`--config ${GONE} config path`]: missing(GONE),
+    [`--config ${named} config path`]: () => (moved() ? { stdout: `${named}\n` } : missing(named)),
+    [`--config ${CONFIG} config explain`]: ok(explained),
+    [draft]: ok(explained),
+  })
+  on('ui.panes', () => ({ value: [{ id: 'away' }] as never }))
+  on('command.run', () => ({ text: 'the skill ran' }))
+  on('tool.call', () => ({ result: {} }))
+  on('fs.exists', (_, x) => ({ value: x.path === DRAFT || (!setup && x.path === CONFIG) }))
+  on('fs.read', () => ({ value: 'queue: []\n' }))
+  return e
+}
+
+/** A press settles every background sync it joined. */
+async function settle($: Engine) {
+  const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'terminal' })
+  await ui.press({ key: 'refresh' })
+  await ui.unmount()
+}
+
+const explainedHere = (calls: string[][], file: string) =>
+  calls.some((argv) => argv[1] === '--config' && argv[2] === file && argv[3] === 'config')
+
+for (const [what, call] of [
+  [
+    'an awaywork --config with ~/',
+    { tool: 'Bash', command: 'awaywork --config ~/acme/ctl/.awaywork/config.draft.yml init --yes' },
+  ],
+  ['a Write of the draft', { tool: 'Write', file_path: DRAFT, content: 'x' }],
+] as const)
+  test(`during setup, ${what} repoints the pane to the control folder`, async ($, on) => {
+    const { calls } = session(on, true)
+    await $.command.run(away('set up awaywork'))
+    await settle($)
+    await $.tool.call(call)
+    await settle($)
+    expect(explainedHere(calls, DRAFT)).toBe(true)
+  })
+
+test('a named draft that is not on disk, or a relative one, leaves the pane alone', async ($, on) => {
+  const { calls } = session(on, true)
+  await $.command.run(away('set up awaywork'))
+  await settle($)
+  await $.tool.call({ tool: 'Bash', command: `awaywork --config ${GONE} init --yes` })
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'cd /home/me/acme/ctl && awaywork --config .awaywork/config.draft.yml plan',
+  })
+  await settle($)
+  expect(calls.some((argv) => argv.includes('/home/me/gone/config.yml'))).toBe(false)
+  expect(calls.some((argv) => argv.includes('.awaywork/config.draft.yml'))).toBe(false)
+  const ui = await mount($, 'terminal')
+  expect(await text(ui, /It'll read like this/)).toBe(true)
+})
+
+test('after a setup in a control folder, bare /away, p and s use the moved config', async ($, on) => {
+  let moved = false
+  const { calls } = session(on, true, () => moved)
+  await $.command.run(away('set up awaywork'))
+  await settle($)
+  await $.tool.call({ tool: 'Write', file_path: DRAFT, content: 'x' })
+  await settle($)
+  moved = true
+  calls.length = 0
+  const ran = await $.command.run(away())
+  expect(ran.text).toBeUndefined()
+  const known = ['awaywork', '--config', `${OTHER}/config.yml`]
+  expect(calls[0]).toEqual([...known, 'config', 'path'])
+  const ui = await mount($, 'terminal')
+  expect(await text(ui, /setting up/)).toBe(false)
+  await ui.press({ key: 'plan' })
+  expect(calls).toContainEqual([...known, 'plan', '--json'])
+  await ui.press({ key: 'tab:last' })
+  await ui.press({ key: 'skip' })
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual([...known, 'skip', 'github:acme/shop#3'])
+})
+
+test('a mention of someone else’s draft never moves the pane', async ($, on) => {
+  const { calls } = session(on, true)
+  await $.command.run(away('set up awaywork'))
+  await settle($)
+  await $.tool.call({ tool: 'Bash', command: 'cat /tmp/other/project/config.draft.yml' })
+  await $.tool.call({ tool: 'Write', file_path: '/tmp/other/config.yml', content: 'x' })
+  await settle($)
+  expect(calls.some((argv) => argv.includes('/tmp/other/project/config.draft.yml'))).toBe(false)
+  expect(calls.some((argv) => argv.includes('/tmp/other/config.yml'))).toBe(false)
+})
+
+test('with a working config, a draft named on the side never moves the pane', async ($, on) => {
+  const { calls } = session(on, false)
+  await $.command.run(away())
+  await settle($)
+  await $.tool.call({ tool: 'Bash', command: `awaywork --config ${DRAFT} plan` })
+  await settle($)
+  expect(explainedHere(calls, DRAFT)).toBe(false)
+  const ui = await mount($, 'terminal')
+  expect(await text(ui, /setting up/)).toBe(false)
+  expect(await label(ui, 'tab:last')).toBe('Last run (2)')
+})
+
+test('a failed explain tries again on the next look, and an old awaywork says the fix', async ($, on) => {
+  let reply: Reply = { exitCode: 1, stderr: 'boom\n' }
+  const { calls } = engine(on, {
+    'config path': { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    [`--config ${CONFIG} config explain`]: () => reply,
+    [`--config ${CONFIG} plan --rules --json`]: ok({ rules: [], unmatched: [] }),
+  })
+  on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
+  on('fs.read', () => ({ value: 'queue: []\n' }))
+  await $.command.run(away())
+  const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'terminal' })
+  await ui.press({ key: 'tab:config' })
+  expect(await text(ui, /boom/)).toBe(true)
+
+  reply = { exitCode: 1, stderr: "error: unknown command 'explain'\n" }
+  await ui.press({ key: 'refresh' })
+  expect(
+    await text(
+      ui,
+      'this awaywork is too old for the pane (no config explain): npm i -g awaywork@latest',
+    ),
+  ).toBe(true)
+
+  reply = ok(explained)
+  await ui.press({ key: 'refresh' })
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+  // /away's sync, the tab's, and one per refresh: a failure never counts as seen.
+  expect(calls.filter((argv) => argv.slice(3).join(' ') === 'config explain')).toHaveLength(4)
+})
+
+/** The Config tab on a real file, its text and explain's answer the test's to change. */
+async function configTab(
+  $: Engine,
+  on: On,
+  start: { text: string; reply: Reply },
+  size: Size = {},
+) {
+  const file = { ...start }
+  engine(on, {
+    'config path': { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    [`--config ${CONFIG} config explain`]: () => file.reply,
+    [`--config ${CONFIG} plan --rules --json`]: ok({ rules: [], unmatched: [] }),
+  })
+  on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
+  on('fs.read', () => ({ value: file.text }))
+  await $.command.run(away())
+  const ui = await $.ui.mount({ ...PANE, props: sized(size), surface: 'terminal' })
+  await ui.press({ key: 'tab:config' })
+  return { ui, file }
+}
+
+test('a failed explain goes away once the file is back to what was explained', async ($, on) => {
+  const { ui, file } = await configTab($, on, { text: 'a: 1\n', reply: ok(explained) })
+  file.text = 'b: 1\n'
+  file.reply = { exitCode: 1, stderr: 'boom\n' }
+  await ui.press({ key: 'refresh' })
+  expect(await text(ui, /boom/)).toBe(true)
+  file.text = 'a: 1\n'
+  file.reply = ok(explained)
+  await ui.press({ key: 'refresh' })
+  expect(await text(ui, /boom/)).toBe(false)
+  expect(await text(ui, '✓ valid')).toBe(true)
+})
+
+test('an invalid file keeps its problems and its diff across looks at the same text', async ($, on) => {
+  const { ui, file } = await configTab($, on, { text: 'a: 1\n', reply: ok(explained) })
+  file.text = 'bogus: 1\n'
+  file.reply = ok({ valid: false, problems: ['queue[0]: Unrecognized key: "bogus"'] })
+  await ui.press({ key: 'refresh' })
+  await ui.press({ key: 'refresh' })
+  expect(await text(ui, 'queue[0]: Unrecognized key: "bogus"')).toBe(true)
+  expect(await text(ui, '✗ 1 problem')).toBe(true)
+  expect(await label(ui, 'diff')).toBe('diff')
+  // The filename is what truncates; the state sits in a box that doesn't shrink.
+  expect((await ui.find({ type: 'Text', text: 'config.yml' }))?.props.wrap).toBe('truncate-end')
+})
+
+test('a plan rule keeps where its tasks go when the flow falls back to one line', async ($, on) => {
+  const planned = {
+    ...explained,
+    rules: [
+      {
+        ...explained.rules[0],
+        skill: 'plan',
+        leaves: 'plan',
+        plan: true,
+        waits: true,
+        steps: [{ loop: ['implement', 'review'], until: 'approve', max: 3 }],
+      },
+      { ...explained.rules[1], planned: true },
+    ],
+  }
+  const { ui } = await configTab(
+    $,
+    on,
+    { text: 'queue: []\n', reply: ok(planned) },
+    { bodyColumns: 40 },
+  )
+  expect(await text(ui, /⟲ \(implement ▶ review\) until approve, max 3 ▶ ◆ plan ▶ rule 2$/)).toBe(
+    true,
+  )
+})
+
+test('on a pane that overflows the arrows still step the rule, the wheel scrolls', async ($, on) => {
+  engine(on, {
+    'config path': { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    [`--config ${CONFIG} config explain`]: ok(explained),
+    [`--config ${CONFIG} plan --rules --json`]: ok({ rules: [], unmatched: [] }),
+  })
+  on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
+  on('fs.read', () => ({ value: 'queue: []\n' }))
+  const scrolled: number[] = []
+  const offsets: number[] = []
+  on('ui.scroll', (_, e) => {
+    scrolled.push(e.by)
+    offsets.push(e.offset)
+    return {}
+  })
+  await $.command.run(away())
+  const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'terminal' })
+  await ui.press({ key: 'tab:config' })
+  const over = { ...SCROLL, bodyRows: 12, contentRows: 60, by: 1 }
+  expect(await $.ui.scroll(over)).toEqual({ deny: 'the arrows move between rules' })
+  expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
+  expect(scrolled).toEqual([])
+
+  const wheel = { column: 5, row: 3 }
+  expect(await $.ui.scroll({ ...over, pointer: wheel })).toEqual({})
+  expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
+  expect(scrolled).toEqual([1])
+
+  // A page key, Home or End scrolls and leaves the rule where it is.
+  expect(await $.ui.scroll({ ...over, by: 12 })).toEqual({})
+  expect(await $.ui.scroll({ ...over, by: -60 })).toEqual({})
+  expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
+  expect(scrolled).toEqual([1, 12, -60])
+
+  // At the spare rows the flow fits: the wheel still steps the rule, and the window goes back to the top.
+  offsets.length = 0
+  expect(
+    await $.ui.scroll({ ...over, contentRows: 13, by: -1, pointer: wheel, offset: 1 }),
+  ).toEqual({})
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+  expect(await $.ui.scroll({ ...over, contentRows: 13, by: 12, offset: 1 })).toEqual({})
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+  expect(offsets).toEqual([0, 0])
+})
+
+test('a Last run card too narrow for the skill keeps its ref', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  const wide = await mount($, 'terminal', { bodyColumns: 48 })
+  await wide.press({ key: 'tab:last' })
+  await wide.press({ key: 'nextCard' })
+  expect(await card(wide, 'row:last:acme-shop-5')).toMatchObject({
+    ref: '#5',
+    word: 'implement failed',
+  })
+  await wide.press({ key: 'tab:needs' })
+  await wide.unmount()
+  const ui = await mount($, 'terminal', { bodyColumns: 100 })
+  await ui.press({ key: 'tab:last' })
+  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'failed' })
 })
 
 test('an awaywork too old for config path still opens the pane', async ($, on) => {
@@ -676,7 +1063,7 @@ test('p plans once however often it is pressed; r reads only the report', async 
     })
     expect(await detail(ui)).toEqual([
       'Coupon codes',
-      'deliver draft_pr · claude',
+      'implement ▶ draft PR · claude',
       'github:acme/shop#12  Coupon codes',
       'https://github.com/acme/shop/issues/12',
     ])

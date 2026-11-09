@@ -996,4 +996,23 @@ describe('awaywork config path', () => {
       code: 1,
     })
   })
+
+  it('config explain reads the rules past a broken SKILL.md, without a stack', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-explain-'))
+    const there = join(dir, 'config.yml')
+    await writeFile(
+      there,
+      `${minimal}queue:\n  - { skill: review, source: github, where: { type: pr } }\n`,
+    )
+    await mkdir(join(dir, 'skills/broken'), { recursive: true })
+    await writeFile(join(dir, 'skills/broken/SKILL.md'), '---\nname: [unclosed\n---\n')
+    const out = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const program = new Command().option('-c, --config <path>')
+    configCommand(program)
+    await program.parseAsync(['--config', there, 'config', 'explain'], { from: 'user' })
+    expect(JSON.parse(out.mock.calls[0]?.[0] as string)).toMatchObject({
+      valid: true,
+      rules: [{ skill: 'review', leaves: 'report' }],
+    })
+  })
 })
