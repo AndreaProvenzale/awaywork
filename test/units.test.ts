@@ -4857,6 +4857,56 @@ describe('a one-off --skill unit', () => {
     expect(report.results[0]?.outcome).not.toMatchObject({ ready: true })
   })
 
+  it('records no attempt, leaving what a rule left on the item', async () => {
+    const prior: Attempts = {
+      'github:acme/api#1': { runId: 'r0', skill: 'fix', updated: 'x', failed: 2, failedAt: 'y' },
+    }
+    const { report } = await run(asker('', true), [yours(1)], 'fix')
+    expect(recordAttempts(prior, report)).toEqual(prior)
+    const left = await run(asker('', true), [yours(1)])
+    expect(recordAttempts({}, left.report)).toEqual({})
+  })
+
+  it('leaves a draft that said continue to you, promising no later run', async () => {
+    const { report, writes, opened } = await run(asker('', true, 'continue'), [yours(1)])
+    const url = report.results[0]?.outcome?.kind === 'pr' ? report.results[0].outcome.url : ''
+    expect(writes).toEqual([])
+    expect(opened[0]?.body).not.toContain('Status:')
+    expect(opened[0]?.body).not.toContain('next window run')
+    expect(opened[0]?.left).toBeUndefined()
+    expect(report.results[0]?.byHand).toBe(
+      `ran with --skill, no later run goes on with it: finish ${url} by hand`,
+    )
+    expect(formatReport(report)).toContain(report.results[0]?.byHand as string)
+  })
+
+  it('leaves a draft that asked to you, its questions in the report', async () => {
+    const { report, writes, opened } = await run(asker('Which?', true, 'ask'), [yours(1)])
+    const url = report.results[0]?.outcome?.kind === 'pr' ? report.results[0].outcome.url : ''
+    expect(writes).toEqual([])
+    expect(opened[0]?.body).not.toContain('Status:')
+    expect(opened[0]?.left).toBeUndefined()
+    expect(report.results[0]?.questions?.unposted).toBe(
+      `ran with --skill, no later run goes on with it: finish ${url} by hand`,
+    )
+  })
+
+  it("says a report's continue is yours to finish", async () => {
+    const reporter: Provider = {
+      ...fakeProvider('claude'),
+      async *run(job) {
+        await writeFile(join(job.dir, '.away/out/report.md'), 'Half of it.')
+        await writeFile(join(job.dir, '.away/out/status'), 'continue')
+        yield { type: 'done', ok: true, turns: 1 }
+      },
+    }
+    const { report, writes } = await run(reporter, [yours(1)], 'review')
+    expect(writes).toEqual([])
+    expect(report.results[0]?.byHand).toBe(
+      'ran with --skill, no later run goes on with it: finish it by hand',
+    )
+  })
+
   it("keeps a task's report in the report, not on its card", async () => {
     const card = yours(5)
     const task = {

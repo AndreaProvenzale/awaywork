@@ -91,12 +91,11 @@ describe('skills', () => {
     const of = (name: string) => skills.find((s: { name: string }) => s.name === name)
     expect(of('fix')).toEqual({
       name: 'fix',
-      origin: 'builtin',
       deliver: 'draft_pr',
       pickable: true,
     })
     expect(of('plan')).toMatchObject({ deliver: 'report', pickable: true })
-    expect(of('triage')).toMatchObject({ origin: 'user', pickable: true })
+    expect(of('triage')).toMatchObject({ pickable: true })
     expect(of('judge').pickable).toBe(false)
     expect(of('sync').pickable).toBe(false)
   })

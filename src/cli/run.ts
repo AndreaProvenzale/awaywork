@@ -94,7 +94,7 @@ export function runCommand(program: Command): void {
     )
     .option('--skill <name>', 'with --unit, on an item no rule takes: run this skill on it, once')
     .action(async (opts: RunOptions) => {
-      if (opts.skill && !opts.unit) {
+      if (opts.skill !== undefined && !opts.unit) {
         console.error('--skill needs --unit <id>')
         process.exitCode = 1
         return
@@ -349,7 +349,7 @@ const inSaving = serial()
  */
 export async function executeRun(a: RunArgs): Promise<boolean> {
   const { config, path, runId, log } = a
-  const badSkill = a.skill && (await skillRefusal(a.skill, skillsDirOf(path)))
+  const badSkill = a.skill !== undefined && (await skillRefusal(a.skill, skillsDirOf(path)))
   if (badSkill) {
     log.error(badSkill)
     a.tell?.({ refused: badSkill })

@@ -84,6 +84,7 @@ describe('run --unit --skill', () => {
 
   it.each([
     ['nope', 'no skill "nope"; awaywork skills list lists them'],
+    ['', 'no skill ""; awaywork skills list lists them'],
     ['judge', "judge is a gate, a rule's gates run it"],
     ['sync', "sync merges your PR's base: it needs deliver: push, which a one-off run can't have"],
   ])('refuses %s with a clear line, without planning', async (skill, why) => {

@@ -1567,6 +1567,18 @@ queue:
   const reasons = (p: ReturnType<typeof plan>) =>
     Object.fromEntries(p.skipped.map((s) => [s.item.key, s.reason]))
 
+  it('keeps a fallback unit for the one-off that a rule unit planned before it would take', () => {
+    const scarce = `
+budget: { fallback: { units: 1, turns: 30 } }
+${yaml.replace('limits: { units: 1 }\n', '')}`
+    const picked = plan(scarce, items, { claude: null }, {}, {}, now, {
+      named: 'acme/api#5',
+      skill: 'implement',
+    })
+    expect(picked.units.map((u) => u.provider)).toEqual(['claude', 'claude'])
+    expect(picked.units.at(-1)?.unit.oneOff).toBe(true)
+  })
+
   it('takes the named no-rule item through the planner, last in the queue, past the caps', () => {
     const picked = oneOff('acme/api#5', 'implement')
     const unit = picked.units.find((u) => u.unit.oneOff)

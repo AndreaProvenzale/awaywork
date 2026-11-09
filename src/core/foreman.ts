@@ -487,7 +487,10 @@ export function planRun(input: {
       const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
       // Every step is routed, as the run does, so the plan holds fallback units for all of them; a merge takes a provider only to resolve conflicts the source read.
       const routes = !at.merge || items.some((i) => i.fields.conflicts === true)
-      const { provider, passed } = routes ? route(providers, allowances, routed) : { passed: [] }
+      // A one-off runs alone, so the rule units planned before it take no fallback unit from it.
+      const { provider, passed } = routes
+        ? route(providers, allowances, oneOff ? {} : routed)
+        : { passed: [] }
       if (provider) routed[provider] = (routed[provider] ?? 0) + 1
       const repoInstructions = config.repos[repo]?.instructions
       const unit: Unit = {

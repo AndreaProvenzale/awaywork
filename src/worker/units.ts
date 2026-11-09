@@ -650,8 +650,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     // What a step's status file left for a later run, `ask` or `continue`, and why no later run goes on with its draft, if none will.
     const leave = (status: Held['status']): Held & { byHand?: string } => {
       const continued = status === 'continue' ? before + 1 : before
-      const refused = input.forge.ownDraftsRefused
-      const stop = opensPr && byHand({ continued, refused })
+      const { oneOff } = first.unit
+      const refused = oneOff
+        ? 'ran with --skill, no later run goes on with it'
+        : input.forge.ownDraftsRefused
+      const stop = (opensPr || (oneOff && status === 'continue')) && byHand({ continued, refused })
       return { status, continued, ...(stop && { byHand: stop.why }) }
     }
     let leaves: ReturnType<typeof leave> | undefined
@@ -895,8 +898,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 ? "the clone's .git was refused"
                 : unmerged
           const askedOn = ownItems(first).find((i) => !commentRefused(first, i))
-          // The footer records it even when no later run goes on, to hold dependents back.
-          const held = leaves && { ...leaves, url: askedOn?.url }
+          // The footer records it even when no later run goes on, to hold dependents back; a one-off has none, and left nothing to go on from.
+          const held = leaves && !first.unit.oneOff ? { ...leaves, url: askedOn?.url } : undefined
           lead.outcome = kept
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
@@ -924,6 +927,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           // Its questions stay in the report only with a draft.
           if (leaves?.byHand && lead.outcome.kind === 'pr')
             finishByHand = `${leaves.byHand}: finish ${lead.outcome.url} by hand`
+          else if (leaves?.byHand && lead.outcome.kind === 'report' && leaves.status === 'continue')
+            finishByHand = `${leaves.byHand}: finish it by hand`
           if (asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
             lead.outcome = { kind: 'none', reason: 'asked questions' }
         } catch (e) {

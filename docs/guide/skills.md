@@ -39,7 +39,7 @@ $ awaywork run --unit CH-3 --skill fix
 --skill is only for an item no rule takes: #1 plan takes CH-3
 ```
 
-Any skill `awaywork skills list` shows, but not `judge` (a gate) or `sync` (it needs `deliver: push`). It has no `on_done`, `deliver`, `wait`, gates or thread, so its output is a draft PR on a new `away/` branch or a report, and it writes nothing on the item: no comment, no move, no thread. What a rule would have posted, questions included, stays in the report. The planner's refusals hold as for any rule, someone else's PR, a fork and the rest:
+Any skill `awaywork skills list` shows, but not `judge` (a gate) or `sync` (it needs `deliver: push`). It has no `on_done`, `deliver`, `wait`, thread or gates of its own (your config's top-level gates still apply), so its output is a draft PR on a new `away/` branch or a report, and it writes nothing on the item: no comment, no move, no thread. What a rule would have posted, questions included, stays in the report, and a draft's `.away/out/` files still go to your [`store`](./configuration.md#store) if you set one. Nothing goes on from it, either: a worker that stops on `continue` or `ask` leaves you the draft or report to finish by hand, and the attempt doesn't count for any rule. The planner's refusals hold as for any rule, someone else's PR, a fork and the rest:
 
 ```text
 $ awaywork run --unit acme/api#7 --skill fix

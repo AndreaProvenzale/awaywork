@@ -62,6 +62,8 @@ type Row = {
   start?: string
   /** `g` picks a skill first: no rule takes the item. */
   picks?: true
+  /** A GitHub issue assigned to someone else: merging a draft for it closes theirs. */
+  theirs?: true
   here?: string
 }
 
@@ -199,6 +201,7 @@ function skipRow(tab: Tab, s: Skip): Row {
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
     approve: s.kind === 'waiting_for_approval' || undefined,
     picks: s.kind === 'no_rule' || undefined,
+    theirs: (s.item.source === 'github' && s.item.type === 'issue' && !s.item.mine) || undefined,
     start:
       s.kind && startable.includes(s.kind) && !pushedOn
         ? `${startQuestion(ref)}${stays}`
@@ -389,8 +392,16 @@ const isPr = (url: string) => /\/(pull|merge_requests|pull-requests)\//.test(url
 const opens = (url: string) =>
   isPr(url) ? 'open PR' : /\/issues\//.test(url) ? 'open issue' : 'open'
 
+let skillsCall: Promise<unknown> | undefined
+
+/** One load of the skills at a time: a second `g` while it reads does nothing. */
+const pickSkill = ($: EngineInterface, row: Row, key: string) =>
+  (skillsCall ??= loadPick($, row, key).finally(() => {
+    skillsCall = undefined
+  }))
+
 /** Which skill for a card no rule takes: the CLI's list, `fix` on a PR, `implement` on anything else, first. */
-async function pickSkill($: EngineInterface, row: Row, key: string) {
+async function loadPick($: EngineInterface, row: Row, key: string) {
   if ((await read($, view)).marks?.[key]?.started)
     return update($, view, (v) => ({ ...v, status: 'already started' }))
   await update($, view, (v) => ({ ...v, status: 'reading the skills…' }))
@@ -404,19 +415,21 @@ async function pickSkill($: EngineInterface, row: Row, key: string) {
   const wanted = row.url && isPr(row.url) ? 'fix' : 'implement'
   const first = skills.find((s) => s.name === wanted) ?? skills[0]
   if (!first) return update($, view, (v) => ({ ...v, status: 'no skill can be picked' }))
-  const d = await read($, data)
   const pick = {
+    row: row.id,
     key,
     ref: row.ref,
+    ...(row.theirs && { theirs: row.theirs }),
     skills: [first, ...skills.filter((s) => s !== first)].map(({ name, deliver }) => ({
       name,
       deliver,
     })),
   }
-  await update($, view, (v) =>
-    layout(d, v).row?.id === row.id ? { ...v, status: undefined, pick } : v,
-  )
+  await update($, view, (v) => ({ ...v, status: undefined, pick }))
 }
+
+/** The picker `row` has up: a picker belongs to its card, which a load or a refresh may have moved off. */
+const pickOn = (v: View, row: Row | undefined) => (v.pick?.row === row?.id ? v.pick : undefined)
 
 async function showTab($: EngineInterface, tab: Tab) {
   await update($, view, (v) => ({
@@ -434,7 +447,8 @@ type Key = { key: string; hotkey?: string; label: string; run: () => unknown }
 
 /** The selected card's buttons: the confirm's yes and no, the skills to pick from, back from a report, or what the card can do. */
 function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
-  const { confirm, pick } = v
+  const { confirm } = v
+  const pick = pickOn(v, row)
   if (confirm)
     return [
       {
@@ -470,7 +484,7 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
                 action: 'run',
                 key: pick.key,
                 skill: s.name,
-                question: startQuestion(pick.ref, s.name, s.deliver),
+                question: `${startQuestion(pick.ref, s.name, s.deliver)}${pick.theirs && s.deliver !== 'report' ? " Merging it can close someone else's issue." : ''}`,
               },
             })),
         }),
@@ -806,7 +820,7 @@ export const register: Register = (on) => {
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         {shown.map((t) => {
           // The digits pick a skill while the picker is up.
-          const hotkey = v.pick ? undefined : String(order.indexOf(t) + 1)
+          const hotkey = pickOn(v, row) ? undefined : String(order.indexOf(t) + 1)
           if (hotkey) press[hotkey] = () => showTab($, t)
           return (
             <Button
@@ -958,7 +972,8 @@ export const register: Register = (on) => {
             .map((text) => ({ text, dim: true })),
         ]
 
-    const asks = v.confirm?.question ?? (v.pick && `Run ${v.pick.ref} with which skill?`)
+    const picking = pickOn(v, row)
+    const asks = v.confirm?.question ?? (picking && `Run ${picking.ref} with which skill?`)
     const question = asks ? wrap(asks, width) : []
     const cardKeys = cardButtons($, v, row)
     const keyRows = rowsOf(

@@ -46,9 +46,8 @@ async function skillRows(userDir: string, builtinDir: string) {
 }
 
 export async function skillsJson(userDir: string, builtinDir = builtinSkillsDir) {
-  const skills = (await skillRows(userDir, builtinDir)).map(({ name, origin, deliver, meta }) => ({
+  const skills = (await skillRows(userDir, builtinDir)).map(({ name, deliver, meta }) => ({
     name,
-    origin: origin === 'built-in' ? 'builtin' : 'user',
     deliver,
     pickable: !pickRefusal(name, meta),
   }))

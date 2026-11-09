@@ -282,7 +282,7 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
     const refuse = (why: string) => ({ stdout: '', stderr: `${why}\n`, code: 1 })
     const config = await loadConfig(path).catch((e) => reason(e))
     if (typeof config === 'string') return refuse(config)
-    const badSkill = skill && (await skillRefusal(skill, skillsDirOf(path)))
+    const badSkill = skill !== undefined && (await skillRefusal(skill, skillsDirOf(path)))
     if (badSkill) return refuse(badSkill)
     const { plan } = await probeAndPlan(config, skillsDirOf(path), {
       probe: false,

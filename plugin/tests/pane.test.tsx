@@ -505,11 +505,11 @@ test('g is on the unchanged, skipped, over-cap, gave-up and no-rule skips only, 
 
 const SKILLS = ok({
   skills: [
-    { name: 'fix', origin: 'builtin', deliver: 'draft_pr', pickable: true },
-    { name: 'implement', origin: 'builtin', deliver: 'draft_pr', pickable: true },
-    { name: 'judge', origin: 'builtin', deliver: 'report', pickable: false },
-    { name: 'plan', origin: 'builtin', deliver: 'report', pickable: true },
-    { name: 'sync', origin: 'builtin', deliver: 'draft_pr', pickable: false },
+    { name: 'fix', deliver: 'draft_pr', pickable: true },
+    { name: 'implement', deliver: 'draft_pr', pickable: true },
+    { name: 'judge', deliver: 'report', pickable: false },
+    { name: 'plan', deliver: 'report', pickable: true },
+    { name: 'sync', deliver: 'draft_pr', pickable: false },
   ],
 })
 const NO_RULE = 'row:skipped:github:acme/shop#9'
@@ -590,10 +590,112 @@ test('g on a no-rule PR preselects fix, a list without it the first skill listed
   await ui.press({ key: 'back' })
 
   replies['skills list --json'] = ok({
-    skills: [{ name: 'plan', origin: 'builtin', deliver: 'report', pickable: true }],
+    skills: [{ name: 'plan', deliver: 'report', pickable: true }],
   })
   await ui.press({ key: 'run' })
   expect(await hotkey(ui, 'pick:plan')).toBe('g')
+})
+
+const withIssue = (fields: { type: string; mine?: true }) => ({
+  ...busyReport,
+  plan: {
+    ...busyReport.plan,
+    skipped: busyReport.plan.skipped.map((s) =>
+      s.item.key === 'acme/shop#9' ? { ...s, item: { ...s.item, ...fields } } : s,
+    ),
+  },
+})
+
+for (const [who, fields, skill, says] of [
+  ['someone else', { type: 'issue' }, 'fix', true],
+  ['your own', { type: 'issue', mine: true }, 'fix', false],
+  ['a report on someone else', { type: 'issue' }, 'plan', false],
+] as const)
+  test(`the confirm on ${who}'s issue says whether merging closes it`, async ($, on) => {
+    engine(on, { 'report --json': ok(withIssue(fields)), 'skills list --json': SKILLS })
+    await $.command.run(away())
+    const ui = await mount($, 'terminal')
+    await ui.press({ key: 'tab:skipped' })
+    await goTo(ui, NO_RULE)
+    await ui.press({ key: 'run' })
+    await ui.press({ key: `pick:${skill}` })
+    expect(await text(ui, /Merging it can close someone else's issue\.$/)).toBe(says)
+  })
+
+const turn = () => new Promise((done) => setTimeout(done, 30))
+
+test('a picker stays on its card: a refresh that loses it takes the picker off', async ($, on) => {
+  const gone = busyReport.plan.skipped.filter((s) => s.item.key !== 'acme/shop#9')
+  const replies: Parameters<typeof engine>[1] = {
+    'report --json': ok(busyReport),
+    'skills list --json': SKILLS,
+  }
+  engine(on, replies)
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(true)
+  replies['report --json'] = ok({ ...busyReport, plan: { ...busyReport.plan, skipped: gone } })
+  await ui.press({ key: 'refresh' })
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(false)
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
+  expect(await hotkey(ui, 'tab:skipped')).toBe('4')
+})
+
+test('skills that load after the card went raise no picker on the next one', async ($, on) => {
+  let finish = () => {}
+  const gone = busyReport.plan.skipped.filter((s) => s.item.key !== 'acme/shop#9')
+  const replies: Parameters<typeof engine>[1] = {
+    'report --json': ok(busyReport),
+    'skills list --json': () =>
+      new Promise<Reply>((done) => {
+        finish = () => done(SKILLS)
+      }),
+  }
+  engine(on, replies)
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  void ui.post({ select: NO_RULE, key: 'g' })
+  await turn()
+  replies['report --json'] = ok({ ...busyReport, plan: { ...busyReport.plan, skipped: gone } })
+  await ui.press({ key: 'refresh' })
+  await turn()
+  finish()
+  await turn()
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(false)
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
+})
+
+test('g g while the skills load reads them once and leaves one picker', async ($, on) => {
+  const finishes: (() => void)[] = []
+  const { calls } = engine(on, {
+    'report --json': ok(busyReport),
+    'skills list --json': () =>
+      new Promise<Reply>((done) => {
+        finishes.push(() => done(SKILLS))
+      }),
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  void ui.post({ select: NO_RULE, key: 'g' })
+  await turn()
+  void ui.post({ select: NO_RULE, key: 'g' })
+  await turn()
+  expect(finishes).toHaveLength(1)
+  expect(calls.filter((argv) => argv[1] === 'skills')).toHaveLength(1)
+  finishes[0]?.()
+  await turn()
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(true)
+  await ui.post({ select: NO_RULE, key: '1' })
+  expect(await text(ui, 'Run #9 now with fix? Draft PR, uses your quota.')).toBe(true)
+  await ui.press({ key: 'no' })
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
 })
 
 test('g on a no-rule card says what the CLI said when the skills can not be read or the run is refused', async ($, on) => {
