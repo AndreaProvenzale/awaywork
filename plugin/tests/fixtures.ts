@@ -139,3 +139,19 @@ export const busyPlan = {
 export const emptyReport = { ...busyReport, plan: { queue, units: [], skipped: [] }, results: [] }
 
 export const emptyPlan = { queue, units: [], skipped: [], warnings: [] }
+
+/** `awaywork config path` with no config file there. */
+export const noConfig = {
+  exitCode: 1,
+  stdout: '/home/me/.config/awaywork/config.yml\n',
+  stderr: '/home/me/.config/awaywork/config.yml not found; awaywork init writes one\n',
+}
+
+/** `awaywork config path` from an awaywork that has no such command. */
+export const oldAwaywork = { exitCode: 1, stderr: "error: unknown command 'path'\n" }
+
+/** Any call forwarded to an `AWAYWORK_REMOTE` that doesn't answer. */
+export const remoteDown = {
+  exitCode: 1,
+  stderr: "can't reach AWAYWORK_REMOTE (https://away.example.com): fetch failed\n",
+}

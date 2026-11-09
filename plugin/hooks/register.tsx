@@ -72,6 +72,12 @@ async function json<T>($: EngineInterface, args: string[], timeoutMs?: number): 
   }
 }
 
+/** No config, so the skill sets awaywork up; any other failure (too old, a remote down) gets the pane as before. */
+async function unconfigured($: EngineInterface) {
+  const r = await awaywork($, ['config', 'path'], 10_000)
+  return r.exitCode === 1 && /not found; awaywork init writes one/.test(r.stderr)
+}
+
 async function readReport($: EngineInterface) {
   await update($, view, (v) => ({ ...v, status: undefined }))
   await update($, data, (d): Data => ({ ...d, loading: true }))
@@ -499,7 +505,7 @@ export const register: Register = (on) => {
     // A request goes to the skill, and so does a run nobody typed with no surface to draw on (`-p`).
     // The desktop app attaches only once the pane asks to draw, so a typed /away opens it anyway.
     const headless = e.origin.kind !== 'composer' && (await $.session.surfaces()).length === 0
-    if (e.args.trim() || headless) return next(e)
+    if (e.args.trim() || headless || (await unconfigured($))) return next(e)
     await update($, view, (v) => ({ marks: v.marks }))
     await update($, data, (d): Data => ({ ...d, loading: true, planning: planCall && true }))
     await $.ui.open({ id: PANE, title: 'awaywork', focus: true, closeOnEscape: true })

@@ -1,7 +1,15 @@
 import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { busyPlan, busyReport, emptyPlan, emptyReport } from './fixtures'
+import {
+  busyPlan,
+  busyReport,
+  emptyPlan,
+  emptyReport,
+  noConfig,
+  oldAwaywork,
+  remoteDown,
+} from './fixtures'
 
 // 100 columns: a page of four cards, 24 wide; 30 rows: the pane takes 28, a detail of 15.
 const PANE = {
@@ -179,7 +187,7 @@ test('bare /away lands on the first tab with something in it, reading only the r
     'row:skipped:github:acme/api#30',
     'row:skipped:github:acme/web#5',
   ])
-  expect(calls.every((argv) => argv[1] === 'report')).toBe(true)
+  expect(calls.every((argv) => ['report', 'config'].includes(argv[1] ?? ''))).toBe(true)
 })
 
 test('a card shows its ref and action on top and its title in two lines, the detail its reason and URL', async ($, on) => {
@@ -593,6 +601,31 @@ test('/away with a request goes to the skill', async ($, on) => {
   const ran = await $.command.run(away('why did acme/shop#7 not run?', 'awaywork:away'))
   expect(ran.text).toBe('the skill ran')
   expect(opened).toEqual([])
+})
+
+test('bare /away with no config goes to the skill, which sets awaywork up', async ($, on) => {
+  const { calls, opened } = engine(on, { 'config path': noConfig })
+  on('command.run', () => ({ text: 'the skill ran' }))
+  const ran = await $.command.run(away())
+  expect(ran.text).toBe('the skill ran')
+  expect(opened).toEqual([])
+  expect(calls).toEqual([['awaywork', 'config', 'path']])
+})
+
+test('an awaywork too old for config path still opens the pane', async ($, on) => {
+  const { opened } = engine(on, { 'config path': oldAwaywork, 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  expect(opened).toEqual(['away'])
+  const ui = await mount($, 'terminal')
+  expect(await text(ui, /6 need you/)).toBe(true)
+})
+
+test("a remote that doesn't answer opens the pane on its error, not setup", async ($, on) => {
+  const { opened } = engine(on, { 'config path': remoteDown, 'report --json': remoteDown })
+  await $.command.run(away())
+  expect(opened).toEqual(['away'])
+  const ui = await mount($, 'terminal')
+  expect(await text(ui, /can't reach AWAYWORK_REMOTE/)).toBe(true)
 })
 
 test('bare /away opens the pane when typed before the desktop attaches, not under -p', async ($, on) => {
