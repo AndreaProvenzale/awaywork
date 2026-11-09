@@ -1078,6 +1078,17 @@ queue: [{ skill: fix, deliver: push }]`
       ],
     ])
     expect(held.skipped[0]?.url).toBe('https://github.com/acme/api/pull/1')
+    const skipped = planRun({
+      config: parseConfig(yaml),
+      items: [at('def5678', pushedAt)],
+      allowances: {},
+      skills: { builtin: builtinSkills },
+      skips: { 'github:acme/api#1': {} },
+      attempts,
+    })
+    expect(skipped.skipped.map((s) => [s.kind, s.url])).toEqual([
+      ['skipped_by_you', 'https://github.com/acme/api/pull/1'],
+    ])
     const movedOn = plan(yaml, [at('0a1b2c3', '2026-01-03T00:00:00Z')], {}, {}, attempts)
     expect(movedOn.units).toHaveLength(1)
   })

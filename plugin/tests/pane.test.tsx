@@ -503,6 +503,18 @@ test('g is on the unchanged, skipped, over-cap and gave-up skips only, never on 
   ).toEqual([API22])
 })
 
+test('g is not on a skip of yours whose PR awaywork pushed onto, which still waits on review', async ($, on) => {
+  const skipped = busyReport.plan.skipped.map((s) =>
+    s.item.key === 'acme/shop#10' ? { ...s, url: 'https://github.com/acme/shop/pull/10' } : s,
+  )
+  engine(on, { 'report --json': ok({ ...busyReport, plan: { ...busyReport.plan, skipped } }) })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, 'row:skipped:github:acme/shop#10')
+  expect(await ui.find({ key: 'run' })).toBeFalsy()
+})
+
 test('g on a skip asks without a skill, and on your skip says the skip stays', async ($, on) => {
   const { calls } = engine(on, {
     'report --json': ok(busyReport),

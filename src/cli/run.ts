@@ -3,7 +3,6 @@ import { closeSync, existsSync, openSync } from 'node:fs'
 import { appendFile, mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from 'node:fs/promises'
 import { constants } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { setTimeout } from 'node:timers/promises'
 import { styleText } from 'node:util'
 import { type Command, Option } from 'commander'
 import { ConfigError, configPath, loadConfig } from '../config/load.js'
@@ -83,7 +82,12 @@ export function runCommand(program: Command): void {
     .option('--repo <glob>', 'run only units in repos matching owner/name, * globs')
     .option('--rule <n>', 'run only units of this queue rule, counted from 1', ruleNumber)
     .option('--scheduled', 'run only inside a window and start no unit after it ends')
-    .option('--detach', 'with --unit: return once the unit has started, leaving it running')
+    .addOption(
+      new Option(
+        '--detach',
+        'with --unit: return once the unit has started, leaving it running',
+      ).conflicts('scheduled'),
+    )
     .action(async (opts: RunOptions) => {
       if (opts.detach) {
         if (opts.unit) process.exitCode = await detachRun(opts.unit)
@@ -145,7 +149,8 @@ export function runCommand(program: Command): void {
         })
         if (!ran) process.exitCode = 1
       } catch (e) {
-        if (e instanceof ConfigError) tell?.({ refused: e.message })
+        // The path and first problem on one line: the pane shows only that.
+        if (e instanceof ConfigError) tell?.({ refused: e.message.replace(':\n  ', ': ') })
         reportConfigError(e)
       } finally {
         await release?.()
@@ -224,30 +229,21 @@ function tellParent() {
   }
 }
 
-/** A new run's dir, empty: a run's id is its start to the second, and another run can have just taken this one. */
-async function newRunDir(): Promise<string> {
-  await mkdir(runsDir, { recursive: true, mode: 0o700 })
-  for (;;) {
-    const runId = newRunId()
-    const made = await mkdir(join(runsDir, runId), { mode: 0o700 }).then(
-      () => true,
-      (e: NodeJS.ErrnoException) => {
-        if (e.code !== 'EEXIST') throw e
-        return false
-      },
-    )
-    if (made) return runId
-    await setTimeout(1000 - (Date.now() % 1000))
-  }
-}
-
 /**
  * Starts this `run --unit` again as a process of its own, its output in its run's `run.log`, and
  * says what that process reported about the unit; its exit code. The process outlives this one.
  */
 async function detachRun(unit: string): Promise<number> {
-  const runId = await newRunDir()
+  await mkdir(runsDir, { recursive: true, mode: 0o700 })
+  const runId = newRunId()
   const runDir = join(runsDir, runId)
+  try {
+    await mkdir(runDir, { mode: 0o700 })
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
+    console.error('a run started this very second; try again')
+    return 1
+  }
   const logPath = join(runDir, 'run.log')
   const log = openSync(logPath, 'a')
   const child = spawn(
@@ -354,10 +350,11 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     moves: { dryRun: !!a.dryRun, log: (line) => log.info(`  ${line}`, true) },
   })
   const { warnings, ctx, sources, secrets } = planned
-  for (const warning of warnings) log.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)
+  const warned = warnings.map((w) => `warning: ${w.replaceAll('\n', '\n  ')}`)
+  for (const line of warned) log.error(line)
   const refuse = (why: string) => {
     log.error(why)
-    a.tell?.({ refused: why })
+    a.tell?.({ refused: [why, ...warned].join('\n') })
     return false
   }
   const named = a.unit ? namedChains(planned.plan, a.unit) : []
@@ -489,7 +486,10 @@ export async function printReport(
     }
     return
   }
-  let picked = id ? runs.find((r) => r.id === id) : runs.at(-1)
+  // A run still going, or one that died, has no report.json: the last one that does stands.
+  const latest = (from: Run[]) =>
+    json ? from.findLast((r) => r.uploaded || existsSync(join(r.dir, reportJsonFile))) : from.at(-1)
+  let picked = id ? runs.find((r) => r.id === id) : latest(runs)
   if (picked?.uploaded) {
     const name = `run ${picked.id}`
     screen?.progress({ name, state: 'running', detail: 'fetching from GitHub' })
@@ -499,7 +499,7 @@ export async function printReport(
     } catch (e) {
       warn(e)
       screen?.progress({ name, state: 'failed', detail: remoteReason(e) })
-      picked = id ? undefined : runs.findLast((r) => !r.uploaded)
+      picked = id ? undefined : latest(runs.filter((r) => !r.uploaded))
     }
   }
   const results = !json && picked ? await read(picked, reportJsonFile) : undefined
@@ -509,7 +509,12 @@ export async function printReport(
   for (const warning of held) console.error(`warning: ${warning}`)
   const which = id ?? picked?.id
   if (!which) {
-    console.error(`no runs in ${runsDir}`)
+    const going = json && runs.findLast((r) => !r.uploaded)
+    console.error(
+      going
+        ? `no finished run yet: run ${going.id} is going, or stopped without a report`
+        : `no runs in ${runsDir}`,
+    )
     process.exitCode = 1
     return
   }

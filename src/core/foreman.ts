@@ -197,7 +197,11 @@ export function planRun(input: {
       .map((item) => `${item.source}:${item.key}`)
       .find((key) => skips[key])
     if (skippedByUser) {
-      skip('skipped_by_you', describeSkip(skippedByUser, skips[skippedByUser] as Skip))
+      skip(
+        'skipped_by_you',
+        describeSkip(skippedByUser, skips[skippedByUser] as Skip),
+        pushedOnto(items, input.attempts ?? {})?.url,
+      )
       continue
     }
     // A post awaywork couldn't read back from the store decides nothing yet: no attempt counts.

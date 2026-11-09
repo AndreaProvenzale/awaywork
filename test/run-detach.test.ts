@@ -82,7 +82,7 @@ describe('run --unit --detach', () => {
   it('says why it can not start, on one probe, and leaves no run behind', async () => {
     const dir = await home()
     const { exitCode, stderr } = await cli(dir, 'run', '--unit', 'CH-9', '--detach')
-    expect([exitCode, stderr]).toEqual([
+    expect([exitCode, stderr.split('\n')[0]]).toEqual([
       1,
       `no unit "CH-9" in this run's plan; awaywork plan lists them`,
     ])
@@ -94,7 +94,9 @@ describe('run --unit --detach', () => {
     const dir = await home('skills_dir: .agents/skills')
     const { exitCode, stderr } = await cli(dir, 'run', '--unit', 'CH-1', '--detach')
     expect(exitCode).toBe(1)
-    expect(stderr).toBe('no provider left: mine sits out a present run (no quota reading)')
+    expect(stderr.split('\n')[0]).toBe(
+      'no provider left: mine sits out a present run (no quota reading)',
+    )
     expect(await runsOf(dir)).toEqual([])
   })
 
@@ -110,8 +112,46 @@ describe('run --unit --detach', () => {
     await writeFile(join(dir, 'config.yml'), 'providers: [nope]\n')
     const broken = await cli(dir, 'run', '--unit', 'CH-1', '--detach')
     expect(broken.exitCode).toBe(1)
-    expect(broken.stderr).toContain('config.yml')
+    expect(broken.stderr).toMatch(/^.*config\.yml: \S/)
     expect(await runsOf(dir)).toEqual([])
+  })
+
+  it('says the warnings behind a refusal, under its reason', async () => {
+    const dir = await home()
+    await writeFile(
+      join(dir, 'config.yml'),
+      (await readFile(join(dir, 'config.yml'), 'utf8')).replace(
+        'cat items.json',
+        'echo boom >&2; exit 3',
+      ),
+    )
+    const { exitCode, stderr } = await cli(dir, 'run', '--unit', 'CH-1', '--detach')
+    const [why, warning] = stderr.split('\n')
+    expect(exitCode).toBe(1)
+    expect(why).toBe(`no unit "CH-1" in this run's plan; awaywork plan lists them`)
+    expect(warning).toMatch(/^warning: source chores/)
+    expect(stderr).toContain('boom')
+    expect(await runsOf(dir)).toEqual([])
+  })
+
+  it('refuses --scheduled, which could end before it says anything', async () => {
+    const dir = await home()
+    const { exitCode, stderr } = await cli(dir, 'run', '--unit', 'CH-1', '--scheduled', '--detach')
+    expect(exitCode).toBe(1)
+    expect(stderr).toMatch(/cannot be used with/)
+    expect(await runsOf(dir)).toEqual([])
+  })
+
+  it('says to try again when another run took this second, and leaves that run be', async () => {
+    const dir = await home()
+    const seconds = Array.from({ length: 20 }, (_, i) => Date.now() + i * 1000)
+    const taken = seconds.map((t) =>
+      new Date(t).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15),
+    )
+    for (const id of taken) await mkdir(join(stateOf(dir), 'runs', id), { recursive: true })
+    const { exitCode, stderr } = await cli(dir, 'run', '--unit', 'CH-1', '--detach')
+    expect([exitCode, stderr]).toEqual([1, 'a run started this very second; try again'])
+    expect((await runsOf(dir)).sort()).toEqual(taken)
   })
 
   it('names the log when the run dies before it reports', async () => {

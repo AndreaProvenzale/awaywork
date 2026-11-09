@@ -100,6 +100,39 @@ describe('report command', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('passes over a run with no report.json on a bare --json, and only there', async () => {
+    const written = { runId: '20261013-220000', plan: { units: [], skipped: [] }, results: [] }
+    await writeFile(join(runsDir, written.runId, 'report.json'), JSON.stringify(written))
+    const going = '20261016-220000'
+    await mkdir(join(runsDir, going), { recursive: true })
+    const run = await controlRepo([], '')
+    const { out, err } = output()
+    await printReport(undefined, false, run, true)
+    expect(JSON.parse(out.join('\n'))).toEqual({ ...written, warnings: [] })
+    expect(process.exitCode).toBeUndefined()
+
+    await printReport(going, false, run, true)
+    await printReport(undefined, false, run)
+    expect(err).toEqual([
+      `no JSON report for run ${going} in ${runsDir}`,
+      `no report for run ${going} in ${runsDir}`,
+    ])
+
+    out.length = 0
+    await printReport(undefined, true, run)
+    expect(out[0]).toBe(`${going}  no report`)
+  })
+
+  it('says none has finished on a bare --json when no run has a report.json', async () => {
+    const { out, err } = output()
+    await printReport(undefined, false, await controlRepo([], ''), true)
+    expect(err).toEqual([
+      'no finished run yet: run 20261015-220000 is going, or stopped without a report',
+    ])
+    expect(out).toEqual([])
+    expect(process.exitCode).toBe(1)
+  })
+
   it("reads back what run wrote: each unit's summary, files and links, and why items were skipped", async () => {
     const [done, skipped] = [githubPr(1), githubPr(2)]
     const planned = { unit: { id: 'acme-api-1', items: [done] } }

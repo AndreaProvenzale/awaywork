@@ -163,15 +163,8 @@ const ranks = Object.keys(actions)
 
 const lines = (...text: (string | null | undefined)[]) => text.filter((t): t is string => !!t)
 
-// By name: `run --unit` drops attempts, so it would also run past "awaywork pushed onto your PR".
+// By name: `run --unit` drops attempts, so it would also run past "awaywork pushed onto your PR". The planner reads these after that hold.
 const startable = ['unchanged', 'skipped_by_you', 'over_cap', 'gave_up']
-
-/** What a unit leaves, in the Config tab's words. */
-const leavesWords: Record<string, string> = {
-  draft_pr: 'draft PR',
-  pr: 'PR',
-  pending_review: 'pending review',
-}
 
 function startQuestion(ref: string, skill?: string, deliver?: string) {
   const leaves = deliver && (leavesWords[deliver] ?? deliver)
@@ -187,6 +180,8 @@ function skipRow(tab: Tab, s: Skip): Row {
   const url = s.url ?? s.item.url ?? undefined
   const ref = refIn(group, s.item.key)
   const stays = s.kind === 'skipped_by_you' ? ' Your skip stays for the coming runs.' : ''
+  // Your skip hides "pushed onto your PR": the url on it is that PR.
+  const pushedOn = s.kind === 'skipped_by_you' && s.url
   return {
     id: `row:${tab}:${key}`,
     group,
@@ -200,7 +195,10 @@ function skipRow(tab: Tab, s: Skip): Row {
     url,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
     approve: s.kind === 'waiting_for_approval' || undefined,
-    start: s.kind && startable.includes(s.kind) ? `${startQuestion(ref)}${stays}` : undefined,
+    start:
+      s.kind && startable.includes(s.kind) && !pushedOn
+        ? `${startQuestion(ref)}${stays}`
+        : undefined,
   }
 }
 
@@ -229,6 +227,13 @@ function resultRow(runId: string, r: Result): Row {
     skip: top && 'skip',
     here: `continue awaywork unit ${id} of run ${runId}; start with \`awaywork report ${runId} --unit ${id}\``,
   }
+}
+
+/** What a unit leaves, in the Config tab's words. */
+const leavesWords: Record<string, string> = {
+  draft_pr: 'draft PR',
+  pr: 'PR',
+  pending_review: 'pending review',
 }
 
 function unitRow(p: Planned): Row {
