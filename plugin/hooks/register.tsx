@@ -54,6 +54,8 @@ type Row = {
   /** The detail's lines under the title: the reason, or the unit's items and links. */
   detail: string[]
   url?: string
+  /** What `o` is for, when opening the link is what the card asks of you. */
+  openAs?: string
   /** The CLI's read of a last-run unit, what `v` shows. */
   report?: string[]
   skip?: 'skip' | 'unskip'
@@ -167,6 +169,34 @@ const actions: Record<string, string> = {
 
 const ranks = Object.keys(actions)
 
+type Glyph = { word: string; color?: Color }
+
+const resultGlyphs: Record<string, Glyph> = {
+  done: { word: '✓', color: 'success' },
+  failed: { word: '✗', color: 'error' },
+  error: { word: '✗', color: 'error' },
+  stopped: { word: '■' },
+}
+
+const toFix: Glyph = { word: '✎', color: 'error' }
+const toTakeOver: Glyph = { word: '⚑', color: 'error' }
+
+/** A Needs you card's glyph; `on` is the key that does what it asks, without one the detail says it first. */
+const needsGlyphs: Record<string, Glyph & { on?: 'o' | 'a' }> = {
+  waiting_for_review: { word: '◉', color: 'warning', on: 'o' },
+  waiting_for_answer: { word: '?', color: 'warning', on: 'o' },
+  waiting_for_approval: { word: '◆', color: 'warning', on: 'a' },
+  all_tasks_done: { word: '✓', color: 'success' },
+  invalid_plan: toFix,
+  store_failed: toFix,
+  invalid_branch: toFix,
+  refused_delivery: toFix,
+  no_repo: toFix,
+  gave_up: toTakeOver,
+  draft_moved: toTakeOver,
+  continue_cap: toTakeOver,
+}
+
 const lines = (...text: (string | null | undefined)[]) => text.filter((t): t is string => !!t)
 
 const aboutItem = (item: ItemRef, state: string) =>
@@ -191,17 +221,20 @@ function skipRow(tab: Tab, s: Skip): Row {
   const stays = s.kind === 'skipped_by_you' ? ' Your skip stays for the coming runs.' : ''
   // Your skip hides "pushed onto your PR": the url on it is that PR.
   const pushedOn = s.kind === 'skipped_by_you' && s.url
+  const action = s.kind && actions[s.kind]
+  const glyph = s.needsYou && s.kind ? needsGlyphs[s.kind] : undefined
   return {
     id: `row:${tab}:${key}`,
     group,
     rank: s.kind ? ranks.indexOf(s.kind) : ranks.length,
     ref,
-    word: (s.kind && actions[s.kind]) || s.kind || 'skipped',
-    color: s.needsYou ? 'warning' : undefined,
+    word: glyph?.word ?? (action || s.kind || 'skipped'),
+    color: glyph?.color ?? (s.needsYou ? 'warning' : undefined),
     item: s.item,
     title: s.item.title,
-    detail: lines(reasonOf(s)),
+    detail: lines(glyph && !glyph.on ? `${action} · ${reasonOf(s)}` : reasonOf(s)),
     url,
+    openAs: glyph?.on === 'o' ? action : undefined,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
     approve: s.kind === 'waiting_for_approval' || undefined,
     picks: s.kind === 'no_rule' || undefined,
@@ -221,7 +254,9 @@ function resultRow(runId: string, r: Result): Row {
     r.status === 'done'
       ? (r.summary ?? r.outcome?.url)
       : (r.reason ?? r.outcome?.reason ?? r.summary)
-  const note = [skill, fact].filter(Boolean).join(' · ')
+  // `stopped: quota` and its like share one glyph: the detail keeps which.
+  const glyph = resultGlyphs[r.status.replace(/:.*/, '')]
+  const note = [skill, r.status.includes(':') && r.status, fact].filter(Boolean).join(' · ')
   const url = r.outcome?.url ?? top?.url ?? undefined
   return {
     id: `row:last:${id}`,
@@ -229,8 +264,8 @@ function resultRow(runId: string, r: Result): Row {
     rank: 0,
     ref: top ? refIn(repo, top.key) : id,
     skill,
-    word: r.status,
-    color: r.status === 'done' ? 'success' : r.status === 'failed' ? 'error' : undefined,
+    word: glyph?.word ?? r.status,
+    color: glyph?.color,
     item: top,
     title: top?.title ?? note,
     detail: lines(note),
@@ -537,9 +572,6 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
       return { ...x, confirm: { action, key: item, question } }
     })
   const keys: (Key | '' | undefined)[] = [
-    url && { key: 'open', hotkey: 'o', label: opens(url), run: () => openUrl($, url) },
-    report && { key: 'report', hotkey: 'v', label: 'view report', run: () => readRow($, report) },
-    skip && item && { key: 'skip', hotkey: 's', label: skip, run: ask(skip, questions[skip](ref)) },
     row.approve &&
       item && {
         key: 'approve',
@@ -547,6 +579,14 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
         label: 'approve',
         run: ask('approve', questions.approve(ref)),
       },
+    url && {
+      key: 'open',
+      hotkey: 'o',
+      label: row.openAs ?? opens(url),
+      run: () => openUrl($, url),
+    },
+    report && { key: 'report', hotkey: 'v', label: 'view report', run: () => readRow($, report) },
+    skip && item && { key: 'skip', hotkey: 's', label: skip, run: ask(skip, questions[skip](ref)) },
     row.start && item && { key: 'run', hotkey: 'g', label: 'run now', run: ask('run', row.start) },
     row.picks &&
       item && { key: 'run', hotkey: 'g', label: 'run now', run: () => pickSkill($, row, item) },

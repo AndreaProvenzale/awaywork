@@ -82,11 +82,11 @@ r: refresh p: plan
 ──────────────────────────────────────────────────────────────
 acme/shop  1/14                                      h: ‹ l: ›
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ ╭────────────────────────────╮
-┃ #101             review PR ┃ │ #109               approve │
+┃ #101                     ◉ ┃ │ #109                     ◆ │
 ┃ Coupon codes with          ┃ │ Split the checkout service │
 ┃ per-customer limits        ┃ │                            │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ ╰────────────────────────────╯
-o: open PR  s: skip
+o: review PR  s: skip
 
 ──────────────────────────────────────────────────────────────
 Coupon codes with per-customer limits
@@ -96,18 +96,18 @@ https://github.com/acme/shop/pull/401
 
 It lands on the first tab with something in it, or on [Config](#the-config-tab) while a draft is waiting. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else.
 
-A tab is a strip of cards, a page at a time: items under their repo, or their tracker and project key, and Needs you lists a repo's by what they ask of you, so the PRs to review sit together. A card has the ref and that word (`review PR`, `answer question`, `approve`, `add repo`, ...) or why the item waits (`no rule`, `over cap`, `skipped by you`, ...), then the title. The line above it says whose card you're on and where (`acme/shop  1/14`). Under the strip sit the card's buttons, and under the rule its detail: the title, the whole reason and the link. Every part keeps its height, so nothing jumps while you browse. The wheel over the cards steps through them; anywhere else it scrolls the detail. A pane too short for all that (a small window, or the pane above the prompt outside fullscreen) drops the fixed heights and scrolls as a whole.
+A tab is a strip of cards, a page at a time: items under their repo, or their tracker and project key, and Needs you lists a repo's by what they ask of you, so the PRs to review sit together. A Needs you card has the ref and a symbol for what it asks: `◉` review, `?` answer, `◆` approve in yellow, `✎` fix something and `⚑` take over in red, `✓` close a finished card in green. A Last run card has the skill and how it ended (`fix ✓`, `implement ✗`, `■` for stopped). Elsewhere the card says why the item waits (`no rule`, `over cap`, `skipped by you`, ...). The title goes under all of them. The line above it says whose card you're on and where (`acme/shop  1/14`). Under the strip sit the card's buttons, and under the rule its detail: the title, the whole reason and the link. Every part keeps its height, so nothing jumps while you browse. The wheel over the cards steps through them; anywhere else it scrolls the detail. A pane too short for all that (a small window, or the pane above the prompt outside fullscreen) drops the fixed heights and scrolls as a whole.
 
 `h` and `l` step card to card while the pane has the keyboard, as it does when it opens. Click a card and the strip takes every key: ←/→ (or Tab) move at once, ↑/↓ scroll the detail and the letters still press their buttons, until Esc hands the keyboard back to the prompt. That's how the desktop app gets keys too, where the prompt keeps them otherwise. In VS Code, click a card's ref to pick it; `h` and `l` work there too. The buttons are the card's own:
 
-- `o` opens its PR, issue or tracker item;
+- `o` opens its PR, issue or tracker item, and says so when that's the job (`review PR`, `answer question`). When the fix is elsewhere, like `add repo`, the detail says it first;
 - `s` skips the item in the coming runs, or unskips one you skipped;
 - `a` (`approve`) approves the plan or result the item waits on, replying `approve` on it;
 - `g` (`run now`) starts the item right away, in the background, with `awaywork run --unit <source:key> --detach`. It's on Next run's cards and on the skips that only the schedule was holding: `unchanged`, `skipped by you`, `over cap`, `gave up`. On a card no rule takes (`no rule`) it asks which skill first, one press from the row, `fix` preselected on a PR and `implement` on anything else, `b` to go back, then starts it with [`--skill`](./skills.md#run-one-on-an-item-no-rule-takes);
 - `v` (`view report`) shows a last-run unit's `awaywork report <run> --unit <id>` in the detail, and `b` goes back. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
 - `c` (`ask Claude`) puts the card in the prompt box and leaves the rest to you: `About awaywork item github:acme/shop#7 "Retry webhooks on 5xx" (waiting for review): `, or on a last-run unit the line that carries on from `awaywork report <run> --unit <id>`. Nothing's sent until you press Enter, and whatever you'd typed stays. If you clicked a card first, Esc hands the keyboard to the box.
 
-`s`, `a` and `g` ask `yes`/`no` in place of the buttons first (`y` or `n`), saying what they'll do and whether there's an undo (`skip #101 in the coming runs? awaywork unskip undoes it`, `Run #109 now with fix? Draft PR, uses your quota.`), then mark the card `skipped`, `unskipped`, `approved` or `started` in place of its word: the cards are what the last run or `p` saw, so the next `p` is what shows the change. A `g` that can't start, the run lock taken or no provider for it, says why in the status line and leaves the card as it was. `g` is the only thing here that starts a run, and only on your press; the pane schedules nothing. Picking a skill goes through the same confirm (`Run #409 now with fix? Draft PR, uses your quota.`), and the skills it lists are `awaywork skills list --json`'s, so one only a repo carries isn't among them. No `awaywork` on your `PATH`, or one too old for `--json` or `config explain`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
+`s`, `a` and `g` ask `yes`/`no` in place of the buttons first (`y` or `n`), saying what they'll do and whether there's an undo (`skip #101 in the coming runs? awaywork unskip undoes it`, `Run #109 now with fix? Draft PR, uses your quota.`), then mark the card `skipped`, `unskipped`, `approved` or `started` in place of its symbol or word: the cards are what the last run or `p` saw, so the next `p` is what shows the change. A `g` that can't start, the run lock taken or no provider for it, says why in the status line and leaves the card as it was. `g` is the only thing here that starts a run, and only on your press; the pane schedules nothing. Picking a skill goes through the same confirm (`Run #409 now with fix? Draft PR, uses your quota.`), and the skills it lists are `awaywork skills list --json`'s, so one only a repo carries isn't among them. No `awaywork` on your `PATH`, or one too old for `--json` or `config explain`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
 
 ### The Config tab
 

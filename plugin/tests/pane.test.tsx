@@ -218,24 +218,24 @@ test('a card shows its ref and action on top and its title in two lines, the det
     const ui = await mount($, surface)
     expect(await card(ui, SHOP7)).toEqual({
       ref: '#7',
-      word: 'review PR',
+      word: '◉',
       title: ['Retry webhooks on', '5xx'],
       selected: true,
     })
     expect(await card(ui, SHOP8)).toEqual({
       ref: '#8',
-      word: 'approve',
+      word: '◆',
       title: ['Split the checkout', 'service into cart, …'],
       selected: false,
     })
-    expect(await card(ui, TICKET)).toMatchObject({ ref: 'SHOP-12', word: 'answer question' })
+    expect(await card(ui, TICKET)).toMatchObject({ ref: 'SHOP-12', word: '?' })
 
     expect(await detail(ui)).toEqual([
       'Retry webhooks on 5xx',
       'waiting for review: awaywork PR is open',
       'https://github.com/acme/shop/pull/31',
     ])
-    expect(await label(ui, 'open')).toBe('open PR')
+    expect(await label(ui, 'open')).toBe('review PR')
     expect(await label(ui, 'skip')).toBe('skip')
     expect(await ui.find({ key: 'approve' })).toBeFalsy()
     expect(await ui.find({ key: 'report' })).toBeFalsy()
@@ -274,7 +274,7 @@ test('h and l step card to card, a page at a time, the group line saying where',
     expect((await detail(ui))?.[0]).toBe(
       'Migrate the billing webhooks to the new event bus before the freeze',
     )
-    expect(await label(ui, 'open')).toBe('open')
+    expect(await label(ui, 'open')).toBe('answer question')
 
     await ui.press({ key: 'nextCard' })
     await ui.press({ key: 'nextCard' })
@@ -797,8 +797,8 @@ test('v shows the report in the detail and b goes back; o opens the URL; c puts 
   for (const surface of ALL) {
     const ui = await mount($, surface)
     await ui.press({ key: 'tab:last' })
-    expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'failed' })
-    expect(await card(ui, 'row:last:acme-shop-3')).toMatchObject({ ref: '#3', word: 'fix done' })
+    expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'implement ✗' })
+    expect(await card(ui, 'row:last:acme-shop-3')).toMatchObject({ ref: '#3', word: 'fix ✓' })
     const colors = (await ui.findAll({ type: 'Text', ...strip(ui) })).map((n) => n.props.color)
     expect(colors).toEqual(expect.arrayContaining(['claude', 'error']))
     expect(await detail(ui)).toEqual([
@@ -1430,20 +1430,50 @@ test('on a pane that overflows the arrows still step the rule, the wheel scrolls
 })
 
 test('a Last run card too narrow for the skill keeps its ref', async ($, on) => {
-  engine(on, { 'report --json': ok(busyReport) })
+  const skill = 'a-custom-skill-with-a-long-name'
+  const [done, , failed] = busyReport.results
+  const longSkill = {
+    ...failed,
+    planned: { unit: { ...failed?.planned.unit, skill } },
+  }
+  engine(on, { 'report --json': ok({ ...busyReport, results: [done, longSkill] }) })
   await $.command.run(away())
   const wide = await mount($, 'terminal', { bodyColumns: 48 })
   await wide.press({ key: 'tab:last' })
   await wide.press({ key: 'nextCard' })
   expect(await card(wide, 'row:last:acme-shop-5')).toMatchObject({
     ref: '#5',
-    word: 'implement failed',
+    word: `${skill} ✗`,
   })
   await wide.press({ key: 'tab:needs' })
   await wide.unmount()
   const ui = await mount($, 'terminal', { bodyColumns: 100 })
   await ui.press({ key: 'tab:last' })
-  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'failed' })
+  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: '✗' })
+})
+
+test('a card asks with a glyph: the key names the action, or the detail when opening is not the fix', async ($, on) => {
+  const stopped = { ...busyReport.results[2], status: 'stopped: quota', reason: undefined }
+  engine(on, { 'report --json': ok({ ...busyReport, results: [stopped] }) })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+
+  await goTo(ui, TICKET)
+  expect(await label(ui, 'open')).toBe('answer question')
+
+  await goTo(ui, SHOP8)
+  const keys = (await ui.findAll({ type: 'Button' })).map((b) => b.props.key)
+  expect(keys.filter((k) => k === 'approve' || k === 'open')).toEqual(['approve', 'open'])
+
+  await goTo(ui, API22)
+  expect(await card(ui, API22)).toMatchObject({ word: '⚑' })
+  expect((await detail(ui))?.[1]).toBe(
+    'read logs · gave up after 3 failed runs; retries on 2099-01-03',
+  )
+
+  await ui.press({ key: 'tab:last' })
+  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ word: 'implement ■' })
+  expect((await detail(ui))?.[1]).toBe('implement · stopped: quota')
 })
 
 test('an awaywork too old for config path still opens the pane', async ($, on) => {
@@ -1543,7 +1573,7 @@ test('with a plan loaded, a failed report still says why, and the plan clears th
   expect((await card(ui, SHOP7))?.word).toBe('skipped')
 
   await ui.press({ key: 'plan' })
-  expect((await card(ui, SHOP7))?.word).toBe('review PR')
+  expect((await card(ui, SHOP7))?.word).toBe('◉')
   report = { stdout: 'Debugger attached.\n{}' }
   await ui.press({ key: 'refresh' })
   expect(await text(ui, /awaywork report --json printed no JSON/)).toBe(true)
