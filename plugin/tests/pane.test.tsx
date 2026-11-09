@@ -797,8 +797,8 @@ test('v shows the report in the detail and b goes back; o opens the URL; c puts 
   for (const surface of ALL) {
     const ui = await mount($, surface)
     await ui.press({ key: 'tab:last' })
-    expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'implement ✗' })
-    expect(await card(ui, 'row:last:acme-shop-3')).toMatchObject({ ref: '#3', word: 'fix ✓' })
+    expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '✗#5', word: 'implement' })
+    expect(await card(ui, 'row:last:acme-shop-3')).toMatchObject({ ref: '✓#3', word: 'fix' })
     const colors = (await ui.findAll({ type: 'Text', ...strip(ui) })).map((n) => n.props.color)
     expect(colors).toEqual(expect.arrayContaining(['claude', 'error']))
     expect(await detail(ui)).toEqual([
@@ -1442,14 +1442,14 @@ test('a Last run card too narrow for the skill keeps its ref', async ($, on) => 
   await wide.press({ key: 'tab:last' })
   await wide.press({ key: 'nextCard' })
   expect(await card(wide, 'row:last:acme-shop-5')).toMatchObject({
-    ref: '#5',
-    word: `${skill} ✗`,
+    ref: '✗#5',
+    word: skill,
   })
   await wide.press({ key: 'tab:needs' })
   await wide.unmount()
   const ui = await mount($, 'terminal', { bodyColumns: 100 })
   await ui.press({ key: 'tab:last' })
-  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: '✗' })
+  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '✗#5', word: '' })
 })
 
 test('a card asks with a glyph: the key names the action, or the detail when opening is not the fix', async ($, on) => {
@@ -1472,7 +1472,7 @@ test('a card asks with a glyph: the key names the action, or the detail when ope
   )
 
   await ui.press({ key: 'tab:last' })
-  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ word: 'implement ■' })
+  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '■#5', word: 'implement' })
   expect((await detail(ui))?.[1]).toBe('implement · stopped: quota')
 })
 

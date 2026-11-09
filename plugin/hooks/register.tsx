@@ -49,6 +49,8 @@ type Row = {
   color?: Color
   /** A card whose word is its status also says the skill. */
   skill?: string
+  /** How a last-run unit ended, drawn before the ref in place of a word. */
+  lead?: Glyph
   item?: ItemRef
   title: string
   /** The detail's lines under the title: the reason, or the unit's items and links. */
@@ -264,8 +266,8 @@ function resultRow(runId: string, r: Result): Row {
     rank: 0,
     ref: top ? refIn(repo, top.key) : id,
     skill,
-    word: glyph?.word ?? r.status,
-    color: glyph?.color,
+    lead: glyph,
+    word: glyph ? '' : r.status,
     item: top,
     title: top?.title ?? note,
     detail: lines(note),
@@ -986,6 +988,7 @@ export const register: Register = (on) => {
         title: twoLines(r.title, w - 4),
         ...(color && { color }),
         ...(r.skill && { skill: { name: r.skill, color: skillColor(r.skill) } }),
+        ...(r.lead && { lead: r.lead }),
       }
     })
 
