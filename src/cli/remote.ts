@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
 import type { ReadableStream } from 'node:stream/web'
 import { execa } from 'execa'
-import { runsDir } from '../config/paths.js'
+import { envFile, runsDir } from '../config/paths.js'
 import { awaitGroup } from '../core/group.js'
 import { inAwayworkImage } from '../core/launch.js'
 
@@ -17,6 +17,7 @@ const MAX_BODY = 16 * 1024
 const MAX_COMMANDS = 2
 const TIMEOUT_MS = 2 * 60_000
 const BEAT_MS = 30_000
+const HOLD_MS = 500
 
 /** A command's output, as the remote ran it; streamed as NDJSON lines, `code` last. */
 export interface Output {
@@ -118,12 +119,108 @@ export interface Remote {
   token?: string
 }
 
+const fail = (line: string) => {
+  console.error(line)
+  return 1
+}
+
+/** Runs a CLI call where AWAYWORK_REMOTE says, its exit code; undefined when it runs here. */
+export function remoteCall(args: string[], { url, token }: Remote): Promise<number> | undefined {
+  if (args[0] === FROM_SSH) return fromSsh(args[1], url, token)
+  if (!url || !servedRemotely(args)) return
+  if (/^ssh:\/\//i.test(url)) return overSsh(args, url)
+  if (!/^https?:\/\//i.test(url))
+    return Promise.resolve(fail(`AWAYWORK_REMOTE (${url}) is neither ssh:// nor http(s)://`))
+  if (token) return forward(args, { url, token })
+}
+
+// A flag, so a box on an older awaywork fails on it rather than running something else.
+const FROM_SSH = '--from-ssh'
+
+/** The argv for `ssh` to run a CLI call with the box's awaywork, which forwards it to its own daemon. */
+export function sshArgs(url: string, args: string[]): string[] | undefined {
+  const target = URL.canParse(url) ? new URL(url) : undefined
+  if (!target?.hostname) return
+  const { username, hostname, port } = target
+  // base64url holds nothing any login shell reads, so the call needs no quoting.
+  const call = Buffer.from(JSON.stringify([url, ...args])).toString('base64url')
+  return [
+    '-T',
+    '-o',
+    'BatchMode=yes',
+    ...(port ? ['-p', port] : []),
+    '--',
+    username ? `${username}@${hostname}` : hostname,
+    `env AWAYWORK_REMOTE=http://127.0.0.1:${REMOTE_PORT} awaywork ${FROM_SSH} ${call}`,
+  ]
+}
+
+/** Runs a CLI call on the box an ssh:// AWAYWORK_REMOTE names, printing its output as it comes; its exit code. */
+async function overSsh(args: string[], url: string): Promise<number> {
+  const at = `AWAYWORK_REMOTE (${url})`
+  const argv = sshArgs(url, args)
+  if (!argv) return fail(`${at} names no host`)
+  // Refused here as the box's daemon would: a much bigger call wouldn't fit in one argument there.
+  if (Buffer.byteLength(JSON.stringify({ args })) > MAX_BODY)
+    return fail(`${at}: the body is over ${MAX_BODY} bytes`)
+  // A stdin nothing writes to: it closes when this process goes, and the box's end leaves with it.
+  const ssh = execa('ssh', argv, { stdin: 'pipe', reject: false, buffer: false })
+  // Held until stdout comes or HOLD_MS pass, so ssh's last lines, however split, can become this one's.
+  let held = ''
+  let hold: NodeJS.Timeout | undefined
+  const flush = () => {
+    clearTimeout(hold)
+    hold = undefined
+    process.stderr.write(held)
+    held = ''
+  }
+  ssh.stdout.setEncoding('utf8').on('data', (text: string) => {
+    flush()
+    process.stdout.write(text)
+  })
+  ssh.stderr.setEncoding('utf8').on('data', (text: string) => {
+    held += text
+    hold ??= setTimeout(flush, HOLD_MS)
+  })
+  const { exitCode, originalMessage } = await ssh
+  clearTimeout(hold)
+  if (exitCode === 255)
+    return fail(`can't reach ${at}: ${held.trim().split('\n').at(-1)?.trim() || 'ssh exited 255'}`)
+  if (exitCode === 127)
+    return fail(
+      `${at}: awaywork isn't on the box's PATH for non-interactive ssh; install it and node system-wide there, or link both into /usr/local/bin`,
+    )
+  flush()
+  return exitCode ?? fail(`can't reach ${at}: ${originalMessage}`)
+}
+
+/** On the box, a call that came over ssh, `[via, ...args]` as base64url JSON: forwarded to this box's daemon until the laptop's end goes. */
+async function fromSsh(word = '', url = '', token = ''): Promise<number> {
+  let call: unknown
+  try {
+    call = JSON.parse(Buffer.from(word, 'base64url').toString())
+  } catch {}
+  if (!Array.isArray(call) || !call.length || !call.every((a) => typeof a === 'string'))
+    return fail(`awaywork ${FROM_SSH}: not a call as awaywork sends it over ssh`)
+  const [via, ...args] = call as string[]
+  if (!token)
+    return fail(
+      `AWAYWORK_REMOTE (${via}): the box's daemon isn't serving, the box's ${envFile} has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch`,
+    )
+  // ssh passes no Ctrl-C without a terminal, but the laptop's end going closes stdin.
+  process.stdin.once('end', () => process.exit(130)).resume()
+  const code = await forward(args, { url, token }, via)
+  process.stdin.destroy()
+  return code
+}
+
 /** Runs a CLI call on the remote, printing its output as it comes; its exit code. */
 export async function forward(
   args: string[],
   remote: { url: string; token: string },
+  via?: string,
 ): Promise<number> {
-  const at = `AWAYWORK_REMOTE (${remote.url})`
+  const at = `AWAYWORK_REMOTE (${via ?? remote.url})`
   let res: Response
   try {
     res = await fetch(`${remote.url.replace(/\/+$/, '')}/cli`, {
@@ -134,13 +231,19 @@ export async function forward(
     })
   } catch (e) {
     const { cause, message } = e as Error & { cause?: Error }
-    console.error(`can't reach ${at}: ${cause?.message ?? message}`)
-    return 1
+    const reason = cause?.message ?? message
+    return fail(
+      via
+        ? `${at}: the box's daemon isn't serving (${reason}); is awaywork watch running there, with AWAYWORK_REMOTE_TOKEN in its env file?`
+        : `can't reach ${at}: ${reason}`,
+    )
   }
-  if (res.status === 401) {
-    console.error(`${at} refused AWAYWORK_REMOTE_TOKEN`)
-    return 1
-  }
+  if (res.status === 401)
+    return fail(
+      via
+        ? `${at}: the box's daemon runs with another AWAYWORK_REMOTE_TOKEN than its env file; restart awaywork watch there`
+        : `${at} refused AWAYWORK_REMOTE_TOKEN`,
+    )
   const unlike = `answered HTTP ${res.status}, not as awaywork watch does`
   if (!res.ok || !res.body) {
     const body: { error?: string } = await res.json().catch(() => ({}))

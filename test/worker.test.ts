@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { launch } from '../src/core/launch.js'
-import type { Job } from '../src/core/types.js'
+import type { Job, Quota } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
 import { runWorker, type WorkerOptions } from '../src/worker/run.js'
 import { defaultLimits, shortage, startWatchdog } from '../src/worker/watchdog.js'
@@ -74,6 +74,31 @@ describe('worker', () => {
       watch: () => idle,
     })
     expect(order).toEqual(['prepare', 'run'])
+  })
+
+  it("carries a failed worker's reason, and a stop's over it", async () => {
+    const failing = (a: Allowance) =>
+      runWorker(
+        {
+          ...fakeProvider(),
+          async *run() {
+            yield { type: 'quota', quota: quota as Quota } as const
+            yield { type: 'done', ok: false, turns: 1, reason: 'Not logged in' } as const
+          },
+        },
+        job,
+        a,
+        { log: () => {}, watch: () => idle },
+      )
+    expect(await failing(allowance(budget, quota, now, windows))).toMatchObject({
+      status: 'failed',
+      turns: 1,
+      reason: 'Not logged in',
+    })
+    expect(await failing(allowance({ ...budget, per_run: 0 }, quota, now, windows))).toMatchObject({
+      status: 'stopped: quota',
+      reason: 'seven_day at 36%, ceiling 36%',
+    })
   })
 
   it("stops once the long window reaches the run's ceiling", async () => {
