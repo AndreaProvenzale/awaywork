@@ -1,5 +1,12 @@
 /** What the pane reads of `awaywork report --json` and `awaywork plan --json`. */
-export type ItemRef = { source: string; key: string; title: string; url?: string | null }
+export type ItemRef = {
+  source: string
+  key: string
+  title: string
+  url?: string | null
+  type?: string
+  mine?: true
+}
 
 export type Unit = { id: string; repo: string; skill: string; deliver?: string; items: ItemRef[] }
 
@@ -14,6 +21,9 @@ export type Skip = {
 }
 
 export type Plan = { units: Planned[]; skipped: Skip[] }
+
+/** What the pane reads of `awaywork skills list --json`. */
+export type Skills = { skills: { name: string; deliver: string; pickable: boolean }[] }
 
 export type Result = {
   planned: Planned
@@ -56,7 +66,15 @@ export type View = {
   row?: string
   /** The detail's first line shown. */
   at?: number
-  confirm?: { action: Action; key: string; question: string }
+  confirm?: { action: Action; key: string; question: string; skill?: string }
+  /** `g` on a card no rule takes: the skills to pick from, the preselected one first. */
+  pick?: {
+    row: string
+    key: string
+    ref: string
+    theirs?: true
+    skills: { name: string; deliver: string }[]
+  }
   reading?: { title: string; text: string }
   status?: string
   marks?: Record<string, Mark>

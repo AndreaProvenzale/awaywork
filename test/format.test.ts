@@ -26,7 +26,7 @@ import { allowance } from '../src/core/budget.js'
 import { type PlannedUnit, planRun, type RunPlan } from '../src/core/foreman.js'
 import { formatReport, type RunReport, summaryOf, type UnitResult } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
-import type { Rule } from '../src/core/types.js'
+import type { Item, Rule } from '../src/core/types.js'
 import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
@@ -147,6 +147,10 @@ queue:
   })
 })
 
+const paneIssues: Record<string, Partial<Item>> = await import(
+  new URL('../plugin/tests/skipped-issues.mjs', import.meta.url).href
+)
+
 describe('reportJson', () => {
   it('keeps the run header and only references to its items', () => {
     const config = parseConfig(`
@@ -196,7 +200,7 @@ queue: [{ skill: fix, where: { checks: failing } }]
     })
     expect(parsed.plan.units[0].unit.items).toEqual([ref(1)])
     expect(parsed.results[0].planned.unit.items).toEqual([ref(1)])
-    expect(parsed.plan.skipped[0].item).toEqual(ref(2))
+    expect(parsed.plan.skipped[0].item).toEqual({ ...ref(2), type: 'pr' })
     expect(parsed.plan.skipped[0].kind).toBe('no_rule')
     expect(parsed.results[0]).toMatchObject({
       outcome: { url: 'https://github.com/acme/api/pull/9' },
@@ -204,6 +208,13 @@ queue: [{ skill: fix, where: { checks: failing } }]
       files: { log: 'units/acme-api-1/1-fix/worker.log', sliceBody: 'units/acme-api-1/out/pr.md' },
     })
     expect(json).not.toContain('PRIVATE')
+  })
+
+  it.each(Object.entries(paneIssues))('prints the skipped item the pane reads: %s', (_, issue) => {
+    const skip = { item: fakeItem(issue), kind: 'no_rule', reason: 'no rule' }
+    const plan = { queue: [], units: [], skipped: [skip] }
+    const printed = JSON.parse(reportJson({ plan, results: [] } as unknown as RunReport))
+    expect(printed.plan.skipped[0].item).toEqual(issue)
   })
 })
 

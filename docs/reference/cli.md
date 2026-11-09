@@ -249,7 +249,7 @@ Options:
   -h, --help      display help for command
 
 Commands:
-  list            skills a rule can name, where each comes from and its delivery
+  list [options]  skills a rule can name, where each comes from and its delivery
                   default
   eject <name>    copy a built-in skill to skills/ beside the config, where it
                   shadows the built-in
@@ -264,6 +264,7 @@ Usage: awaywork skills list [options]
 skills a rule can name, where each comes from and its delivery default
 
 Options:
+  --json      print them as JSON, each with whether run --skill can pick it
   -h, --help  display help for command
 ```
 
@@ -287,15 +288,17 @@ Usage: awaywork run [options]
 plan the units, start a worker per unit and publish PRs and reports
 
 Options:
-  --dry-run      prepare each workspace (clone, context, prompt) but run no
-                 worker
-  --unit <id>    run only this unit, by id or item key
-  --repo <glob>  run only units in repos matching owner/name, * globs
-  --rule <n>     run only units of this queue rule, counted from 1
-  --scheduled    run only inside a window and start no unit after it ends
-  --detach       with --unit: return once the unit has started, leaving it
-                 running
-  -h, --help     display help for command
+  --dry-run       prepare each workspace (clone, context, prompt) but run no
+                  worker
+  --unit <id>     run only this unit, by id or item key
+  --repo <glob>   run only units in repos matching owner/name, * globs
+  --rule <n>      run only units of this queue rule, counted from 1
+  --scheduled     run only inside a window and start no unit after it ends
+  --detach        with --unit: return once the unit has started, leaving it
+                  running
+  --skill <name>  with --unit, on an item no rule takes: run this skill on it,
+                  once
+  -h, --help      display help for command
 ```
 
 ## awaywork report

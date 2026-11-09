@@ -34,6 +34,14 @@ export function resolveSkill(
   }
 }
 
+/** Why a skill can't be picked for one item with `run --skill`; undefined when it can. */
+export function pickRefusal(name: string, meta: SkillMeta | undefined): string | undefined {
+  if (!meta) return `no skill "${name}"; awaywork skills list lists them`
+  if (name === 'judge') return "judge is a gate, a rule's gates run it"
+  if (meta.merge)
+    return `${name} merges your PR's base: it needs deliver: push, which a one-off run can't have`
+}
+
 /** Reads `description`, `metadata.deliver`, `metadata.type` and `metadata.merge` from a SKILL.md frontmatter. */
 export function parseSkill(text: string): SkillMeta {
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1]

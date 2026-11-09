@@ -15,10 +15,12 @@ import {
   watchLockPath,
 } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
+import { loadSkills } from '../config/skills.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { type Allowance, route } from '../core/budget.js'
-import type { PlannedUnit, RunPlan } from '../core/foreman.js'
+import { isNamed, type PlannedUnit, type RunPlan } from '../core/foreman.js'
 import { isolateFor } from '../core/launch.js'
+import { ruleFor } from '../core/queue.js'
 import {
   type Chain,
   chains,
@@ -30,6 +32,7 @@ import {
 } from '../core/report.js'
 import { pruneRuns } from '../core/retention.js'
 import { lockHolder, takeRunLock } from '../core/run-lock.js'
+import { builtinSkills, pickRefusal, resolveSkill } from '../core/skills.js'
 import { unitStats } from '../core/stats.js'
 import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
 import { fetchRun, type UploadedRun, uploadedRuns } from '../forge/artifacts.js'
@@ -65,6 +68,7 @@ type RunOptions = {
   rule?: number
   scheduled?: boolean
   detach?: boolean
+  skill?: string
 }
 
 /** What a `--detach` child tells the parent waiting on it, once. */
@@ -88,7 +92,13 @@ export function runCommand(program: Command): void {
         'with --unit: return once the unit has started, leaving it running',
       ).conflicts('scheduled'),
     )
+    .option('--skill <name>', 'with --unit, on an item no rule takes: run this skill on it, once')
     .action(async (opts: RunOptions) => {
+      if (opts.skill !== undefined && !opts.unit) {
+        console.error('--skill needs --unit <id>')
+        process.exitCode = 1
+        return
+      }
       if (opts.detach) {
         if (opts.unit) process.exitCode = await detachRun(opts.unit)
         else {
@@ -298,7 +308,7 @@ export async function pruneOld(config: Config, now: Date, log: RunLog): Promise<
     )
 }
 
-export interface RunArgs extends Pick<RunOptions, 'dryRun' | 'unit' | 'repo' | 'rule'> {
+export interface RunArgs extends Pick<RunOptions, 'dryRun' | 'unit' | 'repo' | 'rule' | 'skill'> {
   path: string
   config: Config
   runId: string
@@ -339,8 +349,15 @@ const inSaving = serial()
  */
 export async function executeRun(a: RunArgs): Promise<boolean> {
   const { config, path, runId, log } = a
+  const badSkill = a.skill !== undefined && (await skillRefusal(a.skill, skillsDirOf(path)))
+  if (badSkill) {
+    log.error(badSkill)
+    a.tell?.({ refused: badSkill })
+    return false
+  }
   const planned = await probeAndPlan(config, skillsDirOf(path), {
     unit: a.unit,
+    skill: a.skill,
     repo: a.repo,
     rule: a.rule,
     at: a.now,
@@ -356,6 +373,8 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     a.tell?.({ refused: [why, ...warned].join('\n') })
     return false
   }
+  const noOneOff = a.unit && a.skill && oneOffRefusal(planned.plan, a.unit)
+  if (noOneOff) return refuse(noOneOff)
   const named = a.unit ? namedChains(planned.plan, a.unit) : []
   if (a.unit && named.length !== 1)
     return refuse(
@@ -421,6 +440,26 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     if (failure) log.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
   }
   return true
+}
+
+/** Why `--skill` can't name this skill: it's unknown, or a rule or a gate is what runs it. */
+export async function skillRefusal(name: string, userSkillsDir: string) {
+  const catalog = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
+  return pickRefusal(name, resolveSkill(name, catalog)?.meta)
+}
+
+/** Why `--skill` can't take what `name` names: a rule does, or the planner refused the one-off; undefined when it can, or when `name` names nothing it can tell. */
+export function oneOffRefusal(plan: RunPlan, name: string): string | undefined {
+  const taken = (rule: number, key: string) =>
+    `--skill is only for an item no rule takes: #${rule + 1} ${plan.queue[rule]?.skill} takes ${key}`
+  const chains = namedChains(plan, name)
+  if (chains.length > 1) return undefined
+  const [chain] = chains
+  if (chain) return chain.unit.oneOff ? undefined : taken(chain.rule, name)
+  const [skip, ...more] = plan.skipped.filter((s) => isNamed(s.item, name))
+  if (!skip || more.length) return undefined
+  const rule = ruleFor(plan.queue, skip.item)
+  return rule >= 0 ? taken(rule, skip.item.key) : skip.reason
 }
 
 /** Why running only `head`'s chain now would do nothing, as `runUnits` will decide it; undefined when it can start. */

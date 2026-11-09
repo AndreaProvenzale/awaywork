@@ -161,8 +161,15 @@ export function planRun(input: {
   attempts?: Attempts
   /** The time attempts are judged at; defaults to now. */
   now?: number
-  /** Plans only the units of a repo glob, a 1-based rule, `run: soon` rules and these unit ids, under the full run's caps; neither they nor its skip or attempts hold back the unit `named` names. */
-  only?: { repo?: string; rule?: number; soon?: boolean; units?: string[]; named?: string }
+  /** Plans only the units of a repo glob, a 1-based rule, `run: soon` rules and these unit ids, under the full run's caps; neither they nor its skip or attempts hold back the unit `named` names, and with `skill` a one-off rule of that skill takes the item `named` names if no rule does. */
+  only?: {
+    repo?: string
+    rule?: number
+    soon?: boolean
+    units?: string[]
+    named?: string
+    skill?: string
+  }
 }): RunPlan {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
@@ -185,9 +192,20 @@ export function planRun(input: {
         })
   const candidates = [...expanded.items, ...namedTasks]
   const { ranked, unmatched } = rank(candidates, queue)
+  const picked =
+    only.skill !== undefined && name !== undefined
+      ? unmatched.filter(
+          (item) =>
+            namesUnit(slug(item.key), [item], name) && noRuleReason(item, queue).kind === 'no_rule',
+        )
+      : []
+  // Last, so a real rule always wins; everything else reads `queue`, which never holds it.
+  const rules = only.skill !== undefined ? [...queue, oneOffRule(only.skill)] : queue
   const skipped: Skipped[] = [
     ...expanded.skipped,
-    ...unmatched.map((item) => ({ item, ...noRuleReason(item, queue) })),
+    ...unmatched
+      .filter((item) => !picked.includes(item))
+      .map((item) => ({ item, ...noRuleReason(item, queue) })),
   ]
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
@@ -196,15 +214,17 @@ export function planRun(input: {
   let counted = 0
 
   // A post that waits holds its card for its rule only: the card's linked items rank on their own.
-  const waiting = (e: Ranked) => waitsOn(queue[e.rule] as Rule, e.item)
-  for (const found of inBlocks(dedupe(ranked, waiting), candidates)) {
+  const waiting = (e: Ranked) => waitsOn(rules[e.rule] as Rule, e.item)
+  const takenHere = [...ranked, ...picked.map((item) => ({ item, rule: queue.length }))]
+  for (const found of inBlocks(dedupe(takenHere, waiting), candidates)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
     // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
     const pickup = ours && found.find((e) => isAwayworkPr(e.item))
     const group = pickup ? [pickup, ...found.filter((e) => e !== pickup)] : found
     const items = group.map((e) => e.item)
     const ruleIndex = group[0]?.rule ?? 0
-    const rule = queue[ruleIndex] as Rule
+    const rule = rules[ruleIndex] as Rule
+    const oneOff = ruleIndex === queue.length
     if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
     if (only.soon && rule.run !== 'soon') continue
     if (only.units && !only.units.includes(slug(items[0]?.key ?? ''))) continue
@@ -253,7 +273,9 @@ export function planRun(input: {
     const prs = items.flatMap((i) => i.linkedPrs)
     // awaywork's own draft for these items, which it left for a later run.
     const keys = items.map((i) => `${i.source}:${i.key}`)
-    const draft = !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
+    // A one-off opens only a new branch's draft, so it never goes on with one.
+    const draft =
+      !oneOff && !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
     if (ours && !pickup && !draft && !found.some(waiting)) {
       skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
       continue
@@ -462,7 +484,10 @@ export function planRun(input: {
       const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
       // Every step is routed, as the run does, so the plan holds fallback units for all of them; a merge takes a provider only to resolve conflicts the source read.
       const routes = !at.merge || items.some((i) => i.fields.conflicts === true)
-      const { provider, passed } = routes ? route(providers, allowances, routed) : { passed: [] }
+      // A one-off runs alone, so the rule units planned before it take no fallback unit from it.
+      const { provider, passed } = routes
+        ? route(providers, allowances, oneOff ? {} : routed)
+        : { passed: [] }
       if (provider) routed[provider] = (routed[provider] ?? 0) + 1
       const repoInstructions = config.repos[repo]?.instructions
       const unit: Unit = {
@@ -477,6 +502,7 @@ export function planRun(input: {
             : gatesFor(config, repo),
         ...(waits !== undefined && { waits }),
         ...(lean && { lean }),
+        ...(oneOff && { oneOff }),
         items,
         repo,
         rule: step,
@@ -517,6 +543,15 @@ export function planRun(input: {
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
 }
+
+/** `run --skill`'s rule, for the one item it names: no delivery, on_done, wait, gates, thread or post of its own. */
+const oneOffRule = (skill: string): Rule => ({
+  skill,
+  where: {},
+  provider: [],
+  skills: [],
+  instructions: [],
+})
 
 /** A rule's `then` steps with their unit ids, a loop's round by round. */
 function thenSteps(rule: Rule, id: string) {

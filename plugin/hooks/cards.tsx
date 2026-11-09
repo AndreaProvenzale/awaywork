@@ -5,6 +5,8 @@ export type Card = {
   ref: string
   /** The skill of a card whose word is its status, in the skill's color. */
   skill?: { name: string; color: string }
+  /** How a last-run unit ended, before the ref. */
+  lead?: { word: string; color?: string }
   word: string
   title: string[]
   color?: string
@@ -18,7 +20,8 @@ const MIN_REF = 8
 
 /** A card shows the skill only with room for it, the word and MIN_REF columns of ref. */
 const holdsSkill = (c: Card, w: number) =>
-  !!c.skill && c.skill.name.length + 1 + c.word.length + 1 + MIN_REF <= w - 4
+  !!c.skill &&
+  [c.skill.name, c.word].filter(Boolean).join(' ').length + 1 + MIN_REF + (c.lead ? 2 : 0) <= w - 4
 
 /** One card: the ref, cut first, and the word on line 1, the title under them; the hooks draw it too, the ref a Button. */
 export const card = (
@@ -42,10 +45,23 @@ export const card = (
     borderColor={on ? 'suggestion' : 'inactive'}
   >
     <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
-      {ref}
+      {c.lead ? (
+        <Box flexDirection="row" columnGap={1}>
+          <Box flexShrink={0}>
+            <Text color={c.lead.color} dimColor={!c.lead.color}>
+              {c.lead.word}
+            </Text>
+          </Box>
+          {ref}
+        </Box>
+      ) : (
+        ref
+      )}
       <Box flexShrink={0}>
         <Text>
-          {c.skill && holdsSkill(c, w) && <Text color={c.skill.color}>{c.skill.name} </Text>}
+          {c.skill && holdsSkill(c, w) && (
+            <Text color={c.skill.color}>{c.word ? `${c.skill.name} ` : c.skill.name}</Text>
+          )}
           <Text color={c.color} dimColor={!c.color}>
             {c.word}
           </Text>

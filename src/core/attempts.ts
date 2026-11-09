@@ -101,6 +101,8 @@ export function pushedOnto(items: Item[], attempts: Attempts): PrRef | undefined
 export function recordAttempts(attempts: Attempts, report: RunReport): Attempts {
   const next = { ...attempts }
   for (const head of report.plan.units.filter((p) => !p.chain)) {
+    // A `--skill` run is for that run alone: what a rule reads later stays the rule's.
+    if (head.unit.oneOff) continue
     const id = head.unit.id
     const chain = chainResults(report, id)
     // A rule's own `when` that didn't hold: the item is still waiting for it, not handled.

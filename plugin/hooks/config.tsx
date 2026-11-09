@@ -265,6 +265,8 @@ type Input = {
   button: Button
   setView: (patch: Partial<View>) => unknown
   open: (file: string, line: number) => unknown
+  /** Steps the rule by key where the arrows can't. */
+  step?: (by: number) => unknown
 }
 
 const GHOST: ConfigRule[] = [
@@ -367,7 +369,7 @@ function rulesTable(
 }
 
 export function configBody(input: Input): RenderChildren {
-  const { fill, els, c, v, width, button, setView, open } = input
+  const { fill, els, c, v, width, button, setView, open, step } = input
   const { Box, Text, Code } = els
   const problems = c.problems?.length ? c.problems : undefined
 
@@ -470,7 +472,14 @@ export function configBody(input: Input): RenderChildren {
     ))
   const keys = (
     <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-      <Text dimColor>↑↓ rule</Text>
+      {step ? (
+        [
+          button('nextRule', 'j', 'next rule', () => step(1)),
+          button('previousRule', 'k', 'previous rule', () => step(-1)),
+        ]
+      ) : (
+        <Text dimColor>↑↓ rule</Text>
+      )}
       {button('ask', 'c', 'ask Claude', () => fill(`About rule ${r.rule} (${r.takes}): `))}
       {c.file &&
         editLine &&

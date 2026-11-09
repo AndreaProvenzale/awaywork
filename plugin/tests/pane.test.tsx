@@ -10,6 +10,7 @@ import {
   oldAwaywork,
   remoteDown,
 } from './fixtures'
+import { notYours, yours } from './skipped-issues.mjs'
 
 // 100 columns: a page of four cards, 24 wide; 30 rows: the pane takes 28, a detail of 15.
 const PANE = {
@@ -70,6 +71,18 @@ function engine(
 }
 
 const ok = (json: unknown) => ({ stdout: JSON.stringify(json) })
+
+/** The prompt box: what `c` reads and fills. */
+function promptBox(on: On) {
+  const box = { text: '', refuses: false }
+  on('prompt.read', () => ({ value: { text: box.text, cursor: box.text.length } }))
+  on('prompt.fill', (_, e) => {
+    if (box.refuses) return { isFilled: false }
+    box.text = e.text
+    return { isFilled: true }
+  })
+  return box
+}
 
 type Engine = Parameters<TestBody>[0]
 
@@ -205,24 +218,24 @@ test('a card shows its ref and action on top and its title in two lines, the det
     const ui = await mount($, surface)
     expect(await card(ui, SHOP7)).toEqual({
       ref: '#7',
-      word: 'review PR',
+      word: '◉',
       title: ['Retry webhooks on', '5xx'],
       selected: true,
     })
     expect(await card(ui, SHOP8)).toEqual({
       ref: '#8',
-      word: 'approve',
+      word: '◆',
       title: ['Split the checkout', 'service into cart, …'],
       selected: false,
     })
-    expect(await card(ui, TICKET)).toMatchObject({ ref: 'SHOP-12', word: 'answer question' })
+    expect(await card(ui, TICKET)).toMatchObject({ ref: 'SHOP-12', word: '?' })
 
     expect(await detail(ui)).toEqual([
       'Retry webhooks on 5xx',
       'waiting for review: awaywork PR is open',
       'https://github.com/acme/shop/pull/31',
     ])
-    expect(await label(ui, 'open')).toBe('open PR')
+    expect(await label(ui, 'open')).toBe('review PR')
     expect(await label(ui, 'skip')).toBe('skip')
     expect(await ui.find({ key: 'approve' })).toBeFalsy()
     expect(await ui.find({ key: 'report' })).toBeFalsy()
@@ -261,7 +274,7 @@ test('h and l step card to card, a page at a time, the group line saying where',
     expect((await detail(ui))?.[0]).toBe(
       'Migrate the billing webhooks to the new event bus before the freeze',
     )
-    expect(await label(ui, 'open')).toBe('open')
+    expect(await label(ui, 'open')).toBe('answer question')
 
     await ui.press({ key: 'nextCard' })
     await ui.press({ key: 'nextCard' })
@@ -460,7 +473,7 @@ test('a refused g shows the CLI line and leaves the card as it was', async ($, o
   expect(await text(ui, 'already started')).toBe(false)
 })
 
-test('g is on the unchanged, skipped, over-cap and gave-up skips only, never on a last-run card', async ($, on) => {
+test('g is on the unchanged, skipped, over-cap, gave-up and no-rule skips only, never on a last-run card', async ($, on) => {
   engine(on, { 'report --json': ok(busyReport) })
   await $.command.run(away())
   const ui = await mount($, 'terminal')
@@ -472,10 +485,10 @@ test('g is on the unchanged, skipped, over-cap and gave-up skips only, never on 
   }
   const skips: Record<string, boolean> = {
     'github:acme/shop#10': true,
-    'github:acme/shop#9': false,
+    'github:acme/shop#9': true,
     'github:acme/api#30': true,
     'github:acme/web#5': true,
-    'jira:SHOP-14': false,
+    'jira:SHOP-14': true,
   }
   // The strip lists them grouped, so walk it to its end.
   const seen: Record<string, boolean> = {}
@@ -501,6 +514,240 @@ test('g is on the unchanged, skipped, over-cap and gave-up skips only, never on 
       .filter(([, has]) => has)
       .map(([id]) => id),
   ).toEqual([API22])
+})
+
+const SKILLS = ok({
+  skills: [
+    { name: 'fix', deliver: 'draft_pr', pickable: true },
+    { name: 'implement', deliver: 'draft_pr', pickable: true },
+    { name: 'judge', deliver: 'report', pickable: false },
+    { name: 'plan', deliver: 'report', pickable: true },
+    { name: 'sync', deliver: 'draft_pr', pickable: false },
+  ],
+})
+const NO_RULE = 'row:skipped:github:acme/shop#9'
+const PICKED = 'run --unit github:acme/shop#9 --skill plan --detach'
+
+test('g on a no-rule card asks which skill, preselects implement on an issue, confirms and starts', async ($, on) => {
+  const { calls } = engine(on, {
+    'report --json': ok(busyReport),
+    'skills list --json': SKILLS,
+    [PICKED]: { stdout: 'Started github:acme/shop#9 as run x; awaywork report x shows it\n' },
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+
+  expect(await label(ui, 'run')).toBe('run now')
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(true)
+  expect(await hotkey(ui, 'pick:implement')).toBe('g')
+  expect(await hotkey(ui, 'pick:fix')).toBe('1')
+  expect(await ui.find({ key: 'pick:judge' })).toBeFalsy()
+  expect(await ui.find({ key: 'pick:sync' })).toBeFalsy()
+  // Digits pick a skill now: the tabs give theirs up.
+  expect(await hotkey(ui, 'tab:skipped')).toBeUndefined()
+
+  await ui.press({ key: 'back' })
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
+  expect(await hotkey(ui, 'tab:skipped')).toBe('4')
+  expect(calls.some((argv) => argv[1] === 'run')).toBe(false)
+
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'pick:fix' })
+  expect(await text(ui, 'Run #9 now with fix? Draft PR, uses your quota.')).toBe(true)
+  await ui.press({ key: 'no' })
+  expect(await text(ui, 'not started')).toBe(true)
+  expect(calls.some((argv) => argv[1] === 'run')).toBe(false)
+
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'pick:plan' })
+  expect(await text(ui, 'Run #9 now with plan? Report, uses your quota.')).toBe(true)
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual([
+    'awaywork',
+    'run',
+    '--unit',
+    'github:acme/shop#9',
+    '--skill',
+    'plan',
+    '--detach',
+  ])
+  expect(await text(ui, /^Started github:acme\/shop#9 as run/)).toBe(true)
+  expect((await card(ui, NO_RULE))?.word).toBe('started')
+
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'already started')).toBe(true)
+  expect(calls.filter((argv) => argv[1] === 'run')).toHaveLength(1)
+})
+
+test('g on a no-rule PR preselects fix, a list without it the first skill listed', async ($, on) => {
+  const skipped = busyReport.plan.skipped.map((s) =>
+    s.item.key === 'acme/shop#9'
+      ? { ...s, item: { ...s.item, url: 'https://github.com/acme/shop/pull/9' } }
+      : s,
+  )
+  const replies: Parameters<typeof engine>[1] = {
+    'report --json': ok({ ...busyReport, plan: { ...busyReport.plan, skipped } }),
+    'skills list --json': SKILLS,
+  }
+  engine(on, replies)
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  await ui.press({ key: 'run' })
+  expect(await hotkey(ui, 'pick:fix')).toBe('g')
+  expect(await hotkey(ui, 'pick:implement')).toBe('1')
+  await ui.press({ key: 'back' })
+
+  replies['skills list --json'] = ok({
+    skills: [{ name: 'plan', deliver: 'report', pickable: true }],
+  })
+  await ui.press({ key: 'run' })
+  expect(await hotkey(ui, 'pick:plan')).toBe('g')
+})
+
+// `test/format.test.ts` holds these items to what `report --json` prints.
+const withIssue = (item: { key: string }) => ({
+  ...busyReport,
+  plan: {
+    ...busyReport.plan,
+    skipped: busyReport.plan.skipped.map((s) => (s.item.key === item.key ? { ...s, item } : s)),
+  },
+})
+
+for (const [what, issue, skill, says] of [
+  ['an issue not assigned to you', notYours, 'fix', true],
+  ['your own issue', yours, 'fix', false],
+  ['a report on an issue not assigned to you', notYours, 'plan', false],
+] as const)
+  test(`the confirm on ${what} says whether merging closes it`, async ($, on) => {
+    engine(on, { 'report --json': ok(withIssue(issue)), 'skills list --json': SKILLS })
+    await $.command.run(away())
+    const ui = await mount($, 'terminal', { bodyColumns: 160 })
+    await ui.press({ key: 'tab:skipped' })
+    await goTo(ui, NO_RULE)
+    await ui.press({ key: 'run' })
+    await ui.press({ key: `pick:${skill}` })
+    expect(await text(ui, /Merging it can close an issue that isn't assigned to you\.$/)).toBe(says)
+  })
+
+test('changing tab closes a confirm', async ($, on) => {
+  const { calls } = engine(on, { 'report --json': ok(busyReport), 'skills list --json': SKILLS })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'pick:plan' })
+  expect(await ui.find({ key: 'yes' })).toBeTruthy()
+
+  await ui.press({ key: 'tab:last' })
+  expect(await ui.find({ key: 'yes' })).toBeFalsy()
+  expect(await text(ui, 'Run #9 now with plan? Report, uses your quota.')).toBe(false)
+  expect(calls.some((argv) => argv[1] === 'run')).toBe(false)
+})
+
+const turn = () => new Promise((done) => setTimeout(done, 30))
+
+test('a picker stays on its card: a refresh that loses it takes the picker off', async ($, on) => {
+  const gone = busyReport.plan.skipped.filter((s) => s.item.key !== 'acme/shop#9')
+  const replies: Parameters<typeof engine>[1] = {
+    'report --json': ok(busyReport),
+    'skills list --json': SKILLS,
+  }
+  engine(on, replies)
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(true)
+  replies['report --json'] = ok({ ...busyReport, plan: { ...busyReport.plan, skipped: gone } })
+  await ui.press({ key: 'refresh' })
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(false)
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
+  expect(await hotkey(ui, 'tab:skipped')).toBe('4')
+})
+
+test('skills that load after the card went raise no picker on the next one', async ($, on) => {
+  let finish = () => {}
+  const gone = busyReport.plan.skipped.filter((s) => s.item.key !== 'acme/shop#9')
+  const replies: Parameters<typeof engine>[1] = {
+    'report --json': ok(busyReport),
+    'skills list --json': () =>
+      new Promise<Reply>((done) => {
+        finish = () => done(SKILLS)
+      }),
+  }
+  engine(on, replies)
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  void ui.post({ select: NO_RULE, key: 'g' })
+  await turn()
+  replies['report --json'] = ok({ ...busyReport, plan: { ...busyReport.plan, skipped: gone } })
+  await ui.press({ key: 'refresh' })
+  await turn()
+  finish()
+  await turn()
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(false)
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
+})
+
+test('g g while the skills load reads them once and leaves one picker', async ($, on) => {
+  const finishes: (() => void)[] = []
+  const { calls } = engine(on, {
+    'report --json': ok(busyReport),
+    'skills list --json': () =>
+      new Promise<Reply>((done) => {
+        finishes.push(() => done(SKILLS))
+      }),
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  void ui.post({ select: NO_RULE, key: 'g' })
+  await turn()
+  void ui.post({ select: NO_RULE, key: 'g' })
+  await turn()
+  expect(finishes).toHaveLength(1)
+  expect(calls.filter((argv) => argv[1] === 'skills')).toHaveLength(1)
+  finishes[0]?.()
+  await turn()
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(true)
+  await ui.post({ select: NO_RULE, key: '1' })
+  expect(await text(ui, 'Run #9 now with fix? Draft PR, uses your quota.')).toBe(true)
+  await ui.press({ key: 'no' })
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
+})
+
+test('g on a no-rule card says what the CLI said when the skills can not be read or the run is refused', async ($, on) => {
+  const refused = '--skill is only for an item no rule takes: #1 fix takes acme/shop#9'
+  const replies: Parameters<typeof engine>[1] = {
+    'report --json': ok(busyReport),
+    'skills list --json': { exitCode: 1, stderr: 'boom\n' },
+    [PICKED]: { exitCode: 1, stderr: `${refused}\n` },
+  }
+  engine(on, replies)
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'skills: boom')).toBe(true)
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
+
+  replies['skills list --json'] = SKILLS
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'pick:plan' })
+  await ui.press({ key: 'yes' })
+  expect(await text(ui, refused)).toBe(true)
+  expect((await card(ui, NO_RULE))?.word).toBe('no rule')
 })
 
 test('g is not on a skip of yours whose PR awaywork pushed onto, which still waits on review', async ($, on) => {
@@ -540,22 +787,18 @@ test('g on a skip asks without a skill, and on your skip says the skip stays', a
   expect((await card(ui, 'row:skipped:github:acme/shop#10'))?.word).toBe('started')
 })
 
-test('v shows the report in the detail and b goes back; o opens the URL; c hands the unit to the chat', async ($, on) => {
+test('v shows the report in the detail and b goes back; o opens the URL; c puts the unit in the prompt box', async ($, on) => {
   const { calls } = engine(on, {
     'report --json': ok(busyReport),
     'report 20990101-050000 --unit acme-shop-3': { stdout: 'acme-shop-3: Pinned the clock' },
   })
-  const prompts: string[] = []
-  on('prompt.submit', (_, e) => {
-    prompts.push(e.text)
-    return { text: e.text }
-  })
+  const box = promptBox(on)
   await $.command.run(away())
   for (const surface of ALL) {
     const ui = await mount($, surface)
     await ui.press({ key: 'tab:last' })
-    expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'failed' })
-    expect(await card(ui, 'row:last:acme-shop-3')).toMatchObject({ ref: '#3', word: 'fix done' })
+    expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '✗#5', word: 'implement' })
+    expect(await card(ui, 'row:last:acme-shop-3')).toMatchObject({ ref: '✓#3', word: 'fix' })
     const colors = (await ui.findAll({ type: 'Text', ...strip(ui) })).map((n) => n.props.color)
     expect(colors).toEqual(expect.arrayContaining(['claude', 'error']))
     expect(await detail(ui)).toEqual([
@@ -584,10 +827,48 @@ test('v shows the report in the detail and b goes back; o opens the URL; c hands
     await ui.press({ key: 'tab:needs' })
     await ui.unmount()
   }
-  expect(prompts[0]).toBe(
-    'continue awaywork unit acme-shop-5 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-5`',
+  expect(box.text).toBe(
+    'continue awaywork unit acme-shop-5 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-5`. ',
   )
   expect(calls.some((argv) => argv[1] === 'plan')).toBe(false)
+})
+
+test('c fills the box on every tab, keeps what you typed, and says when it cannot', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport), 'plan --json': ok(busyPlan) })
+  const box = promptBox(on)
+  const sent: string[] = []
+  on('prompt.submit', (_, e) => {
+    sent.push(e.text)
+    return { text: e.text }
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  const about = 'About awaywork item github:acme/shop#8'
+
+  box.text = 'is it urgent?'
+  await ui.post({ select: SHOP8, key: 'c' })
+  expect(box.text).toBe(
+    `${about} "Split the checkout service into cart, payment and shipping" (waiting for your approval of the plan): is it urgent?`,
+  )
+  expect(await text(ui, 'in the prompt box: Esc, then type')).toBe(true)
+
+  await ui.post({ select: API21, key: 'c' })
+  expect(box.text).toBe(
+    'About awaywork item github:acme/api#21 "Fix the N+1 query in the orders endpoint" (waiting for review: awaywork PR is open): is it urgent?',
+  )
+
+  await ui.press({ key: 'plan' })
+  await ui.press({ key: 'tab:next' })
+  box.text = ''
+  await ui.press({ key: 'here' })
+  expect(box.text).toMatch(/^About awaywork item github:.+ \(next up with \w+\): $/)
+  expect(await text(ui, 'in the prompt box: Esc, then type')).toBe(false)
+
+  box.refuses = true
+  await ui.press({ key: 'here' })
+  expect(await text(ui, "the prompt box can't take it now")).toBe(true)
+  expect(sent).toEqual([])
+  await ui.unmount()
 })
 
 test('every region keeps its height while you browse, ask and read', async ($, on) => {
@@ -801,6 +1082,32 @@ test('on the Config tab the arrows move between rules and each skill has its col
   expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
   const colors = (await ui.findAll({ type: 'Text' })).map((n) => n.props.color)
   expect(colors).toEqual(expect.arrayContaining(['claude', 'merged']))
+})
+
+test('on the desktop app j and k step the rule and the pane keeps its own scroll', async ($, on) => {
+  engine(on, {
+    'config path': { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    [`--config ${CONFIG} config explain`]: ok(explained),
+    [`--config ${CONFIG} plan --rules --json`]: ok({ rules: [], unmatched: [] }),
+  })
+  on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
+  on('fs.read', () => ({ value: 'queue: []\n' }))
+  on('ui.scroll', () => ({}))
+  await $.command.run(away())
+  const ui = await $.ui.mount({ ...PANE, props: sized(), surface: 'desktop' })
+  await ui.press({ key: 'tab:config' })
+  const boxes = await ui.findAll({ type: 'Box' })
+  expect(boxes.some((b) => b.props.minHeight !== undefined)).toBe(false)
+
+  expect(await $.ui.scroll({ ...SCROLL, by: 1 })).toEqual({})
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
+
+  expect(await hotkey(ui, 'nextRule')).toBe('j')
+  await ui.press({ key: 'nextRule' })
+  expect(await text(ui, /2\. PRs, review requested/)).toBe(true)
+  await ui.press({ key: 'previousRule' })
+  expect(await text(ui, /1\. my PRs, checks failing/)).toBe(true)
 })
 
 const SERVER = '/srv/awaywork/config.yml'
@@ -1123,20 +1430,50 @@ test('on a pane that overflows the arrows still step the rule, the wheel scrolls
 })
 
 test('a Last run card too narrow for the skill keeps its ref', async ($, on) => {
-  engine(on, { 'report --json': ok(busyReport) })
+  const skill = 'a-custom-skill-with-a-long-name'
+  const [done, , failed] = busyReport.results
+  const longSkill = {
+    ...failed,
+    planned: { unit: { ...failed?.planned.unit, skill } },
+  }
+  engine(on, { 'report --json': ok({ ...busyReport, results: [done, longSkill] }) })
   await $.command.run(away())
   const wide = await mount($, 'terminal', { bodyColumns: 48 })
   await wide.press({ key: 'tab:last' })
   await wide.press({ key: 'nextCard' })
   expect(await card(wide, 'row:last:acme-shop-5')).toMatchObject({
-    ref: '#5',
-    word: 'implement failed',
+    ref: '✗#5',
+    word: skill,
   })
   await wide.press({ key: 'tab:needs' })
   await wide.unmount()
   const ui = await mount($, 'terminal', { bodyColumns: 100 })
   await ui.press({ key: 'tab:last' })
-  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'failed' })
+  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '✗#5', word: '' })
+})
+
+test('a card asks with a glyph: the key names the action, or the detail when opening is not the fix', async ($, on) => {
+  const stopped = { ...busyReport.results[2], status: 'stopped: quota', reason: undefined }
+  engine(on, { 'report --json': ok({ ...busyReport, results: [stopped] }) })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+
+  await goTo(ui, TICKET)
+  expect(await label(ui, 'open')).toBe('answer question')
+
+  await goTo(ui, SHOP8)
+  const keys = (await ui.findAll({ type: 'Button' })).map((b) => b.props.key)
+  expect(keys.filter((k) => k === 'approve' || k === 'open')).toEqual(['approve', 'open'])
+
+  await goTo(ui, API22)
+  expect(await card(ui, API22)).toMatchObject({ word: '⚑' })
+  expect((await detail(ui))?.[1]).toBe(
+    'read logs · gave up after 3 failed runs; retries on 2099-01-03',
+  )
+
+  await ui.press({ key: 'tab:last' })
+  expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '■#5', word: 'implement' })
+  expect((await detail(ui))?.[1]).toBe('implement · stopped: quota')
 })
 
 test('an awaywork too old for config path still opens the pane', async ($, on) => {
@@ -1236,7 +1573,7 @@ test('with a plan loaded, a failed report still says why, and the plan clears th
   expect((await card(ui, SHOP7))?.word).toBe('skipped')
 
   await ui.press({ key: 'plan' })
-  expect((await card(ui, SHOP7))?.word).toBe('review PR')
+  expect((await card(ui, SHOP7))?.word).toBe('◉')
   report = { stdout: 'Debugger attached.\n{}' }
   await ui.press({ key: 'refresh' })
   expect(await text(ui, /awaywork report --json printed no JSON/)).toBe(true)

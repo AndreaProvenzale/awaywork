@@ -36,7 +36,16 @@ import { namedChains } from '../worker/units.js'
 import { ambiguous } from './format.js'
 import { probeAndPlan, sourceFailure } from './plan.js'
 import { type Output, type Remote, serveRemote } from './remote.js'
-import { executeRun, newRunId, pruneOld, type RunArgs, type RunLog, serial } from './run.js'
+import {
+  executeRun,
+  newRunId,
+  oneOffRefusal,
+  pruneOld,
+  type RunArgs,
+  type RunLog,
+  serial,
+  skillRefusal,
+} from './run.js'
 
 export function watchCommand(program: Command, remote: Remote): void {
   program
@@ -269,14 +278,19 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
   }
 
   /** A one-off run of the item `key`, as the workflow's `unit` input runs it, behind the worker in progress. */
-  const runUnit = async (key: string): Promise<Output> => {
+  const runUnit = async (key: string, skill?: string): Promise<Output> => {
     const refuse = (why: string) => ({ stdout: '', stderr: `${why}\n`, code: 1 })
     const config = await loadConfig(path).catch((e) => reason(e))
     if (typeof config === 'string') return refuse(config)
+    const badSkill = skill !== undefined && (await skillRefusal(skill, skillsDirOf(path)))
+    if (badSkill) return refuse(badSkill)
     const { plan } = await probeAndPlan(config, skillsDirOf(path), {
       probe: false,
       unit: key,
+      skill,
     })
+    const noOneOff = skill && oneOffRefusal(plan, key)
+    if (noOneOff) return refuse(noOneOff)
     const [named, ...more] = namedChains(plan, key)
     if (!named || more.length)
       return refuse(
@@ -292,7 +306,14 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
     if (stop.aborted) return refuse('awaywork watch is stopping')
     // Inside a window it's away, until the window ends, as a soon run.
     const until = windowEnd(config.windows, new Date())
-    const started = await start({ trigger: 'unit', config, until, present: !until, unit: key })
+    const started = await start({
+      trigger: 'unit',
+      config,
+      until,
+      present: !until,
+      unit: key,
+      skill,
+    })
     if (typeof started !== 'string')
       return refuse(
         `run ${started.runId} (pid ${started.pid}) holds the run lock; try again once it ends`,
@@ -372,7 +393,7 @@ function chainOf(plan: RunPlan, unit: string): RunPlan {
 const describeSpan = (ms: number) =>
   ms % (60 * MINUTE) === 0 ? `${ms / (60 * MINUTE)}h` : `${Math.round(ms / MINUTE)}m`
 
-interface DaemonRun extends Pick<RunArgs, 'until' | 'soon' | 'claim' | 'turn' | 'unit'> {
+interface DaemonRun extends Pick<RunArgs, 'until' | 'soon' | 'claim' | 'turn' | 'unit' | 'skill'> {
   trigger: Trigger
   path: string
   config: Config

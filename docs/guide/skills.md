@@ -23,6 +23,29 @@ awaywork skills list   # every skill a rule can name, and where it comes from
 
 The skill decides the work; the [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md) wrapped around every skill decides the limits (no forge access, targeted tests only, no background commands, when to stop). A skill can't lift them.
 
+## Run one on an item no rule takes
+
+Your queue doesn't match an item, you still want `fix` on it this once, and you're not adding a rule for that. `--skill` runs a skill on that one item, foreground or with `--detach`, and the `/away` pane's `g` on a `no rule` card does the same:
+
+```text
+$ awaywork run --unit CH-1 --skill review --detach
+Started CH-1 as run 20261109-112811; awaywork report 20261109-112811 shows it once it ends
+```
+
+It's a one-off rule, last in the queue, for that run alone: `plan` doesn't show it, the other items' reasons and rule numbers read as they would without it, and a real rule always wins. A rule that matches the item is the rule that runs it, so `--skill` refuses and says so:
+
+```text
+$ awaywork run --unit CH-3 --skill fix
+--skill is only for an item no rule takes: #1 plan takes CH-3
+```
+
+Any skill `awaywork skills list` shows, but not `judge` (a gate) or `sync` (it needs `deliver: push`). It has no `on_done`, `deliver`, `wait`, thread or gates of its own (your config's top-level gates still apply), so its output is a draft PR on a new `away/` branch or a report, and it writes nothing on the item: no comment, no move, no thread. What a rule would have posted, questions included, stays in the report, and a draft's `.away/out/` files still go to your [`store`](./configuration.md#store) if you set one. Nothing goes on from it, either: a worker that stops on `continue` or `ask` leaves you the draft or report to finish by hand, and the attempt doesn't count for any rule. The planner's refusals hold as for any rule, someone else's PR, a fork and the rest:
+
+```text
+$ awaywork run --unit acme/api#7 --skill fix
+deliver draft_pr: feature-7 is someone else's PR
+```
+
 ## Where skills come from
 
 A skill name, a rule's or one in `skills`, is looked up, first match wins, in:

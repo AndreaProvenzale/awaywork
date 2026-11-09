@@ -155,6 +155,8 @@ export async function probeAndPlan(
   opts: {
     /** A unit by name, which no cap, skip or attempt holds back. */
     unit?: string
+    /** With `unit`: the skill of a one-off rule for the item it names, if no rule takes it. */
+    skill?: string
     repo?: string
     rule?: number
     onProgress?: OnProgress
@@ -239,7 +241,14 @@ export async function probeAndPlan(
     skills,
     attempts,
     skips,
-    only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units, named: opts.unit },
+    only: {
+      repo: opts.repo,
+      rule: opts.rule,
+      soon: !!soon,
+      units: soon?.units,
+      named: opts.unit,
+      skill: opts.skill,
+    },
   })
   return {
     plan: {

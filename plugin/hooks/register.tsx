@@ -11,6 +11,7 @@ import type {
   Planned,
   Report,
   Result,
+  Skills,
   Skip,
   Tab,
   View,
@@ -48,17 +49,26 @@ type Row = {
   color?: Color
   /** A card whose word is its status also says the skill. */
   skill?: string
+  /** How a last-run unit ended, drawn before the ref in place of a word. */
+  lead?: Glyph
   item?: ItemRef
   title: string
   /** The detail's lines under the title: the reason, or the unit's items and links. */
   detail: string[]
   url?: string
+  /** What `o` is for, when opening the link is what the card asks of you. */
+  openAs?: string
   /** The CLI's read of a last-run unit, what `v` shows. */
   report?: string[]
   skip?: 'skip' | 'unskip'
   approve?: true
   /** What `g` asks before running the item now. */
   start?: string
+  /** `g` picks a skill first: no rule takes the item. */
+  picks?: true
+  /** A GitHub issue that isn't assigned to you: merging a draft for it can close it. */
+  theirs?: true
+  /** What `c` puts in the prompt box. */
   here?: string
 }
 
@@ -161,7 +171,37 @@ const actions: Record<string, string> = {
 
 const ranks = Object.keys(actions)
 
+type Glyph = { word: string; color?: Color }
+
+const resultGlyphs: Record<string, Glyph> = {
+  done: { word: '✓', color: 'success' },
+  failed: { word: '✗', color: 'error' },
+  error: { word: '✗', color: 'error' },
+  stopped: { word: '■' },
+}
+
+const stuck: Glyph = { word: '⚑', color: 'error' }
+
+/** A Needs you card's glyph; `on` is the key that does what it asks, without one the detail says it first. */
+const needsGlyphs: Record<string, Glyph & { on?: 'o' | 'a' }> = {
+  waiting_for_review: { word: '◉', color: 'warning', on: 'o' },
+  waiting_for_answer: { word: '?', color: 'warning', on: 'o' },
+  waiting_for_approval: { word: '◆', color: 'warning', on: 'a' },
+  all_tasks_done: { word: '✓', color: 'success' },
+  invalid_plan: stuck,
+  store_failed: stuck,
+  invalid_branch: stuck,
+  refused_delivery: stuck,
+  no_repo: stuck,
+  gave_up: stuck,
+  draft_moved: stuck,
+  continue_cap: stuck,
+}
+
 const lines = (...text: (string | null | undefined)[]) => text.filter((t): t is string => !!t)
+
+const aboutItem = (item: ItemRef, state: string) =>
+  `About awaywork item ${itemKey(item)} "${item.title}" (${state}): `
 
 // By name: `run --unit` lifts its unit's attempts, so it would also run past "awaywork pushed onto your PR". The planner reads these after that hold.
 const startable = ['unchanged', 'skipped_by_you', 'over_cap', 'gave_up']
@@ -182,23 +222,29 @@ function skipRow(tab: Tab, s: Skip): Row {
   const stays = s.kind === 'skipped_by_you' ? ' Your skip stays for the coming runs.' : ''
   // Your skip hides "pushed onto your PR": the url on it is that PR.
   const pushedOn = s.kind === 'skipped_by_you' && s.url
+  const action = s.kind && actions[s.kind]
+  const glyph = s.needsYou && s.kind ? needsGlyphs[s.kind] : undefined
   return {
     id: `row:${tab}:${key}`,
     group,
     rank: s.kind ? ranks.indexOf(s.kind) : ranks.length,
     ref,
-    word: (s.kind && actions[s.kind]) || s.kind || 'skipped',
-    color: s.needsYou ? 'warning' : undefined,
+    word: glyph?.word ?? (action || s.kind || 'skipped'),
+    color: glyph?.color ?? (s.needsYou ? 'warning' : undefined),
     item: s.item,
     title: s.item.title,
-    detail: lines(reasonOf(s)),
+    detail: lines(glyph && !glyph.on ? `${action} · ${reasonOf(s)}` : reasonOf(s)),
     url,
+    openAs: glyph?.on === 'o' ? action : undefined,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
     approve: s.kind === 'waiting_for_approval' || undefined,
+    picks: s.kind === 'no_rule' || undefined,
+    theirs: (s.item.source === 'github' && s.item.type === 'issue' && !s.item.mine) || undefined,
     start:
       s.kind && startable.includes(s.kind) && !pushedOn
         ? `${startQuestion(ref)}${stays}`
         : undefined,
+    here: aboutItem(s.item, reasonOf(s)),
   }
 }
 
@@ -209,7 +255,9 @@ function resultRow(runId: string, r: Result): Row {
     r.status === 'done'
       ? (r.summary ?? r.outcome?.url)
       : (r.reason ?? r.outcome?.reason ?? r.summary)
-  const note = [skill, fact].filter(Boolean).join(' · ')
+  // `stopped: quota` and its like share one glyph: the detail keeps which.
+  const glyph = resultGlyphs[r.status.replace(/:.*/, '')]
+  const note = [skill, r.status.includes(':') && r.status, fact].filter(Boolean).join(' · ')
   const url = r.outcome?.url ?? top?.url ?? undefined
   return {
     id: `row:last:${id}`,
@@ -217,15 +265,15 @@ function resultRow(runId: string, r: Result): Row {
     rank: 0,
     ref: top ? refIn(repo, top.key) : id,
     skill,
-    word: r.status,
-    color: r.status === 'done' ? 'success' : r.status === 'failed' ? 'error' : undefined,
+    lead: glyph,
+    word: glyph ? '' : r.status,
     item: top,
     title: top?.title ?? note,
     detail: lines(note),
     url,
     report: ['report', runId, '--unit', id],
     skip: top && 'skip',
-    here: `continue awaywork unit ${id} of run ${runId}; start with \`awaywork report ${runId} --unit ${id}\``,
+    here: `continue awaywork unit ${id} of run ${runId}; start with \`awaywork report ${runId} --unit ${id}\`. `,
   }
 }
 
@@ -258,6 +306,7 @@ function unitRow(p: Planned): Row {
     url: top?.url ?? undefined,
     skip: top && 'skip',
     start: top && startQuestion(ref, skill, deliver),
+    here: top && aboutItem(top, `next up with ${skill}`),
   }
 }
 
@@ -339,11 +388,12 @@ const declined: Record<Action, string> = {
 let acts = 0
 
 // The rows come from the last run's or plan's JSON, which an act doesn't change: a mark says what it did.
-async function act($: EngineInterface, action: Action, key: string) {
+async function act($: EngineInterface, action: Action, key: string, skill?: string) {
   const starting = action === 'run'
   const status = starting ? 'starting… it plans first' : `${action}…`
   await update($, view, (v) => ({ ...v, confirm: undefined, status }))
-  const args = starting ? ['run', '--unit', key, '--detach'] : [action, key]
+  const picked = skill ? ['--skill', skill] : []
+  const args = starting ? ['run', '--unit', key, ...picked, '--detach'] : [action, key]
   const r = await awaywork($, await onKnownConfig($, args), starting ? PLAN_TIMEOUT : undefined)
   if (r.exitCode === 0) acts++
   const said = firstLine(r.exitCode === 0 ? r.stdout : r.stderr) || `${action} exited ${r.exitCode}`
@@ -379,26 +429,90 @@ async function openUrl($: EngineInterface, url: string) {
   await $.process.run([opener, url])
 }
 
+const isPr = (url: string) => /\/(pull|merge_requests|pull-requests)\//.test(url)
+
 const opens = (url: string) =>
-  /\/(pull|merge_requests|pull-requests)\//.test(url)
-    ? 'open PR'
-    : /\/issues\//.test(url)
-      ? 'open issue'
-      : 'open'
+  isPr(url) ? 'open PR' : /\/issues\//.test(url) ? 'open issue' : 'open'
+
+let skillsCall: Promise<unknown> | undefined
+
+/** One load of the skills at a time: a second `g` while it reads does nothing. */
+const pickSkill = ($: EngineInterface, row: Row, key: string) =>
+  (skillsCall ??= loadPick($, row, key).finally(() => {
+    skillsCall = undefined
+  }))
+
+/** Which skill for a card no rule takes: the CLI's list, `fix` on a PR, `implement` on anything else, first. */
+async function loadPick($: EngineInterface, row: Row, key: string) {
+  if ((await read($, view)).marks?.[key]?.started)
+    return update($, view, (v) => ({ ...v, status: 'already started' }))
+  await update($, view, (v) => ({ ...v, status: 'reading the skills…' }))
+  const got = await json<Skills>($, await onKnownConfig($, ['skills', 'list', '--json']))
+  if (!('json' in got))
+    return update($, view, (v) => ({
+      ...v,
+      status: `skills: ${'failed' in got ? got.failed : got.error}`,
+    }))
+  const skills = got.json.skills.filter((s) => s.pickable)
+  const wanted = row.url && isPr(row.url) ? 'fix' : 'implement'
+  const first = skills.find((s) => s.name === wanted) ?? skills[0]
+  if (!first) return update($, view, (v) => ({ ...v, status: 'no skill can be picked' }))
+  const pick = {
+    row: row.id,
+    key,
+    ref: row.ref,
+    ...(row.theirs && { theirs: row.theirs }),
+    skills: [first, ...skills.filter((s) => s !== first)].map(({ name, deliver }) => ({
+      name,
+      deliver,
+    })),
+  }
+  await update($, view, (v) => ({ ...v, status: undefined, pick }))
+}
+
+/** The picker `row` has up: a picker belongs to its card, which a load or a refresh may have moved off. */
+const pickOn = (v: View, row: Row | undefined) => (v.pick?.row === row?.id ? v.pick : undefined)
 
 async function showTab($: EngineInterface, tab: Tab) {
-  await update($, view, (v) => ({ ...v, tab, row: undefined, at: 0, status: undefined }))
+  await update($, view, (v) => ({
+    ...v,
+    tab,
+    row: undefined,
+    at: 0,
+    status: undefined,
+    pick: undefined,
+    confirm: undefined,
+  }))
   if (tab === 'config') await wantTakes($)
 }
 
-type Key = { key: string; hotkey: string; label: string; run: () => unknown }
+type Key = { key: string; hotkey?: string; label: string; run: () => unknown }
 
-/** The selected card's buttons: the confirm's yes and no, back from a report, or what the card can do. */
+/** What `c` last put in the prompt box: the next press replaces it and keeps what you typed. */
+let asked = ''
+
+async function askClaude($: EngineInterface, text: string) {
+  const { text: draft } = await $.prompt.read()
+  const typed = draft.startsWith(asked) ? draft.slice(asked.length) : draft
+  asked = text
+  const { isFilled } = await $.prompt.fill({ text: text + typed })
+  if (!isFilled)
+    await update($, view, (v) => ({ ...v, status: "the prompt box can't take it now" }))
+  return isFilled
+}
+
+/** The selected card's buttons: the confirm's yes and no, the skills to pick from, back from a report, or what the card can do. */
 function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
   const { confirm } = v
+  const pick = pickOn(v, row)
   if (confirm)
     return [
-      { key: 'yes', hotkey: 'y', label: 'yes', run: () => act($, confirm.action, confirm.key) },
+      {
+        key: 'yes',
+        hotkey: 'y',
+        label: 'yes',
+        run: () => act($, confirm.action, confirm.key, confirm.skill),
+      },
       {
         key: 'no',
         hotkey: 'n',
@@ -409,6 +523,33 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
             confirm: undefined,
             status: declined[confirm.action],
           })),
+      },
+    ]
+  if (pick)
+    return [
+      ...pick.skills.map(
+        (s, i): Key => ({
+          key: `pick:${s.name}`,
+          hotkey: i === 0 ? 'g' : i <= 9 ? String(i) : undefined,
+          label: s.name,
+          run: () =>
+            update($, view, (x) => ({
+              ...x,
+              pick: undefined,
+              confirm: {
+                action: 'run',
+                key: pick.key,
+                skill: s.name,
+                question: `${startQuestion(pick.ref, s.name, s.deliver)}${pick.theirs && s.deliver !== 'report' ? " Merging it can close an issue that isn't assigned to you." : ''}`,
+              },
+            })),
+        }),
+      ),
+      {
+        key: 'back',
+        hotkey: 'b',
+        label: 'back',
+        run: () => update($, view, (x) => ({ ...x, pick: undefined })),
       },
     ]
   if (v.reading)
@@ -432,9 +573,6 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
       return { ...x, confirm: { action, key: item, question } }
     })
   const keys: (Key | '' | undefined)[] = [
-    url && { key: 'open', hotkey: 'o', label: opens(url), run: () => openUrl($, url) },
-    report && { key: 'report', hotkey: 'v', label: 'view report', run: () => readRow($, report) },
-    skip && item && { key: 'skip', hotkey: 's', label: skip, run: ask(skip, questions[skip](ref)) },
     row.approve &&
       item && {
         key: 'approve',
@@ -442,12 +580,22 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
         label: 'approve',
         run: ask('approve', questions.approve(ref)),
       },
+    url && {
+      key: 'open',
+      hotkey: 'o',
+      label: row.openAs ?? opens(url),
+      run: () => openUrl($, url),
+    },
+    report && { key: 'report', hotkey: 'v', label: 'view report', run: () => readRow($, report) },
+    skip && item && { key: 'skip', hotkey: 's', label: skip, run: ask(skip, questions[skip](ref)) },
     row.start && item && { key: 'run', hotkey: 'g', label: 'run now', run: ask('run', row.start) },
+    row.picks &&
+      item && { key: 'run', hotkey: 'g', label: 'run now', run: () => pickSkill($, row, item) },
     here && {
       key: 'here',
       hotkey: 'c',
-      label: 'ask Claude here',
-      run: () => $.prompt.submit({ text: here, asUser: true }),
+      label: 'ask Claude',
+      run: () => askClaude($, here),
     },
   ]
   return keys.filter((b): b is Key => !!b)
@@ -458,6 +606,7 @@ const selected = (v: View, id: string): View => ({
   row: id,
   at: 0,
   confirm: undefined,
+  pick: undefined,
   reading: undefined,
   status: undefined,
 })
@@ -479,7 +628,13 @@ async function step($: EngineInterface, by: number) {
 }
 
 /** No `strip` when the pane is too short for its regions: the engine scrolls it then. */
-type Drawn = { press: Record<string, () => unknown>; strip?: [number, number]; detailMax: number }
+type Drawn = {
+  press: Record<string, () => unknown>
+  strip?: [number, number]
+  detailMax: number
+  /** The desktop app scrolls the pane itself: an arrow there is a smooth scroll, many events and none upward from the top. */
+  nativeScroll?: boolean
+}
 
 /** The last drawing's hotkeys, strip rows and detail end: `ui.scroll` and the strip's posts see no drawing. */
 let drawn: Drawn = { press: {}, detailMax: 0 }
@@ -622,7 +777,7 @@ export const register: Register = (on) => {
 
   // A body that fits its window: the wheel over the strip steps the cards, anything else scrolls the detail.
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
-    if (e.origin.kind === 'person' && (await inFlow($))) {
+    if (e.origin.kind === 'person' && !drawn.nativeScroll && (await inFlow($))) {
       // Past the rows `done` keeps spare, the body doesn't fit: the wheel and page keys scroll it.
       const overflows = e.contentRows > e.bodyRows + 1
       const arrow = !e.pointer && Math.abs(e.by) === 1
@@ -651,7 +806,10 @@ export const register: Register = (on) => {
       const v = await read($, view)
       const { row } = layout(d, v)
       const own = row && cardButtons($, v, row).find((b) => b.hotkey === m.key)
-      await (own ? own.run() : drawn.press[m.key]?.())
+      const ran = await (own ? own.run() : drawn.press[m.key]?.())
+      // Keys a click gave the strip stay there, and only Esc takes them back.
+      if (own?.key === 'here' && ran)
+        await update($, view, (x) => ({ ...x, status: 'in the prompt box: Esc, then type' }))
     }
     return {}
   })
@@ -731,8 +889,9 @@ export const register: Register = (on) => {
     const tabs = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         {shown.map((t) => {
-          const hotkey = String(order.indexOf(t) + 1)
-          press[hotkey] = () => showTab($, t)
+          // The digits pick a skill while the picker is up.
+          const hotkey = pickOn(v, row) ? undefined : String(order.indexOf(t) + 1)
+          if (hotkey) press[hotkey] = () => showTab($, t)
           return (
             <Button
               key={`tab:${t}`}
@@ -757,7 +916,7 @@ export const register: Register = (on) => {
     )
 
     const done = (body?: RenderChildren, minHeight?: number) => {
-      drawn = { press, detailMax: 0 }
+      drawn = { press, detailMax: 0, nativeScroll: e.surface === 'desktop' }
       return (
         <Box flexDirection="column" rowGap={gap} minHeight={minHeight}>
           {header}
@@ -773,7 +932,7 @@ export const register: Register = (on) => {
     if (tab === 'config')
       return done(
         configBody({
-          fill: (text) => $.prompt.fill({ text }),
+          fill: (text) => askClaude($, text),
           els,
           c,
           v,
@@ -781,9 +940,12 @@ export const register: Register = (on) => {
           button,
           setView: (patch) => update($, view, (x) => ({ ...x, ...patch })),
           open: (file, line) => openInEditor($, file, line),
+          step: e.surface === 'desktop' ? (by) => stepRule($, by, true) : undefined,
         }),
         // Arrows reach `ui.scroll` only with a row to scroll: a spare one, and a blank last row so overflow is exact.
-        (v.source ?? 'flow') === 'flow' && c.view ? e.props.scroll.bodyRows + 1 : undefined,
+        e.surface !== 'desktop' && (v.source ?? 'flow') === 'flow' && c.view
+          ? e.props.scroll.bodyRows + 1
+          : undefined,
       )
     if (d.error) return done(<Text>{d.error}</Text>)
     if (!tab) {
@@ -825,6 +987,7 @@ export const register: Register = (on) => {
         title: twoLines(r.title, w - 4),
         ...(color && { color }),
         ...(r.skill && { skill: { name: r.skill, color: skillColor(r.skill) } }),
+        ...(r.lead && { lead: r.lead }),
       }
     })
 
@@ -883,9 +1046,15 @@ export const register: Register = (on) => {
             .map((text) => ({ text, dim: true })),
         ]
 
-    const confirm = v.confirm
-    const question = confirm ? wrap(confirm.question, width) : []
-    const buttonRows = confirm ? question.length + 1 : 2
+    const picking = pickOn(v, row)
+    const asks = v.confirm?.question ?? (picking && `Run ${picking.ref} with which skill?`)
+    const question = asks ? wrap(asks, width) : []
+    const cardKeys = cardButtons($, v, row)
+    const keyRows = rowsOf(
+      cardKeys.map((b) => (b.hotkey ? `${b.hotkey}: ${b.label}` : b.label)),
+      width,
+    )
+    const buttonRows = asks ? question.length + keyRows : 2
 
     // header, tabs, rule, nav, strip, buttons, rule, body, status; too short for that, the engine scrolls it all.
     const total = Math.min(e.props.scroll.bodyRows, MAX_ROWS)
@@ -897,13 +1066,13 @@ export const register: Register = (on) => {
     const shownBody = body.slice(offset, offset + room)
     const more = body.length - offset - room
 
-    const keys = cardButtons($, v, row).map((b) => button(b.key, b.hotkey, b.label, b.run))
-    const buttons = confirm ? (
+    const keys = cardKeys.map((b) => button(b.key, b.hotkey, b.label, b.run))
+    const buttons = asks ? (
       <Box flexDirection="column">
         {question.map((line) => (
           <Text wrap="truncate-end">{line}</Text>
         ))}
-        <Box flexDirection="row" columnGap={2}>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
           {keys}
         </Box>
       </Box>
