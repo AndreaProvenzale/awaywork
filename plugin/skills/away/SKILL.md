@@ -27,6 +27,7 @@ Every route starts with `awaywork config path`. Exit 1 with the line `<path> not
 
 - **No request** (bare `/away`): `awaywork report --json`, then a few lines: when the last run finished, each unit's item (`results[].planned.unit.items`) with its PR (`outcome.url`) or `summary`, and the `plan.skipped` entries with `needsYou: true` (absent means not flagged), each with what unblocks it. Nothing else: no other skips, no warnings, unless they ask. No runs yet: say so. Only when they ask what's next, `awaywork plan --json` (it probes quota, so it's slower).
 - **One item** ("why didn't X run", a key or URL): `awaywork plan --why <key>`. Not the rules' doing: say what unblocks it. The rules': `queue.md`, from its Tweak section.
+- **A post waiting for their decision** (`waiting_for_approval` in a report or plan, "waiting for your approval" in a why): a plan or result awaywork posted on the item or its thread. They answer with a reply there from their own account: first line `approve` goes on, anything else is feedback and the step runs again.
 - **Offload, stop or tweak work**: `queue.md`.
 - **"What could you take off my plate?"**, or a yes to `queue.md`'s first-setup offer: `suggest.md`.
 - **Continue a unit here**: `awaywork report --unit <n|key>` (`awaywork report <run-id> --unit …` for an older run, `report --list` names them) prints its links, steps, files and PR body or report. Check out its branch and carry on from what it left.

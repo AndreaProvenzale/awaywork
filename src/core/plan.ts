@@ -7,6 +7,7 @@ import {
   contractHeading,
   isApprove,
   isAwayworkComment,
+  pinsOf,
   postState,
   resultOf,
   resultStatus,
@@ -273,8 +274,10 @@ export function contractText(comment: string, name: string): string {
 
 type Comment = Item['comments'][number]
 
-/** A plan post's `plan.yml`: read back from the store for a lean one, else in its comment. */
-export const planOf = (c: Comment): string => c.pinned?.files['plan.yml'] ?? planYaml(c.body)
+/** A plan post's `plan.yml`: read back from the store for a lean one, which has none in its comment, else in its comment. */
+export const planOf = (c: Comment): string =>
+  c.pinned?.files['plan.yml'] ??
+  (pinsOf(c).some((p) => p.name === 'plan.yml') ? '' : planYaml(c.body))
 
 /** Awaywork's newest plan comment on the item, and its answer: your first reply after it, or the plan itself when it `went` ahead. */
 export function planThread(
