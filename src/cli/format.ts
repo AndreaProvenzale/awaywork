@@ -46,6 +46,7 @@ import { providers } from '../providers/index.js'
 import { describeOccurrence, routines } from '../sources/routines.js'
 
 const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
+const skippedRef = (item: Item) => ({ ...itemRef(item), type: item.type, mine: item.mine })
 
 /** Drops an item's raw payload, and names a task's card by reference: the card is in the plan on its own. */
 function lean(key: string, value: unknown) {
@@ -67,7 +68,7 @@ const withItemRefs = (p: PlannedUnit) => ({
   unit: { ...p.unit, items: p.unit.items.map(itemRef) },
 })
 
-/** The run's results and warnings as JSON; items keep only what `formatReport` shows of them. */
+/** The run's results and warnings as JSON; items keep only what `formatReport` shows of them, a skipped one its `type` and `mine` too. */
 export function reportJson(report: RunReport, warnings: string[] = []): string {
   const { plan, results } = report
   return JSON.stringify(
@@ -76,7 +77,7 @@ export function reportJson(report: RunReport, warnings: string[] = []): string {
       plan: {
         ...plan,
         units: plan.units.map(withItemRefs),
-        skipped: plan.skipped.map(flagged).map((s) => ({ ...s, item: itemRef(s.item) })),
+        skipped: plan.skipped.map(flagged).map((s) => ({ ...s, item: skippedRef(s.item) })),
       },
       results: results.map((r) => ({ ...r, planned: withItemRefs(r.planned) })),
       warnings,

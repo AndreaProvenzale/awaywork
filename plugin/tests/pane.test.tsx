@@ -10,6 +10,7 @@ import {
   oldAwaywork,
   remoteDown,
 } from './fixtures'
+import { notYours, yours } from './skipped-issues.mjs'
 
 // 100 columns: a page of four cards, 24 wide; 30 rows: the pane takes 28, a detail of 15.
 const PANE = {
@@ -596,31 +597,46 @@ test('g on a no-rule PR preselects fix, a list without it the first skill listed
   expect(await hotkey(ui, 'pick:plan')).toBe('g')
 })
 
-const withIssue = (fields: { type: string; mine?: true }) => ({
+// `test/format.test.ts` holds these items to what `report --json` prints.
+const withIssue = (item: { key: string }) => ({
   ...busyReport,
   plan: {
     ...busyReport.plan,
-    skipped: busyReport.plan.skipped.map((s) =>
-      s.item.key === 'acme/shop#9' ? { ...s, item: { ...s.item, ...fields } } : s,
-    ),
+    skipped: busyReport.plan.skipped.map((s) => (s.item.key === item.key ? { ...s, item } : s)),
   },
 })
 
-for (const [who, fields, skill, says] of [
-  ['someone else', { type: 'issue' }, 'fix', true],
-  ['your own', { type: 'issue', mine: true }, 'fix', false],
-  ['a report on someone else', { type: 'issue' }, 'plan', false],
+for (const [what, issue, skill, says] of [
+  ['an issue not assigned to you', notYours, 'fix', true],
+  ['your own issue', yours, 'fix', false],
+  ['a report on an issue not assigned to you', notYours, 'plan', false],
 ] as const)
-  test(`the confirm on ${who}'s issue says whether merging closes it`, async ($, on) => {
-    engine(on, { 'report --json': ok(withIssue(fields)), 'skills list --json': SKILLS })
+  test(`the confirm on ${what} says whether merging closes it`, async ($, on) => {
+    engine(on, { 'report --json': ok(withIssue(issue)), 'skills list --json': SKILLS })
     await $.command.run(away())
-    const ui = await mount($, 'terminal')
+    const ui = await mount($, 'terminal', { bodyColumns: 160 })
     await ui.press({ key: 'tab:skipped' })
     await goTo(ui, NO_RULE)
     await ui.press({ key: 'run' })
     await ui.press({ key: `pick:${skill}` })
-    expect(await text(ui, /Merging it can close someone else's issue\.$/)).toBe(says)
+    expect(await text(ui, /Merging it can close an issue that isn't assigned to you\.$/)).toBe(says)
   })
+
+test('changing tab closes a confirm', async ($, on) => {
+  const { calls } = engine(on, { 'report --json': ok(busyReport), 'skills list --json': SKILLS })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'pick:plan' })
+  expect(await ui.find({ key: 'yes' })).toBeTruthy()
+
+  await ui.press({ key: 'tab:last' })
+  expect(await ui.find({ key: 'yes' })).toBeFalsy()
+  expect(await text(ui, 'Run #9 now with plan? Report, uses your quota.')).toBe(false)
+  expect(calls.some((argv) => argv[1] === 'run')).toBe(false)
+})
 
 const turn = () => new Promise((done) => setTimeout(done, 30))
 

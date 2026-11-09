@@ -62,7 +62,7 @@ type Row = {
   start?: string
   /** `g` picks a skill first: no rule takes the item. */
   picks?: true
-  /** A GitHub issue assigned to someone else: merging a draft for it closes theirs. */
+  /** A GitHub issue that isn't assigned to you: merging a draft for it can close it. */
   theirs?: true
   here?: string
 }
@@ -439,6 +439,7 @@ async function showTab($: EngineInterface, tab: Tab) {
     at: 0,
     status: undefined,
     pick: undefined,
+    confirm: undefined,
   }))
   if (tab === 'config') await wantTakes($)
 }
@@ -484,7 +485,7 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
                 action: 'run',
                 key: pick.key,
                 skill: s.name,
-                question: `${startQuestion(pick.ref, s.name, s.deliver)}${pick.theirs && s.deliver !== 'report' ? " Merging it can close someone else's issue." : ''}`,
+                question: `${startQuestion(pick.ref, s.name, s.deliver)}${pick.theirs && s.deliver !== 'report' ? " Merging it can close an issue that isn't assigned to you." : ''}`,
               },
             })),
         }),
