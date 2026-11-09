@@ -8,6 +8,8 @@ if (process.env.FAKE_CONNECTORS)
   writeFileSync(process.env.FAKE_CONNECTORS, process.env.ENABLE_CLAUDEAI_MCP_SERVERS ?? 'unset')
 if (args.includes('--version')) {
   console.log('2.1.282 (Claude Code)')
+} else if (args[0] === 'auth') {
+  console.log(process.env.FAKE_CLAUDE_AUTH ?? '{"loggedIn":false,"authMethod":"none"}')
 } else {
   const name = args.includes('claude-haiku-4-5-20251001') ? 'probe' : 'max-turns'
   process.stdout.write(readFileSync(new URL(`../fixtures/claude/${name}.jsonl`, import.meta.url)))

@@ -56,7 +56,7 @@ Daemon log: ~/.local/state/awaywork/watch.log
 - One opening, one run. A run that finishes early isn't started again in the same window; one started inside a window, after a reboot say, picks up there, and items it already worked on don't run again.
 - One daemon at a time: another copy exits right away with `awaywork watch is already running (pid 67014)`. That's what makes cron's restart line harmless.
 - Your manual run or the daemon's, not both: a manual `awaywork run` while the daemon has a run in progress exits 1 with `awaywork watch holds the run lock (pid 67014); try again once its runs end, awaywork schedule status lists them`. The other way round, a window opening during your manual run waits for it, checking every minute, and says so once in its log; a soon run waits for the next poll. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
-- The job keeps the `PATH` of the shell that installed it, so it finds the same `claude`, `codex`, Cursor's `agent` and `gh`. It runs the binary on that `PATH`, not a shell alias or function wrapping it.
+- The job keeps the `PATH` of the shell that installed it, so it finds the same `claude`, `codex`, Cursor's `agent` and `gh`. It runs the binary on that `PATH`, not a shell alias or function wrapping it, so a function that switches Claude logins doesn't reach it: pin the login and the gh account in the config instead ([Which login](./configuration.md#which-login)).
 - Secrets come from `~/.config/awaywork/env`, since a scheduled job starts without your login shell's variables.
 - The daemon reads the env file and its own code once, when it starts. Edited the env file or upgraded awaywork? Run `schedule install` again, which restarts it.
 - systemd user services run only while you are logged in; `loginctl enable-linger` lifts that. Without a user session (after `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing; log in directly, or use `--with cron`, which needs no session. From such a shell `schedule status` and `doctor` can't reach the service and report no schedule.
@@ -594,7 +594,7 @@ A call that came over ssh never runs on the box outside its daemon, so a box wit
   $ docker exec <container> awaywork doctor
   ok    git: git version 2.39.5
   ok    gh: gh version 2.103.3 (2026-10-26)
-  ok    gh login
+  ok    gh login: AndreaProvenzale, from GH_TOKEN
   ok    /home/away/.awaywork/config.yml
   ok    isolation: user: setup, the agent and the checks run as awaywork
   warn  fake: unattended: grey
