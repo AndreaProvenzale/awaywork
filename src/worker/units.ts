@@ -436,7 +436,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
   /** Why awaywork won't comment on the unit's item, here or on its thread. */
   const commentRefused = (p: PlannedUnit, item: Item): string | undefined =>
-    unwritable(item, input.sources[item.source], threaded(item, threadsOf(p)))
+    p.unit.oneOff
+      ? 'ran with --skill, which posts nothing on the item'
+      : unwritable(item, input.sources[item.source], threaded(item, threadsOf(p)))
 
   /**
    * Posts a comment on the first of the unit's own items that is yours, through a source that writes;

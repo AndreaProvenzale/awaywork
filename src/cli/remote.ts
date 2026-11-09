@@ -53,7 +53,8 @@ const allowed: Record<string, { flags: Record<string, Value>; args: number }> = 
   skip: { flags: { '--until': 'required', '--reason': 'required' }, args: 1 },
   unskip: { flags: {}, args: 1 },
   approve: { flags: {}, args: Number.POSITIVE_INFINITY },
-  run: { flags: { '--unit': 'required', '--detach': 'none' }, args: 0 },
+  run: { flags: { '--unit': 'required', '--detach': 'none', '--skill': 'required' }, args: 0 },
+  'skills list': { flags: { '--json': 'none' }, args: 0 },
 }
 
 export type Checked =
@@ -94,11 +95,14 @@ export function checkArgs(argv: unknown): Checked {
   if (args.length > spec.args) return { refused: args[spec.args] as string }
   if (command === 'run' && typeof options['--unit'] !== 'string')
     return { refused: 'run without --unit <key>' }
+  if (command === 'run' && options['--skill'] === true) return { refused: '--skill without a name' }
   return { command, args, options }
 }
 
 const commandOf = (argv: string[]) =>
-  argv[0] === 'schedule' || argv[0] === 'config' ? `${argv[0]} ${argv[1] ?? ''}` : (argv[0] ?? '')
+  ['schedule', 'config', 'skills'].includes(argv[0] as string)
+    ? `${argv[0]} ${argv[1] ?? ''}`
+    : (argv[0] ?? '')
 
 const namesConfig = (arg: string) => /^(-c|--config(=|$))/.test(arg)
 
@@ -169,8 +173,8 @@ export interface Serve {
   /** The daemon's config, the only one the commands run with. */
   config: string
   log: (line: string) => void
-  /** Queues a one-off run of the item, as `run --unit` asks. */
-  runUnit: (key: string) => Promise<Output>
+  /** Queues a one-off run of the item, with the skill `run --skill` named if any, as `run --unit` asks. */
+  runUnit: (key: string, skill?: string) => Promise<Output>
   /** The CLI to spawn, `awaywork` itself by default. */
   cli?: string[]
   port?: number
@@ -243,10 +247,15 @@ export function serveRemote(remote: Remote, s: Serve): Server | undefined {
       try {
         const code =
           checked.command === 'run'
-            ? await s.runUnit(checked.options['--unit'] as string).then(({ code, ...out }) => {
-                write(out)
-                return code
-              })
+            ? await s
+                .runUnit(
+                  checked.options['--unit'] as string,
+                  checked.options['--skill'] as string | undefined,
+                )
+                .then(({ code, ...out }) => {
+                  write(out)
+                  return code
+                })
             : await runCli(
                 s.cli ?? self(),
                 ['--config', s.config, ...(args as string[])],

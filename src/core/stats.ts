@@ -36,7 +36,7 @@ export function unitStats(results: UnitResult[]): UnitStat[] {
     return [
       {
         id: unit.id,
-        rule: u.planned.rule + 1,
+        rule: unit.oneOff ? 0 : u.planned.rule + 1,
         skill: unit.skill,
         provider: u.provider,
         status,

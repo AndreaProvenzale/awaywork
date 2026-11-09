@@ -460,7 +460,7 @@ test('a refused g shows the CLI line and leaves the card as it was', async ($, o
   expect(await text(ui, 'already started')).toBe(false)
 })
 
-test('g is on the unchanged, skipped, over-cap and gave-up skips only, never on a last-run card', async ($, on) => {
+test('g is on the unchanged, skipped, over-cap, gave-up and no-rule skips only, never on a last-run card', async ($, on) => {
   engine(on, { 'report --json': ok(busyReport) })
   await $.command.run(away())
   const ui = await mount($, 'terminal')
@@ -472,10 +472,10 @@ test('g is on the unchanged, skipped, over-cap and gave-up skips only, never on 
   }
   const skips: Record<string, boolean> = {
     'github:acme/shop#10': true,
-    'github:acme/shop#9': false,
+    'github:acme/shop#9': true,
     'github:acme/api#30': true,
     'github:acme/web#5': true,
-    'jira:SHOP-14': false,
+    'jira:SHOP-14': true,
   }
   // The strip lists them grouped, so walk it to its end.
   const seen: Record<string, boolean> = {}
@@ -501,6 +501,123 @@ test('g is on the unchanged, skipped, over-cap and gave-up skips only, never on 
       .filter(([, has]) => has)
       .map(([id]) => id),
   ).toEqual([API22])
+})
+
+const SKILLS = ok({
+  skills: [
+    { name: 'fix', origin: 'builtin', deliver: 'draft_pr', pickable: true },
+    { name: 'implement', origin: 'builtin', deliver: 'draft_pr', pickable: true },
+    { name: 'judge', origin: 'builtin', deliver: 'report', pickable: false },
+    { name: 'plan', origin: 'builtin', deliver: 'report', pickable: true },
+    { name: 'sync', origin: 'builtin', deliver: 'draft_pr', pickable: false },
+  ],
+})
+const NO_RULE = 'row:skipped:github:acme/shop#9'
+const PICKED = 'run --unit github:acme/shop#9 --skill plan --detach'
+
+test('g on a no-rule card asks which skill, preselects implement on an issue, confirms and starts', async ($, on) => {
+  const { calls } = engine(on, {
+    'report --json': ok(busyReport),
+    'skills list --json': SKILLS,
+    [PICKED]: { stdout: 'Started github:acme/shop#9 as run x; awaywork report x shows it\n' },
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+
+  expect(await label(ui, 'run')).toBe('run now')
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'Run #9 with which skill?')).toBe(true)
+  expect(await hotkey(ui, 'pick:implement')).toBe('g')
+  expect(await hotkey(ui, 'pick:fix')).toBe('1')
+  expect(await ui.find({ key: 'pick:judge' })).toBeFalsy()
+  expect(await ui.find({ key: 'pick:sync' })).toBeFalsy()
+  // Digits pick a skill now: the tabs give theirs up.
+  expect(await hotkey(ui, 'tab:skipped')).toBeUndefined()
+
+  await ui.press({ key: 'back' })
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
+  expect(await hotkey(ui, 'tab:skipped')).toBe('4')
+  expect(calls.some((argv) => argv[1] === 'run')).toBe(false)
+
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'pick:fix' })
+  expect(await text(ui, 'Run #9 now with fix? Draft PR, uses your quota.')).toBe(true)
+  await ui.press({ key: 'no' })
+  expect(await text(ui, 'not started')).toBe(true)
+  expect(calls.some((argv) => argv[1] === 'run')).toBe(false)
+
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'pick:plan' })
+  expect(await text(ui, 'Run #9 now with plan? Report, uses your quota.')).toBe(true)
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual([
+    'awaywork',
+    'run',
+    '--unit',
+    'github:acme/shop#9',
+    '--skill',
+    'plan',
+    '--detach',
+  ])
+  expect(await text(ui, /^Started github:acme\/shop#9 as run/)).toBe(true)
+  expect((await card(ui, NO_RULE))?.word).toBe('started')
+
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'already started')).toBe(true)
+  expect(calls.filter((argv) => argv[1] === 'run')).toHaveLength(1)
+})
+
+test('g on a no-rule PR preselects fix, a list without it the first skill listed', async ($, on) => {
+  const skipped = busyReport.plan.skipped.map((s) =>
+    s.item.key === 'acme/shop#9'
+      ? { ...s, item: { ...s.item, url: 'https://github.com/acme/shop/pull/9' } }
+      : s,
+  )
+  const replies: Parameters<typeof engine>[1] = {
+    'report --json': ok({ ...busyReport, plan: { ...busyReport.plan, skipped } }),
+    'skills list --json': SKILLS,
+  }
+  engine(on, replies)
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  await ui.press({ key: 'run' })
+  expect(await hotkey(ui, 'pick:fix')).toBe('g')
+  expect(await hotkey(ui, 'pick:implement')).toBe('1')
+  await ui.press({ key: 'back' })
+
+  replies['skills list --json'] = ok({
+    skills: [{ name: 'plan', origin: 'builtin', deliver: 'report', pickable: true }],
+  })
+  await ui.press({ key: 'run' })
+  expect(await hotkey(ui, 'pick:plan')).toBe('g')
+})
+
+test('g on a no-rule card says what the CLI said when the skills can not be read or the run is refused', async ($, on) => {
+  const refused = '--skill is only for an item no rule takes: #1 fix takes acme/shop#9'
+  const replies: Parameters<typeof engine>[1] = {
+    'report --json': ok(busyReport),
+    'skills list --json': { exitCode: 1, stderr: 'boom\n' },
+    [PICKED]: { exitCode: 1, stderr: `${refused}\n` },
+  }
+  engine(on, replies)
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  await goTo(ui, NO_RULE)
+  await ui.press({ key: 'run' })
+  expect(await text(ui, 'skills: boom')).toBe(true)
+  expect(await ui.find({ key: 'pick:fix' })).toBeFalsy()
+
+  replies['skills list --json'] = SKILLS
+  await ui.press({ key: 'run' })
+  await ui.press({ key: 'pick:plan' })
+  await ui.press({ key: 'yes' })
+  expect(await text(ui, refused)).toBe(true)
+  expect((await card(ui, NO_RULE))?.word).toBe('no rule')
 })
 
 test('g is not on a skip of yours whose PR awaywork pushed onto, which still waits on review', async ($, on) => {

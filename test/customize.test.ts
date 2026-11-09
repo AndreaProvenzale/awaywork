@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { editUntilValid } from '../src/cli/config.js'
 import { formatRules, rulesJson } from '../src/cli/format.js'
-import { ejectSkill, listSkills } from '../src/cli/skills.js'
+import { ejectSkill, listSkills, skillsJson } from '../src/cli/skills.js'
 import { loadConfig, parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
 import { unknownSkillsWarning } from '../src/config/skills.js'
@@ -81,6 +81,24 @@ describe('skills', () => {
     expect(text).toContain('plan (built-in, report)')
     expect(text).toContain('review (user, shadows built-in, draft_pr)\n  Mine.')
     expect(text).toContain('house-style (user, draft_pr)\n  Linked.')
+  })
+
+  it('lists them as JSON, judge and sync not to be picked for one item', async () => {
+    const userDir = await tmp()
+    await mkdir(join(userDir, 'triage'), { recursive: true })
+    await writeFile(join(userDir, 'triage', 'SKILL.md'), '---\ndescription: Mine.\n---\n')
+    const { skills } = JSON.parse(await skillsJson(userDir))
+    const of = (name: string) => skills.find((s: { name: string }) => s.name === name)
+    expect(of('fix')).toEqual({
+      name: 'fix',
+      origin: 'builtin',
+      deliver: 'draft_pr',
+      pickable: true,
+    })
+    expect(of('plan')).toMatchObject({ deliver: 'report', pickable: true })
+    expect(of('triage')).toMatchObject({ origin: 'user', pickable: true })
+    expect(of('judge').pickable).toBe(false)
+    expect(of('sync').pickable).toBe(false)
   })
 
   it('ejects a built-in once, and only a built-in', async () => {

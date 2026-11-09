@@ -245,7 +245,7 @@ $ awaywork run --unit api#1 --detach
 Started api#1 as run 20261109-095329; awaywork report 20261109-095329 shows it once it ends
 ```
 
-It plans first, so a unit that can't start says so and exits 1: not in the plan, the run lock taken, or no provider for it. No Ctrl-C now, so to stop it kill the pid in `~/.local/state/awaywork/run.lock`: it ends the way Ctrl-C would, report included.
+An item no rule takes needs a skill named for it, [`--skill`](./skills.md#run-one-on-an-item-no-rule-takes), which also works detached. It plans first, so a unit that can't start says so and exits 1: not in the plan, the run lock taken, or no provider for it. No Ctrl-C now, so to stop it kill the pid in `~/.local/state/awaywork/run.lock`: it ends the way Ctrl-C would, report included.
 
 Outside your windows that's a present run: workers stop at 40% of the 5-hour window, and a provider whose quota awaywork can't read, like a command provider without a `probe`, sits it out. Run it inside a window or add a probe.
 

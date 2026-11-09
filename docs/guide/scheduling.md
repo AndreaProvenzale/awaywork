@@ -429,7 +429,7 @@ The paths are the container's. Each request is a line in the container's log, wi
 2026-11-04 23:06:57 remote: ["skip","chores:CH-1","--until","2030-01-01"]: exit 0
 ```
 
-What goes to the container: `report`, `plan`, `stats`, `sources`, `doctor`, `schedule status`, `config path`, `skip`, `unskip`, `approve` and `run --unit`, each with the flags it has here and nothing else. The rest runs on your laptop as before: `init`, `config schema` and `config edit`, `skills`, a full `run`, `schedule install`, and `--help`. One of those eleven with a flag the daemon doesn't take still goes there, and fails, so nothing you meant for the container lands on the laptop:
+What goes to the container: `report`, `plan`, `stats`, `sources`, `doctor`, `schedule status`, `config path`, `skills list`, `skip`, `unskip`, `approve` and `run --unit`, each with the flags it has here and nothing else. The rest runs on your laptop as before: `init`, `config schema` and `config edit`, `skills eject`, a full `run`, `schedule install`, and `--help`. One of those twelve with a flag the daemon doesn't take still goes there, and fails, so nothing you meant for the container lands on the laptop:
 
 ```
 $ awaywork skip chores:CH-2 --reason "-- see thread"
@@ -440,7 +440,7 @@ AWAYWORK_REMOTE (http://127.0.0.1:7480): refused --dry-run
 
 Naming a config with `-c`/`--config` means this machine, so `awaywork plan --config other.yml` runs here. To run any other call here anyway, blank the variable for it: `AWAYWORK_REMOTE= awaywork report`.
 
-`run --unit` starts no process on the box: the daemon takes it as a one-off run of that item, as the workflow's [`unit` input](#run-one-item-now) does. It reads the item from its source again, so it still has to match a rule; it runs even after a failed attempt; it's present outside a window and away until the window's end inside one; and it waits for the worker in progress, as a [soon run](#soon-runs) does. `--detach` works too and changes nothing: it's already detached. One that can't run says why and exits 1:
+`run --unit` starts no process on the box: the daemon takes it as a one-off run of that item, as the workflow's [`unit` input](#run-one-item-now) does. It reads the item from its source again, so it still has to match a rule, unless `--skill` [picks one for it](./skills.md#run-one-on-an-item-no-rule-takes); it runs even after a failed attempt; it's present outside a window and away until the window's end inside one; and it waits for the worker in progress, as a [soon run](#soon-runs) does. `--detach` works too and changes nothing: it's already detached. `--skill` goes through the same way. One that can't run says why and exits 1:
 
 ```
 $ awaywork run --unit CH-9

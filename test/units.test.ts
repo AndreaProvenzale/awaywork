@@ -12,7 +12,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
 import { formatPlan, formatRun, summarize } from '../src/cli/format.js'
 import { linkPlanTasks } from '../src/cli/plan.js'
@@ -4496,6 +4496,7 @@ async function finishedRun(
   write?: Source['write'] | null,
   ownDraftsRefused?: string,
   threads?: Forge['threads'],
+  only?: { named: string; skill: string },
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-done-'))
   const { origin, forge, opened, updated } = await originForge(root)
@@ -4511,6 +4512,7 @@ ${queue}
     items,
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
+    only,
   })
   const writes: [string, Write][] = []
   const lines: string[] = []
@@ -4822,6 +4824,58 @@ it('keeps the questions in the report when the item is not yours or its source c
   expect(mute.report.results[0]?.questions?.unposted).toBe(
     "acme/api#1 github can't write to its items",
   )
+})
+
+describe('a one-off --skill unit', () => {
+  const noRule = '  - { skill: fix, where: { type: pr } }'
+  const run = (provider: Provider, items: Item[], skill = 'implement') =>
+    finishedRun(noRule, items, provider, undefined, undefined, undefined, {
+      named: items[0]?.key ?? '',
+      skill,
+    })
+
+  it('asks in the report only, and posts nothing on your item', async () => {
+    const { report, writes, lines } = await run(asker('Which?'), [yours(1)])
+    expect(writes).toEqual([])
+    expect(report.results[0]?.questions).toEqual({
+      step: 'acme-api-1',
+      text: 'Which?',
+      unposted: 'acme/api#1 ran with --skill, which posts nothing on the item',
+    })
+    expect(formatReport(report)).toContain(
+      'questions not posted: acme/api#1 ran with --skill, which posts nothing on the item\n\nWhich?',
+    )
+    expect(lines.join('\n')).not.toContain('posted on')
+  })
+
+  it('opens only a draft PR on a new away/ branch, and writes nothing on your item', async () => {
+    const { report, writes, opened } = await run(asker('', true), [yours(1)])
+    expect(writes).toEqual([])
+    expect(opened).toHaveLength(1)
+    expect(opened[0]?.head).toBe('away/acme-api-1')
+    expect(report.results[0]?.outcome).toMatchObject({ kind: 'pr' })
+    expect(report.results[0]?.outcome).not.toMatchObject({ ready: true })
+  })
+
+  it("keeps a task's report in the report, not on its card", async () => {
+    const card = yours(5)
+    const task = {
+      ...yours(6),
+      key: 'acme/api#5/api',
+      task: { id: 'api', parent: card, plan: [{ id: 'api', title: 'API', after: {} }] },
+    }
+    const reporter: Provider = {
+      ...fakeProvider('claude'),
+      async *run(job) {
+        await writeFile(join(job.dir, '.away/out/report.md'), 'Looked.')
+        yield { type: 'done', ok: true, turns: 1 }
+      },
+    }
+    const { report, writes } = await run(reporter, [task as Item], 'review')
+    expect(writes).toEqual([])
+    expect(report.results[0]?.outcome).toMatchObject({ kind: 'report', text: 'Looked.' })
+    expect(report.results[0]?.result).toEqual([])
+  })
 })
 
 it("reports a post that failed, its secrets masked, and doesn't fail the unit", async () => {

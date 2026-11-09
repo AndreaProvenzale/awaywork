@@ -47,6 +47,9 @@ describe('the remote allowlist', () => {
       ['run', '--unit', 'API-12'],
       ['run', '--unit=API-12'],
       ['run', '--unit', 'API-12', '--detach'],
+      ['run', '--unit', 'API-12', '--skill', 'fix', '--detach'],
+      ['run', '--unit=API-12', '--skill=fix'],
+      ['skills', 'list', '--json'],
     ])
       expect(refused(argv), argv.join(' ')).toBeUndefined()
     expect(checkArgs(['report', '--skipped', 'quota', 'x'])).toEqual({
@@ -74,6 +77,8 @@ describe('the remote allowlist', () => {
     expect(refused(['skip', 'a', 'b'])).toBe('b')
     expect(refused(['run'])).toBe('run without --unit <key>')
     expect(refused(['run', '--detach'])).toBe('run without --unit <key>')
+    expect(refused(['run', '--unit', 'x', '--skill'])).toBe('--skill without a name')
+    expect(refused(['skills', 'eject', 'fix'])).toBe('skills eject')
     expect(refused(['run', '--dry-run', '--unit', 'x'])).toBe('--dry-run')
     expect(refused('plan')).toBe('args, which must be an array of strings')
     expect(refused(['plan', 1])).toBe('args, which must be an array of strings')
@@ -234,7 +239,9 @@ describe('the daemon serving the CLI', () => {
     expect((await post({ args: ['report', '20261104-101500'] })).status).toBe(200)
     const res = await post({ args: ['run', '--unit', 'API-12'] })
     expect(await streamed(res)).toEqual({ stdout: 'Queued API-12\n', stderr: '', code: 0 })
-    expect(runUnit).toHaveBeenCalledWith('API-12')
+    expect(runUnit).toHaveBeenCalledWith('API-12', undefined)
+    await post({ args: ['run', '--unit', 'API-12', '--skill', 'fix', '--detach'] })
+    expect(runUnit).toHaveBeenLastCalledWith('API-12', 'fix')
   })
 
   it('listens on localhost only, but on every interface in the image, for its proxy', async () => {
@@ -329,7 +336,7 @@ describe('the daemon serving the CLI', () => {
     expect(res.status).toBe(200)
     left.abort()
     await vi.waitFor(() => expect(log).toEqual(['remote: ["run","--unit","API-12"]: exit 0']))
-    expect(runUnit).toHaveBeenCalledWith('API-12')
+    expect(runUnit).toHaveBeenCalledWith('API-12', undefined)
   })
 
   it('turns a third command away while two run', async () => {

@@ -11,6 +11,7 @@ import type {
   Planned,
   Report,
   Result,
+  Skills,
   Skip,
   Tab,
   View,
@@ -59,6 +60,8 @@ type Row = {
   approve?: true
   /** What `g` asks before running the item now. */
   start?: string
+  /** `g` picks a skill first: no rule takes the item. */
+  picks?: true
   here?: string
 }
 
@@ -195,6 +198,7 @@ function skipRow(tab: Tab, s: Skip): Row {
     url,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
     approve: s.kind === 'waiting_for_approval' || undefined,
+    picks: s.kind === 'no_rule' || undefined,
     start:
       s.kind && startable.includes(s.kind) && !pushedOn
         ? `${startQuestion(ref)}${stays}`
@@ -339,11 +343,12 @@ const declined: Record<Action, string> = {
 let acts = 0
 
 // The rows come from the last run's or plan's JSON, which an act doesn't change: a mark says what it did.
-async function act($: EngineInterface, action: Action, key: string) {
+async function act($: EngineInterface, action: Action, key: string, skill?: string) {
   const starting = action === 'run'
   const status = starting ? 'starting… it plans first' : `${action}…`
   await update($, view, (v) => ({ ...v, confirm: undefined, status }))
-  const args = starting ? ['run', '--unit', key, '--detach'] : [action, key]
+  const picked = skill ? ['--skill', skill] : []
+  const args = starting ? ['run', '--unit', key, ...picked, '--detach'] : [action, key]
   const r = await awaywork($, await onKnownConfig($, args), starting ? PLAN_TIMEOUT : undefined)
   if (r.exitCode === 0) acts++
   const said = firstLine(r.exitCode === 0 ? r.stdout : r.stderr) || `${action} exited ${r.exitCode}`
@@ -379,26 +384,65 @@ async function openUrl($: EngineInterface, url: string) {
   await $.process.run([opener, url])
 }
 
+const isPr = (url: string) => /\/(pull|merge_requests|pull-requests)\//.test(url)
+
 const opens = (url: string) =>
-  /\/(pull|merge_requests|pull-requests)\//.test(url)
-    ? 'open PR'
-    : /\/issues\//.test(url)
-      ? 'open issue'
-      : 'open'
+  isPr(url) ? 'open PR' : /\/issues\//.test(url) ? 'open issue' : 'open'
+
+/** Which skill for a card no rule takes: the CLI's list, `fix` on a PR, `implement` on anything else, first. */
+async function pickSkill($: EngineInterface, row: Row, key: string) {
+  if ((await read($, view)).marks?.[key]?.started)
+    return update($, view, (v) => ({ ...v, status: 'already started' }))
+  await update($, view, (v) => ({ ...v, status: 'reading the skills…' }))
+  const got = await json<Skills>($, await onKnownConfig($, ['skills', 'list', '--json']))
+  if (!('json' in got))
+    return update($, view, (v) => ({
+      ...v,
+      status: `skills: ${'failed' in got ? got.failed : got.error}`,
+    }))
+  const skills = got.json.skills.filter((s) => s.pickable)
+  const wanted = row.url && isPr(row.url) ? 'fix' : 'implement'
+  const first = skills.find((s) => s.name === wanted) ?? skills[0]
+  if (!first) return update($, view, (v) => ({ ...v, status: 'no skill can be picked' }))
+  const d = await read($, data)
+  const pick = {
+    key,
+    ref: row.ref,
+    skills: [first, ...skills.filter((s) => s !== first)].map(({ name, deliver }) => ({
+      name,
+      deliver,
+    })),
+  }
+  await update($, view, (v) =>
+    layout(d, v).row?.id === row.id ? { ...v, status: undefined, pick } : v,
+  )
+}
 
 async function showTab($: EngineInterface, tab: Tab) {
-  await update($, view, (v) => ({ ...v, tab, row: undefined, at: 0, status: undefined }))
+  await update($, view, (v) => ({
+    ...v,
+    tab,
+    row: undefined,
+    at: 0,
+    status: undefined,
+    pick: undefined,
+  }))
   if (tab === 'config') await wantTakes($)
 }
 
-type Key = { key: string; hotkey: string; label: string; run: () => unknown }
+type Key = { key: string; hotkey?: string; label: string; run: () => unknown }
 
-/** The selected card's buttons: the confirm's yes and no, back from a report, or what the card can do. */
+/** The selected card's buttons: the confirm's yes and no, the skills to pick from, back from a report, or what the card can do. */
 function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
-  const { confirm } = v
+  const { confirm, pick } = v
   if (confirm)
     return [
-      { key: 'yes', hotkey: 'y', label: 'yes', run: () => act($, confirm.action, confirm.key) },
+      {
+        key: 'yes',
+        hotkey: 'y',
+        label: 'yes',
+        run: () => act($, confirm.action, confirm.key, confirm.skill),
+      },
       {
         key: 'no',
         hotkey: 'n',
@@ -409,6 +453,33 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
             confirm: undefined,
             status: declined[confirm.action],
           })),
+      },
+    ]
+  if (pick)
+    return [
+      ...pick.skills.map(
+        (s, i): Key => ({
+          key: `pick:${s.name}`,
+          hotkey: i === 0 ? 'g' : i <= 9 ? String(i) : undefined,
+          label: s.name,
+          run: () =>
+            update($, view, (x) => ({
+              ...x,
+              pick: undefined,
+              confirm: {
+                action: 'run',
+                key: pick.key,
+                skill: s.name,
+                question: startQuestion(pick.ref, s.name, s.deliver),
+              },
+            })),
+        }),
+      ),
+      {
+        key: 'back',
+        hotkey: 'b',
+        label: 'back',
+        run: () => update($, view, (x) => ({ ...x, pick: undefined })),
       },
     ]
   if (v.reading)
@@ -443,6 +514,8 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
         run: ask('approve', questions.approve(ref)),
       },
     row.start && item && { key: 'run', hotkey: 'g', label: 'run now', run: ask('run', row.start) },
+    row.picks &&
+      item && { key: 'run', hotkey: 'g', label: 'run now', run: () => pickSkill($, row, item) },
     here && {
       key: 'here',
       hotkey: 'c',
@@ -458,6 +531,7 @@ const selected = (v: View, id: string): View => ({
   row: id,
   at: 0,
   confirm: undefined,
+  pick: undefined,
   reading: undefined,
   status: undefined,
 })
@@ -731,8 +805,9 @@ export const register: Register = (on) => {
     const tabs = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         {shown.map((t) => {
-          const hotkey = String(order.indexOf(t) + 1)
-          press[hotkey] = () => showTab($, t)
+          // The digits pick a skill while the picker is up.
+          const hotkey = v.pick ? undefined : String(order.indexOf(t) + 1)
+          if (hotkey) press[hotkey] = () => showTab($, t)
           return (
             <Button
               key={`tab:${t}`}
@@ -883,9 +958,14 @@ export const register: Register = (on) => {
             .map((text) => ({ text, dim: true })),
         ]
 
-    const confirm = v.confirm
-    const question = confirm ? wrap(confirm.question, width) : []
-    const buttonRows = confirm ? question.length + 1 : 2
+    const asks = v.confirm?.question ?? (v.pick && `Run ${v.pick.ref} with which skill?`)
+    const question = asks ? wrap(asks, width) : []
+    const cardKeys = cardButtons($, v, row)
+    const keyRows = rowsOf(
+      cardKeys.map((b) => (b.hotkey ? `${b.hotkey}: ${b.label}` : b.label)),
+      width,
+    )
+    const buttonRows = asks ? question.length + keyRows : 2
 
     // header, tabs, rule, nav, strip, buttons, rule, body, status; too short for that, the engine scrolls it all.
     const total = Math.min(e.props.scroll.bodyRows, MAX_ROWS)
@@ -897,13 +977,13 @@ export const register: Register = (on) => {
     const shownBody = body.slice(offset, offset + room)
     const more = body.length - offset - room
 
-    const keys = cardButtons($, v, row).map((b) => button(b.key, b.hotkey, b.label, b.run))
-    const buttons = confirm ? (
+    const keys = cardKeys.map((b) => button(b.key, b.hotkey, b.label, b.run))
+    const buttons = asks ? (
       <Box flexDirection="column">
         {question.map((line) => (
           <Text wrap="truncate-end">{line}</Text>
         ))}
-        <Box flexDirection="row" columnGap={2}>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
           {keys}
         </Box>
       </Box>

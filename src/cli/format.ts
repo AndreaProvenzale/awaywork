@@ -240,7 +240,9 @@ export function planUnitTable(
     return [
       String(i + 1),
       unitRef(p.unit, inRepo),
-      `#${p.rule + 1}${plan.queue[p.rule]?.run === 'soon' ? ' soon' : ''}`,
+      p.unit.oneOff
+        ? '--skill'
+        : `#${p.rule + 1}${plan.queue[p.rule]?.run === 'soon' ? ' soon' : ''}`,
       describeSkill(p),
       p.provider ?? '-',
       deliverOf(plan, p),
@@ -475,7 +477,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     const waits = waitLine(p)
     const rows = [
       ['unit', `${i + 1}, ${p.unit.id}`],
-      ['rule', `#${p.rule + 1} ${rule ? describeRule(rule) : ''}`],
+      ['rule', p.unit.oneOff ? '--skill' : `#${p.rule + 1} ${rule ? describeRule(rule) : ''}`],
       ['skill', describeSkill(p)],
       ['provider', `${p.provider ?? noProvider(p)}${passed}`],
       ['deliver', deliverOf(plan, p)],

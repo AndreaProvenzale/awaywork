@@ -43,7 +43,7 @@ function isUnitStat(s: unknown): s is UnitStat {
 
 export function formatStats(stats: UnitStat[], json: boolean): string {
   const groups = {
-    rule: tally(stats, (s) => `#${s.rule} ${s.skill}`),
+    rule: tally(stats, (s) => (s.rule ? `#${s.rule} ${s.skill}` : `--skill ${s.skill}`)),
     skill: tally(stats, (s) => s.skill),
     provider: tally(stats, (s) => s.provider ?? '-'),
   }

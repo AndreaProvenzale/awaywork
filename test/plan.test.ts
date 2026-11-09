@@ -12,6 +12,7 @@ import {
   queueLines,
 } from '../src/cli/format.js'
 import { finishedSince, probeAndPlan, ruleNumber } from '../src/cli/plan.js'
+import { oneOffRefusal } from '../src/cli/run.js'
 import type { Step } from '../src/cli/triage.js'
 import { parseConfig } from '../src/config/load.js'
 import {
@@ -58,7 +59,7 @@ function plan(
   skills: SkillCatalog = {},
   attempts: Attempts = {},
   time = now,
-  only?: { named: string },
+  only?: { named: string; skill?: string },
   skips?: Record<string, Skip>,
 ) {
   const config = parseConfig(yaml)
@@ -1545,6 +1546,85 @@ queue:
 
   it("doesn't count awaywork's mark someone else pasted", () => {
     expect(withComments(comment('Per user?\n\n— awaywork')).units).toHaveLength(1)
+  })
+})
+
+describe('run --unit --skill', () => {
+  const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+limits: { units: 1 }
+queue:
+  - { skill: fix, where: { type: pr, checks: failing } }
+  - { skill: review, where: { type: pr, review_requested: true } }
+`
+  const mineIssue = { ...issue, mine: true as const }
+  const other = { ...issue, key: 'acme/api#6', title: 'Another', mine: true as const }
+  const failing = githubPr(1, { checks: 'failing' })
+  const items = [mineIssue, other, failing]
+  const oneOff = (named: string, skill: string, list = items) =>
+    plan(yaml, list, { claude: week(0.1) }, {}, {}, now, { named, skill })
+  const reasons = (p: ReturnType<typeof plan>) =>
+    Object.fromEntries(p.skipped.map((s) => [s.item.key, s.reason]))
+
+  it('takes the named no-rule item through the planner, last in the queue, past the caps', () => {
+    const picked = oneOff('acme/api#5', 'implement')
+    const unit = picked.units.find((u) => u.unit.oneOff)
+    expect(unit?.unit).toMatchObject({
+      id: 'acme-api-5',
+      skill: 'implement',
+      deliver: 'draft_pr',
+      branch: 'away/acme-api-5',
+    })
+    expect(unit?.rule).toBe(2)
+    expect(picked.queue).toHaveLength(2)
+    expect(formatPlan(picked)).toMatch(/^ {2}2 +api#5 +--skill +implement/m)
+    const report = oneOff('acme/api#5', 'plan').units.find((u) => u.unit.oneOff)
+    expect(report?.unit.deliver).toBe('report')
+  })
+
+  it("leaves every other item's reason, and the queue, as they read without it", () => {
+    const plain = plan(yaml, items, { claude: week(0.1) })
+    const picked = oneOff('acme/api#5', 'implement')
+    expect(reasons(picked)).toEqual(
+      Object.fromEntries(Object.entries(reasons(plain)).filter(([k]) => k !== 'acme/api#5')),
+    )
+    expect(picked.queue).toEqual(plain.queue)
+    expect(picked.units.map((u) => u.unit.id)).toEqual(['acme-api-1', 'acme-api-5'])
+    expect(oneOff('acme/api#99', 'implement').units.map((u) => u.unit.id)).toEqual(['acme-api-1'])
+    expect(reasons(oneOff('acme/api#99', 'implement'))).toEqual(reasons(plain))
+  })
+
+  it("is refused, as the planner refuses, on someone else's PR", () => {
+    const theirs = githubPr(7, { mine: false })
+    const picked = oneOff('acme/api#7', 'fix', [theirs])
+    expect(picked.units).toEqual([])
+    expect(picked.skipped).toMatchObject([
+      { kind: 'refused_delivery', reason: "deliver draft_pr: feature-7 is someone else's PR" },
+    ])
+    expect(oneOffRefusal(picked, 'acme/api#7')).toBe(
+      "deliver draft_pr: feature-7 is someone else's PR",
+    )
+    const reports = oneOff('acme/api#7', 'review', [theirs])
+    expect(reports.units[0]?.unit).toMatchObject({ oneOff: true, deliver: 'report' })
+  })
+
+  it('never goes on with a draft awaywork left: its output is a new branch or a report', () => {
+    const left = { items: ['github:acme/api#5'], status: 'ask' as const, head: 'h', from: 'f' }
+    const ours = { ...failing.linkedPrs[0], ours: true, left } as PrRef
+    const picked = oneOff('acme/api#5', 'implement', [{ ...mineIssue, linkedPrs: [ours] }])
+    expect(picked.units).toEqual([])
+    expect(picked.skipped).toMatchObject([{ kind: 'waiting_for_review' }])
+  })
+
+  it('refuses what a rule took, and names nothing when the name is ambiguous or unknown', () => {
+    const chain = oneOff('acme/api#1', 'review')
+    expect(chain.units.some((u) => u.unit.oneOff)).toBe(false)
+    expect(oneOffRefusal(chain, 'acme/api#1')).toBe(
+      '--skill is only for an item no rule takes: #1 fix takes acme/api#1',
+    )
+    expect(oneOffRefusal(oneOff('acme/api#5', 'implement'), 'acme/api#5')).toBeUndefined()
+    expect(oneOffRefusal(oneOff('acme/api#99', 'fix'), 'acme/api#99')).toBeUndefined()
   })
 })
 

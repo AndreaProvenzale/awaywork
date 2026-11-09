@@ -433,6 +433,8 @@ export type Order = 'oldest' | 'newest' | 'updated'
 
 export interface Unit {
   id: string
+  /** Picked with `run --skill` on an item no rule takes: awaywork writes nothing on the item, what it would have posted stays in the report. */
+  oneOff?: true
   items: Item[]
   repo: string
   /** The linked PR's branch, or '' for the repo's default branch. */

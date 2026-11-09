@@ -26,7 +26,7 @@ const quota = () => ({
 })
 
 /** A home of its own, holding the config and the run state, with one provider and two chores. */
-async function home(provider = 'probe: ./quota.sh', extra = '') {
+async function home(provider = 'probe: ./quota.sh', extra = '', queue = '[{ skill: plan }]') {
   const dir = await mkdtemp(join(tmpdir(), 'awaywork-detach-'))
   await writeFile(join(dir, 'items.json'), JSON.stringify([chore(1), chore(2)]))
   await writeFile(
@@ -36,7 +36,7 @@ async function home(provider = 'probe: ./quota.sh', extra = '') {
   )
   await writeFile(
     join(dir, 'config.yml'),
-    `providers:\n  - mine:\n      command: echo worked\n      ${provider}\nlimits: { unit_minutes: 5, units: 1 }\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n${extra}`,
+    `providers:\n  - mine:\n      command: echo worked\n      ${provider}\nlimits: { unit_minutes: 5, units: 1 }\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: ${queue}\n${extra}`,
   )
   return dir
 }
@@ -70,6 +70,74 @@ const cli = (dir: string, ...args: string[]) =>
 
 const stateOf = (dir: string) => join(dir, '.local', 'state', 'awaywork')
 const runsOf = (dir: string) => readdir(join(stateOf(dir), 'runs')).catch(() => [] as string[])
+
+describe('run --unit --skill', () => {
+  // The chores have no title matching it: no rule takes them.
+  const noRule = '[{ skill: plan, where: { title: { matches: nope } } }]'
+
+  it('needs --unit', async () => {
+    const dir = await home()
+    const { exitCode, stderr } = await cli(dir, 'run', '--skill', 'fix')
+    expect([exitCode, stderr]).toEqual([1, '--skill needs --unit <id>'])
+    expect(await runsOf(dir)).toEqual([])
+  })
+
+  it.each([
+    ['nope', 'no skill "nope"; awaywork skills list lists them'],
+    ['judge', "judge is a gate, a rule's gates run it"],
+    ['sync', "sync merges your PR's base: it needs deliver: push, which a one-off run can't have"],
+  ])('refuses %s with a clear line, without planning', async (skill, why) => {
+    const dir = await home('probe: ./quota.sh', '', noRule)
+    for (const args of [[], ['--detach']]) {
+      const { exitCode, stderr } = await cli(
+        dir,
+        'run',
+        '--unit',
+        'CH-1',
+        '--skill',
+        skill,
+        ...args,
+      )
+      expect([exitCode, stderr.split('\n')[0]]).toEqual([1, why])
+    }
+    expect(existsSync(join(dir, 'probes'))).toBe(false)
+    expect(await runsOf(dir)).toEqual([])
+  })
+
+  it('refuses an item a rule matches, and says so', async () => {
+    const dir = await home()
+    const { exitCode, stderr } = await cli(
+      dir,
+      'run',
+      '--unit',
+      'CH-1',
+      '--skill',
+      'fix',
+      '--detach',
+    )
+    expect([exitCode, stderr.split('\n')[0]]).toEqual([
+      1,
+      '--skill is only for an item no rule takes: #1 plan takes CH-1',
+    ])
+    expect(await runsOf(dir)).toEqual([])
+  })
+
+  it('starts the one-off past the cap, and its report says --skill', async () => {
+    const dir = await home('probe: ./quota.sh', '', noRule)
+    const started = await cli(dir, 'run', '--unit', 'CH-1', '--skill', 'review', '--detach')
+    expect([started.exitCode, started.stderr]).toEqual([0, ''])
+    expect(started.stdout).toMatch(/^Started CH-1 as run \d{8}-\d{6}; /)
+    await vi.waitFor(() => expect(existsSync(join(stateOf(dir), 'run.lock'))).toBe(false), {
+      timeout: 12_000,
+    })
+    const [runId = ''] = await runsOf(dir)
+    const report = JSON.parse(
+      await readFile(join(stateOf(dir), 'runs', runId, 'report.json'), 'utf8'),
+    )
+    expect(report.results[0].planned.unit).toMatchObject({ oneOff: true, skill: 'review' })
+    expect(report.plan.queue).toHaveLength(1)
+  }, 20_000)
+})
 
 describe('run --unit --detach', () => {
   it('refuses without --unit', async () => {
