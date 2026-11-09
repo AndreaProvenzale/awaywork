@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
 import { Cancelled } from '../src/cli/ask.js'
-import { type Io, installSchedule, removeSchedule, whereToRun } from '../src/cli/schedule.js'
+import { type Io, installSchedule, removeSchedule } from '../src/cli/schedule.js'
 import type { Ask } from '../src/core/types.js'
 import { WORKFLOW } from '../src/scheduler/github-actions.js'
 import { defaultScheduler, type Scheduler, SchedulerError } from '../src/scheduler/index.js'
@@ -193,7 +193,7 @@ it('keeps the job when setting the wake fails', async () => {
   expect(process.exitCode).toBe(1)
 })
 
-it('offers later at the end of init only, not in schedule install', async () => {
+it('offers this machine, GitHub Actions and a container', async () => {
   const { config, io } = await setup()
   const offered: string[][] = []
   const recording = (ask: Ask): Ask => ({
@@ -211,11 +211,7 @@ it('offers later at the end of init only, not in schedule install', async () => 
     true,
   )
   await installSchedule(config, undefined, { ...install, ask: recording(install.ask) })
-  await whereToRun(recording(scriptedAsk([[/^Where should it run/, initial]])), true)
-  expect(offered).toEqual([
-    ['', 'github-actions', 'docker'],
-    ['', 'github-actions', 'docker', 'later'],
-  ])
+  expect(offered).toEqual([['', 'github-actions', 'docker']])
 })
 
 it('asks the GitHub Actions questions after picking it', async () => {

@@ -22,8 +22,8 @@ Options:
   -h, --help                display help for command
 
 Commands:
-  init [options]            detect installed agents, pick providers, sources and
-                            a starting queue
+  init [options]            set awaywork up with Claude Code's /away, or write
+                            the detected defaults with --yes
   config                    print the config's path or its schema, or edit the
                             config
   secret <name>             save a token to ~/.config/awaywork/env (mode 600),
@@ -66,15 +66,16 @@ Commands:
 ```text
 Usage: awaywork init [options]
 
-detect installed agents, pick providers, sources and a starting queue
+set awaywork up with Claude Code's /away, or write the detected defaults with
+--yes
 
 Options:
-  -y, --yes             answer every question with its default; needs no
+  -y, --yes             write the detected defaults, asking nothing; needs no
                         terminal
   --provider <id...>    with --yes: providers, first takes units first
   --source <id...>      with --yes: sources to take work from
   --window <start-end>  with --yes: the run window, e.g. 01:00-07:00
-  --force               replace an existing config without asking
+  --force               with --yes: replace an existing config
   -h, --help            display help for command
 ```
 

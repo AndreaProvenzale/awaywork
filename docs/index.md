@@ -32,7 +32,7 @@ features:
 
 ```sh
 npm install -g awaywork
-awaywork init             # finds your agents and forge login, asks the rest
+awaywork init             # opens Claude Code on /away, which sets it up with you
 awaywork plan             # a dry look at the next run; only a tiny quota probe
 awaywork schedule install # runs when you clock out
 ```

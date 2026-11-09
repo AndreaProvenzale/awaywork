@@ -17,7 +17,7 @@ In a terminal, `awaywork schedule install` asks where it runs:
 └
 ```
 
-`--with` answers that up front, and without a terminal (a script, a coding agent) it asks nothing and takes this machine. `awaywork init` ends with the same question, plus _later_.
+`--with` answers that up front, and without a terminal (a script, a coding agent) it asks nothing and takes this machine.
 
 ## On your machine
 
