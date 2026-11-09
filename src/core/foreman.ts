@@ -223,7 +223,7 @@ export function planRun(input: {
     // An approved plan runs as its tasks, so naming its card lifts nothing.
     const named =
       name !== undefined && card?.state !== 'approved' && namesChain(id, rule, items, name)
-    let lifted = false
+    let lifted = !!items[0] && namedTasks.includes(items[0])
     // True when it stays held; a unit you name goes past, taking no room under the caps a run without the name would have left.
     const hold = (kind: SkipKind, reason: string, url?: string) => {
       if (named) lifted = true

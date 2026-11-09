@@ -1624,6 +1624,25 @@ queue:
     expect(ofCard.skipped.map((s) => s.kind)).toEqual(['skipped_by_you'])
   })
 
+  it('takes no cap room for a task you name of a card you skipped', () => {
+    const capped = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+limits: { units: 1 }
+queue:
+  - { skill: plan, deliver: plan, where: { type: issue } }
+  - { skill: implement, where: { planned: true } }
+  - { skill: fix, where: { type: pr } }
+`
+    const approved = { ...card(posted, reply(approveReply('Go.'), true)), taskPrs: {} }
+    const items = [approved, githubPr(9)]
+    const skips = { 'github:acme/api#5': {} }
+    const ids = (only?: { named: string }) =>
+      plan(capped, items, {}, {}, {}, now, only, skips).units.map((u) => u.unit.id)
+    expect(ids()).toEqual(['acme-api-9'])
+    expect(ids({ named: 'acme/api#5/api' })).toEqual(['acme-api-5-api', 'acme-api-9'])
+  })
+
   it('needs you for a plan you edited into one that fails its checks', () => {
     const edited = { ...posted, body: posted.body.replace('id: web', 'id: api') }
     const refused = plan(yaml(), [card(edited)], {})
