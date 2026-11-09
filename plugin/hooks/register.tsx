@@ -64,6 +64,7 @@ type Row = {
   picks?: true
   /** A GitHub issue that isn't assigned to you: merging a draft for it can close it. */
   theirs?: true
+  /** What `c` puts in the prompt box. */
   here?: string
 }
 
@@ -168,6 +169,9 @@ const ranks = Object.keys(actions)
 
 const lines = (...text: (string | null | undefined)[]) => text.filter((t): t is string => !!t)
 
+const aboutItem = (item: ItemRef, state: string) =>
+  `About awaywork item ${itemKey(item)} "${item.title}" (${state}): `
+
 // By name: `run --unit` lifts its unit's attempts, so it would also run past "awaywork pushed onto your PR". The planner reads these after that hold.
 const startable = ['unchanged', 'skipped_by_you', 'over_cap', 'gave_up']
 
@@ -206,6 +210,7 @@ function skipRow(tab: Tab, s: Skip): Row {
       s.kind && startable.includes(s.kind) && !pushedOn
         ? `${startQuestion(ref)}${stays}`
         : undefined,
+    here: aboutItem(s.item, reasonOf(s)),
   }
 }
 
@@ -232,7 +237,7 @@ function resultRow(runId: string, r: Result): Row {
     url,
     report: ['report', runId, '--unit', id],
     skip: top && 'skip',
-    here: `continue awaywork unit ${id} of run ${runId}; start with \`awaywork report ${runId} --unit ${id}\``,
+    here: `continue awaywork unit ${id} of run ${runId}; start with \`awaywork report ${runId} --unit ${id}\`. `,
   }
 }
 
@@ -265,6 +270,7 @@ function unitRow(p: Planned): Row {
     url: top?.url ?? undefined,
     skip: top && 'skip',
     start: top && startQuestion(ref, skill, deliver),
+    here: top && aboutItem(top, `next up with ${skill}`),
   }
 }
 
@@ -446,6 +452,19 @@ async function showTab($: EngineInterface, tab: Tab) {
 
 type Key = { key: string; hotkey?: string; label: string; run: () => unknown }
 
+/** What `c` last put in the prompt box: the next press replaces it and keeps what you typed. */
+let asked = ''
+
+async function askClaude($: EngineInterface, text: string) {
+  const { text: draft } = await $.prompt.read()
+  const typed = draft.startsWith(asked) ? draft.slice(asked.length) : draft
+  asked = text
+  const { isFilled } = await $.prompt.fill({ text: text + typed })
+  if (!isFilled)
+    await update($, view, (v) => ({ ...v, status: "the prompt box can't take it now" }))
+  return isFilled
+}
+
 /** The selected card's buttons: the confirm's yes and no, the skills to pick from, back from a report, or what the card can do. */
 function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
   const { confirm } = v
@@ -534,8 +553,8 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
     here && {
       key: 'here',
       hotkey: 'c',
-      label: 'ask Claude here',
-      run: () => $.prompt.submit({ text: here, asUser: true }),
+      label: 'ask Claude',
+      run: () => askClaude($, here),
     },
   ]
   return keys.filter((b): b is Key => !!b)
@@ -740,7 +759,10 @@ export const register: Register = (on) => {
       const v = await read($, view)
       const { row } = layout(d, v)
       const own = row && cardButtons($, v, row).find((b) => b.hotkey === m.key)
-      await (own ? own.run() : drawn.press[m.key]?.())
+      const ran = await (own ? own.run() : drawn.press[m.key]?.())
+      // Keys a click gave the strip stay there, and only Esc takes them back.
+      if (own?.key === 'here' && ran)
+        await update($, view, (x) => ({ ...x, status: 'in the prompt box: Esc, then type' }))
     }
     return {}
   })
@@ -863,7 +885,7 @@ export const register: Register = (on) => {
     if (tab === 'config')
       return done(
         configBody({
-          fill: (text) => $.prompt.fill({ text }),
+          fill: (text) => askClaude($, text),
           els,
           c,
           v,

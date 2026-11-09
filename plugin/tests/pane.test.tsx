@@ -72,6 +72,18 @@ function engine(
 
 const ok = (json: unknown) => ({ stdout: JSON.stringify(json) })
 
+/** The prompt box: what `c` reads and fills. */
+function promptBox(on: On) {
+  const box = { text: '', refuses: false }
+  on('prompt.read', () => ({ value: { text: box.text, cursor: box.text.length } }))
+  on('prompt.fill', (_, e) => {
+    if (box.refuses) return { isFilled: false }
+    box.text = e.text
+    return { isFilled: true }
+  })
+  return box
+}
+
 type Engine = Parameters<TestBody>[0]
 
 type Size = { bodyColumns?: number; bodyRows?: number; placement?: 'dock' | 'inline' }
@@ -775,16 +787,12 @@ test('g on a skip asks without a skill, and on your skip says the skip stays', a
   expect((await card(ui, 'row:skipped:github:acme/shop#10'))?.word).toBe('started')
 })
 
-test('v shows the report in the detail and b goes back; o opens the URL; c hands the unit to the chat', async ($, on) => {
+test('v shows the report in the detail and b goes back; o opens the URL; c puts the unit in the prompt box', async ($, on) => {
   const { calls } = engine(on, {
     'report --json': ok(busyReport),
     'report 20990101-050000 --unit acme-shop-3': { stdout: 'acme-shop-3: Pinned the clock' },
   })
-  const prompts: string[] = []
-  on('prompt.submit', (_, e) => {
-    prompts.push(e.text)
-    return { text: e.text }
-  })
+  const box = promptBox(on)
   await $.command.run(away())
   for (const surface of ALL) {
     const ui = await mount($, surface)
@@ -819,10 +827,48 @@ test('v shows the report in the detail and b goes back; o opens the URL; c hands
     await ui.press({ key: 'tab:needs' })
     await ui.unmount()
   }
-  expect(prompts[0]).toBe(
-    'continue awaywork unit acme-shop-5 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-5`',
+  expect(box.text).toBe(
+    'continue awaywork unit acme-shop-5 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-5`. ',
   )
   expect(calls.some((argv) => argv[1] === 'plan')).toBe(false)
+})
+
+test('c fills the box on every tab, keeps what you typed, and says when it cannot', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport), 'plan --json': ok(busyPlan) })
+  const box = promptBox(on)
+  const sent: string[] = []
+  on('prompt.submit', (_, e) => {
+    sent.push(e.text)
+    return { text: e.text }
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  const about = 'About awaywork item github:acme/shop#8'
+
+  box.text = 'is it urgent?'
+  await ui.post({ select: SHOP8, key: 'c' })
+  expect(box.text).toBe(
+    `${about} "Split the checkout service into cart, payment and shipping" (waiting for your approval of the plan): is it urgent?`,
+  )
+  expect(await text(ui, 'in the prompt box: Esc, then type')).toBe(true)
+
+  await ui.post({ select: API21, key: 'c' })
+  expect(box.text).toBe(
+    'About awaywork item github:acme/api#21 "Fix the N+1 query in the orders endpoint" (waiting for review: awaywork PR is open): is it urgent?',
+  )
+
+  await ui.press({ key: 'plan' })
+  await ui.press({ key: 'tab:next' })
+  box.text = ''
+  await ui.press({ key: 'here' })
+  expect(box.text).toMatch(/^About awaywork item github:.+ \(next up with \w+\): $/)
+  expect(await text(ui, 'in the prompt box: Esc, then type')).toBe(false)
+
+  box.refuses = true
+  await ui.press({ key: 'here' })
+  expect(await text(ui, "the prompt box can't take it now")).toBe(true)
+  expect(sent).toEqual([])
+  await ui.unmount()
 })
 
 test('every region keeps its height while you browse, ask and read', async ($, on) => {
