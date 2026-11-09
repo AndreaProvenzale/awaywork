@@ -97,7 +97,7 @@ export const commandConfig = z
 /** `dir` is the folder of the config file that set it, set when the config loads. */
 export type CommandConfig = z.output<typeof commandConfig> & { dir?: string }
 
-const TIMEOUT_MS = 10 * 60_000
+export const TIMEOUT_MS = 10 * 60_000
 
 const scalar = z.union([z.string(), z.number(), z.boolean()])
 const time = z.iso.datetime({ offset: true }).optional()

@@ -102,12 +102,13 @@ export function decisionPosts(item: Pick<Item, 'comments'>): Comment[] {
   return [...(plan ? [plan] : []), ...reports]
 }
 
-/** A post whose pinned files a unit reads back: its folder's name under `files/`, what it is, its pins, and whether a file edited since is your feedback, else left out. */
+/** A post whose pinned files a unit reads back: its folder's name under `files/`, what it is, its pins, whether a file edited since is your feedback, else left out, and whether the unit can't go without it. */
 export interface PinnedPost {
   name: string
   what: string
   pins: Pin[]
   edits: boolean
+  needed: boolean
 }
 
 /**
@@ -127,7 +128,9 @@ export function readBackPosts(item: Item, skill: string, plan: boolean): PinnedP
   const covered = task
     ? planThread(item)?.plan
     : item.comments.findLast((c, at) => {
-        const post = resultSkill(c) === item.fields.approved && postAt(item, at)
+        // A plan has no skill: it mustn't match an item with no `approved`.
+        const result = resultSkill(c)
+        const post = result && result === item.fields.approved && postAt(item, at)
         return !!post && postAnswer(post) === 'approved'
       })
   const ownPost = item.comments[own]
@@ -145,12 +148,25 @@ export function readBackPosts(item: Item, skill: string, plan: boolean): PinnedP
     const kind =
       commentKind(c) === 'plan' ? 'plan' : (resultSkill(c) ?? (of ? `task-${of}` : 'post'))
     return [
-      { name: `${at + 1}-${kind}`, what: `awaywork's post of ${c.at}`, pins, edits: !!item.mine },
+      {
+        // The kind is the post's heading, which a teammate may have edited: one path segment, whatever it says.
+        name: `${at + 1}-${kind.replace(/[^a-z0-9._-]+/gi, '-').slice(0, 64)}`,
+        what: `awaywork's post of ${c.at}`,
+        pins,
+        edits: !!item.mine,
+        needed: c === covered || (at === own && !!again),
+      },
     ]
   })
   // Only a PR awaywork opened for you, its body last edited by you: anyone can end a PR body with awaywork's marker and a pin.
   const ours = item.type === 'pr' && item.mine && item.bodyMine && item.fields.ours === true
   const body = ours ? footerPins(item.description) : []
-  const footer = { name: 'pr', what: "the PR body's footer", pins: body, edits: false }
+  const footer = {
+    name: 'pr',
+    what: "the PR body's footer",
+    pins: body,
+    edits: false,
+    needed: true,
+  }
   return body.length ? [...posts, footer] : posts
 }
