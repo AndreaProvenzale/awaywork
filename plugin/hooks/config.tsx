@@ -285,6 +285,10 @@ const GHOST: ConfigRule[] = [
   soon: false,
 }))
 
+// Desktop draws the rule's number as a native button, with no room in its box for the marker.
+const MARK_W = 1
+const LEAD_W = MARK_W + 3
+
 /** A rule's row at `width`, on two lines below 60. One that takes nothing now is dim, one that does says how many. */
 function rulesTable(
   { els: { Box, Text }, c, width, button, setView }: Input,
@@ -295,7 +299,8 @@ function rulesTable(
   const count = (r: ConfigRule) =>
     ghost ? undefined : c.takes?.rules.find((t) => t.rule === r.rule)?.taken.length
   const suffix = (r: ConfigRule) => (count(r) ? ` · ${count(r)}` : '')
-  const room = width - 4 - 2
+  const lead = LEAD_W + 1
+  const room = width - lead - 2
   // What a rule does stays whole; what it takes can be cut, the detail below has it in full.
   const longest = Math.max(...rules.map((r) => lengthOf(workParts(r))))
   const workW = Math.min(longest, Math.ceil(room * 0.6))
@@ -323,7 +328,7 @@ function rulesTable(
     <Box flexDirection="column">
       {!narrow && (
         <Box flexDirection="row" columnGap={1}>
-          <Box width={3} />
+          <Box width={LEAD_W} />
           <Box width={takesW}>
             <Text dimColor>TAKES</Text>
           </Box>
@@ -333,14 +338,17 @@ function rulesTable(
       {rules.map((r, i) => {
         const on = !ghost && i === at
         const mark = ghost ? (
-          <Box width={3}>
+          <Box width={LEAD_W}>
             <Text dimColor>·</Text>
           </Box>
         ) : (
-          <Box width={3}>
-            {button(`rule:${r.rule}`, undefined, `${on ? '▸' : ' '}${r.rule}`, () =>
-              setView({ rule: r.rule }),
-            )}
+          <Box width={LEAD_W} flexDirection="row">
+            <Box width={MARK_W}>
+              <Text>{on ? '▸' : ' '}</Text>
+            </Box>
+            <Box flexShrink={0}>
+              {button(`rule:${r.rule}`, undefined, String(r.rule), () => setView({ rule: r.rule }))}
+            </Box>
           </Box>
         )
         const does = (w: number) => (
@@ -352,9 +360,9 @@ function rulesTable(
           <Box key={`lane:${r.rule}`} flexDirection="column">
             <Box flexDirection="row" columnGap={1}>
               {mark}
-              {takesCell(r, on, width - 4)}
+              {takesCell(r, on, width - lead)}
             </Box>
-            <Box paddingLeft={4}>{does(width - 4)}</Box>
+            <Box paddingLeft={lead}>{does(width - lead)}</Box>
           </Box>
         ) : (
           <Box key={`lane:${r.rule}`} flexDirection="row" columnGap={1}>
