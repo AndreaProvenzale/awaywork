@@ -53,6 +53,17 @@ export default defineConfig({
   description,
   cleanUrls: true,
   lastUpdated: false,
+  markdown: {
+    config(md) {
+      const fence = md.renderer.rules.fence
+      md.renderer.rules.fence = (tokens, index, ...rest) => {
+        const token = tokens[index]
+        return token?.info.trim() === 'mermaid'
+          ? `<Mermaid code="${encodeURIComponent(token.content)}" />`
+          : (fence?.(tokens, index, ...rest) ?? '')
+      }
+    },
+  },
   head: [
     ['link', { rel: 'icon', href: '/awaywork/brand/favicon.ico', sizes: '32x32' }],
     ['link', { rel: 'icon', href: '/awaywork/brand/favicon.svg', type: 'image/svg+xml' }],

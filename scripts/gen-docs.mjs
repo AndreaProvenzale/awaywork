@@ -47,7 +47,13 @@ ${sections.join('\n\n')}
 `
 }
 
-const cell = (s) => String(s).replaceAll('|', '\\|').replaceAll('\n', ' ')
+// Vue compiles the page: a bare <name> outside a code span would open an element, and {{ }} interpolate.
+const literalTags = (s) => {
+  if (s.includes('{{')) throw new Error(`Vue would interpolate the {{ in: ${s}`)
+  return s.replace(/(`+).*?\1|\\?</gs, (m) => (m === '<' ? '\\<' : m))
+}
+
+const cell = (s) => literalTags(String(s)).replaceAll('|', '\\|').replaceAll('\n', ' ')
 
 let defs = {}
 
@@ -109,7 +115,7 @@ function configDoc(schema) {
       const req = required.has(name) && p.default === undefined ? ' (required)' : ''
       return `| \`${name}\`${req} | ${typeOf(p)} | ${cell(def)} | ${cell(p.description ?? '')} |`
     })
-    const intro = s.description ? `${s.description}.\n\n` : ''
+    const intro = s.description ? `${literalTags(s.description)}.\n\n` : ''
     return `${title}\n\n${intro}| Key | Type | Default | Description |\n|---|---|---|---|\n${rows.join('\n')}`
   })
   // A union can reach one object twice at a path, e.g. a step alone or in a list.

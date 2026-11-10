@@ -326,7 +326,7 @@ A custom source: any command that prints your open items as JSON.
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's |
 | `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 | `write` | string |  | Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item's updated times as {"before":"…","after":"…"}. Without it, on_done writes nothing to this source |
-| `thread` | boolean |  | A thread host: a rule's `thread` may name this source, whose `write` then also answers {"op":"open","item":"<card key>","title":"…","body":"…"} with {"key":"…","url":"…"}, and `command` lists the threads it opened as items, their comments the replies |
+| `thread` | boolean |  | A thread host: a rule's `thread` may name this source, whose `write` then also answers {"op":"open","item":"\<card key>","title":"…","body":"…"} with {"key":"…","url":"…"}, and `command` lists the threads it opened as items, their comments the replies |
 
 ## `repos.<key>`
 
