@@ -31,7 +31,7 @@ features:
   - title: Drafts, never merges
     details: Workers get no forge token. awaywork pushes only new branches and opens draft PRs, unless you opt in to ready ones or to fast-forward your own PR, and goes on with its own draft only from where it left it; it never force-pushes or merges, and comments only on your own items, marked as its own.
   - title: Paced quota
-    details: Reads each agent's remaining quota before and during a run and stops at a ceiling that spreads it over the window, keeping a reserve for you.
+    details: Stops each agent at a ceiling that spreads its quota over the window and keeps a reserve for you. Agents whose quota can't be read get fixed caps.
 ---
 
 ```sh
