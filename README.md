@@ -62,13 +62,13 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 | [Rules and the default queue](docs/guide/how-it-works.md#the-queue) | An ordered list: each item takes the first rule it matches. Write none and the default queue applies |
 | [Skills](docs/guide/skills.md) | Plain Markdown: `fix`, `implement`, `review`, `plan` and more built in. Eject one or write your own |
 | [Chains and loops](docs/guide/chains.md) | More steps after a rule's skill, in the same clone: conditions, review-and-fix loops, pushing onto your PR |
-| [Plans](docs/guide/how-it-works.md#plans) | A feature split into tasks on your card. Once you approve, they run as PRs or reports, across repos too |
-| [Gates](docs/guide/configuration.md#gates) | A glob, a script or a judge spots a change that wants a human and puts a decision card on top of the PR or post |
-| [Posts that wait](docs/guide/how-it-works.md#posts-that-wait) | A result lands on your item and waits; your approve hands the item to the next rule |
-| [Threads](docs/guide/how-it-works.md#threads) | A card that can't take awaywork's posts gets a GitHub issue for them, assigned to you, or a page on a host of your own |
-| [Store](docs/guide/configuration.md#store) | Files a post pins go wherever your command puts them, and the next unit gets them back |
+| [Plans](docs/guide/workflows.md#plans) | A feature split into tasks on your card. Once you approve, they run as PRs or reports, across repos too |
+| [Gates](docs/guide/workflows.md#gates) | A glob, a script or a judge spots a change that wants a human and puts a decision card on top of the PR or post |
+| [Posts that wait](docs/guide/workflows.md#posts-that-wait) | A result lands on your item and waits; your approve hands the item to the next rule |
+| [Threads](docs/guide/workflows.md#threads) | A card that can't take awaywork's posts gets a GitHub issue for them, assigned to you, or a page on a host of your own |
+| [Store](docs/guide/workflows.md#store) | Files a post pins go wherever your command puts them, and the next unit gets them back |
 | [Results](docs/guide/results.md) and [notify hooks](docs/guide/configuration.md#notify) | How far each rule's result reaches, and your own command for Notion, Slack and the like |
-| [`/away` pane](docs/guide/agents.md#claude-code) | Beside the chat in Claude Code: what needs you and what ran, with keys to skip, approve or start an item |
+| [`/away` pane](docs/guide/away.md#the-pane) | Beside the chat in Claude Code: what needs you and what ran, with keys to skip, approve or start an item |
 | [Quota pacing](docs/guide/how-it-works.md#budget) | A ceiling per run spreads your quota over its window and keeps a reserve. Agents whose quota can't be read get fixed caps |
 
 ## Guardrails
@@ -101,15 +101,18 @@ The site: https://andreaprovenzale.github.io/awaywork/. Setting it up with an ag
 | Page |  |
 | --- | --- |
 | [Getting started](docs/guide/getting-started.md) | Install, first plan, first unit, first schedule |
-| [How it works](docs/guide/how-it-works.md) | Queue, units, budget, delivery, plans, the report |
+| [How it works](docs/guide/how-it-works.md) | Items, the queue, units, budget, routing, the worker, delivery |
+| [`/away` in Claude Code](docs/guide/away.md) | The plugin: setup in rounds of questions, the pane beside the chat and its keys |
+| [Plan, run, report](docs/guide/running.md) | Reading the plan, running one unit, the morning report |
 | [Configuration](docs/guide/configuration.md) | The config file by example. The schema holds across minor releases, [experimental keys aside](docs/guide/configuration.md#stability) |
+| [Workflows](docs/guide/workflows.md) | Questions, drafts that continue, gates, plans, posts that wait, threads, the store |
 | [Chains](docs/guide/chains.md) | More steps after a rule's skill: loops, conditions, stacked PRs, pushing onto your PR |
 | [Where results go](docs/guide/results.md) | Who sees what, and notify hooks for Notion, Slack and the like |
 | [Custom sources](docs/guide/custom-sources.md) | Any task tracker, through a command that prints your items as JSON |
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |
 | [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions, a container |
 | [Safety](docs/guide/safety.md) | Guardrails and vendor terms |
-| [With an AI agent](docs/guide/agents.md) | The `/away` plugin and pane, and your agent writing your queue |
+| [With an AI agent](docs/guide/agents.md) | The skill for Codex and friends, a prompt to paste, and the machine-readable docs and commands |
 | [Suggested rules](docs/guide/suggest.md) | Rules, routines and `AGENTS.md` lines from your own sessions and PRs |
 | [CLI reference](docs/reference/cli.md) | Every command |
 | [Config reference](docs/reference/config.md) | Every key with its type and default |

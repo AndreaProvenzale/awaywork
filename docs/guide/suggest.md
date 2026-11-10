@@ -8,13 +8,13 @@ CI goes red, you paste the failure into your agent. A review lands, you ask it t
 
 ## Run it
 
-In Claude Code, with the [plugin](./agents.md#claude-code) installed:
+In Claude Code, with the [plugin](./away.md) installed:
 
 ```text
 /away what could you take off my plate?
 ```
 
-With no config at all, `/away` sets awaywork up, and one of its questions asks whether your first rules should come from this, with the scope and size it would read: say yes and it doesn't ask again. On a config with no queue yet, or just the default rules `awaywork init` wrote, it offers it once before asking what to offload. Either way it never needs a token: those go in with `awaywork secret <NAME>`, which you run, as in [With an AI agent](./agents.md#claude-code). Codex and friends get the same skill from the npm package, in `plugin/skills/away/`, as in [Codex and friends](./agents.md#codex-and-friends).
+With no config at all, `/away` sets awaywork up, and one of its questions asks whether your first rules should come from this, with the scope and size it would read: say yes and it doesn't ask again. On a config with no queue yet, or just the default rules `awaywork init` wrote, it offers it once before asking what to offload. Either way it never needs a token: those go in with `awaywork secret <NAME>`, which you run, as in [With an AI agent](./away.md). Codex and friends get the same skill from the npm package, in `plugin/skills/away/`, as in [Codex and friends](./agents.md#codex-and-friends).
 
 ## It asks first
 
@@ -48,7 +48,7 @@ Months of transcripts are a lot of tokens, so it digests each session first, wit
 | The same ask at the same time each week | A routine and a rule on `source: routines`, with its cost in units a week |
 | A correction every agent on the repo needs | A line in the repo's `AGENTS.md` (or `CLAUDE.md`), which helps your own sessions too |
 | A correction only awaywork's workers need | A line in your awaywork `instructions` |
-| A correction that's already written down and still made | A command instead of a second line: a [`verify`](./configuration.md#repos-and-instructions) like `pnpm lint` on the repo, or a command [gate](./configuration.md#gates) |
+| A correction that's already written down and still made | A command instead of a second line: a [`verify`](./configuration.md#repos-and-instructions) like `pnpm lint` on the repo, or a command [gate](./workflows.md#gates) |
 
 A saved memory can be a correction you already made once and wrote down, and awaywork's Claude Code workers never see it: they start with auto-memory off and none of your user-level config (Codex workers do read `~/.codex/AGENTS.md` under `isolation: none`). It reads the index and each memory's type and description first, and opens in full only your feedback and the notes that state a rule about the repo, not progress logs. So a memory that holds for the repo comes back as a line for `AGENTS.md` or your `instructions`; one about you or your own workflow doesn't. Anything your config or `AGENTS.md` already has shows as "already rule #1", not as a new idea. A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts every rule and routine into a copy of your config and runs `awaywork plan --rules --json` and `awaywork doctor --json` on it, so each candidate comes with the real items it takes now, the near misses, and a routine's next occurrence.
 
@@ -87,7 +87,7 @@ Plus a few lines under it: 2 patterns dropped because awaywork can't see what st
 
 ## You pick
 
-Accept, tweak or decline each by number. Rules and routines you keep go through the skill's usual queue loop: drafted, checked on your items again, written into your config on your yes keeping your comments, then `doctor`. An `AGENTS.md` line is a local edit you commit yourself. A rule that lets awaywork write more (`deliver: pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./agents.md#claude-code). Nothing else is written.
+Accept, tweak or decline each by number. Rules and routines you keep go through the skill's usual queue loop: drafted, checked on your items again, written into your config on your yes keeping your comments, then `doctor`. An `AGENTS.md` line is a local edit you commit yourself. A rule that lets awaywork write more (`deliver: pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./away.md). Nothing else is written.
 
 What it won't do:
 

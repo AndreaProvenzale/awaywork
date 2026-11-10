@@ -12,7 +12,10 @@ const sidebar: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Getting started', link: '/guide/getting-started' },
       { text: 'How it works', link: '/guide/how-it-works' },
+      { text: '/away in Claude Code', link: '/guide/away' },
+      { text: 'Plan, run, report', link: '/guide/running' },
       { text: 'Configuration', link: '/guide/configuration' },
+      { text: 'Workflows', link: '/guide/workflows' },
       { text: 'Chains', link: '/guide/chains' },
       { text: 'Where results go', link: '/guide/results' },
       { text: 'Custom sources', link: '/guide/custom-sources' },
