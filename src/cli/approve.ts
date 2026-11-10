@@ -1,14 +1,14 @@
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import type { Config } from '../config/schema.js'
-import { approveReply } from '../core/footer.js'
+import { approveReply } from '../core/comments.js'
 import { cardTasks, planThread } from '../core/plan.js'
 import { decisionPost } from '../core/posts.js'
 import type { Ctx, Forge, Source } from '../core/types.js'
 import { forgeFor } from '../forge/index.js'
 import { sourceFor, writeItem } from '../sources/index.js'
-import { linkThreads, threadHosts } from './plan.js'
 import { checkKey, printOutcome } from './skip.js'
+import { linkThreads, threadHosts } from './threads.js'
 
 export function approveCommand(program: Command): void {
   program

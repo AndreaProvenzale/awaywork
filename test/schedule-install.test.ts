@@ -6,8 +6,9 @@ import { parse } from 'yaml'
 import { Cancelled } from '../src/cli/ask.js'
 import { type Io, installSchedule, removeSchedule } from '../src/cli/schedule.js'
 import type { Ask } from '../src/core/types.js'
+import { SchedulerError } from '../src/scheduler/error.js'
 import { WORKFLOW } from '../src/scheduler/github-actions.js'
-import { defaultScheduler, type Scheduler, SchedulerError } from '../src/scheduler/index.js'
+import { defaultScheduler, type Scheduler } from '../src/scheduler/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
 const { installed, removed, woke, commands, stops } = vi.hoisted(() => ({

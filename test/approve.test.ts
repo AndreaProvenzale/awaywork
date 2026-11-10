@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
 import { parseConfig } from '../src/config/load.js'
-import { markComment, type PostState, planComment, resultComment } from '../src/core/footer.js'
+import { markComment, type PostState, planComment, resultComment } from '../src/core/comments.js'
 import type { Item, Source, Write } from '../src/core/types.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
