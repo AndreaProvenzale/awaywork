@@ -151,7 +151,7 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 diff: this unit left no diff
 ```
 
-`plan` is the same view without `l` and `d`, since a plan has no logs or diffs. Both open at once with a line per loading step: the run fetched from GitHub, or `plan`'s sources and providers.
+`plan` is the same view without `l` and `d`, since a plan has no logs or diffs. `report` opens at once too, a line per loading step, such as the run fetched from GitHub.
 
 - Items sit under their repo, or tracker and project key, so a row shows just `#3`.
 - A skipped item ends on what it asks of you (`review PR`, `answer question`, `approve`, `add repo`, ...) or why it waits (`no rule`, `over cap`, ...). Needs you sorts a repo's items by that, so PRs to review sit together.
