@@ -11,7 +11,7 @@ import {
   resultComment,
   resultStatus,
   waitingTasks,
-} from '../src/core/footer.js'
+} from '../src/core/comments.js'
 import { checkPlan, doneTasks, planState, planYaml } from '../src/core/plan.js'
 import type { Item } from '../src/core/types.js'
 

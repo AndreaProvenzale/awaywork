@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { describeRule, formatPlan } from '../src/cli/format.js'
+import { formatPlan } from '../src/cli/format/plan.js'
+import { describeRule } from '../src/cli/format/rules.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Attempts } from '../src/core/attempts.js'
 import { planRun } from '../src/core/foreman.js'
