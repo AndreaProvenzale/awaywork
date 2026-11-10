@@ -15,8 +15,9 @@ flowchart TD
     dedupe["dedupe: one unit per feature"]
     budget["budget: quota probes and caps"]
   end
-  subgraph workers["workers: every agent run, judges too"]
-    worker["one per unit: the agent CLI<br/>in a fresh clone, no forge token"]
+  subgraph workers["workers: every agent run"]
+    direction TB
+    worker["one per unit: the agent CLI in a fresh clone, no forge token"]
   end
   subgraph after["awaywork: plain code"]
     direction LR

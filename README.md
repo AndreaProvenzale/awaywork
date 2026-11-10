@@ -7,7 +7,7 @@
 
 **You're away, your agents work**
 
-> A harness that runs your coding agents on your real tasks, under rules you set. It paces your quota and keeps you in control of what truly matters.
+> Run your coding agents on your real tasks, under rules you set. awaywork paces your quota and brings you only the decisions that matter.
 
 You log off with red CI, 11 PR comments and a QA ticket that just says "broken on Safari"; your agents pick them up.
 
