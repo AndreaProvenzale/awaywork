@@ -31,6 +31,8 @@ The `/away` pane is a Claude Code mod, so its types and test kit come from the `
 
 Tests run against fakes and recorded fixtures. Tests against real accounts (`test/real-*.test.ts`) are skipped by default: provider tests unless `AWAYWORK_REAL=1`, source tests unless their env (token, test workspace or sandbox) is set; see below. `real-isolation.test.ts` needs `AWAYWORK_WORKER_TEST=1` and a Linux box with passwordless sudo where `scripts/worker-user.sh` made the worker user, as CI's `isolation` job does on a hosted runner. The script changes permissions all over the disk, so run it in a throwaway container or VM, not on your machine. `real-container.test.ts` needs `AWAYWORK_CONTAINER_TEST=<image>`, any image with a POSIX shell (`alpine` will do), and a Docker engine that sees your home, as CI's `container` job runs it.
 
+The quick-start GIF and the `/away` pane screenshot in `docs/public/demo/` come from made-up data: after a UI change, `scripts/demo/render.sh` re-renders both with [VHS](https://github.com/charmbracelet/vhs), fake `gh` and `claude` and local acme repos in `/tmp/awaywork-demo`; the pane needs a real `claude` (`CLAUDE_BIN`) and `CLAUDE_CODE_OAUTH_TOKEN`, from your env or `.env.local`, though bare `/away` makes no model call.
+
 ## Live source tests
 
 Sources only read (`items`, `prefetch`, `discover`), so each one can be tested end to end without a provider: seed known items in a test account, read them back through the source, check exact fields and context files, then delete them. The seeding is the only code that writes to the tracker. Each `test/real-<id>.test.ts` skips unless its env is set; run one with `pnpm vitest run test/real-<id>.test.ts`.

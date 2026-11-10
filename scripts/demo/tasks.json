@@ -1,0 +1,11 @@
+[
+  { "key": "T-4", "title": "Export invoices as CSV", "column": "Ready", "repo": "acme/api" },
+  {
+    "key": "T-7",
+    "title": "Dark mode for the settings page",
+    "column": "Ready",
+    "repo": "acme/web"
+  },
+  { "key": "T-9", "title": "Retry webhooks on 5xx", "column": "Backlog", "repo": "acme/api" },
+  { "key": "T-12", "title": "Fix the typo on the pricing page", "column": "Ready" }
+]

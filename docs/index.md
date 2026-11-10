@@ -1,10 +1,10 @@
 ---
 layout: home
-description: awaywork is a harness that runs your coding agents (Claude Code, Codex, Cursor and friends) headless on your real tasks, under rules you set, and leaves draft PRs, reports and questions. It paces your quota and keeps you in control of what truly matters.
+description: awaywork is a harness that runs your coding agents (Claude Code, Codex, Cursor and friends) headless on your real tasks, under rules you set, and leaves draft PRs, reports and questions. It paces your quota and brings you only the decisions that matter.
 hero:
   name: awaywork
   text: You're away, your agents work
-  tagline: A harness that runs your coding agents on your real tasks, under rules you set. It paces your quota and keeps you in control of what truly matters.
+  tagline: Run your coding agents on your real tasks, under rules you set. awaywork paces your quota and brings you only the decisions that matter.
   image:
     light: /brand/mark.svg
     dark: /brand/mark-dark.svg
@@ -29,7 +29,7 @@ features:
   - title: Vendor binaries, your login
     details: Runs the stock agent CLIs (Claude Code, Codex, Cursor, more coming) headless with your own credentials. No API calls with a subscription token, no proxying.
   - title: Drafts, never merges
-    details: Workers get no forge token. awaywork pushes only new branches and opens draft PRs, unless you opt in to ready ones or to fast-forward your own PR, and goes on with its own draft only from where it left it; it never force-pushes or merges, and comments only on your own items, marked as its own.
+    details: No forge token for workers. New branches and draft PRs by default, with opt-in for ready PRs or fast-forwarding your own PR's branch; awaywork continues its own draft only while it's where it left it, never force-pushes, merges or approves, and comments only on your items, marked as its own.
   - title: Paced quota
     details: Stops each agent at a ceiling that spreads its quota over the window and keeps a reserve for you. Agents whose quota can't be read get fixed caps.
 ---

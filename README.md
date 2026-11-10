@@ -7,7 +7,7 @@
 
 **You're away, your agents work**
 
-> A harness that runs your coding agents on your real tasks, under rules you set. It paces your quota and keeps you in control of what truly matters.
+> Run your coding agents on your real tasks, under rules you set. awaywork paces your quota and brings you only the decisions that matter.
 
 You log off with red CI, 11 PR comments and a QA ticket that just says "broken on Safari"; your agents pick them up.
 
@@ -35,6 +35,8 @@ awaywork schedule install     # asks: this machine (launchd, systemd or cron), G
 ```
 
 No Claude Code? Codex gets the same skill through [its plugin](docs/guide/agents.md#codex-and-friends) and other agents from the package, and `awaywork init --yes` writes the detected defaults without asking, for a container or CI. Or [write the config by hand](docs/guide/getting-started.md#configure): a few lines of YAML.
+
+![awaywork plan loading its steps and showing the next run's units, then awaywork report on the night's run: a review report opened and a draft PR's diff](https://andreaprovenzale.github.io/awaywork/demo/quickstart.gif)
 
 `awaywork report` opens what a run left. Arrow to a unit, `⏎` reads it, `o` opens its PR:
 

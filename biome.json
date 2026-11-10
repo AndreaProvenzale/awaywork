@@ -6,7 +6,7 @@
   "linter": { "rules": { "preset": "recommended", "suspicious": { "noImportCycles": "error" } } },
   "overrides": [
     {
-      "includes": ["test/**"],
+      "includes": ["test/**", "scripts/demo/**"],
       "linter": { "rules": { "suspicious": { "noTemplateCurlyInString": "off" } } }
     }
   ],
