@@ -19,7 +19,7 @@ import {
   sudoersLines,
   WORKER,
   workerFor,
-} from '../core/launch.js'
+} from '../core/isolation.js'
 import { ruleThread } from '../core/queue.js'
 import { counted } from '../core/report.js'
 import type { Ctx, Provider } from '../core/types.js'

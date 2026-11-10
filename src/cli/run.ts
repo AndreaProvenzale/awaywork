@@ -19,7 +19,7 @@ import { loadSkills } from '../config/skills.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { type Allowance, route } from '../core/budget.js'
 import { isNamed, type PlannedUnit, type RunPlan } from '../core/foreman.js'
-import { isolateFor } from '../core/launch.js'
+import { isolateFor } from '../core/isolation.js'
 import { ruleFor } from '../core/queue.js'
 import {
   type Chain,

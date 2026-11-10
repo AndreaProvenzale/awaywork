@@ -23,14 +23,8 @@ import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
-import {
-  asWorker,
-  contain,
-  containerize,
-  isolate,
-  launch,
-  lostToWorker,
-} from '../src/core/launch.js'
+import { asWorker, contain, containerize, isolate, lostToWorker } from '../src/core/isolation.js'
+import { launch } from '../src/core/launch.js'
 import { formatReport, type RunReport, runHeadline, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Forge, Item, Login, Provider, Source } from '../src/core/types.js'

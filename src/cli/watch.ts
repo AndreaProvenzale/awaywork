@@ -16,7 +16,7 @@ import {
 import type { Config } from '../config/schema.js'
 import { loadAttempts } from '../core/attempts.js'
 import type { RunPlan } from '../core/foreman.js'
-import { isolateFor } from '../core/launch.js'
+import { isolateFor } from '../core/isolation.js'
 import {
   claimUnits,
   dueUnits,

@@ -9,11 +9,11 @@ import {
   AWAYWORK_ENV,
   dockerArgs,
   isolate,
-  launch,
   sudoArgs,
   WORKER,
   workerFor,
-} from '../src/core/launch.js'
+} from '../src/core/isolation.js'
+import { launch } from '../src/core/launch.js'
 import type { Job, Unit } from '../src/core/types.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'

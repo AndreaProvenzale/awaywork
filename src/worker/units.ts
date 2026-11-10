@@ -36,7 +36,7 @@ import {
   lostToWorker,
   workerHome,
   workerRoot,
-} from '../core/launch.js'
+} from '../core/isolation.js'
 import {
   checkPlan,
   contractName,
