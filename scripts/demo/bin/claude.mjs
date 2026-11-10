@@ -102,7 +102,10 @@ const units = {
     return 17
   },
   't-7': () => {
-    out('questions.md', 'Should dark mode follow the system setting, or be a toggle in settings only?')
+    out(
+      'questions.md',
+      'Should dark mode follow the system setting, or be a toggle in settings only?',
+    )
     out('status', 'ask')
     return 4
   },

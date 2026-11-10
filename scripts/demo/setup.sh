@@ -9,7 +9,8 @@ rm -rf "${home:?}"
 mkdir -p "$home/bin" "$home/.config/awaywork" "$home/.gh" "$home/fixtures/gh"
 cp "$demo/config.yml" "$demo/tracker.mjs" "$demo/tasks.json" "$home/.config/awaywork/"
 cp "$repo"/test/fixtures/gh/* "$home/fixtures/gh/"
-cp "$demo/bin/claude" "$demo/bin/gh" "$home/bin/"
+cp "$demo/bin/claude.mjs" "$home/bin/claude"
+cp "$demo/bin/gh.mjs" "$home/bin/gh"
 printf '#!/bin/sh\nexec node %s/dist/index.js "$@"\n' "$repo" >"$home/bin/awaywork"
 chmod +x "$home/bin/"*
 
@@ -35,5 +36,5 @@ rm -rf "$home/work"
 cp -R "$repo/plugin" "$home/plugin"
 mkdir -p "$home/.claude"
 trusted='{"hasTrustDialogAccepted":true}'
-printf '{"hasCompletedOnboarding":true,"theme":"dark","projects":{"%s":%s,"%s":%s}}\n' \
+printf '{"hasCompletedOnboarding":true,"hasSeenAutoDefaultNotice":true,"theme":"dark","projects":{"%s":%s,"%s":%s}}\n' \
   "$home" "$trusted" "$(cd "$home" && pwd -P)" "$trusted" >"$home/.claude/.claude.json"
