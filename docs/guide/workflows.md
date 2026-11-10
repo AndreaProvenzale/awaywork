@@ -14,7 +14,7 @@ Where a run stops for a person, and how the work goes on from your answer:
 - [Threads](#threads): the card can't take awaywork's posts, so they go to a GitHub issue.
 - [Store](#store): big plans, contracts and screenshots live outside the post and [come back](#files-that-come-back) to the next step.
 
-awaywork keeps none of this in its state dir: every wait is read off the item, its PR or its thread, so a fresh runner behaves the same.
+awaywork keeps none of this in its state dir: every wait is read off the item, its PR or its thread, so a fresh runner still waits and goes on.
 
 ## Questions
 
@@ -55,7 +55,7 @@ Details:
 
 ## Continue
 
-You get one draft PR that grows over several window runs, `Status: continue (1 of 3)` on top. Review it once it turns ready, or mark it ready to take it over: a ready PR, or a draft with no status in its footer, waits for review like any awaywork PR.
+You get one draft PR that grows over several window runs, `Status: continue (1 of 3)` on top. Under `deliver: pr` it turns ready for review once done; mark it ready yourself to take it over: a ready PR, or a draft with no status in its footer, waits for review like any awaywork PR.
 
 A step commits what's solid and writes `continue` to `.away/out/status`. The chain stops there, so no review or fix runs on half-done work, and publishes what it has. Under `draft_pr` or `pr` that's a draft (`draft: the agent will continue`), the count in its footer:
 
@@ -68,7 +68,7 @@ Status: continue (1 of 3): awaywork's next window run goes on here
 
 ---
 <!-- awaywork run=20261026-232730 item=github:acme%2Fapi%231%2Fapp status=continue continued=1 head=1f8a2313462c9a1f49af169ae1822d14c8adcde3 from=16548667d8e02a7a03e25135ff6054b195de8e51 -->
-[...]
+Opened by awaywork (run `20261026-232730`): a coding agent worked on this unattended. Review it like any other contribution.
 ```
 
 The next run that would take the item anyway (window, scheduled or manual, never `run: soon`) goes on with the draft. Its commits fast-forward onto it, no new PR or suffixed branch, and the new `pr.md` replaces title and body:

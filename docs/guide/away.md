@@ -160,7 +160,7 @@ Also:
 
 ### The Config tab
 
-Tab 5 is your config as it reads to a human: the draft while there is one, else the file. With no config (empty until the draft exists), or a draft waiting, the pane opens here, and it's the only tab until a config exists. A config behind [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) isn't on this machine, so it gets no tab.
+Tab 5 is your config as it reads to a human: the draft while there is one, else the file. With no config yet (the tab stays blank until the draft is written), or a draft waiting, the pane opens here, and it's the only tab until a config exists. A config behind [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) isn't on this machine, so it gets no tab.
 
 ```text
 [...]
