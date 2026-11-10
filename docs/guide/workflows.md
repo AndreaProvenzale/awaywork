@@ -16,6 +16,25 @@ Where a run stops for a person, and how the work goes on from your answer:
 
 awaywork keeps none of this in its state dir: every wait is read off the item, its PR or its thread, so a fresh runner still waits and goes on.
 
+A feature card under a `deliver: plan` rule, with an `implement` rule and a review-and-fix [loop](./chains.md#loops) taking its tasks, stops for you at the plan, at any questions, and at the PR. Your reply is what moves it on:
+
+```mermaid
+flowchart TD
+  card["Your feature card"] --> plan["plan step writes the tasks"]
+  plan --> posted["Plan posted on your card"]
+  posted --> waits{"Waits? By default,<br/>and whenever a gate fired"}
+  waits -- "no: wait: false, gates clear" --> tasks["Tasks fan out, each its own unit"]
+  waits -- yes --> you1(["You reply"])
+  you1 -- approve --> tasks
+  you1 -- "anything else: feedback" --> plan
+  tasks --> impl["implement"]
+  impl -- asks --> q(["You answer its questions"])
+  q --> impl
+  impl --> loop["review ⇄ fix until review approves or max rounds"]
+  loop --> pr["Draft PR, a decision card on top if a gate fired"]
+  pr --> you2(["You review and merge"])
+```
+
 ## Questions
 
 A step that can't go on without an answer, like `implement` on a vague issue, asks on your item:

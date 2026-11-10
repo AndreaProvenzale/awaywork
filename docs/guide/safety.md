@@ -17,6 +17,26 @@ In short:
 
 A worker gets no forge or tracker token, only its own secret, a throwaway clone, a fixed harness, and none of your user-level agent config; setup, context and checks run outside it, and other people's PRs are data.
 
+Below, the credentials awaywork passes a worker and where its work goes. That's what awaywork hands over, not a wall: with `isolation: none`, the default on your machine, the agent runs as you and can read your files, tokens included ([Not a sandbox](#not-a-sandbox)).
+
+```mermaid
+flowchart TD
+  subgraph before["awaywork, with your forge and tracker tokens"]
+    prefetch["Prefetch the item's context"]
+  end
+  subgraph worker["Worker, in a fresh clone"]
+    agent["Agent CLI"]
+  end
+  subgraph after["awaywork, with your forge and tracker tokens"]
+    publish["Push a branch, open the PR, post on your item"]
+  end
+  login["Its own agent login, a rule's MCP secrets, the rest of your environment"] --> agent
+  prefetch -- ".away/context/ files" --> agent
+  agent -- "commits and .away/out/" --> publish
+  publish --> forge["Forge and tracker"]
+  agent -. "readable with isolation: none" .-> home["Your files: env file,<br/>gh login, ssh keys"]
+```
+
 ### No forge or tracker token
 
 Sources prefetch context into files before the agent starts, and awaywork makes any [tracker write](#tracker-writes) itself after the chain. A custom source's `write` gets its `secrets`; the agent never does.

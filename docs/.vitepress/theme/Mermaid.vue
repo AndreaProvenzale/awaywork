@@ -33,3 +33,10 @@ watch(isDark, draw)
   <div v-if="failed" class="language-mermaid"><pre><code>{{ source }}</code></pre></div>
   <div v-else class="mermaid" v-html="svg" />
 </template>
+
+<style>
+/* Mermaid sizes labels at its own line height; the doc's taller one clipped them. */
+.vp-doc .mermaid p {
+  line-height: inherit;
+}
+</style>
