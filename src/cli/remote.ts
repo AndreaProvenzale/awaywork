@@ -8,7 +8,7 @@ import type { ReadableStream } from 'node:stream/web'
 import { execa } from 'execa'
 import { envFile, runsDir } from '../config/paths.js'
 import { awaitGroup } from '../core/group.js'
-import { inAwayworkImage } from '../core/launch.js'
+import { inAwayworkImage } from '../core/isolation.js'
 
 /** The port `awaywork watch` serves the CLI on when AWAYWORK_REMOTE_TOKEN is set. */
 export const REMOTE_PORT = 7480

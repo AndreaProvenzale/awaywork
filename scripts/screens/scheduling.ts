@@ -1,4 +1,4 @@
-import { findChains, formatUnit } from '../../src/cli/format.js'
+import { findChains, formatUnit } from '../../src/cli/format/report.js'
 import { sourceFailure, sourceWarning } from '../../src/cli/plan.js'
 import { noBoxToken, sshFailure, tokenRefused } from '../../src/cli/remote.js'
 import { listedRun, warningLine } from '../../src/cli/run.js'

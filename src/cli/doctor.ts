@@ -19,7 +19,7 @@ import {
   sudoersLines,
   WORKER,
   workerFor,
-} from '../core/launch.js'
+} from '../core/isolation.js'
 import { ruleThread } from '../core/queue.js'
 import { counted } from '../core/report.js'
 import type { Ctx, Provider } from '../core/types.js'
@@ -32,8 +32,10 @@ import { staleDocker } from '../scheduler/docker.js'
 import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
-import { describeAllowance, type Status, statusMarker } from './format.js'
-import { gitRoot, staleSchedules } from './schedule.js'
+import { describeAllowance } from './format/allowances.js'
+import { type Status, statusMarker } from './format/terminal.js'
+import { gitRoot } from './git-root.js'
+import { staleSchedules } from './schedule.js'
 
 export interface Check {
   status: Status

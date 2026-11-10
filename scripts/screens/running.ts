@@ -1,14 +1,9 @@
 import { join } from 'node:path'
-import {
-  brandHeader,
-  findChains,
-  formatPlan,
-  formatQueue,
-  formatRun,
-  formatUnit,
-  formatWhy,
-  namedItems,
-} from '../../src/cli/format.js'
+import { formatPlan } from '../../src/cli/format/plan.js'
+import { findChains, formatRun, formatUnit } from '../../src/cli/format/report.js'
+import { formatQueue } from '../../src/cli/format/rules.js'
+import { brandHeader } from '../../src/cli/format/terminal.js'
+import { formatWhy, namedItems } from '../../src/cli/format/why.js'
 import { detachedLine } from '../../src/cli/run.js'
 import {
   loading,

@@ -61,3 +61,34 @@ export function asanaTask(
     ...overrides,
   })
 }
+
+export const issue = (n: number) =>
+  fakeItem({
+    source: 'github',
+    id: String(n),
+    key: `acme/api#${n}`,
+    type: 'issue',
+    fields: { repo: 'acme/api' },
+  })
+
+export const yours = (n: number) =>
+  fakeItem({
+    ...issue(n),
+    mine: true,
+    fields: { repo: 'acme/api', updated: '2026-10-24T00:00:00Z' },
+  })
+
+/** Your PR and the tracker card it links, which dedupe into one unit. */
+export function cardAndPr(): Item[] {
+  const pr = githubPr(2, { mine: true })
+  const card = fakeItem({
+    source: 'tracker',
+    id: 'c1',
+    key: 'ENG-1',
+    type: 'task',
+    mine: true,
+    linkedPrs: pr.linkedPrs,
+    fields: { repo: 'acme/api' },
+  })
+  return [{ ...pr, mine: true as const }, card]
+}

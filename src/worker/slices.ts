@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { MAX_ATTEMPTS } from '../core/attempts.js'
 import { footerItems, hasTrailer, type Left, type Pin } from '../core/footer.js'
+import { MAX_ATTEMPTS } from '../core/max-attempts.js'
 import type { Forge, Unit } from '../core/types.js'
 import {
   type Check,
@@ -14,14 +14,8 @@ import {
 import { describeFired, gateOut, gatesSection, type Judged, runGates, runJudges } from './gates.js'
 import { type Outcome, publish } from './publish.js'
 import { leaveReview } from './review.js'
-import {
-  outputFile,
-  readOutput,
-  refuseSymlinks,
-  reportsOnly,
-  WORK_DIR,
-  writeOutput,
-} from './workspace.js'
+import { readOutput, refuseSymlinks, writeOutput } from './safe-files.js'
+import { outputFile, reportsOnly, WORK_DIR } from './work-dir.js'
 
 const MAX_SUFFIX = 10
 

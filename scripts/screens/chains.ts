@@ -1,11 +1,7 @@
 import { styleText } from 'node:util'
-import {
-  heading,
-  listedUnits,
-  planUnitLines,
-  reportUnitTable,
-  type Style,
-} from '../../src/cli/format.js'
+import { listedUnits, planUnitLines } from '../../src/cli/format/plan.js'
+import { reportUnitTable } from '../../src/cli/format/report.js'
+import { heading, type Style } from '../../src/cli/format/terminal.js'
 import { detachedLine } from '../../src/cli/run.js'
 import { parseConfig } from '../../src/config/load.js'
 import { allowance } from '../../src/core/budget.js'

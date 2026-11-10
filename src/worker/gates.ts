@@ -5,9 +5,11 @@ import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import type { Unit } from '../core/types.js'
 import { changedPaths, git, head } from './checks.js'
+import { readOutput, refuseSymlinks } from './safe-files.js'
 import type { Publisher } from './slices.js'
 import { discard, readVerdict, snapshot } from './steps.js'
-import { inClone, outputFile, readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
+import { outputFile, WORK_DIR } from './work-dir.js'
+import { inClone } from './workspace.js'
 
 const SHOWN_PATHS = 3
 const LINE_CHARS = 300

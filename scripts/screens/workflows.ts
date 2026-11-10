@@ -1,31 +1,22 @@
 import { styleText } from 'node:util'
 import { z } from 'zod'
 import { approveItem } from '../../src/cli/approve.js'
-import {
-  formatSkipped,
-  heading,
-  listedUnits,
-  needsYouLines,
-  planUnitLines,
-  reportUnitTable,
-  type Style,
-  skippedLines,
-} from '../../src/cli/format.js'
+import { listedUnits, planUnitLines } from '../../src/cli/format/plan.js'
+import { reportUnitTable } from '../../src/cli/format/report.js'
+import { formatSkipped, needsYouLines, skippedLines } from '../../src/cli/format/skips.js'
+import { heading, type Style } from '../../src/cli/format/terminal.js'
 import { parseConfig } from '../../src/config/load.js'
 import type { Config } from '../../src/config/schema.js'
 import { allowance } from '../../src/core/budget.js'
-import { taskMarkdown } from '../../src/core/fanout.js'
 import {
   approveReply,
-  footer,
   markComment,
-  type Pin,
-  pinBlock,
   planComment,
   questionsComment,
   resultComment,
-  threadBody,
-} from '../../src/core/footer.js'
+} from '../../src/core/comments.js'
+import { taskMarkdown } from '../../src/core/fanout.js'
+import { footer, type Pin, pinBlock, threadBody } from '../../src/core/footer.js'
 import { planRun, type RunPlan } from '../../src/core/foreman.js'
 import type { RunReport, UnitResult } from '../../src/core/report.js'
 import { builtinSkills } from '../../src/core/skills.js'

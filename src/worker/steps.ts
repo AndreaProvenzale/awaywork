@@ -3,7 +3,10 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import { git } from './checks.js'
-import { commandEnv, inClone, readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
+import { commandEnv } from './env.js'
+import { readOutput, refuseSymlinks } from './safe-files.js'
+import { WORK_DIR } from './work-dir.js'
+import { inClone } from './workspace.js'
 
 export function isLast(loop: {
   round: number

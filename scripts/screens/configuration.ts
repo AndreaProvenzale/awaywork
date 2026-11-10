@@ -13,12 +13,14 @@ import {
   providerLogin,
   workerFailure,
 } from '../../src/cli/doctor.js'
-import { formatQueue, formatRun, formatWhy } from '../../src/cli/format.js'
+import { formatRun } from '../../src/cli/format/report.js'
+import { formatQueue } from '../../src/cli/format/rules.js'
+import { formatWhy } from '../../src/cli/format/why.js'
 import { type Discoveries, formatDiscoveries } from '../../src/cli/sources.js'
 import { loadConfig, parseConfig } from '../../src/config/load.js'
 import { loginCommand, type Pin } from '../../src/config/logins.js'
 import { planRun } from '../../src/core/foreman.js'
-import { sudoersLines, WORKER } from '../../src/core/launch.js'
+import { sudoersLines, WORKER } from '../../src/core/isolation.js'
 import type { RunReport } from '../../src/core/report.js'
 import { builtinSkills } from '../../src/core/skills.js'
 import type { Item } from '../../src/core/types.js'

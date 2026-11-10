@@ -3,7 +3,7 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": { "includes": ["**", "!docs/public/config.schema.json"] },
   "formatter": { "indentStyle": "space", "lineWidth": 100 },
-  "linter": { "rules": { "preset": "recommended" } },
+  "linter": { "rules": { "preset": "recommended", "suspicious": { "noImportCycles": "error" } } },
   "overrides": [
     {
       "includes": ["test/**", "scripts/demo/**"],

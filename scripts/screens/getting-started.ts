@@ -1,4 +1,4 @@
-import { brandHeader } from '../../src/cli/format.js'
+import { brandHeader } from '../../src/cli/format/terminal.js'
 import {
   type Loading,
   loading,
