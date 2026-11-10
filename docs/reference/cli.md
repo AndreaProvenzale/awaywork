@@ -13,7 +13,7 @@ Every command's `--help`. The global `--config` option applies to all of them.
 ```text
 Usage: awaywork [options] [command]
 
-Spend idle coding-subscription quota while you're away
+Run your coding agents on your real tasks, under rules you set
 
 Options:
   -V, --version             output the version number

@@ -5,60 +5,25 @@
   </picture>
 </h1>
 
-> Your AI coding subscription resets every week, used or not. While you're away, awaywork puts Claude Code, Codex, Cursor and friends to work.
+**You're away, your agents work**
 
-You log off with red CI, 11 PR comments and a QA ticket that just says "broken on Safari". Your coding agent logs off with 60% of its weekly quota unused. Both are a waste.
+> A harness that runs your coding agents on your real tasks, under rules you set. It paces your quota and keeps you in control of what truly matters.
 
-awaywork is a CLI that clocks in when you clock out. It pulls your leftovers from your forge and task tracker and runs your agents' stock CLIs on them headless, logged in as you. It paces itself so you still have quota left in the morning. You wake up to draft PRs and a report. Nothing gets merged or force-pushed, and the only comment it leaves as you is a question on your own issue, signed `— awaywork`, when it's stuck.
+You log off with red CI, 11 PR comments and a QA ticket that just says "broken on Safari"; your agents don't have to.
+
+awaywork is a CLI. It pulls items from your forge and task tracker, and rules you write pick what runs and with which skill. The vendors' stock agent CLIs do the work headless, with your login. You get draft PRs, reports and questions on your own items, and you decide at the points that matter: approving a plan, answering a question, settling what a gate flagged, merging.
 
 ## Quick start
 
 ```sh
 npm i -g awaywork
-awaywork init     # opens Claude Code on /away, which sets it up with you
-awaywork plan     # a dry look at the next run; only a tiny quota probe
+awaywork init                 # opens Claude Code on /away, which sets it up with you
+awaywork plan                 # a dry look at the next run; only a tiny quota probe
+awaywork run --unit <item>    # one item for real
+awaywork schedule install     # asks where: launchd, systemd, cron, GitHub Actions or a container
 ```
 
-```
-$ awaywork plan | cat
-Providers
-  present run (outside the windows): present_session_max
-  provider  window     used  ceiling  set by  resets in  session / stop at
-  claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
-    other limits: reserve cap 90%
-
-Units 3
-     item   rule  skill              provider  deliver   title
-  1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
-     + api#5: same feature, matched #3
-  2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
-  3  api#2  #2    review (built-in)  claude    report    Cache user sessions
-
-Needs you 1
-  tracker T
-    T-4  Export invoices as CSV  add repo
-
-Skipped 2: 1 no_rule, 1 over_cap
-
-awaywork plan --skipped [kind]  lists them
-awaywork plan --why <key>       says why an item is planned or not
-```
-
-Looks sane? Run one unit for real:
-
-```sh
-awaywork run --unit api#1
-```
-
-Then schedule it for when you're away:
-
-```sh
-awaywork schedule install    # asks: this machine (launchd, systemd or cron), GitHub Actions or a container
-```
-
-GitHub Actions runs from a repo of your own, on GitHub's runners or on a machine of yours, which is how Codex runs there; add the secrets it lists. Or run the daemon in a container, on Coolify or any VPS: in a repo of your own, `schedule install` writes the [Dockerfile and compose file](docs/guide/scheduling.md#in-a-container) for it.
-
-Next morning, `awaywork report` opens the run in your terminal. Arrow to a unit, `⏎` reads its PR body or report, `o` opens the PR, `l` and `d` page its log and diff, `s` skips an item for the coming runs:
+`awaywork report` opens what a run left. Arrow to a unit, `⏎` reads it, `o` opens its PR:
 
 ```
 ☾ >_ awaywork  You're away, your agents work
@@ -88,64 +53,35 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 ⏎ read  o open  l log  d diff  s skip  a approve  ? help  q quit
 ```
 
-Piped or in CI, `plan` and `report` print plain text, like the `plan` above.
+No Claude Code? Codex and friends get the same `/away` skill through the [plugin](docs/guide/agents.md#codex-and-friends), and `awaywork init --yes` writes the detected defaults without asking, for a container or CI. Or [write the config by hand](docs/guide/getting-started.md#configure): a few lines of YAML.
 
-In Claude Code, bare `/away` from the [plugin](docs/guide/agents.md#claude-code) opens the last run in a pane beside the chat.
+## What it can do
 
-**Docs:** https://andreaprovenzale.github.io/awaywork/ · **Setting it up with an agent?** Point it at [`llms.txt`](https://andreaprovenzale.github.io/awaywork/llms.txt).
+| Capability | What you get |
+| --- | --- |
+| [Rules and the default queue](docs/guide/how-it-works.md#the-queue) | An ordered list: each item takes the first rule it matches. Write none and the default queue applies |
+| [Skills](docs/guide/skills.md) | Plain Markdown: `fix`, `implement`, `review`, `plan` and more built in. Eject one or write your own |
+| [Chains and loops](docs/guide/chains.md) | More steps after a rule's skill, in the same clone: conditions, review-and-fix loops, pushing onto your PR |
+| [Plans](docs/guide/how-it-works.md#plans) | A feature split into tasks on your card. Once you approve, they run as PRs or reports, across repos too |
+| [Gates](docs/guide/configuration.md#gates) | A glob, a script or a judge spots a change that wants a human and puts a decision card on top of the PR or post |
+| [Posts that wait](docs/guide/how-it-works.md#posts-that-wait) | A result lands on your item and waits; your approve hands the item to the next rule |
+| [Threads](docs/guide/how-it-works.md#threads) | A card that can't take awaywork's posts gets a GitHub issue for them, assigned to you, or a page on a host of your own |
+| [Store](docs/guide/configuration.md#store) | Files a post pins go wherever your command puts them, and the next unit gets them back |
+| [Results](docs/guide/results.md) and [notify hooks](docs/guide/configuration.md#notify) | How far each rule's result reaches, and your own command for Notion, Slack and the like |
+| [`/away` pane](docs/guide/agents.md#claude-code) | Beside the chat in Claude Code: what needs you and what ran, with keys to skip, approve or start an item |
+| [Quota pacing](docs/guide/how-it-works.md#budget) | A ceiling per run spreads your quota over its window and keeps a reserve. Agents whose quota can't be read get fixed caps |
 
-## What it picks up
+## Guardrails
 
-The queue works top-down and the first rule that matches wins. These are the defaults:
-
-| When                               | Skill       | You get        |
-| ---------------------------------- | ----------- | -------------- |
-| your PR has red checks             | `fix`       | draft PR       |
-| a task lands in `QA`               | `fix`       | draft PR       |
-| your PR has unresolved threads     | `fix`       | draft PR       |
-| you left threads on an awaywork PR | `fix`       | draft PR on it |
-| someone requested your review      | `review`    | report         |
-| a task is `In progress`            | `implement` | draft PR       |
-| a task is in `Current sprint`      | `plan`      | report         |
-
-Adding a rule takes a few lines of YAML:
-
-```yaml
-queue:
-  - skill: implement
-    where: { type: issue, label: awaywork }
-    provider: codex
-```
-
-The label isn't enough on its own: awaywork reads only the issues assigned to you, so assign yourself too.
-
-`awaywork plan --rules` shows what each rule takes right now. Skills are plain markdown: `awaywork skills eject fix` and hack away.
-
-Rather not write YAML? Tell your agent what to offload and it writes the rules, checked on your real items first. In Claude Code:
-
-```text
-/plugin marketplace add AndreaProvenzale/awaywork
-/plugin install awaywork@awaywork
-/away fix my PRs when CI goes red
-```
-
-Codex and friends get the same skill too: [With an AI agent](docs/guide/agents.md).
-
-## How much quota it burns
-
-Each run's ceiling on the weekly window is an even spend over the week:
-
-```
-ceiling = (1 - reserve) × time since the last reset / week
-```
-
-A run in one of your windows reads that at the next window's start, or at the reset if that comes first, since nobody else spends what piles up before then; a run outside your windows reads it right away. Day 3 of 7 with the default 10% reserve is 38.6%, and a night it didn't use is still there the next one. Every worker reads the live rate-limit events from its own stream and stops at the ceiling, or when the short session window passes 90%: 40% for a run outside the windows, since that's you at your desk wanting some for yourself. There's no token estimation and no guessing.
-
-## The paranoid bit
-
-- **Only its own login reaches the agent,** plus the secrets of any MCP servers a rule names. No forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files. awaywork itself does the push. On your machine it's not a sandbox, though: the agent runs as you and can read what you can, your gh login and ssh agent included. On GitHub's hosted runners, in awaywork's container image, and on Linux with `isolation: user`, it runs as a user of its own, which can't; with `isolation: container`, in a fresh container per command that sees only the clone, on your Mac too.
-- **It only pushes branches it creates** (`away/<key>`), unless a rule opts in to fast-forward your own PR. No force pushes or PR merges, and it never touches anyone else's branch. The only comments it writes are a step's questions, a rule's plan or a unit's result on your own item, signed `— awaywork`; your reply there runs it again. A rule can opt in to leaving its review on a PR as your pending one, which nobody sees until you submit it, or to moving your own tracker item once its work is published (`on_done`).
-- **It runs the vendor's own binary with your login.** It never calls the backing API with a subscription token and never proxies credentials.
+- **The agent holds no write token.** Only its own login reaches it, plus the secrets of any MCP servers a rule names: no forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files, and awaywork does every write, where the config says.
+- **Not a sandbox on your machine.** There the agent runs as you and can read what you can, your `gh` login and ssh agent included. On GitHub's hosted runners, in awaywork's container image and on Linux with `isolation: user` it runs as a user of its own, which can't; with `isolation: container`, in a fresh container per command that sees only the clone, on your Mac too.
+- **It pushes only branches that didn't exist** (`away/<key>` unless configured), unless a rule opts in to fast-forwarding your own PR's branch (`deliver: push`), or it fast-forwards its own draft, while the draft's head is still the one it left, to continue work it started.
+- **It never force-pushes, merges or approves,** touches someone else's branch, or comments on someone's behalf.
+- **It writes to a tracker only on items a rule matched as yours,** at a destination the config names, its comments signed `— awaywork`: a step's questions, a rule's plan or a unit's result. Your reply there runs it again. A rule can opt in to moving your item once its work is published (`on_done`).
+- **It opens a new issue or page only as a rule's thread,** one per item a rule matched as yours, assigned to you, at the host the config names, and closes only its own threads.
+- **Files go only in the store the config names.**
+- **A review stays yours.** With `deliver: pending_review` it's your pending review, which only you see until you submit it.
+- **It runs the vendor's own binary with your login.** It never calls the backing API with a subscription credential, and never stores or proxies someone else's.
 - **A watchdog cleans up** after every worker and kills units that eat all the RAM or disk.
 
 More in [Safety](docs/guide/safety.md).
@@ -160,22 +96,25 @@ More agents and task trackers are on the way, or bring your own: [add a provider
 
 ## Docs
 
-| Guide |  |
+The site: https://andreaprovenzale.github.io/awaywork/. Setting it up with an agent? Point it at [`llms.txt`](https://andreaprovenzale.github.io/awaywork/llms.txt).
+
+| Page |  |
 | --- | --- |
 | [Getting started](docs/guide/getting-started.md) | Install, first plan, first unit, first schedule |
-| [How it works](docs/guide/how-it-works.md) | Queue, units, budget, delivery |
-| [Configuration](docs/guide/configuration.md) | The config file by example; [reference](docs/reference/config.md). The schema holds across minor releases, [experimental keys aside](docs/guide/configuration.md#stability) |
+| [How it works](docs/guide/how-it-works.md) | Queue, units, budget, delivery, plans, the report |
+| [Configuration](docs/guide/configuration.md) | The config file by example. The schema holds across minor releases, [experimental keys aside](docs/guide/configuration.md#stability) |
 | [Chains](docs/guide/chains.md) | More steps after a rule's skill: loops, conditions, stacked PRs, pushing onto your PR |
 | [Where results go](docs/guide/results.md) | Who sees what, and notify hooks for Notion, Slack and the like |
+| [Custom sources](docs/guide/custom-sources.md) | Any task tracker, through a command that prints your items as JSON |
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |
 | [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions, a container |
 | [Safety](docs/guide/safety.md) | Guardrails and vendor terms |
-| [With an AI agent](docs/guide/agents.md) | Let your coding agent write your queue, or set awaywork up |
+| [With an AI agent](docs/guide/agents.md) | The `/away` plugin and pane, and your agent writing your queue |
 | [Suggested rules](docs/guide/suggest.md) | Rules, routines and `AGENTS.md` lines from your own sessions and PRs |
 | [CLI reference](docs/reference/cli.md) | Every command |
+| [Config reference](docs/reference/config.md) | Every key with its type and default |
 | [Adding a provider](docs/extend/providers.md), [a source](docs/extend/sources.md) | Contributing adapters |
-
-Research notes: [providers](docs/providers.md), [sources](docs/sources.md).
+| Research: [providers](docs/providers.md), [sources](docs/sources.md) | What each vendor and tracker allows, with evidence |
 
 ## License
 
