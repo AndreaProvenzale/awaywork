@@ -10,18 +10,12 @@ import { taskBranches, taskPr } from '../core/fanout.js'
 import { renderLink, threadClosed } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { heldMove, withApproved } from '../core/posts.js'
-import {
-  DEFAULT_LOOKBACK,
-  defaultRules,
-  itemState,
-  lookback,
-  ruleThread,
-  spanMs,
-} from '../core/queue.js'
+import { defaultRules, ruleThread } from '../core/queue.js'
 import { counted, type Moved } from '../core/report.js'
 import { builtinSkills, type SkillCatalog } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
+import { DEFAULT_LOOKBACK, itemState, lookback, spanMs } from '../core/where.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'

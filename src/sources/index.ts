@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { markComment, type PostState } from '../core/comments.js'
-import { itemStates } from '../core/queue.js'
 import type { Ctx, Forge, Item, Source, ThreadHost, Write } from '../core/types.js'
+import { itemStates } from '../core/where.js'
 import { asana } from './asana.js'
 import { bitbucket } from './bitbucket.js'
 import { commandSource, commandThreads, isCommand } from './command.js'

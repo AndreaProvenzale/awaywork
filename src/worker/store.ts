@@ -12,8 +12,8 @@ import type { Pin } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
 import { contractName } from '../core/plan.js'
 import { decisionPosts, type PinnedPost } from '../core/posts.js'
-import { itemState } from '../core/queue.js'
 import type { Item } from '../core/types.js'
+import { itemState } from '../core/where.js'
 import { runShell, TIMEOUT_MS } from '../sources/command.js'
 
 /** `dir` is the folder of the config file that set the command, set when the config loads. */

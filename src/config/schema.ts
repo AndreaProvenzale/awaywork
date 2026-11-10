@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
 import { headerSecret } from '../core/mcp.js'
+import { ruleSteps, ruleThread } from '../core/queue.js'
+import { builtinSkills } from '../core/skills.js'
+import type { Provider, Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import {
   bounds,
   DEFAULT_LOOKBACK,
@@ -10,12 +13,8 @@ import {
   matchesOpen,
   matchesValue,
   newerThan,
-  ruleSteps,
-  ruleThread,
   spanPattern,
-} from '../core/queue.js'
-import { builtinSkills } from '../core/skills.js'
-import type { Provider, Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
+} from '../core/where.js'
 import { DAYS, time } from '../core/window.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'

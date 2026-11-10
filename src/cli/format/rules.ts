@@ -1,15 +1,7 @@
 import { noRuleReason, type RunPlan } from '../../core/foreman.js'
-import {
-  bounds,
-  comparisons,
-  isAge,
-  isLoop,
-  isMatch,
-  matches as matchesRule,
-  ruleMatches,
-  spans,
-} from '../../core/queue.js'
+import { isLoop, matches as matchesRule, ruleMatches } from '../../core/queue.js'
 import type { Item, Rule, Where, WhereValue } from '../../core/types.js'
+import { bounds, comparisons, isAge, isMatch, spans } from '../../core/where.js'
 import { itemRef } from './json.js'
 import { indent, table } from './terminal.js'
 
