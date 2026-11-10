@@ -12,19 +12,19 @@ import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
-import { NOT_YOURS } from '../src/core/continue.js'
-import { taskItem, taskMarkdown, taskPr } from '../src/core/fanout.js'
 import {
   approveReply,
   commentKind,
   commentMarkdown,
-  footer,
   markComment,
   planComment,
   questionsComment,
   resultComment,
   waitingTasks,
-} from '../src/core/footer.js'
+} from '../src/core/comments.js'
+import { NOT_YOURS } from '../src/core/continue.js'
+import { taskItem, taskMarkdown, taskPr } from '../src/core/fanout.js'
+import { footer } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
 import {
   checkPlan,

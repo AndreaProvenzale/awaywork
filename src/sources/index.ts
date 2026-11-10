@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { markComment, type PostState } from '../core/footer.js'
+import { markComment, type PostState } from '../core/comments.js'
 import { itemStates } from '../core/queue.js'
 import type { Ctx, Forge, Item, Source, ThreadHost, Write } from '../core/types.js'
 import { asana } from './asana.js'

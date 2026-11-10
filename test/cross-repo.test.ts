@@ -13,8 +13,8 @@ import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
+import { approveReply, markComment, planComment } from '../src/core/comments.js'
 import { planLimits, taskBranches, taskItem, taskMarkdown } from '../src/core/fanout.js'
-import { approveReply, markComment, planComment } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
 import {
   checkPlan,

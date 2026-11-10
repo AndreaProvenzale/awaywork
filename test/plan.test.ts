@@ -20,7 +20,7 @@ import {
 } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { approveReply, markComment, planComment, resultComment } from '../src/core/footer.js'
+import { approveReply, markComment, planComment, resultComment } from '../src/core/comments.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'

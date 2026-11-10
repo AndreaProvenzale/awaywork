@@ -1,6 +1,7 @@
 import type { Config } from '../config/schema.js'
 import { defaultType, renderBranch } from './branch.js'
-import { commentKind, commentMarkdown, footerItems, waitingTasks } from './footer.js'
+import { commentKind, commentMarkdown, waitingTasks } from './comments.js'
+import { footerItems } from './footer.js'
 import type { SkipKind, Skipped } from './foreman.js'
 import {
   type Contract,

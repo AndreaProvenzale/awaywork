@@ -6,18 +6,17 @@ import { isDeepStrictEqual } from 'node:util'
 import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
-import { describeCondition, holds } from '../core/condition.js'
-import { byHand } from '../core/continue.js'
 import {
   leanPlanComment,
-  type Pin,
   type PostState,
-  pinBlock,
   planComment,
   questionsComment,
   resultComment,
   type Status,
-} from '../core/footer.js'
+} from '../core/comments.js'
+import { describeCondition, holds } from '../core/condition.js'
+import { byHand } from '../core/continue.js'
+import { type Pin, pinBlock } from '../core/footer.js'
 import {
   describeChain,
   modelFor,
