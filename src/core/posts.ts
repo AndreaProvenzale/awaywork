@@ -2,16 +2,15 @@ import {
   answerTo,
   commentKind,
   commentTask,
-  footerPins,
   isApprove,
   isAwayworkComment,
-  type Pin,
   type PostState,
   pinsOf,
   postState,
   resultOf,
   resultSkill,
-} from './footer.js'
+} from './comments.js'
+import { footerPins, type Pin } from './footer.js'
 import { planThread } from './plan.js'
 import type { Item } from './types.js'
 

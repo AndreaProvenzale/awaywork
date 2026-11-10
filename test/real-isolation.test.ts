@@ -8,13 +8,13 @@ import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
 import {
   asWorker,
   isolate,
-  launch,
   lostToWorker,
   WORKER,
   workerFor,
   workerHome,
   workerRoot,
-} from '../src/core/launch.js'
+} from '../src/core/isolation.js'
+import { launch } from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
 import { codexProvider } from '../src/providers/codex.js'
 import { commandProvider } from '../src/providers/command.js'
