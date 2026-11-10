@@ -4,44 +4,59 @@ description: Where a unit's results go and who sees them, from the morning repor
 
 # Where results go
 
-The model writes the content, the config picks the destination, and the write is done by awaywork or by your own [notify](./configuration.md#notify) hook, never by the model. The integrity rules in [Safety](./safety.md#what-awaywork-publishes) never move. How far a result reaches is your call, per rule, and quiet by default.
+The model writes the content, the config picks the destination, and awaywork or your own [notify](./configuration.md#notify) hook does the write, never the model. The integrity rules in [Safety](./safety.md#what-awaywork-publishes) never move. How far a result reaches is your call per rule, quiet by default.
 
 ## Reach and ownership
 
-Two questions: who gets to see the result, and whose thing it lands on.
+Who sees the result, and whose thing it lands on:
 
 | Reach | Your PR, issue or task | Someone else's PR |
 | --- | --- | --- |
-| Only you | awaywork: `report` into the morning report, `pending_review` on your own PR (you can submit it only as a comment). Your hook: a note to yourself, like the ntfy recipe in [Notify](./configuration.md#notify) | awaywork: `report`, `pending_review`. Your hook: the same note to yourself |
-| Visible, nobody asked to look | awaywork: `draft_pr` (the default), `push` onto your own PR's branch. Your hook: labels on the PR, a page in your Notion, a Slack message | awaywork: nothing, it stays private. Your hook: a page in your Notion, a Slack message |
-| Pings someone | awaywork: `pr`, a ready PR, which asks the code owners. Your hook: reviewers | awaywork: nothing; submitting the pending review is you, by hand. Your hook: a Slack message that @mentions someone |
+| Only you | awaywork: `report` into the morning report, `pending_review` on your own PR (submittable only as a comment). Your hook: a note to yourself, like [ntfy](#the-morning-report-on-your-phone) | awaywork: `report`, `pending_review`. Your hook: the same note |
+| Visible, nobody asked to look | awaywork: `draft_pr` (default), `push` onto your PR's branch. Your hook: PR labels, a Notion page, a Slack message | awaywork: nothing, it stays private. Your hook: a Notion page, a Slack message |
+| Pings someone | awaywork: `pr`, a ready PR, which asks the code owners. Your hook: reviewers | awaywork: nothing; you submit the pending review. Your hook: a Slack @mention |
 
 The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule in [Queue rules](./configuration.md#queue-rules).
 
 ## Built in
 
-- **Ready PRs:** `deliver: pr` on the rule, a draft still when something in the chain went wrong, a step asked questions or said `continue`, or a [gate](./workflows.md#gates) fired. A draft left for a later run turns ready once that run finishes it. See [Delivery](./how-it-works.md#delivery) and [Continue](./workflows.md#continue).
-- **Decision cards:** a gate that fires puts a "Needs a decision" card on top of the PR body, on any delivery that commits, or on top of a plan or report rule's post, for [gates of its own](./workflows.md#gates-of-a-rule-s-own); with gates and none fired, a `Gates: none fired (…)` line sits there instead. On a `push` onto your own PR, the PR body isn't awaywork's, so it tops the summary in the morning report instead, and the push still happens. See [Gates](./workflows.md#gates).
-- **Review comments:** `deliver: pending_review` leaves the report and its line comments as your pending review, unseen until you submit it. See [Delivery](./how-it-works.md#delivery).
-- **Questions:** a step that can't go on without answers writes them to `questions.md` and `ask` to `status`, and awaywork posts them as a comment on your own item; your reply there is the answer, and the next run takes it up. Commits it made first open as a draft that says so. On an item that isn't yours they stay in the morning report. See [Questions](./workflows.md#questions).
-- **Plans:** `deliver: plan` posts the tasks its step wrote to `plan.yml`, under its report and the contract it names, as a comment on your own card, and waits: your reply whose first line is `approve` approves it, any other reply plans again; `wait: false` lets it go ahead unless a gate fires. See [Plans](./workflows.md#plans).
-- **Posts that wait:** a `deliver: report` rule with `wait: true` posts its result on your card and waits there like a plan, holding its `on_done` move; your `approve` hands the card to the rule whose `where` says `approved: <skill>`. See [Posts that wait](./workflows.md#posts-that-wait).
-- **Lean posts:** with a [store](./workflows.md#store), a plan or report rule posts its step's `summary.md` and a link per file it left, put where your store command says; the next unit on that item gets the files back in its context, on any machine, and an edited file counts as feedback. See [Files that come back](./workflows.md#files-that-come-back).
-- **Task PRs:** an approved plan's tasks each open their own PR, as the `planned` rule's `deliver` says, in the task's repo, the card's or [another](./workflows.md#across-repos) the config names, with a `Part of <card>` line instead of `Closes`. A task's questions land on the card, headed `Questions from task api`; a `planned` rule's `on_done` moves the card: a task has no item of its own to write to. A task whose rule reports posts its report there instead of opening a PR, headed `Result of task qa`. See [Tasks](./workflows.md#tasks).
-- **Moving the card:** `on_done: { move: In Review }` on the rule moves your own tracker items once the chain published, to a status, state, section or label you name, so whoever watches that column picks it up. Never someone else's PR. See [`on_done`](./configuration.md#on-done).
-- **Result comments:** `on_done: { comment: result }` posts the unit's result on the same items first: a report rule's report, or a link to the PR it opened, with a `Status: done` line. A report whose step said `continue` posts its result with `Status: continue (1 of 3)` and runs again. See [`on_done`](./configuration.md#on-done).
+- **Ready PRs:** `deliver: pr`, a draft still when the chain went wrong, a step asked or said `continue`, or a [gate](./workflows.md#gates) fired. A draft a later run [finishes](./workflows.md#continue) turns ready.
+- **Decision cards:** a fired gate tops the PR body with a "Needs a decision" card, or a plan or report rule's post for [its own gates](./workflows.md#gates-of-a-rule-s-own); with none fired, a `Gates: none fired (…)` line. On a `push` the body isn't awaywork's, so the card tops the report's summary and the push still happens.
+- **Review comments:** `pending_review` leaves the report and line comments as your pending review, unseen until you submit it.
+- **[Questions](./workflows.md#questions):** posted as a comment on your own item, your reply the answer; commits made first open as a draft that says so. On an item not yours they stay in the report.
+- **[Plans](./workflows.md#plans):** `deliver: plan` posts `plan.yml`'s tasks under the report and contract on your card and waits: a reply starting `approve` approves, anything else replans; `wait: false` goes ahead unless a gate fires.
+- **[Posts that wait](./workflows.md#posts-that-wait):** a `report` rule with `wait: true` posts on your card and waits like a plan, holding its `on_done` move; your `approve` hands the card to the rule whose `where` says `approved: <skill>`.
+- **[Lean posts](./workflows.md#files-that-come-back):** with a [store](./workflows.md#store), a plan or report posts `summary.md` and a link per file; the next unit gets the files back on any machine, and an edited file counts as feedback.
+- **[Task PRs](./workflows.md#tasks):** each approved task opens its own PR, per its `planned` rule's `deliver`, in the card's repo or [another](./workflows.md#across-repos) the config names, with `Part of <card>` instead of `Closes`.
+- **Task posts:** a task has no item, so it writes to the card: questions headed `Questions from task api`, a reporting task's report headed `Result of task qa`, and a `planned` rule's `on_done` move.
+- **[`on_done`](./configuration.md#on-done):** `move` sends your own items to a status, state, section or label once the chain published, never someone else's PR; `comment: result` first posts the result (a report, or a link to the PR) with a `Status: done` line. A report that said `continue` posts `Status: continue (1 of 3)` and runs again.
 
 ## Recipes
 
-Each one is a `notify` block on its own. A config has one `notify.command`, so to run several, put them in a script and point `command` at its full path. The `unit` event fires for every step of a unit, which is why each recipe starts by picking the steps it cares about. `AWAYWORK_ITEM_URL`, `AWAYWORK_ITEM_KEY` and `AWAYWORK_SOURCE` hold one line per item; most units have one.
+Each is a `notify` block. A config has one `notify.command`, so put several in a script and point `command` at its full path. The `unit` event fires for every step, so each recipe first picks its steps. `AWAYWORK_ITEM_URL`, `AWAYWORK_ITEM_KEY` and `AWAYWORK_SOURCE` hold one line per item; most units have one.
+
+### The morning report on your phone
+
+`$AWAYWORK_REPORT` is markdown for GitHub, with folded `<details>` a phone or chat app shows as tags, so send the plain text `awaywork report` prints. Write the full path of `awaywork` there: after an `npx` install the first on your `PATH` is none or another version.
+
+```yaml
+notify:                         # ntfy, the morning report only
+  command: >-
+    [ "$AWAYWORK_EVENT" = run ] || exit 0;
+    awaywork report "$AWAYWORK_RUN_ID" |
+    curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" --data-binary @- "https://ntfy.sh/$NTFY_TOPIC"
+  secrets: [NTFY_TOPIC]
+```
+
+For a Slack incoming webhook, pipe the report through `jq -Rs '{text:.}'` and post it with `curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"`, `SLACK_WEBHOOK_URL` in `secrets`.
 
 ### Labels and reviewers
 
-Not config: `gh` in your hook does it, see [PR labels, reviewers and ready for review](./configuration.md#pr-labels-reviewers-and-ready-for-review).
+`gh` in your hook: [PR labels, reviewers and ready for review](./configuration.md#pr-labels-reviewers-and-ready-for-review).
 
 ### A Notion page per plan
 
-The hook holds your Notion token and decides where the page goes; the model only wrote `report.md`. A sketch against Notion's [create a page](https://developers.notion.com/reference/post-page) endpoint, with an integration token and a parent page shared with that integration:
+The hook holds your Notion token and picks where the page goes; the model only wrote `report.md`. A sketch against Notion's [create a page](https://developers.notion.com/reference/post-page), with an integration token and a parent page shared with it:
 
 ```yaml
 notify:
@@ -64,13 +79,11 @@ notify:
   secrets: [NOTION_TOKEN, NOTION_PAGE_ID]
 ```
 
-Swap `plan` for whichever skill's output you want there. A step that commits has the PR body in `$AWAYWORK_REPORT` and the PR in `$AWAYWORK_PR_URL`.
+Swap `plan` for any skill; a committing step has the PR body in `$AWAYWORK_REPORT` and the PR in `$AWAYWORK_PR_URL`. Why a hook rather than a Notion [MCP server](./configuration.md#mcp-servers) the skill writes through:
 
-You could instead give the rule a Notion [MCP server](./configuration.md#mcp-servers) and have the skill write the page. The hook wins:
-
-- **Deterministic.** The page gets written whenever the step is done, in the shape your script says, not when the model remembers to.
-- **The token stays with you.** A server's secret is one the agent can read, and its write tools are tools an item's injected instructions can call ([Safety](./safety.md#mcp-servers)). The hook runs once the worker is done, and the agent never sees its secrets.
-- **It works on every PR.** MCP servers never start on someone else's PR, so a `review` rule on a teammate's PR would have no Notion at all. The hook still sees that step.
+- **Deterministic:** the page is written whenever the step is done, in your script's shape, not when the model remembers.
+- **The token stays with you:** a server's secret is one the agent can read, and its tools are ones injected text can call ([Safety](./safety.md#mcp-servers)). The hook runs after the worker; the agent never sees its secrets.
+- **Every PR:** MCP servers never start on someone else's PR, so a `review` of a teammate's PR would have no Notion. The hook still sees that step.
 
 ### A Slack message when a review is ready
 
@@ -89,18 +102,16 @@ notify:
   secrets: [SLACK_WEBHOOK_URL]
 ```
 
-What lands in the channel:
-
 ```
 Review of acme/api#14, verdict approve
 https://github.com/acme/api/pull/14
 ```
 
-A shared channel shows it to everyone in it, so that's your reach to pick: a channel of your own keeps it to you. Add `@` mentions to the text and it pings people.
+A shared channel shows it to everyone in it, so pick your reach: your own channel keeps it to you, `@` mentions ping people.
 
 ### Acting on a skill's own output
 
-Any file a skill writes in `.away/out/` besides the report reaches the hook in `$AWAYWORK_OUT_DIR`, and awaywork doesn't read it. Say your own `triage` skill writes the labels it would put on an issue to `.away/out/labels.txt`, one per line:
+Files a skill writes in `.away/out/` besides the report reach the hook in `$AWAYWORK_OUT_DIR`; awaywork doesn't read them. Say your `triage` skill writes the labels it would add to `.away/out/labels.txt`, one per line:
 
 ```yaml
 notify:
@@ -117,10 +128,10 @@ notify:
     done
 ```
 
-That file is untrusted input: the model wrote it after reading other people's text. So the hook picks from a list it knows instead of passing the file's lines on, reads a regular file and not a symlink, and never runs or `eval`s what's in it. `$AWAYWORK_SOURCE` matching `github` exactly also means one item, from GitHub. The folder holds what earlier steps of the [chain](./chains.md#then) left too, so check `$AWAYWORK_SKILL` before trusting a file to be this step's.
+The file is untrusted, written after reading others' text: the hook picks from labels it knows rather than passing lines on, reads a regular file, not a symlink, and never runs or `eval`s it. `$AWAYWORK_SOURCE` being exactly `github` also means one item, from GitHub. The folder also holds earlier [chain](./chains.md#then) steps' files, so check `$AWAYWORK_SKILL`.
 
 ## What awaywork won't do
 
-- **Built-in Notion or Slack posting.** Every service has its own API and token, and your hook already covers it in a few lines, with your token and not awaywork's.
-- **Submit a review, approve, or comment on someone else's PR.** Its author wrote the diff and the description the model read, so they can steer what the model says. A pending review waits for you to read it first.
-- **Let a skill pick where its result goes.** A skill writes files into `.away/out/` and holds no write token. Where they go is the rule's `deliver` and your hook.
+- **Post to Notion or Slack itself:** every service has its own API and token, and your hook covers it in a few lines, with your token.
+- **Submit a review, approve, or comment on someone else's PR:** its author wrote what the model read, so can steer what it says. A pending review waits for you to read it.
+- **Let a skill pick where its result goes:** a skill writes into `.away/out/` and holds no write token. The rule's `deliver` and your hook decide.

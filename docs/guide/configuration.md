@@ -4,7 +4,27 @@ description: The awaywork config file by example and what stays stable, covering
 
 # Configuration
 
-One YAML file, `~/.config/awaywork/config.yml` by default; `--config <path>` or `AWAYWORK_CONFIG` point elsewhere. Every key is listed in the [reference](../reference/config.md).
+One YAML file, `~/.config/awaywork/config.yml` by default; `--config <path>` or `AWAYWORK_CONFIG` point elsewhere. This page goes by example. Every key, with its type and default, is in the [reference](../reference/config.md).
+
+Where to find what:
+
+- [Editing safely](#editing-safely): edit, validate, preview.
+- [Stability](#stability): what stays valid across releases.
+- [A full example](#a-full-example): most keys in one file.
+- [A base config](#a-base-config): share settings with `extends`.
+- [Windows, limits and budget](#windows-limits-and-budget): when runs start, how much one does.
+- [Providers](#providers): agents, their settings and logins, your own CLI.
+- [Sources](#sources): where items come from, Bitbucket with Jira, routines.
+- [Branch names](#branch-names): what a unit pushes to.
+- [Linking PRs](#linking-prs): how a PR is tied to an item.
+- [Repos and instructions](#repos-and-instructions): per-repo commands, and everything that runs in a clone.
+- [Queue rules](#queue-rules): which skill runs on which item.
+- [Notify](#notify): your command after each step and each run.
+- [MCP servers](#mcp-servers): servers a rule gives its units.
+- [Isolation](#isolation): a worker user or a container.
+- [Old runs](#old-runs) and [Secrets](#secrets).
+
+Gates, plans, threads and the store are in [Workflows](./workflows.md); multi-step rules in [Chains](./chains.md).
 
 ## Editing safely
 
@@ -14,9 +34,9 @@ awaywork doctor         # validate, including skill names
 awaywork plan           # see what the change does to the next run
 ```
 
-Or let your coding agent edit the queue for you, checked on your real items first: [With an AI agent](./agents.md).
+Or let your coding agent edit the queue, checked on your real items first: [With an AI agent](./agents.md).
 
-For autocompletion and hover docs in editors with the YAML language server (VS Code's YAML extension, JetBrains, Neovim), put this first line in the file:
+For autocompletion in editors with the YAML language server, start the file with:
 
 ```yaml
 # yaml-language-server: $schema=https://andreaprovenzale.github.io/awaywork/config.schema.json
@@ -26,7 +46,7 @@ For autocompletion and hover docs in editors with the YAML language server (VS C
 
 ## Stability
 
-From 0.1.0-rc.1, the config schema holds across minor releases: a config that's valid on one stays valid on the next. Keys marked experimental are the exception: they have only run in tests, so they may change in a minor release, with a note in the release notes. So far that's only `github.host`.
+From 0.1.0-rc.1, a config valid on one minor release stays valid on the next. Keys marked experimental may change in a minor release, with a note in the release notes: so far only `github.host`.
 
 ## A full example
 
@@ -89,7 +109,7 @@ queue:                          # first matching rule wins; top = highest priori
 
 ## A base config
 
-One config per role (`developer.yml`, `qa.yml`, `reviewer.yml`) tends to repeat the same `windows`, `budget`, `sources` and `repos`. Put those in a base and have each role file `extends` it:
+Several configs, one per role, tend to repeat `windows`, `budget`, `sources` and `repos`. Put those in a base and have each role file `extends` it:
 
 ```yaml
 # team/base.yml
@@ -110,46 +130,83 @@ queue:
     where: { type: pr, mine: true, checks: failing }
 ```
 
-`extends` is a path relative to the role file. Maps merge key by key with the role winning, so `limits` above ends up with all three keys and `sources: { github: { every: 15m } }` would keep the base's `repos`. A list replaces the base's list outright, `queue` and `windows` included, since rule order matters. There's no unsetting what the base sets: `null` is just an invalid value. It's one level deep and local: a base with an `extends` of its own is an error, and so is a URL.
-
-Relative paths resolve against the file they're written in, so `notes/team.md` is `team/notes/team.md` whoever extends it. The same goes for the folder a custom source's `command`, a `context` command or a custom provider's `probe` runs in, and for `claude: { settings }`. A custom source's other commands, `write` and `setup`, run in the folder of the file that sets its `command`. Skills stay next to the file you pass to `--config`. An error names the file it comes from: the base when only the base sets that key, the role for anything inside a list the role sets:
+Maps merge key by key, the role winning: `limits` above gets all three keys. A list replaces the base's outright, `queue` and `windows` included, since rule order matters. An error names the file it comes from:
 
 ```text
 $ awaywork doctor --config roles/developer.yml
-...
 FAIL  team/base.yml: windows[0].end: expected a time like "01:00"
 ```
 
+Details:
+
+- `extends` is relative to the role file. One level only, local only: a base with its own `extends`, or a URL, is an error.
+- There's no unsetting what the base sets: `null` is just an invalid value.
+- Relative paths resolve against the file they're written in (`notes/team.md` is `team/notes/team.md`). So does the folder a custom source's `command`, a `context` command or a custom provider's `probe` runs in, and `claude: { settings }`. A custom source's `write` and `setup` run in the folder of the file that sets its `command`.
+- Skills stay next to the file you pass to `--config`.
+- An error inside a list the role sets names the role; a key only the base sets names the base.
+
 ## Windows, limits and budget
 
-A run is one window opening, or one `awaywork run` by hand. A window's `start` is when a scheduled run begins; no unit starts after its `end`, and a running one stops there. Times are local to the machine, or in GitHub Actions to the timezone you ran `schedule install` in, where a run may start [up to an hour late in summer time](./scheduling.md#in-github-actions) and a GitHub-hosted runner cuts it at about 6 hours whatever the window says. The default is one window, `01:00` to `07:00`. Add windows, each with optional `days` (`sun` to `sat`, the day it opens on), for quota that idles at weekends or over lunch:
+A run is one window opening, or one `awaywork run` by hand:
 
 ```yaml
 windows:
-  - { start: "01:00", end: "07:00" }
+  - { start: "01:00", end: "07:00" }          # the default
   - { days: [sat, sun], start: "10:00", end: "18:00" }
 ```
 
-[`awaywork watch`](./scheduling.md#on-your-machine) reads them every minute, so editing them needs no reinstall, only moving the [wake](./scheduling.md#waking-up-for-it) does. `windows: []` means none: the daemon idles, and the GitHub Actions workflow only runs when you dispatch it. Windows should not overlap. Pacing follows the clock, not the number of windows: a run inside a window may spend up to where an even spend over the long window stands at the next window's opening, or at the reset if that comes first, so more windows split the week finer rather than spend more. `per_run` still caps each run, and `runs_until_reset` counts window openings. A run that starts outside every window, like a manual `awaywork run` at lunch, stops its workers at `present_session_max` (default 40%) instead of `session_max`, and skips providers whose quota it can't read.
+A scheduled run starts at `start`; no unit starts after `end`, and a running one stops there. `days` (`sun` to `sat`) are the days it opens on.
 
-A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once, and each of a plan's tasks is one, in its own [repo](./workflows.md#across-repos): a cap can cut a card's [block](./workflows.md#the-feature-block), and the next run carries on. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on; a unit you name with `--unit` goes past them. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it. `limits.plan_tasks` (8 by default) caps the tasks in a [plan](./workflows.md#plans).
+Pacing follows the clock, not the number of windows. A run may spend up to where an even spend over the long window stands at the next window's opening, or at the reset if that comes first, so more windows split the week finer rather than spend more. How the [budget](./how-it-works.md#budget) shares combine is in How it works; start with `per_run: 5%` for a week to see what a unit costs.
 
-Budgets are shares of each provider's quota windows; see [How it works](./how-it-works.md#budget) for how they combine. Start low: `per_run: 5%` for a week shows what a unit costs you before you raise it.
+Limits cap what you'd have to review, per run and for every provider. None is set by default:
+
+```yaml
+limits: { units: 8, units_per_repo: 3, unit_minutes: 90 }
+```
+
+Units past a cap are skipped in queue order, the cap named in `awaywork plan` and the report. The keys are in the [reference](../reference/config.md#limits).
+
+Details:
+
+- Times are the machine's local time. In GitHub Actions they're the timezone you ran `schedule install` in, a run may start [up to an hour late in summer time](./scheduling.md#in-github-actions), and a hosted runner stops it at about 6 hours.
+- [`awaywork watch`](./scheduling.md#on-your-machine) rereads windows every minute: no reinstall, unless you move the [wake](./scheduling.md#waking-up-for-it).
+- `windows: []` means none: the daemon idles, and the Actions workflow runs only when dispatched. Windows shouldn't overlap.
+- A run started outside every window stops workers at `present_session_max` (40%) instead of `session_max`, and skips providers whose quota it can't read.
+- `per_run` caps each run, and `runs_until_reset` counts window openings.
+- A [`then`](./chains.md#then) chain is one unit. Each of a plan's tasks is one, in its own [repo](./workflows.md#across-repos), so a cap can cut a card's [block](./workflows.md#the-feature-block); the next run carries on.
+- Only units whose first step got a provider count. Caps apply per `awaywork run`, like `fallback.units`, which every step draws on. A unit named with `--unit` goes past them.
+- A rule's own `units` caps that rule; `plan_tasks` (8) caps a [plan](./workflows.md#plans)'s tasks.
 
 ## Providers
 
-A list, in routing order. A bare name uses the defaults; a map overrides the budget for that provider or sets its `model`, passed as is to the binary (`claude --model`, `codex exec -m`, `agent --model`). Without one, the binary picks its own default.
+A list, in routing order. A bare name uses the defaults; a map sets `model` (passed as is: `claude --model`, `codex exec -m`, `agent --model`) or overrides the budget:
 
-Workers skip your user-level agent config. To give them the hooks, env or settings you do want, list them here; they apply on every unit, including someone else's PR:
+```yaml
+providers:
+  - claude: { model: opus, settings: claude-worker.json }
+  - codex: { config: { model_reasoning_effort: high } }
+  - cursor
+```
 
-- `claude: { settings: <file> }`: a Claude Code settings file, relative to the config file, passed as `--settings`. Auto-memory stays off, and workers run in `dontAsk` mode: a tool that isn't pre-approved, by awaywork or by your `permissions.allow`, is denied.
-- `codex: { config: { <key>: <value> } }`: each key passed as `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
+Workers skip your user-level agent config. What you do want them to have, on every unit including someone else's PR, goes here:
 
-Cursor takes no settings of its own, only `model` (Cursor's `auto` without one), and it needs `CURSOR_API_KEY` in the env file even on your machine: every run gets a fresh `HOME` in the clone, `.away/agent-home`, so none of your `~/.cursor` comes along, your `agent login` included. Make a key in Cursor's dashboard. awaywork writes that `HOME`'s permissions, any shell command, read and write plus the `tools` of the rule's [MCP servers](#mcp-servers), and never passes `--force`. Its commits can carry its own `Co-authored-by: Cursor <cursoragent@cursor.com>` line, as Claude Code's can. A Cursor subagent counts as one turn toward the turn cap however much it runs, and `worker.log` shows it as one `task:` line, since its own tool calls never reach awaywork; `limits.unit_minutes` bounds it. Its usage shows in the dashboard only, so Cursor runs on the [fallback](./how-it-works.md#budget) caps and sits out runs you start outside a window. On a GitHub-hosted runner the action installs it, see [Running Cursor](./scheduling.md#running-cursor). A command provider of yours named `cursor` from before has to take another name now: the config says `providers[0].cursor: built in, so it takes no command; give your own provider another name`.
+- `claude: { settings }`: a settings file, relative to the config, passed as `--settings`. Auto-memory stays off, and workers run in `dontAsk` mode: a tool not pre-approved, by awaywork or your `permissions.allow`, is denied.
+- `codex: { config }`: each key passed as `codex exec -c key=value`.
+
+Cursor takes only `model` (its `auto` when unset). Details:
+
+- It needs `CURSOR_API_KEY` in the env file, even on your machine: each run gets a fresh `HOME` in the clone, `.away/agent-home`, so none of your `~/.cursor` comes along, `agent login` included. Make a key in Cursor's dashboard.
+- awaywork writes that `HOME`'s permissions: any shell command, read and write, plus the `tools` of the rule's [MCP servers](#mcp-servers). Never `--force`.
+- Its commits can carry `Co-authored-by: Cursor <cursoragent@cursor.com>`, as Claude Code's can.
+- A Cursor subagent is one turn toward the cap and one `task:` line in `worker.log`, whatever it does inside; `limits.unit_minutes` bounds it.
+- Its usage shows only in its dashboard, so it runs on the [fallback](./how-it-works.md#budget) caps and sits out runs started outside a window.
+- On a GitHub-hosted runner the action installs it: [Running Cursor](./scheduling.md#running-cursor).
+- An older command provider of yours named `cursor` must be renamed: `providers[0].cursor: built in, so it takes no command; give your own provider another name`.
 
 ### Which login
 
-Work and personal subscriptions on one machine, two gh accounts? Each config can pin the logins its runs use, so the work config never bills or pushes as the personal one:
+Work and personal subscriptions on one machine? Pin each config's logins:
 
 ```yaml
 providers:
@@ -161,11 +218,7 @@ sources:
     user: octocat-acme
 ```
 
-`config_dir` is the folder the agent keeps its login in, passed as `CLAUDE_CONFIG_DIR` or `CODEX_HOME`; log in there once with `CLAUDE_CONFIG_DIR=~/.claude-work claude /login` or `CODEX_HOME=~/.codex-work codex login`. `~/.claude` itself means Claude Code's default login, which it only finds with `CLAUDE_CONFIG_DIR` unset, so that's what awaywork does. `sources.github.user` picks one of the accounts `gh auth status` lists: awaywork takes its `gh auth token --user` once and uses it as `GH_TOKEN` for everything it does on GitHub, reads, pushes and PRs alike, without a `gh auth switch`. Without them a run uses whatever the environment says, which for a [scheduled job](./scheduling.md#on-your-machine) is the env file and each binary's default, not the `claude` function in your shell that switches logins.
-
-The environment wins. With `CLAUDE_CODE_OAUTH_TOKEN` set, `config_dir` changes nothing, and with `GH_TOKEN` or `GITHUB_TOKEN` set, neither does `user` (`GH_ENTERPRISE_TOKEN` with a `host`), so the same config runs in Actions or a container, where those folders don't exist. Cursor has no login folder to point at: its login is `CURSOR_API_KEY`, everywhere. Under `isolation: user` or `container`, Claude's `config_dir` is refused, since the worker can't reach your folder (`set CLAUDE_CODE_OAUTH_TOKEN instead`); Codex's works, the `auth.json` it lends coming from the pinned folder.
-
-`doctor` names the login each run uses, and fails with the fix when the pinned one isn't there:
+`config_dir` is passed as `CLAUDE_CONFIG_DIR` or `CODEX_HOME`; log in there once (`CLAUDE_CONFIG_DIR=~/.claude-work claude /login`, `CODEX_HOME=~/.codex-work codex login`). `sources.github.user` picks a `gh auth status` account: its `gh auth token --user` becomes `GH_TOKEN` for everything awaywork does on GitHub, no `gh auth switch`. `doctor` names each login and fails with the fix:
 
 ```text
 ok    gh login: octocat-acme, pinned by sources.github.user
@@ -173,17 +226,18 @@ ok    claude login: <email>, max, in ~/.claude-work, pinned by providers[0].clau
 FAIL  codex login: ~/.codex-work doesn't exist; log in there with CODEX_HOME=~/.codex-work codex login
 ```
 
-It warns when a token in the environment belongs to someone else, `gh login: octocat from GH_TOKEN, not sources.github.user octocat-acme: a token in the environment wins; make it octocat-acme's, or unset it`. When a pin can't be made, `run`, `plan`, `approve`, `replay`, `sources` and `schedule install` stop before touching anything, and `watch` starts nothing new until it can; the pins that still work apply to the runs already going:
+Details:
 
-```text
-$ awaywork plan --rules
-~/.config/awaywork/config.yml:
-  sources.github.user: octocat-acme isn't logged in to gh; log in with gh auth login, as octocat-acme
-```
+- `~/.claude` means Claude Code's default login, found only with `CLAUDE_CONFIG_DIR` unset, so that's what awaywork does.
+- Unpinned, a run uses the environment: for a [scheduled job](./scheduling.md#on-your-machine), the env file and each binary's default, not a shell function that switches logins.
+- The environment wins: `CLAUDE_CODE_OAUTH_TOKEN` over `config_dir`, `GH_TOKEN` or `GITHUB_TOKEN` over `user` (`GH_ENTERPRISE_TOKEN` with a `host`). So one config also runs in Actions or a container. `doctor` warns when that token is someone else's: `gh login: octocat from GH_TOKEN, not sources.github.user octocat-acme: a token in the environment wins; make it octocat-acme's, or unset it`.
+- Cursor's login is `CURSOR_API_KEY`, everywhere.
+- Under `isolation: user` or `container`, Claude's `config_dir` is refused (`set CLAUDE_CODE_OAUTH_TOKEN instead`). Codex's works: the `auth.json` it lends comes from there.
+- A pin that can't be made stops `run`, `plan`, `approve`, `replay`, `sources` and `schedule install` before they touch anything (`sources.github.user: octocat-acme isn't logged in to gh; log in with gh auth login, as octocat-acme`), and `watch` starts nothing new until it can; working pins still apply to runs already going.
 
 ### Bring your own CLI
 
-opencode, Amp and friends don't need code in awaywork. Name a provider yourself and give it a command; it's your CLI and your login:
+opencode, Amp and friends need no code in awaywork. Name a provider and give it a command; your CLI, your login:
 
 ```yaml
 providers:
@@ -195,11 +249,9 @@ limits:
   unit_minutes: 45
 ```
 
-(`--auto` approves every permission your opencode config doesn't deny; check `opencode run --help` on your version.)
+It runs in the clone like any worker, the prompt in the file `$AWAYWORK_PROMPT`, output to `worker.log`; exit 0 is a finished unit. (`--auto` approves whatever your opencode config doesn't deny; check your version's `--help`.) There's no turn cap, so `limits.unit_minutes` is required. The keys are in the [reference](../reference/config.md#providers-key).
 
-The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets`, the env vars it reads such as an API key, are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) is where the unit's skills go in the clone. There's no `model` key: put it in the command, and no `mcp` either: a rule or step it may run can't name MCP servers, so route those to another provider with `provider`. Nothing installs your CLI on a GitHub-hosted runner, so there `plan` routes around it and `schedule install` leaves it out; run it locally or on a self-hosted runner. A `probe` gets your whole environment, secrets included, since it's your own command.
-
-There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and `fallback.turns` doesn't apply (it defaults to 60, the cap Claude, Codex and Cursor get without a quota reading). Without a `probe`, the provider runs on the `fallback` caps (units per run) and sits out every run outside the windows, a manual `awaywork run --unit` included; there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
+A `probe` prints the quota as JSON. awaywork paces against the `long` window; `short` only feeds the session stop:
 
 ```json
 {
@@ -210,21 +262,33 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 }
 ```
 
-`used` is a share from 0 to 1, `resetsAt` is in unix seconds and `minutes`, optional, is the window's length; a `long` window without it counts as 7 days. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps, and no runs outside the windows. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
+Details:
+
+- `secrets` are withheld from other workers and listed in Actions; `skills_dir` (default `.agents/skills`) is where the unit's skills go.
+- No `model` key (put it in the command) and no `mcp`: a rule it may run can't name MCP servers, so route those elsewhere with `provider`.
+- Nothing installs it on a GitHub-hosted runner, so there `plan` routes around it and `schedule install` leaves it out.
+- `fallback.turns` doesn't apply; its 60 is for Claude, Codex and Cursor without a quota reading.
+- Without a `probe` (or one with no `long` window) it runs on the `fallback` caps and sits out every run outside the windows, `run --unit` included. With no live rate-limit events, it can't stop mid-unit at the ceiling.
+- The probe runs in the config's folder once per `plan` or `run`, after each unit and in `doctor`, with 60 s and your whole environment. `used` is 0 to 1, `resetsAt` unix seconds, `minutes` optional (a `long` window without it is 7 days).
+- Whether the vendor allows unattended use is your call; `doctor` flags it `unattended: grey`.
 
 ## Sources
 
-| Source | Keys |
-| --- | --- |
-| `github` | `repos`: `owner/name` globs such as `acme/*`; optional `search`: extra GitHub search qualifiers, each ANDed with `is:open archived:false`, and with `is:closed` for [finished items](#finished-items) (their items are neither `mine` nor `review_requested`); optional `host` for GitHub Enterprise (`github.acme.com`), which `gh` must be logged in to; optional `user`, the `gh` account awaywork acts as ([Which login](#which-login)) |
-| `asana` | `workspace` gid, optional `projects` (gids), `repo_map` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
-| `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
-| `bitbucket` | `repos`: `workspace/name` globs such as `acme/*`, the workspace spelled out. Makes Bitbucket Cloud the forge instead of GitHub; no items of its own yet, see [Bitbucket and Jira](#bitbucket-and-jira) |
-| `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `repo_map` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
-| `routines` | Items from the clock, keyed by name: `at`, `repo`, `title`, optional `days` and `description`; see [Routines](#routines) |
-| any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`, `write`: see [Custom sources](./custom-sources.md) |
+Each source reads your own items from one place:
 
-The gids, keys and names these keys and your `where` clauses take are one read-only command away. `awaywork sources <id>` lists what that source's credentials can see; with no id, every configured source; `--json` for scripts and agents:
+| Source | Reads | You set |
+| --- | --- | --- |
+| `github` | Your PRs, PRs awaiting your review, issues assigned to you | `repos` globs (`acme/*`); optional `search`, `host` for GitHub Enterprise (`gh` must be logged in to it), `user` ([Which login](#which-login)) |
+| `asana` | Your incomplete tasks | `workspace` gid; optional `projects`, `repo_map` |
+| `linear` | Your open issues | Optional `repo_map` |
+| `jira` | Your unresolved issues | `site`, `email`; optional `cloud_id` (scoped token), `jql` (no `ORDER BY`), `repo_map` |
+| `bitbucket` | Nothing: it's the forge instead of GitHub | `repos` (`acme/*`, workspace spelled out); [Bitbucket and Jira](#bitbucket-and-jira) |
+| `routines` | Items from the clock | [Routines](#routines) |
+| any other name | Your command's JSON | [Custom sources](./custom-sources.md) |
+
+The rest, defaults and `token_env` names included, is in the [reference](../reference/config.md#sources). Every source takes an `every` for [`run: soon`](#run-soon); all but `github`, `bitbucket` and `routines` a [`link`](#linking-prs).
+
+`awaywork sources <id>` lists, read-only, the ids and names your keys and `where` take (`--json` for scripts):
 
 ```text
 $ awaywork sources linear
@@ -235,23 +299,25 @@ linear:
       states:
         - Todo
         - In Progress
-        - QA
-        - Done
-    - key: WEB
-      name: Web
-      states:
-        - Todo
-        - In Progress
-        - Done
+    [...]
 ```
 
-`github` lists your login and orgs, `asana` the workspaces, then the projects and section names of the configured workspace (of each, before you configure one), and `jira` the projects and the site's statuses, once `sources.jira` has its `site` and `email`.
+`github` lists your login and orgs; `asana` the workspaces, then the configured one's projects and sections; `jira` the projects and statuses, once `site` and `email` are set.
 
 ::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-Every source but `github`, `bitbucket` and `routines` also takes a [`link`](#linking-prs), and every source an `every`, how often [`run: soon`](#run-soon) polls it.
+### Tracker tokens
 
-Every built-in source also takes a `context` command, for what an item points at: a Sentry issue, a Figma frame, a runbook. awaywork runs it per item before the worker, in the config file's folder like a custom source's `command`, never in the clone. It writes its files into `$AWAYWORK_CONTEXT_DIR`, a fresh folder outside the clone, and awaywork copies them into `.away/context/<item>/extra/` next to `item.md`, where the worker reads them. The item reaches it as `AWAYWORK_ITEM_KEY`, `AWAYWORK_ITEM_URL` and `AWAYWORK_ITEM_FILE`, a path to the item as JSON.
+awaywork only reads with a tracker token, except for [`on_done`](#on-done), [questions](./workflows.md#questions) and [plans](./workflows.md#plans), and never hands it to the agent unless you list it in an [MCP server](#mcp-servers)'s `secrets`.
+
+- **Asana** has no read-only token: make one just for awaywork, so you can revoke it alone.
+- **Linear:** a personal API key (Settings > Account > Security & access), read-only when offered, or with write for those three.
+- **Jira Cloud:** an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer one with scopes, app Jira, `read:jira-work` plus `write:jira-work` for those three: `/away` then finds the `cloud_id`, and awaywork calls `api.atlassian.com`, as scoped tokens require. An unscoped token can do anything you can. Tokens last at most a year.
+- Jira custom fields sharing a name are keyed by name and id: `fields.Team (customfield_10040)`.
+
+### Context commands
+
+A built-in source's `context` command fetches what an item points at, a Sentry issue or a runbook, with secrets the agent never gets:
 
 ```yaml
 sources:
@@ -262,19 +328,11 @@ sources:
       secrets: [SENTRY_TOKEN]      # kept out of the agent's env
 ```
 
-Its `secrets` are withheld from the worker like a repo's, but whatever it writes reaches the agent as is: don't write a secret into the output (`curl -v` into a file, say). Its limits are in [What runs in the clone](#what-runs-in-the-clone). `extra/` belongs to this command. A custom source does this inside its own `command`.
-
-Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it, unless a rule's [`on_done`](#on-done) moves your tasks or awaywork posts [questions](./workflows.md#questions) or a [plan](./workflows.md#plans), and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
-
-Linear takes a personal API key (Settings > Account > Security & access). awaywork only reads with it, unless a rule's [`on_done`](#on-done) moves your issues or awaywork posts [questions](./workflows.md#questions) or a [plan](./workflows.md#plans), and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only, or write access too for `on_done`, questions and plans.
-
-Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`, plus `write:jira-work` for [`on_done`](#on-done), [questions](./workflows.md#questions) and [plans](./workflows.md#plans): the `/away` setup then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it, `on_done`, questions and plans aside. Tokens expire after at most a year.
-
-Jira custom fields that share a name are keyed by name and id, such as `fields.Team (customfield_10040)`.
+It runs per item before the worker, in the config's folder, never the clone, with `AWAYWORK_ITEM_KEY`, `AWAYWORK_ITEM_URL` and `AWAYWORK_ITEM_FILE` (the item as JSON). What it writes to `$AWAYWORK_CONTEXT_DIR` lands in `.away/context/<item>/extra/` as is, so never write a secret there (`curl -v` into a file, say). Its limits are in [What runs in the clone](#what-runs-in-the-clone). A custom source does this in its own `command`.
 
 ### Bitbucket and Jira
 
-Your code on Bitbucket Cloud, your tickets in Jira? Put `bitbucket` next to `jira`, and awaywork pushes and opens its draft PRs on Bitbucket instead of GitHub:
+Code on Bitbucket Cloud, tickets in Jira? Put `bitbucket` next to `jira`, and draft PRs open on Bitbucket:
 
 ```yaml
 sources:
@@ -285,53 +343,36 @@ sources:
     repo_map: { ENG: acme/api }    # project key -> workspace/name on Bitbucket
 ```
 
-It goes through Atlassian's `twg` CLI the way GitHub goes through `gh`, and git goes over SSH with your own keys. So you need:
-
-- `twg` logged in to Bitbucket (`twg setup bitbucket`), or a Bitbucket API token in `TWG_BBC_TOKEN`.
-- An SSH key Bitbucket knows that git can use without asking for a passphrase: launchd and cron have no terminal to ask in. A key in an agent your scheduler sees works too.
-
-`awaywork doctor` checks both, instead of `gh`:
+It goes through Atlassian's `twg` CLI, and git over SSH with your keys. You need `twg` logged in (`twg setup bitbucket`, or a token in `TWG_BBC_TOKEN`) and an SSH key git can use without a passphrase prompt, since launchd and cron have no terminal; a key in an agent your scheduler sees works too. `doctor` checks both:
 
 ```text
-ok    git: git version 2.56.0
 ok    twg: 1.3.8
-ok    twg andrea89
-ok    git over ssh: andrea89/awaywork-sandbox
+ok    twg acme
+ok    git over ssh: acme/api
 ```
 
-`twg andrea89` is `twg bb workspace get` for each workspace in `repos`; `git over ssh` is a `git ls-remote` with `-o BatchMode=yes` added to the ssh command git uses (`GIT_SSH_COMMAND`, else `core.sshCommand`, else `ssh`; a `GIT_SSH` wrapper runs as is, since it may be plink), so a key that would prompt fails here and not at 3am. It warns when twg keeps its login anywhere but a file, since hiding that from workers is only checked for files ([Safety](./safety.md#what-the-agent-can-reach)).
+`twg acme` is `twg bb workspace get` per workspace; `git over ssh` a `git ls-remote` with `-o BatchMode=yes` added to git's ssh command (`GIT_SSH_COMMAND`, else `core.sshCommand`, else `ssh`; a `GIT_SSH` wrapper runs as is), so a prompting key fails here, not at 3am. It warns when twg keeps its login anywhere but a file ([Safety](./safety.md#what-the-agent-can-reach)).
 
-A run then ends like on GitHub, with a draft PR whose footer links it back to the item:
+A run ends as on GitHub, with a draft PR whose footer links back to the item. `away/{key}` puts the Jira key in the branch, which Jira's development panel links on. [Plans](./workflows.md#plans) work too: twg finds task PRs, reads files a task [ships](./workflows.md#across-repos), and the build statuses a task [waits on](./workflows.md#waiting-on-a-check). Not yet:
 
-```text
-Run 20261022-174313: 1 draft PR, 0 reports, 1 unit
-     item       skill      status  result
-  1  SANDBOX-8  implement  done    https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/5
-     Appends one line to notes.txt, from a stub provider.
-```
-
-`away/{key}` already puts the Jira key in the branch, which is what Jira's development panel links on. A [plan](./workflows.md#plans) fans out there too: twg looks up each task's PR, reads the files a task in another repo [ships](./workflows.md#across-repos), and the build statuses a task [waits on](./workflows.md#waiting-on-a-check) by name. What Bitbucket doesn't do yet:
-
-- **Its own items.** `bitbucket` lists nothing for now, so no fix or review rules on Bitbucket PRs; your Jira issues, and any other source's items, are what runs. Your open PRs still link to items, as in [Linking PRs](#linking-prs).
-- **`deliver: push`.** Refused when the config loads: twg reads neither branch restrictions nor auto-merge, so awaywork can't make the checks a push onto your PR needs.
-- **`deliver: pending_review`.** Refused when the config loads: awaywork leaves pending reviews on GitHub only.
-- **Going on with its own draft.** GitHub only: a draft that says `continue`, or asked, is yours to finish by hand ([Continue](./workflows.md#continue)).
-- **GitHub Actions or a container.** `schedule install` refuses both for a Bitbucket config: use launchd, systemd or cron.
-- **PRs from forks.** Bitbucket has no pull refs to fetch them from, so a unit on one fails.
-
-One forge per config: `github` and `bitbucket` together is an error.
+- **Bitbucket's own items:** it lists nothing, so no fix or review rules on its PRs. Your open PRs still [link](#linking-prs) to items.
+- **`deliver: push`:** refused, since twg reads neither branch restrictions nor auto-merge.
+- **`deliver: pending_review`:** refused; GitHub only.
+- **Going on with its own draft:** a draft that says `continue`, or asked, is yours to finish ([Continue](./workflows.md#continue)).
+- **GitHub Actions or a container:** `schedule install` refuses both; use launchd, systemd or cron.
+- **Fork PRs:** no pull refs to fetch, so the unit fails.
+- `github` and `bitbucket` together: one forge per config.
 
 ### Routines
 
-Some work has no ticket, only a day: every Monday you triage Sentry. A routine is an item that comes due on the clock, so it runs like any other: a rule takes it, `plan` shows it, attempts keep it from running twice.
+Work with no ticket, only a day: every Monday you triage Sentry. A routine is an item that comes due on the clock, so rules, `plan` and attempts treat it like any other:
 
 ```yaml
 sources:
-  github: { repos: [acme/*] }
   routines:
     sentry-triage:
-      days: [mon]               # sun to sat, as in windows; every day when unset
-      at: "09:00"               # local time, as in windows; or a list: ["09:00", "14:00"]
+      days: [mon]               # sun to sat; every day when unset
+      at: "09:00"               # local time; or a list: ["09:00", "14:00"]
       repo: acme/api            # required: where the work happens
       title: Triage last week's Sentry issues
       description: Group new issues, link duplicates, draft fixes for the top three.
@@ -344,77 +385,67 @@ queue:
     run: soon                   # within minutes of 09:00, not at the next window
 ```
 
-Each routine is one `task`: its latest occurrence at or before now, keyed `<name>-<YYYYMMDD>-<HHMM>` in local time, so its branch is `away/sentry-triage-20261026-0900`. Any name goes but `context` and `every`, the source's own keys. A machine asleep all week wakes up to one item, not a backlog. Once a unit on it finishes, it's [unchanged](./how-it-works.md#units) until the next occurrence, which is a new item. It's yours (`mine`), its `url` is the repo's page on your forge, and rules match `name`, `repo`, and `created` and `updated`, both the occurrence. `plan` lists when each routine comes due next, and `--why` says which occurrence an item is:
+Each is one `task`, its latest occurrence, keyed `<name>-<YYYYMMDD>-<HHMM>` in local time: branch `away/sentry-triage-20261026-0900`. `plan` lists when each comes due next, and `--why` which occurrence an item is:
 
 ```text
-$ awaywork plan
-Providers
-  present run (outside the windows): present_session_max
-  provider  window     used  ceiling  set by       resets in  session / stop at
-  claude    seven_day  5%    90%      reserve cap  1 run      2% / 40%
-    other limits: pacing 90%
-
-Units 1
-     item                         rule     skill              provider  deliver  title
-  1  sentry-triage-20261026-0900  #1 soon  triage (in-repo?)  claude    report   Triage last week's Sentry issues
-
-Routines 1
-  sentry-triage  next mon 2026-11-02 09:00
-
 $ awaywork plan --why sentry-triage-20261026-0900
 routines sentry-triage-20261026-0900  Triage last week's Sentry issues
   https://github.com/acme/api
   routine sentry-triage, due mon 2026-10-26 09:00; next mon 2026-11-02 09:00
-  planned
-    unit      1, sentry-triage-20261026-0900
-    rule      #1 source=routines name=sentry-triage deliver=report run=soon
-    skill     triage (in-repo?)
-    provider  claude
-    deliver   report
-    branch    away/sentry-triage-20261026-0900
+  [...]
 ```
 
-Times are the machine's local time, as for windows; on GitHub Actions, the workflow's `TZ`, the timezone you ran `schedule install` in. Without `run: soon` a routine waits for a window: with the default `01:00` to `07:00`, Monday's 09:00 runs on Tuesday at 01:00. There's no tracker to write to, so `on_done` and `deliver: plan` on `source: routines` are refused when the config loads, and a unit's result or questions stay in its report; [`notify`](#notify) can send them on. A routine takes a [`context`](#sources) command like any built-in source, say to fetch last week's Sentry issues, and the built-in queue has no rules for routines: give each one yours.
+Details:
+
+- A machine asleep all week wakes to one item, not a backlog. Once a unit on it finishes, it's [unchanged](./how-it-works.md#units) until the next occurrence, a new item.
+- It's yours (`mine`), its `url` the repo's page. Rules match `name`, `repo`, `created` and `updated` (both the occurrence).
+- Any name but `context` and `every`.
+- On GitHub Actions, times are the workflow's `TZ`. Without `run: soon` it waits for a window: Monday's 09:00 runs Tuesday at 01:00 with the default one.
+- No tracker to write to: `on_done` and `deliver: plan` are refused, and results or questions stay in the report; [`notify`](#notify) can send them on.
+- It takes a [`context`](#context-commands) command. The built-in queue has no rules for routines: write yours.
 
 ## Branch names
 
-`branch` is a template rendered per unit, set globally, per repo or per rule (the most specific wins). It needs `{key}`, `{title}` (the item's title as a slug of at most 40 characters) or both: `feat/work` would name every unit the same, so it's refused. `{type}` is optional; it fills in the conventional-commit type of the chain's first skill that commits (see [`metadata.type`](./skills.md#write-your-own)).
+`branch` is a template, set globally, per repo or per rule; the most specific wins:
+
+```yaml
+queue:
+  - { skill: fix, where: { type: pr, mine: true, checks: failing }, branch: "fix/{title}" }
+```
+
+It needs `{key}` or `{title}` (a slug of at most 40 characters), else every unit would share it. Optional `{type}` is the conventional-commit type of the chain's first committing skill ([`metadata.type`](./skills.md#write-your-own)).
 
 | Item                               | `{key}`       |
 | ---------------------------------- | ------------- |
 | GitHub PR or issue `acme/api#12`   | `acme-api-12` |
 | Asana task with custom ID `ENG-12` | `ENG-12`      |
-| Linear issue `ENG-12`              | `ENG-12`      |
-| Jira issue `ENG-12`                | `ENG-12`      |
+| Linear or Jira issue `ENG-12`      | `ENG-12`      |
 | Task `api` of a plan on `ENG-12`   | `ENG-12-api`  |
 
-Per-rule templates follow your repo's conventions:
+The name is cosmetic, since awaywork finds its PRs by their footer, except for Jira, which links a PR only by the key in its branch or title: keep `{key}` in one of them.
 
-```yaml
-queue:
-  - { skill: fix, where: { type: pr, mine: true, checks: failing }, branch: "fix/{title}" }
-  - { skill: implement, where: { type: issue }, branch: "feat/{title}" }
-```
+awaywork pushes only branches that don't exist yet, but for a [`push`](./chains.md#push) rule and its own draft it [continues](./workflows.md#continue). When the name is taken:
 
-The name is cosmetic: awaywork finds its own PRs by their footer, and yours as [Linking PRs](#linking-prs) says. Jira is the exception, since it links a PR only by the key in its branch or title: for Jira items keep the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
-
-The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push), or it goes on with its own draft, fast-forwarding it while its head is still the one it left, to [continue](./workflows.md#continue) work it started. When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`, unless it's awaywork's draft the unit [goes on](./workflows.md#continue) with. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix. A [plan's task](./workflows.md#tasks) takes no suffix: its PR is looked up by its branch, so when the name is taken it's skipped until you delete it. For the same reason a `planned` rule's template, its own or the one it inherits, renders from `{key}` alone: a re-plan may retitle a task, so `{title}` or `{type}` there is a config error, and a `branch` on the `planned` rule fixes it. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does; anything else is a config error.
+- The unit takes the first free `<branch>-2` to `<branch>-10`, for every step of its chain.
+- Unless awaywork tried there: a PR on that branch, open or closed unmerged, whose footer names one of the unit's items skips it as `awaywork tried this in <PR>; delete <branch> to run it again` (that record is on GitHub, so it holds on a runner without [attempts](./how-it-works.md#units)), unless it's the draft the unit [goes on](./workflows.md#continue) with. A merged one starts a new round with a suffix.
+- A branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed: skipped until you delete it. Without the trailer it's your work, passed over for a suffix.
+- A [plan's task](./workflows.md#tasks) takes no suffix, since its PR is found by its branch: skipped until you delete it. So a `planned` rule's template renders from `{key}` alone (`{title}` or `{type}` is a config error, as a re-plan may retitle), and every `planned` rule of a source sets the same `branch`, or none does.
 
 ## Linking PRs
 
-Trackers don't tell awaywork which PR is a task's, so it looks through your open PRs:
+Trackers don't say which PR is a task's, so awaywork looks through your open PRs:
 
-- A PR awaywork opened is linked by the items its footer names, whatever its branch or title. It never falls back to names, so an awaywork PR for ENG-13 that mentions ENG-12 isn't ENG-12's. A footer naming no items counts as none, so it is linked like yours.
-- One you wrote is linked when its branch or title holds the item's key as a whole word, in any case, or its body holds the source's `link` line. A bare key in the body doesn't count: "follow-up to ENG-12" would mark ENG-12 as taken.
+- Its own PR is linked by the items its footer names, never by names, so its PR for ENG-13 mentioning ENG-12 isn't ENG-12's. A footer naming no items counts as none.
+- Yours is linked when its branch or title holds the key as a whole word, any case, or its body holds the source's `link` line. A bare key in the body doesn't count.
 
-`link` is one line in the tracker's own words, rendered from the item's `{key}`, `{id}` and `{url}`. awaywork writes it into its draft PRs too, so the tracker links them whatever the branch is called.
+`link` is a line in the tracker's words, from the item's `{key}`, `{id}` and `{url}`, which awaywork also writes into its drafts:
 
 | Source | Default `link` | Why |
 | --- | --- | --- |
-| `linear` | `Part of {key}` | A non-closing magic word: merging leaves the issue to your workflow |
-| `asana` | `{url}` | Asana links a PR whose description holds the task URL, in any of its forms; so does awaywork |
+| `linear` | `Part of {key}` | Non-closing: merging leaves the issue to your workflow |
+| `asana` | `{url}` | Asana links a PR whose description holds the task URL |
 | `jira` | none | Jira links on the branch or title only |
-| custom | none | Whatever your tracker reads, e.g. `Refs {key}` or `{url}` |
+| custom | none | Whatever your tracker reads, e.g. `Refs {key}` |
 
 ```yaml
 sources:
@@ -423,61 +454,77 @@ sources:
 
 ## Repos and instructions
 
-`repos.<owner/name>` holds the `setup` and `test` commands for that repo, plus an instructions file. A plan's task may name it as its `repo`, as it may any repo the forge source's `repos` globs cover, and its unit then runs with that repo's settings ([Across repos](./workflows.md#across-repos)). `setup` runs once per unit, in the fresh clone before any agent starts, outside the model; the agent is told it already ran. A chain's later steps share that clone and don't run it again, so dependencies a step adds aren't installed for the steps after it: a `when` or `until` command that needs them installs them itself, like `pnpm i --frozen-lockfile && pnpm test`. Anything setup leaves running is stopped when it exits. A setup that fails, takes over 15 minutes or reaches the window's end skips the unit, with the tail of its output in the report.
+`repos.<owner/name>` holds one repo's commands and instructions:
 
-`secrets` names the env vars setup needs, such as a private registry token: setup gets them and no other secret, the agent never sees them, and the GitHub Actions workflow passes them from repository secrets. Their values are masked in setup's output. Setup gets the placeholder `GH_TOKEN` and `GH_ENTERPRISE_TOKEN` (`none`) too, so a `gh` call in it fails with a 401 even against a public repo, and so does git over https through gh's credential helper (a private dependency in `pnpm install`); list `GH_TOKEN` in `secrets` to give it yours (gh reads `GH_TOKEN` first). On a PR someone else opened, setup runs the author's install scripts, so it gets none of them, and it runs only when the author has write access or org membership; otherwise the agent is told it didn't run. It gets none of them either on the branch of an awaywork PR a rule took up again, which a worker wrote. Read them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather than writing them to your home directory, which the agent shares.
+```yaml
+repos:
+  acme/api:
+    setup: pnpm install --frozen-lockfile
+    secrets: [NPM_TOKEN]                 # only setup sees these
+    verify: pnpm lint && pnpm test
+    test: pnpm vitest run {files}
+    instructions: notes/acme-api.md
+```
 
-`verify` runs in the clone once the chain ends, outside the model, before it is published; it's a repo setting. Use it for lint, format or the repo's tests. A failure doesn't stop the publish: the PR body or the push's summary gets the tail of its output, and a [`deliver: pr`](#queue-rules) PR opens as a draft. Pass or fail, that tail lands in `verify.log` next to what the chain published, the run's `~/.local/state/awaywork/runs/<id>/units/<unit>/out/`, not in your terminal. It runs once per commit, with none of the secrets. A `report` delivery has nothing to publish and skips it.
+- **`setup`** runs once per unit in the fresh clone, before any agent, outside the model; the agent is told it ran.
+- **`verify`** runs once the chain ends, before publishing. A failure still publishes, its tail in the PR body or push summary, and a `deliver: pr` PR opens as a draft; the tail also lands in `verify.log` in the unit's `out/` in the run dir.
+- **`test`** is a line in the agent's prompt.
+- **`image`** is what the repo's units run in under [`isolation: container`](#in-a-container).
+- **`instructions`** (top level, per repo, per rule) are file paths relative to the config they're in. A repo can also carry `.awaywork/instructions.md`, read unless the unit is on someone else's PR.
 
-`image` is the Docker image the repo's units run in under [`isolation: container`](#in-a-container).
+Top-level `skills` adds [skills](./skills.md#where-skills-come-from) to every unit. PR titles, bodies and commit messages have no config: the agent follows the repo's template, its commit style and your instructions.
 
-`test` is given to the agent in its prompt. `instructions` at the top level, per repo and per rule are **file paths**, relative to the config file they are in ([a base](#a-base-config) or yours). A repo can also carry `.awaywork/instructions.md`, read from the clone unless the unit is on a PR someone else opened.
+Details on `setup` and its `secrets`:
+
+- Later chain steps share the clone and don't rerun it, so a `when` or `until` command needing a step's new dependencies installs them itself (`pnpm i --frozen-lockfile && pnpm test`). Whatever setup leaves running is stopped.
+- Its `secrets` reach setup only, masked in its output, passed from repository secrets in Actions. Read them from the repo's config (`${NPM_TOKEN}` in `.npmrc`), not your home, which the agent shares.
+- It gets `GH_TOKEN` and `GH_ENTERPRISE_TOKEN` as `none`, so `gh` and git over https through gh's helper fail with a 401, even on a public repo. List `GH_TOKEN` in `secrets` to give it yours.
+- On someone else's PR it runs the author's install scripts, so it gets no secrets, and runs only for an author with write access or org membership. No secrets either on an awaywork PR's branch a rule took up, which a worker wrote.
+- A plan's task may name any repo the forge's `repos` cover, and runs with that repo's settings ([Across repos](./workflows.md#across-repos)).
 
 ### What runs in the clone
 
-Every command in your config that touches a unit's clone, side by side. All of them run in a shell outside the model, in the clone, except `context`, which runs in the config file's folder and whose output awaywork copies into the clone; none gets `GH_TOKEN` or any other forge token.
+Every config command that touches a clone. All run in a shell outside the model, in the clone, except `context`, which runs in the config's folder. None gets a forge token.
 
 | Command | When | Secrets | A failure |
 | --- | --- | --- | --- |
-| `repos.<repo>.setup` | Once per unit, in the fresh clone before the first step's agent; not again for later steps, and not at all on an untrusted author's PR | That repo's `secrets` only, and none on someone else's PR or an awaywork PR's branch a rule took up | Exit non-zero, over 15 minutes or the window's end skips the unit, with the tail of its output in the report |
-| `sources.<id>.context.command` | Per item, before setup and the first step's agent, in the config file's folder; its files go to `extra/` of the item's context; not on a dry run | Its own `secrets` only | Logged; the unit runs without `extra/`. Over two minutes or the window's end, over 1 MB, or a symlink or other non-file in the output counts as a failure |
-| `repos.<repo>.test` | Never by awaywork: it's a line in the agent's prompt, and the agent runs it if it wants | The agent's: its provider's secret and those of the MCP servers its rule names | Up to the agent |
-| `repos.<repo>.verify` | Once per chain, when it ends with commits, before it's published; not for `deliver: report` | None | The tail of its output goes into the PR body or the push's summary, and a `deliver: pr` PR opens as a draft; the work is still published |
-| `when.command` | Before a step's agent starts, in the chain's clone; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain instead, which publishes what it has |
-| `until.command` | After every step of a loop; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain, and a loop that ends failing puts the tail in the PR body |
-| `gates.<name>.command` | Once per chain, right after `verify`, when it ends with commits; not for `deliver: report` or `pending_review`, nor on a dry run. A plan or report rule's own gate, once its step left its report, with `$AWAYWORK_OUT_DIR` | None | The gate fires: its stdout goes in the decision card, and a `deliver: pr` PR opens as a draft, a plan or report waits. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted author's PR; see [Gates](./workflows.md#gates) |
+| `repos.<repo>.setup` | Once per unit, before the first agent; not for later steps, nor on an untrusted author's PR | Its repo's `secrets`; none on someone else's PR or an awaywork branch a rule took up | Non-zero, over 15 minutes or the window's end skips the unit, the tail in the report |
+| `sources.<id>.context.command` | Per item, before setup; not on a dry run | Its own `secrets` | Logged; the unit runs without `extra/`. Over two minutes, the window's end, over 1 MB, or a symlink or non-file in its output count as failures |
+| `repos.<repo>.test` | Never by awaywork: the agent runs it if it wants | The agent's: its provider's and its rule's MCP servers' | Up to the agent |
+| `repos.<repo>.verify` | Once per chain that ends with commits, before publishing, once per commit; not for `report` | None | Its tail in the PR body or push summary; a `pr` PR opens as a draft; still published |
+| `when.command` | Before a step's agent; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain, which publishes |
+| `until.command` | After every loop step; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain; a loop ending on a failure puts the tail in the PR body |
+| `gates.<name>.command` | Once per chain with commits, after `verify`; not for `report` or `pending_review`, nor a dry run. A plan or report rule's own gate after its step, with `$AWAYWORK_OUT_DIR` | None | The gate fires: stdout in the decision card, a `pr` PR opens as a draft, a plan or report waits. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted PR ([Gates](./workflows.md#gates)) |
 
-`verify`, `when` and `until` share their results: the same command on the same commit runs once. A gate's command always runs afresh. All four get the commit the chain started from as `$AWAYWORK_FROM`, and their git ignores the clone's replace refs. Only a gate's git reads attributes from the commit the chain started from; the other three keep the worktree's, so an eol or LFS rule the chain adds doesn't trip a `git status` or `git diff --exit-code` in your `verify`. [Loops](./chains.md#loops) has the rest of their rules.
-
-`skills` at the top level adds skills to every unit, like a rule's `skills`; see [Skills](./skills.md#where-skills-come-from).
-
-PR titles, bodies and commit messages have no config: the agent follows the repo's PR template, its recent commit style and your instructions (e.g. "prefix PR titles with the task key").
+`verify`, `when` and `until` share results: one command on one commit runs once; a gate always runs afresh. All four get the chain's start commit as `$AWAYWORK_FROM`, and their git ignores replace refs. Only a gate's git reads attributes from the start commit; the others keep the worktree's, so an eol or LFS rule the chain adds doesn't trip your `verify`. More in [Loops](./chains.md#loops).
 
 ## Queue rules
 
-| Key | Meaning |
+A rule maps items to a skill; the first match wins, top first. Only `skill` is required:
+
+```yaml
+queue:
+  - skill: fix
+    where: { type: pr, mine: true, checks: failing }
+  - skill: implement
+    source: jira
+    where: { status: Ready }
+    deliver: pr
+```
+
+| Key | Does |
 | --- | --- |
-| `skill` | The skill that does the work (`awaywork skills list`) |
-| `source` | Only items from this source |
-| `where` | Conditions on `type` and the source's fields |
-| `provider` | One or a list; overrides the global order for this rule |
-| `model` | A model per provider, e.g. `{ claude: sonnet, codex: gpt-5-codex }`; overrides the provider's `model` for this rule. A list of two, `{ claude: [sonnet, opus] }`, retries a failed step on the second; see [Retry on the next model](#retry-on-the-next-model) |
-| `skills` | Extra skills the agent may use |
-| `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
-| `instructions` | One or more instruction files for this rule |
-| `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, a step asked [questions](./workflows.md#questions) with `ask` in its status file, `verify` failed, a loop ended before its `until` held, or a [gate](./workflows.md#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)), or `plan`, a report posted with the `plan.yml` its step wrote on your item, waiting for your approval, whose tasks then go to the [`planned`](#where) rules (see [Plans](./workflows.md#plans)) |
-| `branch` | Branch template for this rule |
-| `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
-| `units` | At most this many units per run from this rule; a chain counts once |
-| `then` | Steps that run after this rule's skill, in the same clone; see [`then`](./chains.md#then) |
-| `when` | Quota checks, `runs_until_reset` and `headroom`, that skip the rule's whole chain; see [`when`](./chains.md#when) |
-| `on_done` | `{ comment: result, move: <where> }`, either or both: posts the unit's result on its items that are yours, then moves them, once its chain published, or its plan was posted; a report that waits holds the move until you approve it; see [`on_done`](#on-done) |
-| `wait` | `deliver: plan` or `report` only: the post waits for your reply on the item, `true` by default for a plan, `false` for a report; see [Posts that wait](./workflows.md#posts-that-wait) |
-| `gates` | `deliver: plan` or `report` only: gates of the rule's own, on what its step left; see [Gates of a rule's own](./workflows.md#gates-of-a-rule-s-own) |
-| `post` | `deliver: plan`, or a `report` that posts (`wait: true`, `gates` or `on_done: { comment: result }`): `summary`, the step's `summary.md` with a link per file it left, put in the [store](./workflows.md#store), or `full`, the report inline as without a store; default `summary` with a store; see [Files that come back](./workflows.md#files-that-come-back) |
-| `thread` | `item` (default), the item itself, `github`, or a custom source with `thread: true`: its posts go to a thread awaywork opens for the item, an issue in its repo assigned to you or one the source's `write` opens, and replies are read there, for a tracker that can't take them; not on a `planned` rule, and `github` not on a Bitbucket config; see [Threads](./workflows.md#threads) and [Thread hosts](./custom-sources.md#thread-hosts) |
-| `run` | `window` (default) or `soon`: start its units within minutes of them coming due, not only in the windows; see [`run: soon`](#run-soon) |
+| `skill`, `source`, `where` | What runs, on which items: [`where`](#where) |
+| `provider`, `model` | Overrides routing for this rule; two models [retry](#retry-on-the-next-model) |
+| `skills`, `mcp`, `instructions`, `with` | Extra skills, [MCP servers](#mcp-servers), instruction files, [parameters](./skills.md#write-your-own) |
+| `deliver` | `draft_pr` (default), `pr`, [`push`](./chains.md#push), `report`, `pending_review` or [`plan`](./workflows.md#plans); see [Delivery](./how-it-works.md#delivery) |
+| `branch`, `order`, `units` | [Branch template](#branch-names), [item order](#order), units per run |
+| `then`, `when` | [More steps](./chains.md#then), [quota checks](./chains.md#when) |
+| `on_done` | [Comment and move](#on-done) your items |
+| `wait`, `gates`, `post`, `thread` | Plan and report posts: [waiting](./workflows.md#posts-that-wait), [own gates](./workflows.md#gates-of-a-rule-s-own), [lean or full](./workflows.md#files-that-come-back), [where they go](./workflows.md#threads) |
+| `run` | `window` (default) or [`soon`](#run-soon) |
+
+Types, defaults and full meanings are in the [reference](../reference/config.md#queue).
 
 ### `where`
 
@@ -499,18 +546,29 @@ where:
     - { checks: failing }
 ```
 
-Strings compare ignoring case, like `matches`, so `section: In progress` catches a section called `In Progress`. Numbers and booleans compare exactly, and fixed values like `type` and `checks` stay lowercase.
+Strings compare ignoring case (`section: In progress` matches `In Progress`); numbers and booleans exactly; fixed values like `type` are lowercase. Every source has `title`, `description`, `approved`, `state`, `closed` and `planned`; the [field table](./how-it-works.md#items) lists the rest.
 
-`title`, `description`, `approved` (the skill of the newest result awaywork posted on the item that you approved or that went ahead, see [Posts that wait](./workflows.md#posts-that-wait); `approved: true` is a config error that says so), `state` and `closed` (see [Finished items](#finished-items)), and `planned` (see below) are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
+Details:
 
-A PR awaywork opened only matches a rule whose top-level `where` names `ours` (inside `any` it is a config error), so rules written for your own PRs leave it waiting for your review. To act on it once you've reviewed it:
+- A missing field equals nothing and is neither older nor newer than anything. Spans count back from when the plan runs.
+- Config errors: an unknown key (the error lists each source's keys), an invalid regex, an empty `any` entry.
+- `plan` names the match an item failed, for `any` each entry's.
+- `approved` is the skill of the newest result of awaywork's on the item that you approved or that went ahead ([Posts that wait](./workflows.md#posts-that-wait)); `approved: true` is an error that says so.
+
+#### Your reviewed awaywork PRs
+
+awaywork's own PRs match only rules whose top-level `where` names `ours` (in `any` it's an error), so they wait for your review. After it:
 
 ```yaml
 - skill: fix
   where: { type: pr, mine: true, ours: true, my_unresolved_threads: { not: 0 } }
 ```
 
-A [plan's task](./workflows.md#tasks) only matches a rule whose top-level `where` names `planned: true`, the first of them whose `skill` is the task's (`implement` when it names none), and such a rule takes nothing but tasks. A task carries its card's fields, so the rest of `where` filters as usual:
+The new PR stacks on awaywork's, on a branch named after it (`away/acme-api-9` for #9). Merge it, and the next pickup takes `-2`; while it's open or closed unmerged, #9 is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`. Resolve the threads it answered, or the rule takes #9 up again for them. The rule runs on threads you started, but the agent reads every unresolved one. `ours` is the GitHub source's: a custom source's `ours` field holds nothing back.
+
+#### A plan's tasks
+
+A [task](./workflows.md#tasks) matches only rules whose top-level `where` names `planned: true`, the first whose `skill` is the task's (`implement` by default), and those rules take only tasks. Tasks carry their card's fields:
 
 ```yaml
 - skill: implement
@@ -520,15 +578,13 @@ A [plan's task](./workflows.md#tasks) only matches a rule whose top-level `where
   where: { planned: true, labels: bug }   # a plan's `skill: fix` tasks, on bug cards only
 ```
 
-Every skill a plan's tasks name must be one a `planned` rule takes, or the plan isn't posted. A `planned` rule delivers `draft_pr`, `pr` or `report`: a task is done when its PR merges, or, when the first `planned` rule for its skill reports (its metadata says so, like `review`, or its chain only reports), once its result is on the card, a [report task](./workflows.md#report-tasks) nothing can wait on; `planned: false` or `planned` inside `any` is a config error, and so is a `deliver: plan` rule with no `planned` rule to take its tasks.
-
-The unit's PR stacks on the awaywork PR, on a branch named after it (`away/acme-api-9` for #9). Once you merge the stacked PR, the next pickup of #9 takes a `-2` branch; while the stacked PR is open or closed unmerged, it is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`. Resolve the threads it answered too: merging moves #9, and with your threads still open the rule takes it up again for the same threads. The rule runs on the threads you started, but the agent reads every unresolved thread, as on your other PRs. `ours` comes from the GitHub source: a custom source's `ours` field holds nothing back.
+- A plan naming a skill no `planned` rule takes isn't posted.
+- A `planned` rule delivers `draft_pr`, `pr` or `report`. A task is done when its PR merges, or, under a rule that reports, once its result is on the card: a [report task](./workflows.md#report-tasks), which nothing can wait on.
+- Config errors: `planned: false`, `planned` inside `any`, and a `deliver: plan` rule with no `planned` rule.
 
 ### Finished items
 
-Rules see open work only, until one names `state`: `open`, `merged` (a PR) or `closed` (a PR closed unmerged, an issue or task done or canceled). Its partner `closed` is when the item merged or closed, and takes `older_than` and `newer_than` like any date. A rule that never names `state` keeps matching open items only, so the rules you have don't change. The same goes for each entry of `any`: one that doesn't name `state`, under a level that doesn't either, matches open items only, so `any: [{ state: merged, label: release }, { label: hotfix }]` takes your merged `release` PRs and open `hotfix` ones, not merged `hotfix` ones. `closed` only means something next to a `state` that can be `merged` or `closed`, and is a config error without one.
-
-Once a rule can match `merged` or `closed` (inside `any` and `not` too), its source also reads what finished lately: as far back as the rule's `closed: { newer_than }`, or 7 days when it sets none; with several such rules, the widest wins. Without such a rule, no source asks for anything finished. `closed: { older_than }` needs a `newer_than` next to it (or above it), since without one the 7 days cut it off; leaving it out is a config error. Say you want a look back at what you merged in the last two weeks:
+Rules see open items until one names `state`: `open`, `merged` or `closed` (closed unmerged, done, canceled). `closed` is when it finished, a date field:
 
 ```yaml
 - skill: review
@@ -543,13 +599,18 @@ Queue
        85 taken: acme/api#329, acme/api#328, acme/api#327, …
 ```
 
-- **GitHub** reads the PRs you authored that merged or closed and the issues assigned to you that closed, plus your `search` qualifiers ANDed with `is:closed`, from the day the lookback starts. GitHub search stops at 1,000 results, and `plan` warns when a lookback reaches that far. Jira reads issues resolved since then, Linear issues completed or canceled (archived ones too), Asana tasks completed. A custom source prints what it likes, see [Custom sources](./custom-sources.md#finished-items).
-- **A finished item links no PR.** Its unit cuts a fresh branch from the default branch, like an issue without a PR, and never touches the head branch, which may be gone. So `deliver: push` and `pending_review` have nothing to land on: on a rule that can only match finished items they are a config error, and a rule that matches open ones too skips its finished items, as it does an issue without a PR.
-- **Attempts** work as for open items: an unchanged finished item runs once per skill, and a PR that merged since its last unit counts as changed.
+Details:
+
+- A `where`, or an `any` entry under one, that never names `state` matches open items only: `any: [{ state: merged, label: release }, { label: hotfix }]` takes merged `release` PRs and open `hotfix` ones.
+- `closed` without a `state` that can be `merged` or `closed` is an error; so is `closed: { older_than }` without a `newer_than`.
+- Only when a rule can match finished items (in `any` and `not` too) does its source read them: back to the widest `closed: { newer_than }`, or 7 days.
+- GitHub reads your merged or closed PRs and closed assigned issues, plus your `search` ANDed with `is:closed`; search stops at 1,000 results, and `plan` warns near it. Jira reads resolved issues, Linear completed or canceled ones (archived too), Asana completed tasks; [custom sources](./custom-sources.md#finished-items) print their own.
+- A finished item links no PR: its unit branches from the default branch. So `push` and `pending_review` are errors on a rule matching only finished items, and a rule matching both skips them.
+- Attempts work as for open items; a PR merged since its last unit counts as changed.
 
 ### `order`
 
-Within a rule, units run in the order the source returns items; for GitHub that is newest first, so with little quota the oldest can wait run after run. `order: oldest` runs them first. Items without the timestamp go last. A card's [tasks](./workflows.md#the-feature-block) run back to back where the first of them ranks, in the order they wait on each other.
+Units run in the source's order, newest first for GitHub, so with little quota the oldest can wait. `order: oldest`, `newest` or `updated` sorts them; items without the time go last. A card's [tasks](./workflows.md#the-feature-block) run back to back where the first ranks, in dependency order.
 
 ### Retry on the next model
 
@@ -559,22 +620,15 @@ Within a rule, units run in the order the source returns items; for GitHub that 
   model: { claude: [sonnet, opus] }
 ```
 
-Every step runs on `sonnet`. One that fails there (a failed turn or the turn cap) runs once more, right away, on `opus`. That holds for a one-step rule like this one and for each step of a [`then`](./chains.md#then) chain or loop, where a step's own `model` can bring its own pair. A provider set to a plain name never retries.
+A step that fails on `sonnet` (a failed turn or the turn cap) runs once more, right away, on `opus`: in a one-step rule and in each step of a [chain](./chains.md#then), where a step can bring its own pair. Details:
 
-The retry starts from the clone as the failed step found it: that attempt's commits, edits and `.away/out/` changes are dropped (gitignored files like `node_modules` and `.away/context/` stay as it left them), and only that step runs again, on the same provider, without checking its [`when`](./chains.md#when) again. Only a failure retries: not a quota stop, the time limit or Ctrl-C. If the provider has no budget left for the retry, the failed attempt stands, as without a list.
-
-Both attempts show in the report and count against the budget. Towards [giving up](./how-it-works.md#units) on an item the retry speaks for the step, unless a quota, session or window stop cut it short: then the first failure counts. `notify` hears only about the retry:
-
-```markdown
-| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commit), verdict approve |
-|  | └ acme-api-1 | fix | claude | failed, 3 turns (retried on the next model) | 1 commit |
-|  | └ acme-api-1 | fix | claude | done, 5 turns | 1 commit |
-|  | └ acme-api-1-review | review | claude | done, 5 turns | a report, verdict approve |
-```
+- The retry starts from the clone as the failed step found it, its commits, edits and `.away/out/` changes dropped (gitignored files stay), on the same provider, without rechecking [`when`](./chains.md#when).
+- Only a failure retries: not a quota stop, the time limit or Ctrl-C. No budget left, and the failure stands.
+- Both attempts show in the report and cost budget. For [giving up](./how-it-works.md#units) on an item the retry counts, unless a quota, session or window stop cut it short. `notify` hears only the retry.
 
 ### `on_done`
 
-Moving the card is how the next person hears it's their turn, and a comment on it is how they hear what happened. `on_done` does either, or both, once the work is out:
+Moving the card tells the next person it's their turn; a comment tells them what happened:
 
 ```yaml
 - skill: implement
@@ -583,97 +637,59 @@ Moving the card is how the next person hears it's their turn, and a comment on i
   on_done: { comment: result, move: In Review }
 ```
 
-`comment: result` posts the unit's result as awaywork's comment, before the move: headed with the rule's skill, a report rule's report, else a line for what it published (`Opened <PR>`, `Opened <PR> as a draft`, `Pushed 2 commits onto <PR>`, `Left your pending review on <PR>`), with awaywork's status line under it:
+`comment: result` posts, before the move, the result headed with the rule's skill: a report rule's report, else what it published (`Opened <PR>`, `Opened <PR> as a draft`, `Pushed 2 commits onto <PR>`, `Left your pending review on <PR>`), then a `Status:` line and `— awaywork`.
 
-```text
-Result of implement
-
-Opened https://github.com/acme/api/pull/41
-
-Status: done
-
-— awaywork
-```
-
-A [report task](./workflows.md#report-tasks) posts its result on the card whether its rule asks or not; a task that opens a PR posts one only when it does. A `deliver: plan` rule takes no `comment`: its plan comment is its result, and a second comment would repeat it.
-
-`move` is named in the tracker's own words, like `where`: a Jira status (awaywork takes the transition that leads there), a Linear workflow state of the issue's team, an Asana section of the task's project (the first of its projects, among the ones `projects` names, that has one), a GitHub label, which it adds, creating it in the repo when it's new. Names compare ignoring case. A custom source moves through its [`write`](./custom-sources.md#writing-back) command. A move that finds no such status says which ones there are:
-
-```text
-  on_done: couldn't move ENG-12 to In Review: ENG-12 has no transition to "In Review", only to "QA", "Done"
-```
-
-It runs once the chain finished and published: a PR opened, a push landed, a report written, a pending review left. Not when a step failed or stopped, the run ended before a step ran, a loop ran out of rounds before its `until` held, or a step left nothing for the chain or asked [questions](./workflows.md#questions) instead. On a `deliver: plan` rule it runs once the [plan](./workflows.md#plans) is posted, never when it was refused or couldn't be. On a report rule whose post [waits](./workflows.md#posts-that-wait), the result is posted and the move held until you approve it, made by the first run that sees your `approve` while the card is still where the post saw it. On a `planned` rule it moves the task's card, the only item a task writes to; the card [stays with its plan rule](./workflows.md#tasks) wherever it moves. A step its `when` passed over doesn't hold it back. Gates that fired and a failed `verify` don't either: the PR is out, and its card or note waits on it.
-
-It moves the unit's items that are yours and come from the rule's own tracker: its `source`, or, on a rule without one, the source of the item the rule matched. `In Review` is a Jira status, not a label, so a Jira card's rule leaves the PR it links alone, even when another rule put that PR in the unit. Yours is your PR, an issue assigned to you, a Jira, Linear or Asana item, or a custom source's. Never a PR you were asked to review or an item only an extra GitHub `search` found; those are logged as `not moved, not yours`. Yours is checked again right before the move, in the read the move makes anyway, so an item reassigned or unassigned during the run stays put: `couldn't move ENG-12 to In Review: ENG-12 is no longer yours: not assigned to you`. A custom source's `write` checks that itself. Bitbucket and a custom source without `write` can't move anything, and `doctor` warns about a rule whose items may come from one. The token needs write scope: `write:jira-work` on a scoped Jira token, write access on a Linear key; Asana's has it, and `gh`'s login or `GH_TOKEN` (`repo` scope) adds labels already.
-
-The result goes to the same items, through the same check (`got no result, not yours` in the log), and a result over 30 KB isn't posted. Neither write ever fails the unit. Both go in the run's output and the morning report under the unit, masked like every other error:
+`move` is in the tracker's words, ignoring case: a Jira status (via its transition), a Linear state of the team, an Asana section (in the first of the task's projects that `projects` names and has it), a GitHub label (created if new), or a custom source's [`write`](./custom-sources.md#writing-back). Both show under the unit in the report:
 
 ```text
   1  ENG-12  implement  done, 7 turns  https://github.com/acme/api/pull/41 (2 commits)
-     Rate limit the public API per key.
      result posted on https://acme.atlassian.net/browse/ENG-12
      on_done moved ENG-12 to "In Review"
 ```
 
-Posting the result and moving an item each change its updated time. awaywork reads it right before each write and right after: when it's still the one the plan read, or the one the result left, it records the new one, so awaywork's own writes never make the item look changed next run and redo it on the same rule. When someone changed the item while the unit ran, it keeps the plan's, so their change still counts, and so does whatever a person changes after the move. A custom source's `write` has to print both times for the same; without them, have the rule stop matching where the item moved to.
+When it runs:
+
+- Once the chain published: a PR opened, a push landed, a report written, a pending review left. Not after a failed or stopped step, a run that ended first, a loop out of rounds, a step that left nothing or asked [questions](./workflows.md#questions). A passed-over step, fired gates or a failed `verify` don't hold it back.
+- `deliver: plan`: once the [plan](./workflows.md#plans) is posted. It takes no `comment`, as the plan is the result.
+- A report whose post [waits](./workflows.md#posts-that-wait): the result posts, and the move waits for your `approve`, made while the card is still where the post saw it.
+- A [report task](./workflows.md#report-tasks) posts its result on the card regardless; a PR task only when asked. A `planned` rule moves the task's card, which [stays with its plan rule](./workflows.md#tasks).
+
+What it writes to:
+
+- The unit's items that are yours and from the rule's tracker (its `source`, else the matched item's). A Jira rule leaves the PR in the unit alone.
+- Yours: your PR, an assigned issue, a Jira, Linear, Asana or custom source item. Never a PR you're reviewing or a `search`-only item (`not moved, not yours`, `got no result, not yours`).
+- Ownership is reread right before the move: `couldn't move ENG-12 to In Review: ENG-12 is no longer yours: not assigned to you`. A custom `write` checks it itself.
+- A missing status names the ones there are: `ENG-12 has no transition to "In Review", only to "QA", "Done"`.
+- Bitbucket and a custom source without `write` can't move; `doctor` warns. The token needs write scope (`write:jira-work`, a Linear key with write); Asana's and gh's have it.
+- A result over 30 KB isn't posted. Neither write fails the unit; errors are masked in the report.
+- Each write changes the item's updated time. awaywork reads it before and after; if it's still the plan's (or the result's), it records the new one so its own writes don't look like a change, while someone else's still counts. A custom `write` prints both times for this; otherwise make the rule stop matching where the item moved to.
 
 ### `run: soon`
 
-Some work shouldn't wait for 1 AM: your PR's checks just went red, or you answered awaywork's [questions](./workflows.md#questions) at 10:00. `run: soon` has [`awaywork watch`](./scheduling.md#soon-runs) start a rule's units as soon as it sees them due, a new item or one changed since its last attempt, instead of at the next window:
+Some work shouldn't wait for the night: a PR gone red, an answer to awaywork's [questions](./workflows.md#questions). [`awaywork watch`](./scheduling.md#soon-runs) starts a soon rule's units within minutes of them coming due, a new item or one changed since its last attempt:
 
 ```yaml
 watch: { every: 5m }            # the default
 sources:
-  github: { repos: [acme/*] }
   jira: { site: acme.atlassian.net, email: me@acme.dev, every: 15m }   # a slow tracker
 queue:
   - skill: fix
     where: { type: pr, mine: true, checks: failing }
     run: soon
-  - skill: implement
-    source: jira
-    where: { status: Ready }
 ```
 
-The daemon polls the sources the soon rules read every `watch.every`, and a source with its own `every` less often (an `every` shorter than `watch.every` changes nothing; either is 1m or more, as the daemon looks once a minute). A poll plans only the soon rules over the sources it just read and reads no quota; only the units it finds due start a run. Inside a window, the window run takes every rule as usual. A manual `awaywork run` and `awaywork plan` take every rule too, `run` or not; `plan` marks a soon rule's units `#1 soon`. GitHub Actions has no daemon, so there soon rules run in the windows like the rest. The details, what a poll costs and how it backs off, are in [Scheduling](./scheduling.md#soon-runs).
+Details:
 
-A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
+- The daemon polls the soon rules' sources every `watch.every`, a source with its own longer `every` less often (both 1m or more). A poll plans only the soon rules and reads no quota.
+- Window runs, manual `run` and `plan` take every rule; `plan` marks soon units `#1 soon`.
+- GitHub Actions has no daemon: soon rules run in the windows. Costs and backoff are in [Scheduling](./scheduling.md#soon-runs).
 
 ## Notify
 
-`notify.command` runs in a shell, as you and with your environment, on two events. `AWAYWORK_EVENT` says which:
+`notify.command` runs as you, with your environment, on two events in `AWAYWORK_EVENT`:
 
-- `run`, once when a run ends, dry runs included: the morning report's path is in `AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`; the same results as JSON sit next to it, in `$(dirname "$AWAYWORK_REPORT")/report.json`.
-- `unit`, once for every step of a unit, as soon as the unit published, before the next unit starts. A dry run fires none, and Ctrl-C stops the running one and fires no more. Its env has `AWAYWORK_RUN_ID`, `AWAYWORK_UNIT` (the step's, e.g. `acme-api-12-review-1`), `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`, `failed`, `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit that opened a PR (not on a [`push`](./chains.md#push), so a command that readies or labels `$AWAYWORK_PR_URL` never touches your own PR), and `AWAYWORK_REPORT`, the path of what the step wrote: its report, or for a step that commits, the PR body as it left it. The unit's items arrive as `AWAYWORK_ITEM_URL`, `AWAYWORK_ITEM_KEY` and `AWAYWORK_SOURCE`, one line per item in the unit's order (one item is the common case); the first two are named as in a [`context`](#sources) command and `AWAYWORK_SOURCE` is the source each item came from; `AWAYWORK_REPO` is its `owner/name`. `AWAYWORK_VERDICT` is the word the step wrote to `.away/out/verdict`, if it did, and `AWAYWORK_OUT_DIR` the folder where the step's `.away/out/` was kept, if it exists. It also holds what earlier steps of the chain left, so a hook acting on an extra file should check `$AWAYWORK_SKILL` first.
-
-The command gets both events. One that's only for the morning report starts with `[ "$AWAYWORK_EVENT" = run ] || exit 0`, or it also fires on every step.
-
-There are no built-in integrations. A command that fails or takes over a minute is logged and the run goes on, and still succeeds:
-
-```
-  notify failed for acme-api-1: Command failed with exit code 3: ...
-```
-
-Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other. `$AWAYWORK_REPORT` is markdown for GitHub, with folded `<details>` sections a phone or chat app shows as tags, so these two send the plain text `awaywork report` prints instead. They call the first `awaywork` on your PATH, which after an `npx` install is none or another version, so write its full path there:
-
-```yaml
-notify:                         # ntfy, the morning report only
-  command: >-
-    [ "$AWAYWORK_EVENT" = run ] || exit 0;
-    awaywork report "$AWAYWORK_RUN_ID" |
-    curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" --data-binary @- "https://ntfy.sh/$NTFY_TOPIC"
-  secrets: [NTFY_TOPIC]
-```
-
-```yaml
-notify:                         # a Slack incoming webhook, the morning report only
-  command: >-
-    [ "$AWAYWORK_EVENT" = run ] || exit 0;
-    awaywork report "$AWAYWORK_RUN_ID" | jq -Rs '{text:.}' |
-    curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
-  secrets: [SLACK_WEBHOOK_URL]
-```
+- **`run`**, when a run ends, dry runs included: `AWAYWORK_REPORT` is the morning report's path, with `report.json` beside it, and `AWAYWORK_RUN_ID` the run.
+- **`unit`**, for every step of a unit once it published, before the next unit. None on a dry run; Ctrl-C fires no more.
 
 ```yaml
 notify:                         # a line per step
@@ -682,13 +698,22 @@ notify:                         # a line per step
     echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL" >> ~/awaywork.log
 ```
 
-`secrets` names the env vars the command reads: workers never see them, and the GitHub Actions workflow passes them from repository secrets.
+The command gets both events, so filter as above. `secrets` names the env vars it reads: workers never see them, and Actions passes them from repository secrets. Both events have `AWAYWORK_RUN_ID`; a `unit` event also has:
 
-More recipes, Notion and Slack per unit among them, are in [Where results go](./results.md).
+| Variable | Holds |
+| --- | --- |
+| `AWAYWORK_UNIT`, `AWAYWORK_SKILL`, `AWAYWORK_STATUS` | The step (`acme-api-12-review-1`), its skill, how it ended (`done`, `failed`, `skipped`...) |
+| `AWAYWORK_PR_URL` | On every step of a unit that opened a PR; never on a [`push`](./chains.md#push), so a hook can't touch your own PR |
+| `AWAYWORK_REPORT` | What the step wrote: its report, or the PR body |
+| `AWAYWORK_ITEM_URL`, `AWAYWORK_ITEM_KEY`, `AWAYWORK_SOURCE` | One line per item, in order |
+| `AWAYWORK_REPO` | `owner/name` |
+| `AWAYWORK_VERDICT`, `AWAYWORK_OUT_DIR` | The step's verdict, and its kept `.away/out/`, which also holds earlier steps' files: check `$AWAYWORK_SKILL` first |
+
+There are no built-in integrations. A failure or a run over a minute is logged (`notify failed for acme-api-1: Command failed with exit code 3: ...`) and the run still succeeds; anything left in the background is stopped. Recipes, ntfy, Slack and Notion among them, are in [Where results go](./results.md#recipes).
 
 ### PR labels, reviewers and ready for review
 
-Ready for review is a rule's [`deliver: pr`](#queue-rules). Otherwise a PR gets the agent's title and body and nothing else: no labels, no reviewers, into the base awaywork picked. None of that is config. The `unit` event has the PR's URL, so `gh` does it:
+Ready for review is [`deliver: pr`](#queue-rules). Otherwise a PR gets the agent's title and body, no labels or reviewers, into the base awaywork picked. `gh` in the hook adds the rest:
 
 ```yaml
 notify:
@@ -702,15 +727,13 @@ notify:
     gh pr edit "$AWAYWORK_PR_URL" --add-reviewer octocat
 ```
 
-`set -e` stops at a `gh` that fails, a missing label say: the hook's failure is logged and the next step tries again.
-
-`gh pr edit "$AWAYWORK_PR_URL" --base develop` moves the base too; leave it out on a plan's [stacked tasks](./workflows.md#the-feature-block), whose PRs sit on each other, and on a rule that takes up an awaywork PR, whose new PR sits on that one's branch.
-
-That's your command with your token, not a worker: workers never comment or ping anyone. A requested reviewer gets a notification, and so can the CODEOWNERS a ready PR asks, so treat those two like a comment you'd post.
+- `set -e` stops at a failing `gh`; the next step tries again.
+- `--base develop` moves the base too, but not for [stacked tasks](./workflows.md#the-feature-block) or a PR stacked on an awaywork PR.
+- It's your token, not a worker's. A reviewer, and the CODEOWNERS a ready PR asks, get notified: treat that like a comment you'd post.
 
 ## MCP servers
 
-Declare servers once under `mcp`, then give them to the rules or steps that need them with `mcp: [names]`. No step gets a server its rule or step doesn't name: a `then` step gets its rule's unless it names its own, and `mcp: []` gives it none.
+Declare servers under `mcp`; rules and steps name the ones they get:
 
 ```yaml
 mcp:
@@ -733,17 +756,27 @@ queue:
       - { skill: review, mcp: [db] }
 ```
 
-The shape is a subset of Claude Code's `.mcp.json`, translated for each agent: a `command` with `args` and `env`, or a `url` with `headers`. `secrets` names the env vars the server needs. A stdio server receives its secrets in its env under those same names. An HTTP server gets each one in a header, as `${NAME}`, or as `Bearer ${NAME}` for `Authorization`. A secret can't appear in `command`, `args` or `url`, where it would show in the process list, nor in `env`, where Codex takes only literal values. Names starting with `GH_`, `GITHUB_` or `TWG_` are reserved: workers never get forge logins, and Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything outside the list is refused. Only units whose rule names a server get its secrets. `awaywork schedule` maps them into the Actions workflow, and `awaywork doctor` shows whether each one is set.
+The shape is a subset of Claude Code's `.mcp.json`, translated per agent. A `then` step inherits its rule's servers unless it names its own; `mcp: []` gives none. Details:
 
-Servers start for your own PRs and for issues and tasks, but not on someone else's PR or an issue it closes, nor when one of their secrets is unset. Only token-based servers work unattended: OAuth-only servers need a login a runner doesn't have, and workers never get your claude.ai connectors. A server's secret is one the agent can read. A server's tools are tools that injected instructions can call. See [Safety](./safety.md#mcp-servers).
+- A stdio server gets its `secrets` in its env; an HTTP one in headers, as `${NAME}` or `Bearer ${NAME}`. Never in `command`, `args` or `url` (the process list shows them) or `env` (Codex takes literals only).
+- `GH_`, `GITHUB_` and `TWG_` names are reserved: workers never get forge logins, and Actions refuses `GITHUB_` secrets.
+- `tools` limits what the agent may call. Only units naming a server get its secrets; `schedule` maps them into Actions, and `doctor` shows whether each is set.
+- Servers start for your own PRs, issues and tasks, never on someone else's PR or an issue it closes, nor with a secret unset.
+- Only token-based servers work unattended; workers never get your claude.ai connectors. Its secret is one the agent can read, its tools ones injected text can call: [Safety](./safety.md#mcp-servers).
 
 ## Isolation
+
+By default setup, the agent and the checks run as you:
 
 ```yaml
 isolation: user # default: none; or container
 ```
 
-`none` runs setup, the agent and the checks as you. Everything in [Safety](./safety.md) keeps your credentials out of the agent's way, not out of its reach: it can read what you can ([Not a sandbox](./safety.md#not-a-sandbox)). `user` runs them as `awaywork`, a user with nothing of yours, which on your Linux box or a self-hosted Linux runner you make once. `awaywork doctor` tells you how, here for a user `runner` (uid and gid 1001), with your own name and ids in yours:
+- **`none`:** as you. [Safety](./safety.md)'s measures keep credentials out of the agent's way, not its reach ([Not a sandbox](./safety.md#not-a-sandbox)).
+- **`user`:** as `awaywork`, a user with nothing of yours, which you make once on Linux.
+- **`container`:** a fresh container of the repo's image per command: [In a container](#in-a-container).
+
+`doctor` says how to make the user, here for a user `runner` (uid and gid 1001):
 
 ```text
 FAIL  isolation: user, but can't run as the awaywork user (sudo: unknown user awaywork); make the worker user once:
@@ -754,20 +787,14 @@ FAIL  isolation: user, but can't run as the awaywork user (sudo: unknown user aw
     runner ALL=(root) NOPASSWD: /usr/bin/chown -R -h -P awaywork\: /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9], /usr/bin/chown -R -h -P 1001\:1001 /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]
 ```
 
-The user has no home and no login shell: each clone gets a fresh `HOME`, and nothing logs in as it. The first sudoers line lets you run anything as the worker, the second only the two `chown`s that hand it a clone and its `HOME` and take them back; why that's safe is in [Safety](./safety.md#a-worker-user-on-your-linux-machine). Then:
+No home, no login shell: each clone gets a fresh `HOME`. The first sudoers line runs anything as the worker; the second only the two `chown`s that hand it a clone and its `HOME` and take them back ([why that's safe](./safety.md#a-worker-user-on-your-linux-machine)). Then `doctor` says `ok    isolation: user: setup, the agent and the checks run as awaywork`. What changes:
 
-```text
-ok    isolation: user: setup, the agent and the checks run as awaywork
-```
-
-A few things change with it:
-
-- **The agent gets a login, not yours.** The worker's `HOME` is a fresh folder for each clone, so your keychain login isn't there: give Claude a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`). Until you do, `doctor` says `warn  claude: the awaywork user can't use your login: set CLAUDE_CODE_OAUTH_TOKEN`. Cursor needs its `CURSOR_API_KEY` there anyway. Codex needs nothing: awaywork copies your own `auth.json` into the worker's `HOME` for the run and saves its refreshed tokens back after, under the lock every Codex run takes, since a refresh rotates them. Those tokens are the worker's word, so read [what it doesn't close](./safety.md#a-worker-user-on-your-linux-machine) before you lend it yours.
-- **Tools live outside your home.** The worker can't run what nvm, `~/.local/bin` or `~/.cargo` put in your home. Install the agents' CLIs and the repos' toolchains system-wide; `doctor` warns about every folder on your `PATH` it can't enter. Cursor's installer writes to `~/.local`; `sudo env HOME=/opt/cursor bash -c 'curl https://cursor.com/install -fsS | bash'` puts it in `/opt/cursor/.local` instead, for you to link `agent` into `/usr/local/bin`.
-- **Your home is closed.** The worker reads whatever in it is readable by others, so `doctor` warns until `chmod o-rwx ~`.
-- **Linux only.** On macOS it refuses to run: `isolation: user runs on Linux only, not darwin`.
-- **Always on a GitHub-hosted runner and in awaywork's image**, whatever the config says: there `none` and `container` are ignored, and the action or the [Dockerfile](./scheduling.md#in-a-container) makes the user.
-- **One developer per worker user.** Whoever has the `chown` line can chown any awaywork clone folder, someone else's too.
+- **Logins.** Your keychain login isn't there: give Claude a `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`) in the env file; `doctor` warns until you do. Cursor needs `CURSOR_API_KEY` anyway. Codex borrows your `auth.json` for the run and its refreshed tokens are saved back, under Codex's lock; read [what that doesn't close](./safety.md#a-worker-user-on-your-linux-machine) first.
+- **Tools** must be system-wide: the worker can't run what nvm, `~/.local/bin` or `~/.cargo` put in your home, and `doctor` warns about each such `PATH` entry. For Cursor: `sudo env HOME=/opt/cursor bash -c 'curl https://cursor.com/install -fsS | bash'`, then link `agent` into `/usr/local/bin`.
+- **Your home** must be closed (`chmod o-rwx ~`); `doctor` warns until it is.
+- **Linux only:** `isolation: user runs on Linux only, not darwin`.
+- **Always on** a GitHub-hosted runner and in awaywork's image, whatever the config says; the action or the [Dockerfile](./scheduling.md#in-a-container) makes the user.
+- **One developer per worker user:** the `chown` line reaches anyone's awaywork clones.
 
 ### In a container
 
@@ -779,53 +806,44 @@ repos:
     setup: pnpm i --frozen-lockfile
 ```
 
-`container` is the one for your Mac, and for more than a user hides on Linux. Setup, every agent run and every check start in a fresh container of the repo's `image` through Docker (Docker Desktop, Colima, or the engine on Linux). It mounts the clone, at its own path, and the skills plugin, read-only, and nothing else: not your home, not the docker socket. It runs as your uid and gid, so what it writes in the clone stays yours, with every capability dropped and `no-new-privileges`, so a `sudo` the image hands out goes nowhere. Each container is gone before awaywork looks at the clone again, `docker rm -f` included on a timeout, the window's end or Ctrl-C, since killing the `docker run` client stops nothing inside; when docker doesn't say so within a minute, the clone is lost. `awaywork replay` runs in one too. `doctor` checks that Docker answers, that each repo's image is here (or pulls it) and that the agents' CLIs run in it, here with a test image of stand-ins:
+The one for your Mac, and for more than a user hides on Linux. Every setup, agent run and check starts a fresh container of the repo's `image` (Docker Desktop, Colima or Linux's engine). It mounts the clone, at its own path, and the skills plugin read-only, nothing else: no home, no docker socket. It runs as your uid and gid, every capability dropped, `no-new-privileges`. `doctor` checks Docker, each image (pulling it if missing, failing if it can't) and the agents' CLIs in it:
 
 ```text
 ok    isolation: container: setup, the agent and the checks run in a fresh container of the repo's image (Docker 27.4.0)
 ok    isolation: acme/leak: awaywork-leak has claude 2.1.290 (Claude Code stand-in), codex codex-cli 0.162.1 (stand-in)
 ```
 
-And when one isn't there:
+The image is yours to build, and all the units get:
 
-```text
-FAIL  isolation: acme/leak: awaywork-nope:1 isn't here and couldn't be pulled (Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp 54.156.126.76:443: i/o timeout)
-```
-
-The image is yours to build, and what's in it is all the units get:
-
-- **The agent CLIs and the toolchain.** `claude`, `codex`, Cursor's `agent` or your command provider's binary, whichever the repo's rules use, plus whatever setup and the checks run, and the commands of the [MCP servers](#mcp-servers) its rules name: stdio servers start inside, as the agent's children. Not `gh` or `glab`: awaywork's own forge calls run outside. Install things system-wide rather than under `/root`, since the container runs as your uid, and mind the `ENTRYPOINT`: awaywork skips it and runs its commands as they are.
-- **Every repo gets one.** Under `container`, a `repos` entry without an `image` is a config error (`repos.acme/api.image: required with isolation: container: the image its units run in`), and a unit in a repo with no entry at all is skipped: `no image for acme/web: isolation: container needs one in its repos entry`. Nothing falls back to running as you.
-- **Pulled once.** A missing image is pulled by the first `docker run` (or by `doctor`); after that awaywork uses it as it is, so `docker pull` to update it.
-- **Only the env it needs.** A container gets the image's own environment, plus what awaywork sets (the `none` placeholders, its git config, the prompt's path) and that phase's secrets, by name, never on argv: setup its repo's `secrets`, the agent its provider's and its MCP servers'. Nothing else of yours, your ssh agent included, so a variable a tool needs goes in `secrets` or in the image.
-- **A `HOME` in the clone.** It's `.away/home`, fresh with each clone: what setup puts there, a `pip install --user` or a browser download, reaches the chain's agents and checks, and goes with the clone, so caches don't survive the night. Bake them into the image.
-- **Logins.** Claude needs a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`): your keychain login isn't there, and `doctor` warns without it. Cursor needs its `CURSOR_API_KEY`, as everywhere, and gets its own `HOME` there too, `.away/agent-home`. Codex gets your `auth.json` (`~/.codex`, `$CODEX_HOME`, or its `config_dir`) copied into its `HOME` for the run, as under `user`, and the copy goes back over yours once the container is gone, under the same lock as its probes, when it's a refresh of the one lent: a refresh rotates the refresh token, and the old one stops working within a day ([Providers](../providers.md#codex)). Quota probes and `--version` checks stay on your machine, with your own logins.
-- **Clones in your home.** They stay in the run dir under `~/.local/state/awaywork/runs/`, unlike `user`'s `/tmp/awaywork-*`: Colima shares only your home and `/tmp/colima` with its VM, Docker Desktop shares `/Users`, `/tmp` and a few more, so a clone in your home is the one place both see. `doctor` fails when the engine can't mount the run dir.
-- **What it costs.** An image per repo to keep current; a container start per command (a few hundred ms on Colima); file access through the VM's sharing on macOS, slow for an `npm install`; and no Xcode or anything else macOS-only, since the containers are Linux.
+- **The agent CLIs and toolchain** the repo's rules use, and the commands of its stdio [MCP servers](#mcp-servers), which start inside. Not `gh` or `glab`: awaywork's forge calls run outside. Install system-wide, not under `/root`. awaywork skips the `ENTRYPOINT`.
+- **One per repo:** under `container`, a `repos` entry without `image` is an error, and a unit in a repo with no entry is skipped (`no image for acme/web: isolation: container needs one in its repos entry`). Nothing falls back to you.
+- **Pulled once**, by the first `docker run` or `doctor`; `docker pull` to update.
+- **Only the env it needs:** the image's, awaywork's placeholders, git config and prompt path, and that phase's secrets by name, never on argv. Nothing else of yours, ssh agent included.
+- **A `HOME` in the clone,** `.away/home`, fresh per clone: what setup puts there reaches the chain, then goes. Bake caches into the image.
+- **Logins:** Claude needs `CLAUDE_CODE_OAUTH_TOKEN`, Cursor `CURSOR_API_KEY` (its `HOME` is `.away/agent-home`). Codex gets your `auth.json` (`~/.codex`, `$CODEX_HOME` or `config_dir`) for the run, copied back after under its probes' lock when it's a refresh of the one lent, since a refresh rotates it ([Providers](../providers.md#codex)). Probes and `--version` checks run on your machine.
+- **Clones in your home,** in the run dir, not `/tmp`: the one place Colima and Docker Desktop both share. `doctor` fails if the engine can't mount it.
+- **Removal:** each container is gone before awaywork reads the clone, `docker rm -f` on a timeout, the window's end or Ctrl-C. No answer from docker within a minute, and the clone is lost. `awaywork replay` runs in one too.
+- **Cost:** an image per repo to keep current, a few hundred ms per command on Colima, slow file sharing on macOS, and Linux only: no Xcode.
 
 ## Old runs
 
-Run dirs pile up: each keeps its plan, logs, context and reports, and a `replay` keeps its clone there too, easily 100 MB for a big repo. `keep_runs` says how long they stay, a span like `14d` or `4w`, `30d` by default. Each `awaywork run` removes the older ones once it holds the run lock, going by the run id, its start time; a `--dry-run` removes nothing. [`awaywork watch`](./scheduling.md#on-your-machine) does the same when it starts and once a day, logging the line. A run still holding an item's latest report stays, since the next attempt on that item reads it, and so does a run in progress. You get one line, only when something went:
+Run dirs keep plans, logs, context and reports, and a `replay`'s clone, easily 100 MB. `keep_runs` (a span, `30d` by default) says how long:
 
-```text
-Removed 3 runs older than 30d, 124.8 MB freed
+```yaml
+keep_runs: 14d
 ```
 
-A dir it can't remove is a `warning:`, never a failed run. `report --list`, `stats` and `replay` only see the runs kept.
+Each `awaywork run` prunes once it holds the run lock (not on `--dry-run`), going by run id; [`watch`](./scheduling.md#on-your-machine) does at start and daily, logging it. Runs in progress and those holding an item's latest report stay. A removal prints `Removed 3 runs older than 30d, 124.8 MB freed`; a failure is a `warning:`. `report --list`, `stats` and `replay` see only kept runs.
 
 ## Secrets
 
-The config holds env var **names** only. Values come from the environment or `~/.config/awaywork/env` (the environment wins). `awaywork secret ASANA_TOKEN` saves one there without it touching your shell history: it asks at a hidden prompt, or takes a pipe (`pbpaste | awaywork secret ASANA_TOKEN`), and replaces the line if it's already set.
+The config holds env var **names** only. Values come from the environment or `~/.config/awaywork/env`, the environment winning. `awaywork secret ASANA_TOKEN` saves one there off your shell history, at a hidden prompt or from a pipe (`pbpaste | awaywork secret ASANA_TOKEN`), replacing an existing line.
 
 | Variable | Used by |
 | --- | --- |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Claude, when not using the local login (`claude setup-token`); wins over `config_dir` |
-| `ASANA_TOKEN` (or your `token_env`) | Asana |
-| `LINEAR_API_KEY` (or your `token_env`) | Linear |
-| `JIRA_API_TOKEN` (or your `token_env`) | Jira |
-| A custom source's `secrets` | That source's `command` and `write` |
-| `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login, or the account `sources.github.user` names |
-| A built-in source's `context.secrets` | That source's `context` command |
-| Your `notify.secrets` | The notify command |
-| Your `repos.<owner/name>.secrets` | That repo's `setup` |
-| Your `mcp.<name>.secrets` | That MCP server, for the units whose rule names it |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude without the local login (`claude setup-token`); wins over `config_dir` |
+| `ASANA_TOKEN`, `LINEAR_API_KEY`, `JIRA_API_TOKEN` (or your `token_env`) | Asana, Linear, Jira |
+| `GH_TOKEN` | GitHub in Actions; locally `gh`'s login or `sources.github.user`'s |
+| A custom source's `secrets` | Its `command` and `write` |
+| `context.secrets`, `notify.secrets`, `repos.<repo>.secrets` | That `context` command, the notify command, that repo's `setup` |
+| `mcp.<name>.secrets` | That server, for units whose rule names it |

@@ -4,7 +4,7 @@ description: Plug any task tracker into awaywork with a command that prints your
 
 # Custom sources
 
-Your tracker isn't built in? Maybe it's an internal board, or a Jira nobody will ever let you share a token for. Write a command that prints your open items as JSON, and awaywork treats it like any other source. Use any language: Python, Go, Rust, bash, or an `npx` package.
+Your tracker isn't built in, an internal board say? Write a command, in any language, that prints your open items as JSON, and awaywork treats it like any other source.
 
 ## Config
 
@@ -27,11 +27,11 @@ queue:
     where: { column: In progress }
 ```
 
-The built-in queue only has rules for built-in sources, so a custom source needs rules of its own.
+The built-in queue has no rules for custom sources: write yours.
 
 ## Output
 
-The command prints a JSON array to stdout. Anything it writes to stderr shows up when it fails.
+The command prints a JSON array to stdout; its stderr shows when it fails.
 
 ```json
 [
@@ -56,14 +56,14 @@ The command prints a JSON array to stdout. Anything it writes to stderr shows up
 | `fields` | Strings, numbers, booleans or lists of them. Every key must be listed in `fields` in the config, except `repo`, `created` and `updated` |
 | `context` | Optional Markdown the worker reads instead of `description`: attachments, linked specs, whatever helps |
 
-- **`fields.repo`** (`owner/name`) says where the code lives. Without it, a task is picked up only when you already have a PR linked to it, and an issue not at all.
-- **`link`** in the config is the line, in your tracker's own words, that links a PR to an item: awaywork writes it into its draft PRs, and links a PR of yours whose body holds it, on top of the key in its branch or title. `{key}`, `{id}` and `{url}` are the item's; there's no default. See [Linking PRs](./configuration.md#linking-prs).
-- **`created` and `updated`** are ISO timestamps, and a rule's `order` sorts by them.
-- The command gets 10 minutes before it is killed.
+- **`fields.repo`** (`owner/name`) is where the code lives. Without it, a task is picked up only with a linked PR of yours, an issue never.
+- **`link`**, in the config, is the line that [links a PR](./configuration.md#linking-prs) in your tracker's words, from `{key}`, `{id}` and `{url}`, no default: awaywork writes it into its drafts and links your PRs whose body holds it, besides the key in branch or title.
+- **`created` and `updated`** are ISO timestamps, which `order` sorts by.
+- The command is killed after 10 minutes.
 
 ## Finished items
 
-A rule that names [`state`](./configuration.md#finished-items) can match items you closed lately. When one does, the command gets `AWAYWORK_CLOSED_SINCE`, the ISO time its lookback starts (`2026-10-11T09:30:00.000Z`), and may print the items closed since then next to the open ones, with `"state": "closed"` and `"closed"` set to when. Without the variable, no rule wants them: print open items only, or print them anyway and the rules leave them alone.
+When a rule names [`state`](./configuration.md#finished-items), the command gets `AWAYWORK_CLOSED_SINCE`, the lookback's ISO start (`2026-10-11T09:30:00.000Z`), and may print items closed since, with `"state": "closed"` and `"closed"` set to when. Without it, print open items only, or all and the rules ignore the closed ones.
 
 ```js
 // board.mjs: open cards, and those done since the lookback when a rule asks
@@ -81,20 +81,20 @@ const items = cards
 console.log(JSON.stringify(items))
 ```
 
-`state` and `closed` are every item's own keys, so `fields` in the config can't list them: if your tracker has a field called `state`, print it under another name. A top-level `state` other than `open` or `closed`, or a `closed` that isn't an ISO time, is ignored, with one warning naming the first such item, so a command that printed GitLab's `"state": "opened"` before keeps working.
+`state` and `closed` are every item's own keys, so `fields` can't list them: print a tracker field called `state` under another name. A top-level `state` other than `open` or `closed`, or a non-ISO `closed`, is ignored with one warning naming the first such item, so an old command printing GitLab's `"state": "opened"` keeps working.
 
 ## House rules
 
-The same rules as for [built-in sources](../extend/sources.md#rules-for-a-source):
+As for [built-in sources](../extend/sources.md#rules-for-a-source):
 
-- `command` only reads. Writing is `write`'s, and only when awaywork pipes it a write.
-- Print only your items: assigned to you, or waiting on your review. awaywork takes every item you print as yours, so `write` may move any of them.
-- `write` refuses an item that's no longer yours, reassigned or unassigned since `command` printed it: awaywork can't tell, so exit non-zero and say so on stderr.
-- Read tokens from env vars and list them in `secrets`.
+- `command` only reads; `write` writes, only when awaywork pipes it a write.
+- Print only your items, assigned to you or awaiting your review: awaywork takes every printed item as yours, so `write` may move any of them.
+- `write` refuses an item no longer yours since `command` printed it, which awaywork can't tell: exit non-zero and say so on stderr.
+- Read tokens from env vars listed in `secrets`.
 
 ## Writing back
 
-A rule's [`on_done`](./configuration.md#on-done) posts its result on your item and moves it once its work is published. A custom source does that through a `write` command of its own; without one, its items stay where they are, with no result.
+[`on_done`](./configuration.md#on-done) results and moves go through a `write` command of the source's; without one, its items stay put, with no result.
 
 ```yaml
 sources:
@@ -111,14 +111,17 @@ queue:
     on_done: { move: Review }
 ```
 
-awaywork runs it once per write with the write as JSON on stdin: `op`, the item's `key` as `item` and its `id`, then `to` for a move or `body` for a comment.
+It runs once per write, the write as JSON on stdin: `op`, the item's `key` as `item`, its `id`, and `to` for a move or `body` for a comment.
 
 ```json
 { "op": "move", "item": "AI-42", "id": "8812", "to": "Review" }
 { "op": "comment", "item": "AI-42", "id": "8812", "body": "Which header row?\n\nReply here to answer: awaywork's next run takes this up again with your reply.\n\n— awaywork" }
 ```
 
-A comment is a step's [questions](./workflows.md#questions), a rule's [plan](./workflows.md#plans) or your `awaywork approve` reply to one: the body ends with awaywork's `— awaywork` line, and the command posts it as is. List it back in `comments`, oldest comment first and `mine` set as below, and the item waits for an answer or an approval until a later comment replies. A non-zero exit is a failed write: its stderr goes in the run's output and the morning report, and the unit stays done. Print the item's updated time (ISO) right before and after the write as `{"before": "…", "after": "…"}`: when `before` is still what `command` printed, awaywork records `after`, so its own move doesn't make the item look changed next run, while someone else's change during the run still does.
+- **A comment** is a step's [questions](./workflows.md#questions), a rule's [plan](./workflows.md#plans) or your `awaywork approve` reply, ending in `— awaywork`: post it as is.
+- **List it back** in `comments`, oldest first, `mine` set as below, and the item waits for an answer or approval until a later comment replies.
+- **A non-zero exit** is a failed write: stderr goes to the run's output and report; the unit stays done.
+- **Print the updated time** (ISO) before and after the write, `{"before": "…", "after": "…"}`. When `before` is what `command` printed, awaywork records `after`, so its own move doesn't look like a change next run and someone else's still does.
 
 ```js
 // board-write.mjs: moves a card or comments on it, as you
@@ -137,11 +140,11 @@ if (!res.ok) throw new Error(`${write.op} ${write.item}: ${res.status} ${await r
 console.log(JSON.stringify({ before, after: (await res.json()).card.updated_at }))
 ```
 
-On a comment your `command` prints back, set `"mine": true` when your own account wrote it and, if the tracker says, nobody else edited it last: awaywork counts a comment as its own only with its last line and `mine`, so a teammate pasting the line doesn't pass for awaywork.
+Set `"mine": true` on a printed comment your account wrote and, if the tracker says, nobody else edited last: awaywork counts a comment as its own only with its last line and `mine`, so a teammate pasting the line doesn't pass for awaywork.
 
 ## Thread hosts
 
-Your tracker can't take awaywork's posts, and `thread: github` doesn't fit: your repos are on Bitbucket, or you'd rather keep plans out of the issue list. A custom source can host the [threads](./workflows.md#threads) instead: say `thread: true` on it and name it in a rule's `thread`.
+Your tracker can't take awaywork's posts and `thread: github` doesn't fit (repos on Bitbucket, or plans kept out of the issue list)? A custom source with `thread: true` can host the [threads](./workflows.md#threads), named in a rule's `thread`.
 
 ```yaml
 sources:
@@ -165,15 +168,16 @@ The rule's first post for a card opens its thread, one more op for `write`:
 { "op": "open", "item": "ENG-2101", "title": "ENG-2101: Export VAT report", "body": "awaywork posts here for [ENG-2101](https://acme.atlassian.net/browse/ENG-2101), Export VAT report: its plans, results and questions. Reply here to answer them; the card still decides whether it's yours.\n\n<!-- awaywork thread item=jira:ENG-2101 -->" }
 ```
 
-It prints the new thread's key and link, `{"key": "ENG-2101", "url": "file:///Users/me/vault/awaywork/ENG-2101.md"}`. It may print an `id` too, when the host's own id for the thread isn't the key: a Notion page's, say. Every post awaywork makes for the card is then a `comment` with that key as `item` and the `id` (the key when there's none), and once the card's source says it's done, a `close` with a last line to post, `The card is done, so awaywork closes its thread.` A host may ignore `close`: it then gets it again on every run that still reads the card as done, a week by default.
+It prints the thread's key and link, `{"key": "ENG-2101", "url": "file:///Users/me/vault/awaywork/ENG-2101.md"}`, plus an `id` when the host's own id isn't the key (a Notion page's). Each later post is a `comment` with that key as `item` and the `id` (else the key). Once the card's source says it's done comes a `close` with a last line, `The card is done, so awaywork closes its thread.`; a host may ignore it and get it again every run that still reads the card as done, a week by default.
 
-- **Listed back as items.** `command` prints each thread it opened like any item, with the `body` it got as `description`, the marker line included. That marker is how awaywork finds a card's thread on every run, so nothing goes in the state dir, and why a thread is never an item of its own: a thread host's item carrying it is left out.
-- **Its `comments` are the replies**, oldest first, `mine` on yours, as on any item: only your reply answers a post, a teammate's is context in `item.md`. Everything else works as on a GitHub thread: approving, feedback, held moves, `awaywork approve jira:ENG-2101` or the thread's own key, `notes:ENG-2101`. Keep each of awaywork's posts one comment: part of it is the model's text, so a host that splits a post into several at anything shaped like its reply heading lets that text pass for your reply, an `approve` included.
-- **Nobody gets pinged.** A GitHub issue notifies its assignee; a file or a page in your notes doesn't, so a post waits there unseen. Pair the host with a [notify](./configuration.md#notify) hook that tells you when a run left something waiting.
+- **Listed back as items:** `command` prints each thread like an item, the `body` it got as `description`, marker line included. The marker is how awaywork finds a card's thread every run, with nothing in the state dir, and why a host's item carrying it is never an item of its own.
+- **Its `comments` are the replies**, oldest first, `mine` on yours: only your reply answers a post, a teammate's is context in `item.md`. The rest works as on a GitHub thread: approving, feedback, held moves, `awaywork approve jira:ENG-2101` or the thread's key `notes:ENG-2101`.
+- **One post, one comment:** part of a post is the model's text, so a host that splits it at anything shaped like a reply heading lets that text pass for your reply, `approve` included.
+- **Nobody gets pinged:** unlike a GitHub issue, a file or page notifies nobody, so pair the host with a [notify](./configuration.md#notify) hook that tells you when something waits.
 
 ### A folder of Markdown files
 
-One file per card, in a folder only you write to: a corner of your Obsidian vault, say. A `### <who> · <time>` line heads each reply. A file can't tell who wrote a line, so `mine` is whoever the heading names, and that makes it a thread only while you're the folder's only writer: a personal vault yes, a team's shared drive no. awaywork writes there too, so the script escapes a heading line in what it appends (`\### `), and the step's own text can't start a reply.
+One file per card, in a folder only you write to, like a corner of your Obsidian vault. A `### <who> · <time>` line heads each reply, and since a file can't tell who wrote a line, `mine` is whoever the heading names: a thread only while you're the sole writer (a personal vault, not a shared drive). awaywork writes there too, so the script escapes heading lines it appends (`\### `) and the step's text can't start a reply.
 
 ```js
 // threads.mjs: awaywork's threads as Markdown files in a folder only you write to
@@ -226,47 +230,35 @@ if (mode !== 'write') {
 }
 ```
 
-A real one, after a waiting `story`, a teammate's `approve` (context), yours, and the `prototype` it let through:
+A real one, after a waiting `story`, a teammate's `approve` (context only), yours, and the `prototype` it let through:
 
 ```md
 # CARD-1: Export VAT report
 
-awaywork posts here for [CARD-1](https://tracker.example/CARD-1), Export VAT report: its plans, results and questions. Reply here to answer them; the card still decides whether it's yours.
-
+[...]
 <!-- awaywork thread item=tracker:CARD-1 -->
 
-### andreaprovenzale · 2026-11-07T20:55:22.292Z
+### me · 2026-11-07T20:55:22.292Z
 
 Result of story
-
-Report of story: a story for the VAT export.
-
-Status: done
-
-To approve, reply with approve as the first line. Any other reply is feedback: awaywork runs this step again with it.
-
+[...]
 — awaywork · waits
 
 ### bob · 2026-11-07T20:55:33Z
 
 approve
 
-### andreaprovenzale · 2026-11-07T20:56:02Z
+### me · 2026-11-07T20:56:02Z
 
 approve
 
-### andreaprovenzale · 2026-11-07T20:56:13.464Z
+### me · 2026-11-07T20:56:13.464Z
 
 Result of prototype
-
-Report of prototype: a story for the VAT export.
-
-Status: done
-
-— awaywork
+[...]
 ```
 
-Reply from your editor with a heading of your own, or from the shell:
+Reply from your editor with a heading of your own, or the shell:
 
 ```sh
 printf '\n### %s · %s\n\napprove\n' "$(id -un)" "$(date -u +%FT%TZ)" >> ~/vault/awaywork/CARD-1.md
@@ -276,7 +268,7 @@ Once the card is done, `close` posts its last line and moves the file to `closed
 
 ## Recipe: chores
 
-When the queue is done and quota is left, a source can hand out work that needs no tracker item: tests for an untested module, a TODO to clear. Print one item per chore and repo, and put its rule last so it only gets what the rest leaves:
+Quota left when the queue is done? A source can hand out work with no tracker item, like tests for an untested module. Print one item per chore and repo, with its rule last:
 
 ```yaml
 sources:
@@ -310,16 +302,15 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
 })))))
 ```
 
-- **Attempts** keep a chore from redoing the same work: a unit whose items haven't changed since a worker finished it is skipped, see [how it works](./how-it-works.md). `updated` is the Monday of the week, so a chore runs at most once a week, and not while its last draft PR is still open; print the day's date to run it every day.
-- **Weekdays** are the script's call: print nothing on the days a chore shouldn't run.
-- **A fixed time**, like every Monday at 09:00, needs no script: that's a built-in [routine](./configuration.md#routines). Each occurrence is a new item with its own branch, so with `deliver: draft_pr` or `pr` every week opens its own PR instead of waiting on last week's.
-- **`when`** is checked again when the unit starts: `plan` lists the chore with its gate and notes when the probe has no headroom for it, and the run skips it without the headroom.
-
-- **No `link`** is set: a chore has no tracker page, so its draft PRs carry no link line.
+- **Attempts** skip a unit whose items haven't changed since a worker finished it ([how it works](./how-it-works.md)). `updated` is the week's Monday, so a chore runs at most weekly, and not while its last draft is open; print the day's date for daily.
+- **Weekdays** are the script's: print nothing on days off.
+- **A fixed time**, Mondays at 09:00, needs no script: that's a [routine](./configuration.md#routines), each occurrence a new item and branch, so every week opens its own PR.
+- **`when`** is rechecked at unit start: `plan` shows the gate and notes missing headroom, and the run skips the chore without it.
+- **No `link`**: a chore has no tracker page, so its drafts carry no link line.
 
 ## Recipe: Sentry errors
 
-An error with a stack trace is a problem listed on an item, so `fix` takes it like a red check. This one is a recipe to adapt, and it hasn't run against a real Sentry yet: point it at your org and projects, print your unresolved issues with their latest stack trace, and let a rule pick the loud ones.
+An error with a stack trace is a problem listed on an item, so `fix` takes it like a red check. A recipe to adapt, not yet run against a real Sentry: your unresolved issues with their latest stack trace, and a rule picking the loud ones.
 
 ```yaml
 sources:
@@ -374,20 +365,20 @@ for (const [project, repo] of Object.entries(repos)) {
 console.log(JSON.stringify(items))
 ```
 
-- **`assigned:me`** keeps it to your errors, like any source. Drop it if the whole project is yours.
-- **One request per issue** for the latest event: fine for a handful of errors; cap the list or skip `context` if your project is noisier.
-- **No `type`**: items default to `task`, and only tasks get linked to your open PRs, awaywork's included. So an error whose draft PR is still open waits for you instead of getting a second one.
-- **`updated`** is `lastSeen`: an error that fires again after you closed its draft PR is fair game again. One `fix` couldn't turn into a PR gets 3 tries however often it fires, then one a week ("gave up after 3 attempts"). A GitHub-hosted runner keeps no attempts, so there it's tried every run: cap the rule with `units:` if that's a lot.
-- **Frames come oldest first** from Sentry; the script flips them so the throwing line is on top.
-- **EU-region org?** Swap `sentry.io` for `de.sentry.io`.
+- **`assigned:me`** keeps it to your errors; drop it if the project is all yours.
+- **One request per issue** for the latest event: fine for a handful; cap the list or skip `context` if noisier.
+- **No `type`:** items are `task`s, and only tasks link to your open PRs, awaywork's included, so an error with an open draft waits for you rather than getting a second.
+- **`updated` is `lastSeen`:** an error firing again after you closed its draft is fair game. One `fix` can't turn into a PR gets 3 tries however often it fires, then one a week ("gave up after 3 attempts"). A hosted runner keeps no attempts, so there it's tried every run: cap it with `units:`.
+- **Frames** come oldest first; the script flips them so the throwing line is on top.
+- **EU-region org?** Use `de.sentry.io`.
 
 ## On GitHub Actions
 
-The runner has only what's in the repo holding your config, so:
+The runner has only the repo holding your config:
 
-- **Commit the command next to `config.yml`.** A path under `~/` works on your laptop and nowhere else, and `awaywork doctor` warns about it.
-- **Build it in `setup`.** It runs in the config's folder before awaywork's action, e.g. `cargo build --release` or `go build -o board .`. It runs without the source's secrets: only the command gets them. A binary built on your Mac won't run on the Linux runner. `ubuntu-latest` ships Node, Python, Go and Rust.
-- **Add the `secrets` as repository secrets.** `awaywork schedule install --with github-actions` writes them into the workflow by name, and offers to set the ones your environment has.
+- **Commit the command next to `config.yml`.** A `~/` path works only on your laptop; `doctor` warns.
+- **Build it in `setup`,** run in the config's folder before awaywork's action, without the source's secrets (`cargo build --release`, `go build -o board .`). A Mac binary won't run on the Linux runner; `ubuntu-latest` has Node, Python, Go and Rust.
+- **Add the `secrets` as repository secrets:** `schedule install --with github-actions` names them in the workflow and offers to set those your environment has.
 
 ## Try it
 

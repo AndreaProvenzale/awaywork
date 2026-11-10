@@ -4,41 +4,47 @@ description: Let your coding agent read your recent sessions and PRs, with your 
 
 # Suggested rules
 
-CI goes red, you paste the failure into your agent. A review lands, you ask it to address the comments. Monday morning, you ask it to go through last week's errors. You've done each one so often you no longer notice, which is exactly why you'd never think to write a rule for it. `/away` notices for you, when you ask: it reads your recent agent sessions and your forge history, finds the work you keep doing right after the same kind of event or at the same time each week, and proposes it as queue rules, [routines](./configuration.md#routines) and fixes for the corrections you keep typing, each shown against the items it would take tonight.
+CI goes red, you paste the failure into your agent. A review lands, you ask it to address the comments. Monday, you ask it to go through last week's errors. You do each so often you'd never think to write a rule for it.
+
+`/away` notices for you, when you ask. It reads your recent agent sessions and forge history, finds the work you keep doing after the same kind of event or at the same time each week, and proposes queue rules, [routines](./configuration.md#routines) and fixes for corrections you keep typing, each shown against the items it would take tonight.
 
 ## Run it
 
-In Claude Code, with the [plugin](./away.md) installed:
+In Claude Code, with the [plugin](./away.md):
 
 ```text
 /away what could you take off my plate?
 ```
 
-With no config at all, `/away` sets awaywork up, and one of its questions asks whether your first rules should come from this, with the scope and size it would read: say yes and it doesn't ask again. On a config with no queue yet, or just the default rules `awaywork init` wrote, it offers it once before asking what to offload. Either way it never needs a token: those go in with `awaywork secret <NAME>`, which you run, as in [With an AI agent](./away.md). Codex and friends get the same skill from the npm package, in `plugin/skills/away/`, as in [Codex and friends](./agents.md#codex-and-friends).
+With no config, `/away` sets awaywork up and asks whether your first rules should come from this, with the scope and size it would read; say yes and it doesn't ask again.
+
+On a config with no queue, or only `init`'s default rules, it offers once before asking what to offload. It never needs a token: you add those with `awaywork secret <NAME>` ([/away in Claude Code](./away.md)). Codex and friends get the same skill from the npm package, in `plugin/skills/away/` ([Codex and friends](./agents.md#codex-and-friends)).
 
 ## It asks first
 
-Every run starts with three questions and a number, before it opens a single transcript:
+Every run starts with three questions and a number, before it opens a transcript:
 
-- **Projects:** the repos in your config by default. Work and personal never mix: it reads only the folders you name, so your employer's sessions never feed your side project's queue, or the other way round.
-- **Window:** the last 30 days by default. Under 3 weeks there's no routine to find, since a weekly habit needs 3 different weeks, and it says so.
-- **Histories:** which agents' sessions and memories. Your agent reading another vendor's sessions sends them to its vendor, and it says so: Codex sessions read by Claude go to Anthropic.
-- **Size:** how many sessions and how many MB that is, and how many memory files.
+- **Projects:** your config's repos by default. It reads only the folders you name, so work sessions never feed a side project's queue, or the reverse.
+- **Window:** the last 30 days by default. Under 3 weeks it finds no routine, since a weekly habit needs 3 weeks, and says so.
+- **Histories:** which agents' sessions and memories. Reading another vendor's sessions sends them to your agent's vendor, and it says so: Codex sessions read by Claude go to Anthropic.
+- **Size:** how many sessions, MB and memory files that is.
 
-Nothing turns it on for good. Next time it asks again.
+Nothing turns it on for good: next time it asks again.
 
 ## What it reads
 
 | Input | Where |
 | --- | --- |
-| Claude Code sessions | `~/.claude/projects/<folder>/*.jsonl`, and `$CLAUDE_CONFIG_DIR/projects/…` when that's set: both can hold sessions, counted once each |
-| Codex sessions | `~/.codex/sessions/<yyyy>/<mm>/<dd>/*.jsonl`, or `$CODEX_HOME/sessions/…` when that's set |
-| Agent memories | Claude Code's `~/.claude/projects/<folder>/memory/*.md`, and `$CLAUDE_CONFIG_DIR/projects/…` when that's set, plus your global `CLAUDE.md` and `rules/`; Codex's `~/.codex/AGENTS.md` and, with its memories feature on, probably `~/.codex/memories/` (named in the binary, checked on a real file first). A global file only lends the lines that clearly apply to the repo in scope |
-| Forge history | `gh`, read-only: your own PRs (with who reviewed them and when) and issues, failed CI runs, reviews you gave. Not your replies on other people's threads: awaywork has nothing to do there that isn't commenting on someone's behalf |
+| Claude Code sessions | `~/.claude/projects/<folder>/*.jsonl`, and `$CLAUDE_CONFIG_DIR/projects/…` when set: both can hold sessions, counted once each |
+| Codex sessions | `~/.codex/sessions/<yyyy>/<mm>/<dd>/*.jsonl`, or `$CODEX_HOME/sessions/…` when set |
+| Agent memories | Claude Code's `~/.claude/projects/<folder>/memory/*.md` (and under `$CLAUDE_CONFIG_DIR`), your global `CLAUDE.md` and `rules/`; Codex's `~/.codex/AGENTS.md` and, with its memories feature on, probably `~/.codex/memories/` (named in the binary, checked on a real file first). A global file lends only lines that clearly apply to the repo |
+| Forge history | `gh`, read-only: your PRs (who reviewed them, when), issues, failed CI runs, reviews you gave. Not your replies on others' threads: awaywork has nothing to do there that isn't commenting on someone's behalf |
 
-It skips awaywork's own workers and every other headless session, subagent transcripts (they repeat their parent), the Claude Code sessions Codex Desktop imported into its own history, and earlier suggest runs, or the counts would lie. Times are turned into your local time before it looks for weekly habits, since that's what a routine's `at` means.
+It skips awaywork's workers and other headless sessions, subagent transcripts (they repeat their parent), Claude Code sessions Codex Desktop imported, and earlier suggest runs, or the counts would lie. Times become local before it looks for weekly habits, as a routine's `at` is local.
 
-Months of transcripts are a lot of tokens, so it digests each session first, with a `jq` script that ships with the skill: the opening prompt, branch, folder and start time, the PR it worked on, and the correction signals that work in any language (a turn you interrupted, a tool call you rejected, you speaking up right after the agent edited files). Then it joins sessions to forge events (the session that started half an hour after CI failed on that PR's branch), clusters similar asks, and reads full sessions only for the clusters worth it, with subagents where your agent has them. It runs in your session, on your subscription, while you watch.
+To spare tokens it first digests each session with a `jq` script shipped with the skill: opening prompt, branch, folder, start time, the PR, and language-independent correction signals (an interrupted turn, a rejected tool call, you speaking up right after an edit).
+
+It joins sessions to forge events (a session half an hour after CI failed on that branch), clusters similar asks, and reads full sessions only for clusters worth it, with subagents where available. It runs in your session, on your subscription, while you watch.
 
 ## What it turns into
 
@@ -48,13 +54,15 @@ Months of transcripts are a lot of tokens, so it digests each session first, wit
 | The same ask at the same time each week | A routine and a rule on `source: routines`, with its cost in units a week |
 | A correction every agent on the repo needs | A line in the repo's `AGENTS.md` (or `CLAUDE.md`), which helps your own sessions too |
 | A correction only awaywork's workers need | A line in your awaywork `instructions` |
-| A correction that's already written down and still made | A command instead of a second line: a [`verify`](./configuration.md#repos-and-instructions) like `pnpm lint` on the repo, or a command [gate](./workflows.md#gates) |
+| A correction already written down and still made | A command instead: a [`verify`](./configuration.md#repos-and-instructions) like `pnpm lint`, or a command [gate](./workflows.md#gates) |
 
-A saved memory can be a correction you already made once and wrote down, and awaywork's Claude Code workers never see it: they start with auto-memory off and none of your user-level config (Codex workers do read `~/.codex/AGENTS.md` under `isolation: none`). It reads the index and each memory's type and description first, and opens in full only your feedback and the notes that state a rule about the repo, not progress logs. So a memory that holds for the repo comes back as a line for `AGENTS.md` or your `instructions`; one about you or your own workflow doesn't. Anything your config or `AGENTS.md` already has shows as "already rule #1", not as a new idea. A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts every rule and routine into a copy of your config and runs `awaywork plan --rules --json` and `awaywork doctor --json` on it, so each candidate comes with the real items it takes now, the near misses, and a routine's next occurrence.
+A saved memory can be a correction you already wrote down, which awaywork's Claude Code workers never see: they start with auto-memory off and none of your user-level config (Codex workers do read `~/.codex/AGENTS.md` under `isolation: none`). It reads the memory index, types and descriptions first, and opens only your feedback and notes stating a rule about the repo, not progress logs. One that holds for the repo becomes an `AGENTS.md` or `instructions` line; one about you doesn't.
+
+Anything your config or `AGENTS.md` already has shows as "already rule #1". A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts the rules and routines into a copy of your config and runs `awaywork plan --rules --json` and `doctor --json` on it, so each comes with the items it takes now, the near misses, and a routine's next occurrence.
 
 ## What you see
 
-Pointed at awaywork's own repo, a month of its author's history, on a config with no `queue` yet, it went through 86 interactive Claude Code sessions (out of 163 files, the rest headless) and the repo's 143 PRs, 76 issues and 20 failed runs, then ended with, trimmed:
+On one developer's repo, a month of history, a config with no `queue`: 86 interactive Claude Code sessions (of 163 files, the rest headless), 143 PRs, 76 issues and 20 failed runs, ending with, trimmed:
 
 ```text
 Rules
@@ -78,24 +86,21 @@ Routines
 
 Corrections
   None repeated. Only one session had interrupted turns or rejected tool calls (2 each).
-  Your prompts right after edits were "now do the next bit", not corrections.
 
 Keep which? (e.g. 2, 3)
 ```
 
-Plus a few lines under it: 2 patterns dropped because awaywork can't see what starts them, the draft keeps the 4 default rules as #1 to #4 since writing a `queue` replaces the default one, `doctor` passes on the draft, and neither new rule widens delivery. Its config, the repo and `AGENTS.md` were left alone. Not every month has a routine in it, and that's an answer too.
+Below it: 2 patterns dropped for having no visible trigger, the draft keeping the 4 default rules as #1 to #4 (a `queue` replaces the default one), `doctor` passing, neither rule widening delivery. Config, repo and `AGENTS.md` untouched. A month without a routine is an answer too.
 
 ## You pick
 
-Accept, tweak or decline each by number. Rules and routines you keep go through the skill's usual queue loop: drafted, checked on your items again, written into your config on your yes keeping your comments, then `doctor`. An `AGENTS.md` line is a local edit you commit yourself. A rule that lets awaywork write more (`deliver: pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./away.md). Nothing else is written.
+Accept, tweak or decline each by number. Kept rules and routines go through the skill's queue loop: drafted, checked on your items again, written into your config on your yes, comments kept, then `doctor`. An `AGENTS.md` line is a local edit you commit. A rule that lets awaywork write more (`pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./away.md). Nothing else is written. It won't:
 
-What it won't do:
-
-- quote your sessions or memories: evidence is a count and a paraphrase, since sessions hold pasted tokens and secrets;
+- quote your sessions or memories: evidence is a count and a paraphrase, since sessions hold pasted secrets;
 - touch the forge beyond reading;
-- leave anything behind: its digests go in a temp dir it deletes;
-- run in the background. The awaywork CLI never reads transcripts, and workers never see your history: only the session you started does.
+- leave anything behind: digests go in a temp dir it deletes;
+- run in the background. The CLI never reads transcripts and workers never see your history: only the session you started does.
 
 ## Running it again
 
-There's no memory between runs, on purpose for now. What you accepted is in your config, so it comes back as "already rule #3". What you declined comes back as a fresh candidate next time. Nothing nudges you either: ask `/away` again when your habits change, a new repo shows up, or you're curious what a month of your sessions says.
+There's no memory between runs, on purpose for now. What you accepted comes back as "already rule #3"; what you declined comes back as a fresh candidate. Nothing nudges you: ask again when habits change or a new repo shows up.
