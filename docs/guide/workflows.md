@@ -28,7 +28,7 @@ flowchart TD
   tasks --> impl["implement"]
   impl -- asks --> q(["You answer its questions"])
   q --> impl
-  impl --> loop["review ⇄ fix, until review approves"]
+  impl --> loop["review ⇄ fix until review approves or max rounds"]
   loop --> pr["Draft PR, a decision card on top if a gate fired"]
   pr --> you2(["You review and merge"])
 ```

@@ -15,10 +15,10 @@ awaywork is a CLI. It pulls items from your forge and task tracker, and rules yo
 
 ```mermaid
 flowchart LR
-  subgraph awaywork["awaywork: plain code, no model"]
+  subgraph awaywork["awaywork: plain code"]
     direction TB
     pick["collect items, match rules,<br/>budget the quota"]
-    publish["push the PR, post on your item"]
+    publish["push a branch, open the PR,<br/>post on your item"]
   end
   pick -- dispatch --> worker["worker: your agent CLI<br/>in a clone, no forge token"]
   worker -- commits --> publish

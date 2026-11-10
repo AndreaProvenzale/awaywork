@@ -545,6 +545,8 @@ flowchart TD
   rn -- no --> skip["Skipped as no_rule:<br/>plan --why names the closest rule"]
 ```
 
+Four kinds of item go their own way: awaywork's own PRs reach only [`ours` rules](#your-reviewed-awaywork-prs), a plan's tasks only the first [`planned` rule](#a-plan-s-tasks) for their skill, a card carrying awaywork's plan [stays on its plan rule](./workflows.md#the-plan-sticks-to-the-card), and an item whose report you approved [goes on to the next rule](./workflows.md#posts-that-wait).
+
 ### `where`
 
 ```yaml

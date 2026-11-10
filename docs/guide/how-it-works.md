@@ -8,26 +8,28 @@ A run collects items from your sources, matches each to a queue rule's skill, de
 
 ```mermaid
 flowchart TD
-  subgraph before["awaywork, plain code, no model"]
+  subgraph before["awaywork: plain code"]
+    direction LR
     collect["collect: items from your sources"]
     match["match: queue rules pick a skill"]
     dedupe["dedupe: one unit per feature"]
     budget["budget: quota probes and caps"]
   end
-  subgraph workers["workers: the only model calls"]
+  subgraph workers["workers: every agent run, judges too"]
     worker["one per unit: the agent CLI<br/>in a fresh clone, no forge token"]
   end
-  subgraph after["awaywork, plain code, no model"]
-    publish["publish: push, open the PR, post on your item"]
+  subgraph after["awaywork: plain code"]
+    direction LR
+    publish["publish: push a branch, open the PR, post on your item"]
     report["report: the morning report"]
   end
   collect --> match --> dedupe --> budget
-  budget -- dispatch --> worker
-  worker -- "commits and .away/out/" --> publish
+  before -- dispatch --> workers
+  workers -- "commits and .away/out/" --> after
   publish --> report
 ```
 
-Only the workers call a model. Everything else is plain code you can inspect with `awaywork plan` before a run.
+Workers make every model call but one: each step, each gate's judge and `sync`'s conflict resolution run in the unit's clone. awaywork's own is the quota probe `plan` and `run` make, one Haiku turn for Claude; Codex reads its quota without one. Everything else is plain code you can inspect with `awaywork plan` before a run.
 
 ## Items
 

@@ -28,9 +28,9 @@ flowchart TD
     agent["Agent CLI"]
   end
   subgraph after["awaywork, with your forge and tracker tokens"]
-    publish["Push, open the PR, post on your item"]
+    publish["Push a branch, open the PR, post on your item"]
   end
-  login["Its own agent login,<br/>plus a rule's MCP secrets"] --> agent
+  login["Its own agent login, a rule's MCP secrets, the rest of your environment"] --> agent
   prefetch -- ".away/context/ files" --> agent
   agent -- "commits and .away/out/" --> publish
   publish --> forge["Forge and tracker"]
