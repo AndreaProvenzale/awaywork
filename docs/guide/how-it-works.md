@@ -29,7 +29,7 @@ flowchart TD
   publish --> report
 ```
 
-Workers make every model call but one: each step, each gate's judge and `sync`'s conflict resolution run in the unit's clone. awaywork's own is the quota probe `plan` and `run` make, one Haiku turn for Claude; Codex reads its quota without one. Everything else is plain code you can inspect with `awaywork plan` before a run.
+Workers make every model call but one: each step, each gate's judge and `sync`'s conflict resolution run in the unit's clone. awaywork's own is the quota probe `plan`, `run` and `doctor` make, one Haiku turn for Claude; Codex reads its quota without one. Everything else is plain code you can inspect with `awaywork plan` before a run.
 
 ## Items
 
