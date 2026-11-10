@@ -304,7 +304,11 @@ linear:
 
 `github` lists your login and orgs; `asana` the workspaces, then the configured one's projects and sections; `jira` the projects and statuses, once `site` and `email` are set.
 
-::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
+::: warning Experimental
+
+`github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+
+:::
 
 ### Tracker tokens
 
