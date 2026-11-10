@@ -10,8 +10,16 @@ import {
 import type { Item } from '../core/types.js'
 import { listedUnits, planUnitTable, providerLines } from './format/plan.js'
 import { reportUnitTable, runHeader } from './format/report.js'
-import { byGroup, type SkipRow, skippedHeading, skipRows } from './format/skips.js'
-import { columns, graphemes, heading, pad, warningBlock, width } from './format/terminal.js'
+import { type SkipRow, skippedHeading, skipRows } from './format/skips.js'
+import {
+  byGroup,
+  columns,
+  graphemes,
+  heading,
+  pad,
+  warningBlock,
+  width,
+} from './format/terminal.js'
 import { formatWhy } from './format/why.js'
 
 /** What a key does on a row. */

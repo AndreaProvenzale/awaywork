@@ -69,6 +69,9 @@ const reportAnswer =
 export const questionsComment = (questions: string, task?: string): string =>
   `${task ? `${taskHeadings.questions}${task}\n\n` : ''}${questions.trim()}\n\n${questionsAnswer}`
 
+/** What awaywork comments on its thread issue as it closes it. */
+export const threadClosed = 'The card is done, so awaywork closes its thread.'
+
 /** The words awaywork reads from a step's `.away/out/status`. */
 export type Status = 'done' | 'ask' | 'continue'
 

@@ -94,9 +94,6 @@ export const threadOf = (body: string | null | undefined): string | undefined =>
 export const threadBody = (item: Pick<Item, 'source' | 'key' | 'title' | 'url'>): string =>
   `awaywork posts here for [${item.key}](${item.url}), ${item.title}: its plans, results and questions. Reply here to answer them; the card still decides whether it's yours.\n\n${threadMarker(item)}`
 
-/** What awaywork comments on its thread issue as it closes it. */
-export const threadClosed = 'The card is done, so awaywork closes its thread.'
-
 /** The items an awaywork PR's footer names, as `<source>:<key>`. */
 export function footerItems(body: string | null | undefined): string[] {
   return [...footerLine(body).matchAll(/\bitem=([^\s:]+):(\S+)/g)].flatMap(
