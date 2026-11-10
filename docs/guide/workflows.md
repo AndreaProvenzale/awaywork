@@ -14,12 +14,14 @@ Where a run stops for a person, and how the work goes on from your answer:
 - [Threads](#threads): the card can't take awaywork's posts, so they go to a GitHub issue.
 - [Store](#store): big plans, contracts and screenshots live outside the post and [come back](#files-that-come-back) to the next step.
 
+awaywork keeps none of this in its state dir: every wait is read off the item, its PR or its thread, so a fresh runner behaves the same.
+
 ## Questions
 
 A step that can't go on without an answer, like `implement` on a vague issue, asks on your item:
 
 1. It writes its questions to `.away/out/questions.md` and `ask` to `.away/out/status`, and the chain ends.
-2. awaywork posts them as one signed comment on the unit's item from the rule's own tracker (the one [`on_done`](./configuration.md#on-done) would move), when that item is yours: your PR, an issue assigned to you, a tracker item.
+2. awaywork posts them as one comment, marked `— awaywork`, on the unit's item from the rule's own tracker (the one [`on_done`](./configuration.md#on-done) would move), when that item is yours: your PR, an issue assigned to you, a tracker item.
 3. The unit is skipped as **waiting for your answer**, under Needs you as `answer question`.
 4. A reply ends the wait, and the next run takes the unit with the same rule: within minutes on a [`run: soon`](./configuration.md#run-soon) rule.
 
@@ -38,11 +40,11 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
 — awaywork
 ```
 
-The result reads `asked questions`, the report lists them under Questions, and `awaywork run` prints `questions posted on <url>`. The next run's `item.md` has the comment headed `awaywork's questions`, replies after it; a step that still can't go on asks again.
+The result reads `asked questions`, the report lists them under Questions, and `awaywork run` prints `questions posted on <url>`, the comment's URL on GitHub, the item's elsewhere. The next run's `item.md` has the comment headed `awaywork's questions`, replies after it; a step that still can't go on asks again.
 
 Details:
 
-- The wait is read off the item, not the state dir, so a fresh runner waits too; awaywork's own comment bumping `updated` isn't a change.
+- awaywork's own comment bumping `updated` isn't a change.
 - Any later comment the agent sees ends it, yours or a teammate's: on GitHub an owner's, member's or collaborator's; on a tracker, any comment on an item assigned to you.
 - Bots don't (GitHub's bots, Jira's and Linear's apps, Linear's integrations): they show in `item.md` but the unit keeps waiting. Asana and custom sources don't mark bots, so there an integration's comment ends it.
 - A comment is awaywork's only when its `— awaywork` line comes from your account, so a pasted one doesn't hold your item ([Safety](./safety.md#what-awaywork-publishes)).
@@ -53,7 +55,9 @@ Details:
 
 ## Continue
 
-A step commits what's solid and writes `continue` to `.away/out/status`. The chain stops there, so no review or fix runs on half-done work, and publishes what it has. Under `draft_pr` or `pr` that's a draft (`draft: the agent will continue`) with a status line and a count in the footer:
+You get one draft PR that grows over several window runs, `Status: continue (1 of 3)` on top. Review it once it turns ready, or mark it ready to take it over: a ready PR, or a draft with no status in its footer, waits for review like any awaywork PR.
+
+A step commits what's solid and writes `continue` to `.away/out/status`. The chain stops there, so no review or fix runs on half-done work, and publishes what it has. Under `draft_pr` or `pr` that's a draft (`draft: the agent will continue`), the count in its footer:
 
 ```text
 Export screen
@@ -64,12 +68,10 @@ Status: continue (1 of 3): awaywork's next window run goes on here
 
 ---
 <!-- awaywork run=20261026-232730 item=github:acme%2Fapi%231%2Fapp status=continue continued=1 head=1f8a2313462c9a1f49af169ae1822d14c8adcde3 from=16548667d8e02a7a03e25135ff6054b195de8e51 -->
-Opened by awaywork (run `20261026-232730`): a coding agent worked on this unattended. Review it like any other contribution.
+[...]
 ```
 
-awaywork reads the footer back, never the state dir, so a fresh runner goes on too: status, count, the head it pushed, and the commit the draft's commits start after. The visible line is for you; the agent could write a `Status:` line itself, but not after the footer.
-
-The next run that would take the item anyway (window, scheduled or manual, never `run: soon`) clones the draft's branch, its prompt saying so, with the last report (or the draft's body, if no run of it is kept on the machine) in `.away/context/previous/report.md`. Its commits fast-forward onto the draft, no new PR or suffixed branch, and the new `pr.md` replaces title and body:
+The next run that would take the item anyway (window, scheduled or manual, never `run: soon`) goes on with the draft. Its commits fast-forward onto it, no new PR or suffixed branch, and the new `pr.md` replaces title and body:
 
 ```text
 Units 2
@@ -80,6 +82,17 @@ Units 2
 ```
 
 Once the agent says `done` (or writes no status file) and `verify`, the gates and the loops pass on every commit of the draft, a `deliver: pr` draft turns ready for review; a `draft_pr` stays a draft, its status line gone. The agent's word can only hold a PR back.
+
+Details:
+
+- awaywork reads the footer back: status, count, the head it pushed, and the commit the draft's commits start after. The visible line is for you; the agent could write a `Status:` line itself, but not after the footer.
+- The run that goes on clones the draft's branch, its prompt saying so, with the last report (or the draft's body, if no run of it is kept on the machine) in `.away/context/previous/report.md`.
+- A chain that committed nothing has no draft, so its questions are posted.
+- The footer still holds the draft's [dependents](#tasks) back.
+- A `run: soon` run skips a `continue` as `goes on from <PR> in the next window run`.
+- **A report** that says `continue` posts its result where results go (a [report task](#report-tasks)'s, `on_done: { comment: result }`'s) with `Status: continue (1 of 3)`, and runs again from it as `previous/report.md`, up to the same cap. Clear a capped count with `awaywork skip`, or by deleting awaywork's `continue` results on the item. Otherwise it only reports.
+- A `continue` with nowhere to keep its count (no commits on a new branch, or a `push`, `pending_review` or `plan` rule) reads as no status file, with a log line.
+- A chain that says `continue` skips its rule's `on_done` move: the unit isn't done.
 
 ### When it won't go on
 
@@ -92,17 +105,7 @@ Needs you 1
         awaywork's draft says continue, but it moved from 1f8a231,…
 ```
 
-The whys: `awaywork goes on with its own draft on GitHub only`, `someone else opened or edited it last`, `it moved from <sha>, where awaywork left it`, `it continued 3 times`. Mark the draft ready to take it over: a ready PR, or a draft with no status in its footer, waits for review like any awaywork PR.
-
-Details:
-
-- A draft that [asked](#questions) goes on the same way once answered, `run: soon` included.
-- A chain that committed nothing has no draft, so its questions are posted.
-- The footer still holds the draft's [dependents](#tasks) back.
-- A `run: soon` run skips a `continue` as `goes on from <PR> in the next window run`.
-- **A report** that says `continue` posts its result where results go (a [report task](#report-tasks)'s, `on_done: { comment: result }`'s) with `Status: continue (1 of 3)`, and runs again from it as `previous/report.md`, up to the same cap. Clear a capped count with `awaywork skip`, or by deleting awaywork's `continue` results on the item. Otherwise it only reports.
-- A `continue` with nowhere to keep its count (no commits on a new branch, or a `push`, `pending_review` or `plan` rule) reads as no status file, with a log line.
-- A chain that says `continue` skips its rule's `on_done` move: the unit isn't done.
+The whys: `awaywork goes on with its own draft on GitHub only`, `someone else opened or edited it last`, `it moved from <sha>, where awaywork left it`, `it continued 3 times`.
 
 ## Gates
 
@@ -308,7 +311,7 @@ Until you answer, the card is skipped as **waiting for your approval**, under Ne
 
 ### Details
 
-- The plan is awaywork's newest plan comment, read off the card every run, never the state dir, so a fresh runner waits too. GitHub reads the whole thread, past its last 50 comments.
+- The plan is awaywork's newest plan comment, read off the card every run. GitHub reads the whole thread, past its last 50 comments.
 - Edit the plan comment to fix a task, and the next run checks your edit; one that breaks it skips the card as **plan refused** with the reason, under Needs you. A plan comment someone else edited isn't awaywork's anymore ([Safety](./safety.md#what-awaywork-publishes)), so the card gets a new plan.
 - A plan isn't posted when it fails its checks (in the file, or read back from the comment), `plan.yml` or the contract is missing, or the comment with the contract passes 30 KB (a [lean](#files-that-come-back) plan pins them). The reason stays in the morning report (`plan not posted: plan.yml: task id "api" is used twice`) and `on_done` doesn't fire. Nor on an item that isn't yours, a source that can't write on a rule without a [thread](#threads), or a failed post. A step that asks [questions](#questions) posts those instead.
 - A `deliver: plan` rule that matches only merged or closed items, names a `source` that can't write without [`thread: github`](#threads), or has no `planned` rule for its tasks is a config error.
@@ -342,16 +345,7 @@ Leave voided invoices out.
 [...]
 ```
 
-Nothing about the feature lives in the state dir: every run reads the plan off the card and each task's PR off the forge (the PR on the task's branch whose footer names the task, open, merged or closed). The run after `approve`:
-
-```text
-$ awaywork plan --skipped
-Skipped 2: 1 fanned_out, 1 waiting_for_task
-  ENG-2101: fanned out: api no PR yet, web waits for api
-  ENG-2101/web: waiting for task api's PR to merge
-```
-
-The card, run by run:
+Every run reads the plan off the card and each task's PR off the forge (the PR on the task's branch whose footer names the task, open, merged or closed). `awaywork plan --skipped` shows the card, run by run:
 
 | What happened | The card | Its tasks |
 | --- | --- | --- |
@@ -593,7 +587,7 @@ To approve, reply with approve as the first line. Any other reply is feedback: a
 ```
 
 - **It holds its rule.** Later runs skip the card as **waiting for your approval** (`approve`, `story's result`), whatever changes, and no rule below takes it. Linked items rank on their own, so a red-CI fix on the linked PR still runs.
-- **Your first reply decides**, as on a [plan](#plans): `approve` first approves; anything else is feedback and reruns the step with the thread in `item.md`, its new post waiting whatever `wait` says. `awaywork approve <source:key>`, or `a` in the report, replies for you. A teammate's comment is context; your later comments on an approved post change nothing.
+- **You answer** as on a [plan](#your-answer), `awaywork approve <source:key>` and `a` included. Feedback reruns the step with the thread in `item.md`, its new post waiting whatever `wait` says.
 - **Approved, it hands the item on.** `approved` becomes the post's skill, read off the thread, so `where: { approved: story }` works even where awaywork can't move cards; a newer waiting post leaves it on the one before. The posting rule is done with the item; with no rule after it, the item is skipped as `#1 story doesn't run again: you approved its result; to run it again, delete that post on <url>` (then `awaywork run --unit <key>` if the card hasn't changed).
 - **`on_done` waits too.** The post holds its `move` and records the card's status. The first run that sees your `approve` (window, `soon` or manual) makes that move, even if `on_done` changed since, before planning, with no model run: `on_done: moved ENG-2101 to Ready for design, its post approved`.
 - **Gone ahead.** A report rule with [gates of its own](#gates-of-a-rule-s-own) and no `wait` goes ahead when they run clear (`Gates: none fired (taste)` on top, `— awaywork · went ahead · gates=taste` as the mark), moves the card at once and counts as approved. A gate that fires makes it wait, card on top.
@@ -655,7 +649,7 @@ awaywork posts here for [CARD-1](https://tracker.example/CARD-1), Export VAT rep
 
 Details:
 
-- Each run lists the open issues you opened in the card's repo and takes the one whose marker names the card, so a runner without state finds it. The GitHub source leaves issues with the marker out of its items, or a plan rule would take the thread itself.
+- Each run lists the open issues you opened in the card's repo and takes the one whose marker names the card. The GitHub source leaves issues with the marker out of its items, or a plan rule would take the thread itself.
 - All tasks merged isn't the end: the card says `all tasks done: close or move the card` until you do, its thread open with it. Close the thread yourself and the next post opens a new one. A thread whose card leaves your items without reading as done (reassigned, moved to another `repo`, closed while no run read back that week) stays open: close it yourself.
 - `thread: <source>` names a custom source with `thread: true` instead, a Notion database or a folder of Markdown files, which opens and lists threads itself ([Thread hosts](./custom-sources.md#thread-hosts)); that's the one for a Bitbucket config, where `thread: github` is a config error.
 - A thread goes on the plan's rule, never a `planned` one: tasks post where their plan did. Thread writes use the `gh` login awaywork opens PRs with, never the worker's.
@@ -663,7 +657,7 @@ Details:
 
 ## Store
 
-A card's thread suits a decision, not a 400-line plan, a contract or three screenshots, and a fresh runner loses whatever stayed in the run dir. `store` is one command awaywork hands each file a post pins: it puts the file anywhere (Notion, a bucket, a folder) and prints a link. The post gets a short summary and the links; the next unit reading the thread gets the files back, on any machine.
+A card's thread suits a decision, not a 400-line plan, a contract or three screenshots, and a fresh runner loses whatever stayed in the run dir. `store` is one command awaywork hands each file a post pins: it puts the file anywhere (Notion, a bucket, a folder) and prints a link.
 
 ```yaml
 store:
@@ -672,12 +666,7 @@ store:
   read: { max_mb: 10, files: ["*.md", "*.yml", "*.png"] } # what comes back; default 10 MB of everything
 ```
 
-It gets one JSON op on stdin per call, with your environment, like a [custom source](./custom-sources.md):
-
-- `{"op": "put", "item": "ENG-2101", "unit": "eng-2101", "path": "/…/units/eng-2101/out/plan.yml", "kind": "plan"}` prints `{"url": "…"}`. `path` is awaywork's copy out of the clone, readable during the put. `kind` is `plan`, `contract`, `report`, or the file's name under `.away/out/`, so one script can send recordings to a bucket and plans to Notion.
-- `{"op": "get", "url": "…"}` prints the bytes exactly as put. A put-only store sets `get: false`, and awaywork reads back with a plain HTTP GET, within the command's 10 minutes.
-
-After each put awaywork gets the file back and compares its sha256, which the pin carries. A store that returns other bytes (a CMS adding a newline, Notion round-tripping markdown) would make every post look edited, so that file isn't pinned: `report.md not stored: the store gave back different bytes than awaywork put`. Keep such a page for people, the bytes somewhere that keeps them.
+The post gets a short summary and a link per file; the next unit reading the thread gets the files back, on any machine: [Files that come back](#files-that-come-back).
 
 The model never sees a URL before awaywork writes it, nor picks where a file goes. A tiny store keeping files in a folder beside it, at `file://` URLs, enough for one machine:
 
@@ -703,13 +692,20 @@ if (op.op === 'put') {
 }
 ```
 
+It gets one JSON op on stdin per call, with your environment, like a [custom source](./custom-sources.md):
+
+- `{"op": "put", "item": "ENG-2101", "unit": "eng-2101", "path": "/…/units/eng-2101/out/plan.yml", "kind": "plan"}` prints `{"url": "…"}`. `path` is awaywork's copy out of the clone, readable during the put. `kind` is `plan`, `contract`, `report`, or the file's name under `.away/out/`, so one script can send recordings to a bucket and plans to Notion.
+- `{"op": "get", "url": "…"}` prints the bytes exactly as put. A put-only store sets `get: false`, and awaywork reads back with a plain HTTP GET, within the command's 10 minutes.
+
+After each put awaywork gets the file back and compares its sha256, which the pin carries. A store that returns other bytes (a CMS adding a newline, Notion round-tripping markdown) would make every post look edited, so that file isn't pinned: `report.md not stored: the store gave back different bytes than awaywork put`. Keep such a page for people, the bytes somewhere that keeps them.
+
 The script's job, not awaywork's:
 
 - **A URL that lasts.** It's read back days later. An S3 presigned link expires within a week: re-sign in `get` from a key in the URL, or pick a host whose links don't expire.
 - **Secrets in what leaves.** A log or recording can hold a token the agent saw: redact before it leaves, or keep those kinds out.
 - **Only its own URLs.** awaywork reads pins only off its own posts and the PRs it opened for you, and on GitHub and Jira skips any someone else edited last. Asana, Linear and custom sources don't say who edited a comment, so a teammate who can edit yours can edit a pin line; a `get` that refuses URLs it didn't print, as above, stops the store fetching what they name.
-
-With `get: false` nothing refuses. A file that doesn't match its pin is left out of the step, which catches a file changed in the store but not a rewritten pin line (a new URL with its own hash passes, and awaywork fetches it at every `plan`), so on those sources it trusts whoever can edit the post. And a file edited after its pin never reaches a step: the edit reruns the step without it.
+  - With `get: false` nothing refuses. A file changed in the store no longer matches its pin and is left out of the step, but a rewritten pin line (a new URL with its own hash) passes, and awaywork fetches it at every `plan`. On those sources it trusts whoever can edit the post.
+  - A file edited after its pin never reaches a step: the edit reruns the step without it.
 
 When the store fails:
 

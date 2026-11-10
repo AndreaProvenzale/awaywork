@@ -53,7 +53,7 @@ queue:
     where: { type: issue, label: awaywork }
 ```
 
-GitHub reads only issues assigned to you, so a labelled issue nobody assigned to you plans nothing. Within a rule, items come in the source's order (GitHub: newest first) unless the rule sets `order`.
+GitHub reads only issues assigned to you, so a labelled issue nobody assigned to you plans nothing, unless a `search` reads it (then `mine: true` keeps a rule to yours). Within a rule, items come in the source's order (GitHub: newest first) unless the rule sets `order`.
 
 With no `queue`, the default applies, minus rules for sources you didn't configure:
 
@@ -145,7 +145,7 @@ Each unit runs in a fresh clone, on a new branch cut from its base: the linked P
 
 ## Delivery
 
-A rule's `deliver` says what its unit leaves:
+A rule's `deliver` says what its unit leaves. An opt-in one is never a skill's default: only a rule picks it.
 
 | `deliver` | Leaves |
 | --- | --- |
@@ -157,13 +157,16 @@ A rule's `deliver` says what its unit leaves:
 | `push` | Commits fast-forwarded onto your own PR. Opt-in |
 
 - **`draft_pr`:** the worker commits and writes `.away/out/pr.md` (first line the title), which later steps keep current. awaywork adds an `Awaywork: <run id>` trailer, pushes the new branch and opens one draft PR into that base. No `pr.md`, no publish. Never into someone else's PR or a fork's: there a chain that could commit is skipped with the reason; a report still works.
-- **`pr`:** a `draft_pr` that opens ready for review, pinging whoever a ready PR pings, code owners included. It stays a draft, saying why, when a step failed, stopped or never ran, it [asked questions](./workflows.md#questions), [`verify`](./configuration.md#repos-and-instructions) failed, a [loop](./chains.md#loops) ended before its `until` held, or a [gate](./workflows.md#gates) fired.
+- **`pr`:** a `draft_pr` that opens ready for review, pinging whoever a ready PR pings, code owners included. It stays a draft, saying why, when a step failed, stopped or never ran, it [asked questions](./workflows.md#questions) or said [`continue`](./workflows.md#continue), [`verify`](./configuration.md#repos-and-instructions) failed, a [loop](./chains.md#loops) ended before its `until` held, or a [gate](./workflows.md#gates) fired.
 - **`report`:** no step commits; each writes `.away/out/report.md`, and the chain's reports, joined, go into the morning report.
-- **`pending_review`:** a `report` on a unit whose base is a PR, anyone's or a fork's, that lands there too: the last report and the line comments in `.away/out/review.json` become your pending review, at the commit the clone read, unseen until you submit it. If GitHub refuses the line comments (one off the diff, say), they all go in the body; if a step failed, stopped or never ran, or GitHub refuses the review (you have one pending there already, say), the report is delivered alone with the reason.
-- **`plan`:** a `report` whose step also writes `.away/out/plan.yml`, the work split into tasks, posted with it as one comment on your item to wait for your approval: [Plans](./workflows.md#plans).
-- **`push`:** a PR's commits and `pr.md`, pushed with the trailer onto your own open PR's branch as a fast-forward. The PR body isn't touched; `pr.md` goes into the morning report. No `pr.md`, no push. It pushes only while the PR is yours, open, in the repo, without auto-merge, its head is still where the clone started, and its branch isn't the default branch, protected, or someone else's open PR's ([`push`](./chains.md#push)). Under [`sync`](./chains.md#sync) the one commit is awaywork's merge of the PR's base; a worker runs only to resolve a [conflict](./chains.md#conflicts), without committing.
+- **`pending_review`:** a `report` that also lands on the PR, anyone's or a fork's: the last report and the line comments in `.away/out/review.json` become your pending review at the commit the clone read, seen only by you until you submit it. If GitHub refuses a line comment (one off the diff, say), they all go in the body. When a step failed, stopped or never ran, or GitHub refuses the review (you have one pending there already, say), the report goes alone with the reason.
+- **`plan`:** a `report` whose step also writes `.away/out/plan.yml`: [Plans](./workflows.md#plans).
+- **`push`:** the commits and `pr.md`, pushed with the trailer onto your own open PR's branch as a fast-forward. The PR body isn't touched; `pr.md` goes into the morning report. No `pr.md`, no push. Under [`sync`](./chains.md#sync) the one commit is awaywork's merge of the PR's base; a worker runs only to resolve a [conflict](./chains.md#conflicts), without committing. It pushes only while ([`push`](./chains.md#push)):
+  - the PR is yours, open, in the repo, without auto-merge;
+  - its head is still where the clone started;
+  - its branch isn't on a fork, the default branch, protected, or someone else's open PR's.
 
-A skill commits unless its metadata says it reports, as `review` and `plan` do; `deliver` says where the commits go, and a chain that committed nothing reports. `pr`, `push`, `pending_review` and `plan` are never a skill's default.
+A skill commits unless its metadata says it reports, as `review` and `plan` do; `deliver` says where the commits go, and a chain that committed nothing reports.
 
 A PR's body gets its items' [`link`](./configuration.md#linking-prs) lines and a footer naming awaywork, the run and the unit's items, which is how the next plan links it back.
 

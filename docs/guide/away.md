@@ -22,7 +22,7 @@ The awaywork plugin adds the `/away` skill to Claude Code, which sets awaywork u
 
 With no config, `/away` sets awaywork up with you, whatever follows it, and writes the config only on your yes.
 
-It asks `awaywork config path` where the config goes and looks nowhere else. With [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) set that's the server's config, so there's nothing to set up. The pane opens on its [Config tab](#the-config-tab), empty until the draft exists.
+It asks `awaywork config path` where the config goes and looks nowhere else. With [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) set that's the server's config, so there's nothing to set up.
 
 First it looks around, without asking:
 
@@ -34,7 +34,7 @@ First it looks around, without asking:
 
 ### The rounds
 
-Then come rounds of up to four multiple-choice questions, its pick first, each option built from what it found. The first round, renamed:
+Then come rounds of up to four multiple-choice questions, its pick first, each option built from what it found, or type your own answer. The first round, renamed:
 
 ```text
 ←  ☐ Work  ☐ Claude login  ☐ Runs on  ✔ Submit  →
@@ -56,7 +56,7 @@ The next rounds:
 - **Tracker:** an MCP server for one is a hint. Jira also needs your Cloud site, Atlassian email and whether the API token is scoped.
 - **Window:** 01:00–07:00 your time by default.
 - **Providers,** if several are ready: which goes first; the next takes over when its quota runs out.
-- **Your PRs:** fix red checks or review threads, as draft PRs stacked on yours. Keeping them up to date with main is flagged as a widening: it pushes merges onto your PR, and a model resolves a conflict, which waits for your review.
+- **Your PRs:** fix red checks or review threads (awaywork's own drafts included), as draft PRs stacked on yours. Keeping them up to date with main is flagged as a widening: it pushes merges onto your PR, and a model resolves a conflict, which waits for your review.
 - **Review requests:** a report only you read, or your pending GitHub review, a widening.
 - **Tracker cards:** fix QA notes, implement in-progress cards, plan the sprint. A later round asks how to plan, in your tracker's names: plan then implement across repos, stopping only when a judge finds a product decision the card leaves open; wait on every plan; or plan reports only.
 - **Learn from my sessions:** whether to [suggest](./suggest.md) more rules. The option says what it would read and where that goes, and a yes is also suggest's consent for this run.
@@ -112,7 +112,7 @@ waiting for review: awaywork PR is open
 https://github.com/acme/shop/pull/401
 ```
 
-It opens on the first tab with something in it, or on [Config](#the-config-tab) while a draft waits. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge.
+It opens on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge.
 
 ### Cards
 
@@ -160,7 +160,7 @@ Also:
 
 ### The Config tab
 
-Tab 5 is your config as it reads to a human: the draft while there is one, else the file. With no config, or a draft waiting, the pane opens here, and it's the only tab until a config exists. A config behind [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) isn't on this machine, so it gets no tab.
+Tab 5 is your config as it reads to a human: the draft while there is one, else the file. With no config (empty until the draft exists), or a draft waiting, the pane opens here, and it's the only tab until a config exists. A config behind [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) isn't on this machine, so it gets no tab.
 
 ```text
 [...]
@@ -182,7 +182,7 @@ plan ▶ ◆ plan ▶ rule 5
 ↑↓ rule  c: ask Claude  o: open config.yml:11
 ```
 
-One row per rule: what it takes and what it does. `· 2` is what it takes now, from a background `plan --rules` (sources only, no quota). `◆` marks a rule that can stop for you: a plan that waits, `wait: true`, or a gate. Each skill keeps one color, on the run cards too; a card too narrow for the skill and a readable ref drops the skill.
+One row per rule: what it takes and what it does. `· 2` is how many items it takes now, from a background `plan --rules` (sources only, no quota). Below the flow, the selected rule lists the items it takes now and those another rule takes first. `◆` marks a rule that can stop for you: a plan that waits, `wait: true`, or a gate. Each skill keeps one color, on the run cards too; a card too narrow for the skill and a readable ref drops the skill.
 
 | Key | Does |
 | --- | --- |
