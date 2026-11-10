@@ -8,9 +8,7 @@ description: Read the plan awaywork would run, with plan --why, --skipped and --
 
 ## Preview the next run
 
-`awaywork plan` opens at once and shows each step as it loads, as in [Getting started](./getting-started.md#preview-the-next-run).
-
-Then the same screen is a view to browse, here with the skipped tracker items unfolded and the `acme/api` ones selected:
+`awaywork plan` shows each source and provider as it loads ([Getting started](./getting-started.md#preview-the-next-run)), then becomes a view to browse:
 
 ```
 ☾ >_ awaywork  You're away, your agents work
@@ -43,34 +41,19 @@ Providers
 ⏎ unfold  o open  s skip  a approve  ? help  q quit
 ```
 
-`⏎` on an item pages why it's planned or skipped, `o` opens it, `s` skips it in the coming runs; `?` lists the rest, and [the morning report](#the-morning-report) has the table. Piped or in CI it prints plain text:
+- **Units** name the item (`api#1` is acme/api#1; a tracker key stays as is), the rule it matched, the skill, provider and delivery.
+- **Needs you** is the skipped items only you can unblock, each ending on what to do: `add repo` for a task with no repo.
+- **Skipped** is the config doing its job, counted by kind.
+- `⏎` pages why an item is planned or skipped, `o` opens it, `s` skips it in the coming runs, `?` lists the rest ([key table](#the-morning-report)).
+
+Piped or in CI it prints the same as text, the skipped items only counted, and ends on the commands that dig in:
 
 ```
-$ awaywork plan | cat
-Providers
-  present run (outside the windows): present_session_max
-  provider  window     used  ceiling  set by  resets in  session / stop at
-  claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
-    other limits: reserve cap 90%
-
-Units 3
-     item   rule  skill              provider  deliver   title
-  1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
-     + api#5: same feature, matched #3
-  2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
-  3  api#2  #2    review (built-in)  claude    report    Cache user sessions
-
-Needs you 1
-  tracker T
-    T-4  Export invoices as CSV  add repo
-
-Skipped 2: 1 no_rule, 1 over_cap
-
 awaywork plan --skipped [kind]  lists them
 awaywork plan --why <key>       says why an item is planned or not
 ```
 
-Each unit names its item (`api#1` is acme/api#1; a tracker's key stays as is), the rule it matched, its skill, provider and delivery. **Needs you** lists the skipped items only you can unblock, under their repo or their tracker and project key, each ending on what to do: here `add repo`, for a task with no repo to work in. The rest is the config doing its job, counted by kind: `plan --skipped` lists them with the reason, after the Needs you ones, `plan --skipped no_rule` only one kind, and `plan --why <key>` explains one item, with the queue when it matched no rule:
+`plan --skipped` lists the skipped items with their reason, Needs you first; `plan --skipped no_rule` lists one kind. `plan --why <key>` explains one item, with the queue when it matched no rule:
 
 ```
 $ awaywork plan --why T-7
@@ -86,9 +69,9 @@ Queue
   #4  fix        column=QA
 ```
 
-For a planned item it shows the unit, rule, skill, provider and branch instead. With no `queue` in your config, `plan` opens with a line saying it runs the default one.
+A planned item shows its unit, rule, skill, provider and branch instead. With no `queue` in your config, `plan` opens with a line saying it runs the default one.
 
-`awaywork plan --rules` shows the same rules with what each takes now, and skips the quota probe:
+`awaywork plan --rules` shows what each rule takes now, without probing quota:
 
 ```
 Queue (default: no queue in config)
@@ -96,44 +79,46 @@ Queue (default: no queue in config)
        1 taken: acme/api#1
   #2  fix     source=github type=pr mine=true unresolved_threads!=0
        0 taken
-  #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
-       0 taken
+  [...]
   #4  review  source=github type=pr review_requested=true trusted=true
        1 taken: acme/api#2
   1 unmatched: acme/api#3
 ```
 
-An item goes to the first rule it matches, so a later rule that matches it too gets a line like `1 taken by #1: acme/api#1`. To reorder, move the rules in `awaywork config edit`.
+An item goes to the first rule it matches; a later rule that matches it too shows `1 taken by #1: acme/api#1`. To reorder, move the rules in `awaywork config edit`.
 
 ## Run one unit
 
 ```sh
+awaywork run --unit api#1      # one unit, as plan names it
 awaywork run --repo 'acme/*'   # only units in matching repos
 awaywork run --rule 4          # only units of queue rule #4
 awaywork report --list         # recent runs, to pick an id for report <id>
 awaywork report --unit 2       # one unit in full: its files, PR body or report
 ```
 
-`--unit` takes an item as `plan` shows it (`api#1`), its key (`acme/api#1`, or `github:acme/api#1`) or the unit id (`acme-api-1`), in any case. A step of a rule's `then` runs its whole chain, from the first step. A unit you name goes past `limits.units`, `limits.units_per_repo` and its rule's `units`; the rest of the plan stays capped as it was.
-
-`--unit` holds your terminal until the unit ends, hours sometimes. `--detach` starts it and hands the terminal back, one line when it's started, with its output in that run's `run.log`:
+`--unit` takes the item as `plan` shows it (`api#1`), its key (`acme/api#1`, `github:acme/api#1`) or the unit id (`acme-api-1`), in any case. It holds your terminal until the unit ends, hours sometimes; `--detach` hands it back at once, the output going to the run's `run.log`:
 
 ```text
 $ awaywork run --unit api#1 --detach
 Started api#1 as run 20261109-095329; awaywork report 20261109-095329 shows it once it ends
 ```
 
-It plans first, so a unit that can't start says so and exits 1: not in the plan, the run lock taken, or no provider for it. No Ctrl-C now, so to stop it kill the pid in `~/.local/state/awaywork/run.lock`: it ends the way Ctrl-C would, report included. An item no rule takes needs a skill named for it, [`--skill`](./skills.md#run-one-on-an-item-no-rule-takes), which works detached too.
+To stop a detached unit, kill the pid in `~/.local/state/awaywork/run.lock`: it ends as Ctrl-C would, report included.
 
-Outside your windows that's a present run: workers stop at 40% of the 5-hour window, and a provider whose quota awaywork can't read, like a command provider without a `probe`, sits it out. Run it inside a window or add a probe.
+- A unit you name goes past `limits.units`, `limits.units_per_repo` and its rule's `units`; the rest of the plan stays capped.
+- A step of a rule's `then` runs its whole chain, from the first step.
+- It plans first, so a unit that can't start exits 1 saying why: not in the plan, the run lock taken, or no provider.
+- An item no rule takes needs a skill: [`--skill`](./skills.md#run-one-on-an-item-no-rule-takes), detached too.
+- Outside your windows it's a [present run](./how-it-works.md#budget) with a lower session limit, and a provider whose quota awaywork can't read (a command provider without a `probe`) sits it out: run inside a window or add a probe.
 
-`--repo <glob>` and `--rule <n>` (rules count from 1, as `plan` shows them) work on `plan` and `run`, and together they both have to hold. The caps and ceilings stay the full run's, but only matching units count against them: with `limits.units: 3`, `--repo acme/api` plans up to three acme/api units.
+`--repo <glob>` and `--rule <n>` (counting from 1, as `plan` shows) work on `plan` and `run`, and together both must hold. Caps and ceilings stay the full run's, but only matching units count: with `limits.units: 3`, `--repo acme/api` plans up to three acme/api units.
 
-The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the worker's log, its context files and the report. The id is the run's start time in UTC. Run dirs stay 30 days, then a run removes them; [`keep_runs`](./configuration.md#old-runs) changes that.
+The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the worker's log, its context files and the report. The id is the run's start time in UTC; old ones go after [`keep_runs`](./configuration.md#old-runs).
 
 ## The morning report
 
-`awaywork report` opens the last run from its `report.json`: a row per unit with its result and a line of what it concluded, what needs you, and the skipped items, folded, each under its repo, under each provider's long window before and after against the ceiling. Arrow through it, unfold what you care about, and read, open or skip things with one key. Here `web#3` is selected (it's in reverse video on your screen), Skipped is unfolded one level, and `d` just said why it did nothing:
+`awaywork report` opens the last run from its `report.json`: each provider's long window before and after against the ceiling, a row per unit with its result and a line of what it concluded, then Needs you and the skipped items. Here `web#3` is selected and `d` just said why it did nothing:
 
 ```
 ☾ >_ awaywork  You're away, your agents work
@@ -166,7 +151,13 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 diff: this unit left no diff
 ```
 
-The footer dims the keys the selected row has nothing behind, like `d` on a unit that committed nothing, or `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs. `awaywork plan` opens the same view on the next run, without `l` and `d`: a plan has no logs or diffs yet. Items sit under their repo, or their tracker and project key, so a row shows just `#3`. A skipped one ends on what it asks of you (`review PR`, `answer question`, `approve`, `add repo`, ...) or why it waits (`no rule`, `over cap`, ...), and Needs you lists a repo's items by that, so the PRs to review sit together. The line under it is what the reason says beyond that word, if anything, without the closest rule in Needs you; `⏎` has the whole of it. Rows run to the terminal's width, keeping that word on screen. It opens on the first Needs you item, else the first unit, else the first skipped one, and leaves out a section with nothing in it; when there's nothing at all, it says why instead. Both open at once, with a line per step while they load: a run fetched from GitHub, or for `plan` each source and provider, as in [Getting started](./getting-started.md#preview-the-next-run).
+`plan` is the same view without `l` and `d`, since a plan has no logs or diffs. `report` opens at once too, a line per loading step, such as the run fetched from GitHub.
+
+- Items sit under their repo, or tracker and project key, so a row shows just `#3`.
+- A skipped item ends on what it asks of you (`review PR`, `answer question`, `approve`, `add repo`, ...) or why it waits (`no rule`, `over cap`, ...). Needs you sorts a repo's items by that, so PRs to review sit together.
+- The line under a skipped item is the rest of its reason, without the closest rule in Needs you; `⏎` has all of it. Rows run to the terminal's width, keeping that word on screen.
+- It opens on the first Needs you item, else the first unit, else the first skip, and leaves out empty sections; with nothing at all, it says why.
+- The footer dims keys with nothing behind them: `d` on a unit that committed nothing, `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs.
 
 | Key | Does |
 | --- | --- |
@@ -174,7 +165,7 @@ The footer dims the keys the selected row has nothing behind, like `d` on a unit
 | `g` `G`, Home End | first, last row |
 | PgDn PgUp, Ctrl-D Ctrl-U | a screen down, up |
 | `→` `←` Space | unfold, fold, as `⏎` on a heading; `←` on a row goes to its section |
-| `⏎` | page the unit in full, as `report --unit` prints it, or why an item is planned or skipped, as `plan --why`; `$PAGER`, else (or if it's `cat`) `less -R -c -+F -+X`, which repaints from the top and stays open on a short text |
+| `⏎` | page the unit in full (`report --unit`), or why an item is planned or skipped (`plan --why`), in `$PAGER`, else (or if it's `cat`) `less -R -c -+F -+X`, which repaints from the top and stays open on a short text |
 | `o` | open the unit's PR, else its item; a skip waiting for review opens the PR it waits on |
 | `l` | page the `worker.log` of the chain's last step |
 | `d` | page the diff: the commits the unit published, else the step's own |
@@ -183,28 +174,12 @@ The footer dims the keys the selected row has nothing behind, like `d` on a unit
 | `?` | the keys |
 | `q`, Esc, Ctrl-C | quit, also while it loads |
 
-Piped, in CI (`CI` set), or with `--json`, `--list`, `--unit` or `--skipped`, you get plain text instead, so `awaywork report | cat` is the way to print it:
+Piped, in CI (`CI` set), or with `--json`, `--list`, `--unit` or `--skipped`, it prints text, so `awaywork report | cat` prints the view, then the quota and how to dig in:
 
 ```
 $ awaywork report | cat
 Run 20261019-220012: 1 draft PR, 1 report, 3 units
-2026-10-19 22:00:12 to 2026-10-19 23:47:40
-
-Units 3
-     item   skill   status          result
-  1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
-     Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 500.
-  2  web#3  fix     done, 9 turns   nothing
-     No code changes: the red check is the visual diff job, which fails on main too since #212.
-  3  api#2  review  done, 6 turns   report, verdict approve
-     Approve: the session cache keys on the user id and expires with the token.
-
-Needs you 1
-  tracker T
-    T-4  Export invoices as CSV  add repo
-
-Skipped 2: 1 no_rule, 1 over_cap
-
+[...]
 Quota
   away run (inside a window): session_max
   claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
@@ -213,7 +188,7 @@ awaywork report 20261019-220012 --unit <n|key>    shows one
 awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
 ```
 
-`report --unit <n>` takes the number from that table, the unit id (a step's gives its chain) or an item, and prints the unit in full, what `⏎` pages: its links, each step with its provider and what it left when there are several, the files it left (the ones still there: a run [from the runner](./scheduling.md#reports-from-the-runner) has none), then its PR body or report:
+`report --unit <n>` prints one unit in full, as `⏎` pages it: links, each step with its provider and what it left when there are several, the files still there (none on a run [from the runner](./scheduling.md#reports-from-the-runner)), then its PR body or report. It takes the row number, the unit id (a step's gives its chain) or an item:
 
 ```
 $ awaywork report --unit 2
@@ -226,19 +201,25 @@ $ awaywork report --unit 2
           ~/.local/state/awaywork/runs/20261019-220012/units/acme-web-3/out/pr.md
 
 Fix the billing page build
-
-No code changes: the red check is the visual diff job, which fails on main too since #212.
-
-## What I checked
-
-- `pnpm test` passes locally.
-- The failing job is `visual`, unrelated to this diff.
+[...]
 ```
 
-An item key that is all digits, like an Asana gid, wins over a row number. A name that fits two units, `api#1` under two owners say, is refused with each one's `source:key`, here and in `run --unit` and `plan --why`. `report --skipped [kind]` lists the skipped items with the reason, as `plan --skipped` does. A long reason, like a failed setup's output, gets its first line in the row and all of it under `--unit`. A unit with `then` steps is one row, its chain in the skill column.
+- An all-digit item key, like an Asana gid, wins over a row number.
+- A name that fits two units (`api#1` under two owners) is refused with each one's `source:key`, here and in `run --unit` and `plan --why`.
+- A long reason, like a failed setup's output, gets its first line in the row, all of it under `--unit`.
+- A unit with `then` steps is one row, its chain in the skill column.
 
-The run dir also keeps `report.md`, the same run as markdown: the units table with every step under its chain and a line per unit that wrote a summary, Needs you, the skipped items folded by kind, and each report folded under its unit. That's the one GitHub Actions puts in the job summary and [`notify`](./configuration.md#notify) gets. A run from before `report.json` prints its `report.md`. `awaywork report --json` prints the run's results as [JSON](./agents.md). `awaywork report --list` lists recent runs with their units, PRs and reports; `awaywork report <id>` prints one of them. Both see only the runs [`keep_runs`](./configuration.md#old-runs) kept. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner).
+Also:
 
-While a run is going there is no report yet: `awaywork report` then lists the steps done so far, the one working and the path to its `worker.log`, which you can `tail -f`.
+- `report --skipped [kind]` lists the skipped items as `plan --skipped` does; `report --json` prints the run as [JSON](./agents.md).
+- `report --list` lists recent runs with their units, PRs and reports, and `report <id>` prints one; inside a control repo they include the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner).
+- During a run there's no report yet: `report` lists the steps done, the one working and its `worker.log` path, to `tail -f`.
+- The run dir also keeps `report.md`, the run as markdown: units with every step under its chain and a summary line each, Needs you, the skips folded by kind, each report folded under its unit. GitHub Actions puts it in the job summary and [`notify`](./configuration.md#notify) gets it. A run from before `report.json` prints its `report.md`.
 
-`awaywork stats` adds up every run since this feature, kept in each run's `units.json`: per rule (by its position in the queue in that run), skill and provider, the units, how many were done, failed or stopped, the share of the long quota window their workers used, and the PRs opened. `--json` prints the same totals. The quota share is an estimate: it starts at the quota read before the unit (the plan's probe, then the previous unit's last reading on that provider), includes any other use of the account meanwhile, and is `-` when the window reset mid-unit or the worker read no quota. It counts a chain's steps one by one, and only a chain's first step carries its PR, so the rows of the skills after it show no PRs. `units.json` is written when the run ends, so a run that is killed leaves none. Runs from before have no `units.json` and are left out, as are the runs [`keep_runs`](./configuration.md#old-runs) removed.
+## Stats
+
+`awaywork stats` adds up every run that kept a `units.json`, per rule (by its place in that run's queue), skill and provider: units, how many were done, failed or stopped, the share of the long quota window their workers used, and PRs opened. `--json` prints the same.
+
+- The quota share is an estimate: it starts at the reading before the unit (the plan's probe, then that provider's previous unit), includes other use of the account meanwhile, and is `-` when the window reset mid-unit or the worker read no quota.
+- A chain's steps count one by one, and only the first carries the chain's PR, so later skills' rows show no PRs.
+- `units.json` is written when the run ends, so a killed run, or an older one, has none and is left out.
