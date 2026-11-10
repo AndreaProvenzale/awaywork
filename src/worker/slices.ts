@@ -165,7 +165,7 @@ export async function publishSlice(
     const line =
       held.status === 'ask'
         ? `Status: ask${held.url ? `, questions on ${held.url}` : ''}`
-        : `Status: continue (${held.continued} of ${MAX_ATTEMPTS}): awaywork's next window run goes on here`
+        : continueLine(held.continued)
     const section = unit.gates ? line : `${line}\n\n---`
     await prependSection(join(out, outputFile[deliver]), section, deliver !== 'push')
   }
@@ -190,6 +190,10 @@ export async function publishSlice(
   )
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }
+
+/** The status line atop a draft the agent will go on with, its `continued`th attempt. */
+export const continueLine = (continued: number) =>
+  `Status: continue (${continued} of ${MAX_ATTEMPTS}): awaywork's next window run goes on here`
 
 /** Puts the gates' section first in the PR body, under its title line, or atop a push's summary. */
 export async function prependSection(

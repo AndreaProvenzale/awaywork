@@ -1,0 +1,2 @@
+$ awaywork run --unit api#1 --detach
+Started api#1 as run 20261109-095329; awaywork report 20261109-095329 shows it once it ends

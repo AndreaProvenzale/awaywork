@@ -619,6 +619,14 @@ export function queueLines(plan: Pick<RunPlan, 'queue' | 'defaultQueue'>): strin
   ]
 }
 
+/** `plan --rules`: the queue under its heading, `defaulted` when the config has none. */
+export function formatQueue(rules: Rule[], items: Item[], defaulted: boolean): string[] {
+  return [
+    defaulted ? 'Queue (default: no queue in config)' : 'Queue',
+    ...formatRules(rules, items).map((line) => `  ${line}`),
+  ]
+}
+
 /** What each rule takes now and what other rules take from it, then the unmatched items. */
 export function formatRules(rules: Rule[], items: Item[]): string[] {
   const matches = ruleMatches(items, rules)

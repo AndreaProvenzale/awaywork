@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs'
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { type DefaultTheme, defineConfig } from 'vitepress'
 
 const repo = 'https://github.com/AndreaProvenzale/awaywork'
+const screens = new URL('screens/', import.meta.url)
 const site = 'https://andreaprovenzale.github.io/awaywork/'
 const description = 'A harness that runs your coding agents on your real tasks, under rules you set'
 
@@ -61,9 +63,16 @@ export default defineConfig({
       const fence = md.renderer.rules.fence
       md.renderer.rules.fence = (tokens, index, ...rest) => {
         const token = tokens[index]
-        return token?.info.trim() === 'mermaid'
-          ? `<Mermaid code="${encodeURIComponent(token.content)}" />`
-          : (fence?.(tokens, index, ...rest) ?? '')
+        if (token?.info.trim() === 'mermaid')
+          return `<Mermaid code="${encodeURIComponent(token.content)}" />`
+        // A `<lang> <name>` block is generated output; a `text` one shows in the colors `pnpm docs:gen` wrote.
+        const [, lang, screen] = token?.info.match(/^(\w+) (\S+)$/) ?? []
+        if (token && lang && screen) {
+          token.info = lang === 'text' ? 'ansi' : lang
+          if (lang === 'text')
+            token.content = readFileSync(new URL(`${screen}.ansi`, screens), 'utf8')
+        }
+        return fence?.(tokens, index, ...rest) ?? ''
       }
     },
   },

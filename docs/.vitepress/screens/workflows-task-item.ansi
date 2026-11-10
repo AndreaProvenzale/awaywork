@@ -1,0 +1,16 @@
+# ENG-2101/api: VAT export endpoint
+
+https://acme.atlassian.net/browse/ENG-2101
+
+Add GET /exports/vat to src/routes/exports.ts, paged like /exports/sales.
+
+## The plan
+
+This is task `api` of the plan you approved on ENG-2101. [...]
+
+Your notes on approving it:
+
+Leave voided invoices out.
+
+## The card: ENG-2101, Export VAT report
+[...]

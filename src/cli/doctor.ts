@@ -35,11 +35,14 @@ import { sourceFor } from '../sources/index.js'
 import { describeAllowance, type Status, statusMarker } from './format.js'
 import { gitRoot, staleSchedules } from './schedule.js'
 
-interface Check {
+export interface Check {
   status: Status
   what: string
   detail: string
 }
+
+export const checkLine = (c: Check, color: boolean) =>
+  `${statusMarker(c.status, color)}  ${c.what}${c.detail && `: ${c.detail}`}`
 
 export function doctorCommand(program: Command): void {
   program
@@ -51,8 +54,7 @@ export function doctorCommand(program: Command): void {
     .action(async (opts: { json?: boolean }) => {
       const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR
       const checks = await runChecks(configPath(program.opts().config), (c) => {
-        if (!opts.json)
-          console.log(`${statusMarker(c.status, color)}  ${c.what}${c.detail && `: ${c.detail}`}`)
+        if (!opts.json) console.log(checkLine(c, color))
       })
       if (opts.json) console.log(JSON.stringify(checks, null, 2))
       if (checks.some((c) => c.status === 'FAIL')) process.exitCode = 1
@@ -110,8 +112,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     )
 
   if (loaded instanceof Error) {
-    const what = loaded instanceof ConfigError ? loaded.path : path
-    report('FAIL', what, loaded.message.split('\n').slice(1).join('; ').trim())
+    const failure = configFailure(loaded, path)
+    report(failure.status, failure.what, failure.detail)
     for (const provider of Object.values(providers)) {
       const found = await provider.detect().catch(() => ({ installed: false, version: undefined }))
       const version = found.version ?? 'installed'
@@ -227,6 +229,13 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   return checks
 }
 
+/** A config at `path` that doesn't load, named by the file at fault. */
+export const configFailure = (error: Error, path: string): Check => ({
+  status: 'FAIL',
+  what: error instanceof ConfigError ? error.path : path,
+  detail: error.message.split('\n').slice(1).join('; ').trim(),
+})
+
 const GH_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 
 /** The gh login a run uses and where it comes from; a warning when the environment's wins over another `user`. */
@@ -263,14 +272,24 @@ export async function providerLogin(
   const { loginDir, account } = provider
   if (!loginDir || !account) return ['ok', what, '']
   const dir = tilde(env[loginDir.env] || loginDir.default)
-  const where = `in ${dir}${pin ? `, pinned by ${pin.key}` : ''}`
-  const fix = `log in with ${loginCommand(loginDir, dir)}`
   // The binary would make the folder, as `claude auth status` does.
-  if (!existsSync(expandHome(dir))) return ['FAIL', what, `${dir} doesn't exist; ${fix}`]
-  return account(env).then(
-    (who): [Status, string, string] => ['ok', what, `${who}, ${where}`],
-    (): [Status, string, string] => ['FAIL', what, `no login ${where}; ${fix}`],
-  )
+  const who = existsSync(expandHome(dir)) ? await account(env).catch(() => null) : undefined
+  return folderLogin(provider, pin, dir, who)
+}
+
+/** The login in a provider's folder `dir`: who's logged in there, `null` for no one, undefined when `dir` doesn't exist. */
+export function folderLogin(
+  provider: Provider,
+  pin: Pin | undefined,
+  dir: string,
+  who: string | null | undefined,
+): [Status, string, string] {
+  const what = `${provider.id} login`
+  const where = `in ${dir}${pin ? `, pinned by ${pin.key}` : ''}`
+  const fix = `log in with ${loginCommand(provider.loginDir as NonNullable<Provider['loginDir']>, dir)}`
+  if (who === undefined) return ['FAIL', what, `${dir} doesn't exist; ${fix}`]
+  if (who === null) return ['FAIL', what, `no login ${where}; ${fix}`]
+  return ['ok', what, `${who}, ${where}`]
 }
 
 const tilde = (path: string) => {
@@ -351,15 +370,7 @@ export async function isolationChecks(
       env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
       !inAwayworkImage(env) &&
       process.platform === 'linux'
-    const setup = [
-      'make the worker user once:',
-      `sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin ${WORKER}`,
-      `echo ${WORKER} | sudo tee -a /etc/cron.deny /etc/at.deny`,
-      `sudo visudo -f /etc/sudoers.d/${WORKER}   # with these two lines:`,
-      ...sudoersLines(),
-    ]
-    const detail = `user, but ${worker.message}${local ? `; ${setup.join('\n    ')}` : ''}`
-    return [{ status: 'FAIL', what: 'isolation', detail }]
+    return [workerFailure(worker.message, local)]
   }
   const checks: Check[] = [
     {
@@ -401,21 +412,52 @@ export async function isolationChecks(
   return checks
 }
 
+/** `isolation: user` without a worker to run as, and where making it is yours (`local`), how. */
+export function workerFailure(reason: string, local: boolean, sudoers = sudoersLines()): Check {
+  const setup = [
+    'make the worker user once:',
+    `sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin ${WORKER}`,
+    `echo ${WORKER} | sudo tee -a /etc/cron.deny /etc/at.deny`,
+    `sudo visudo -f /etc/sudoers.d/${WORKER}   # with these two lines:`,
+    ...sudoers,
+  ]
+  const detail = `user, but ${reason}${local ? `; ${setup.join('\n    ')}` : ''}`
+  return { status: 'FAIL', what: 'isolation', detail }
+}
+
+const boxCheck = (status: Status, detail: string): Check => ({ status, what: 'isolation', detail })
+
+export const dockerReady = (version: string) =>
+  boxCheck(
+    'ok',
+    `container: setup, the agent and the checks run in a fresh container of the repo's image (Docker ${version})`,
+  )
+
+/** What a repo's image has of the agents' CLIs (`found`, each with its version) and can't run (`missing`). */
+export function imageClis(
+  repo: string,
+  image: string,
+  found: string[],
+  missing: string[],
+): Check[] {
+  const checks: Check[] = []
+  if (found.length) checks.push(boxCheck('ok', `${repo}: ${image} has ${found.join(', ')}`))
+  if (missing.length)
+    checks.push(
+      boxCheck('warn', `${repo}: ${image} can't run ${missing.join(', ')}: its units fail there`),
+    )
+  return checks
+}
+
 /** Under `isolation: container`: docker answers, each repo's image is here with the agents' CLIs in it, and the logins a container can use. */
 export async function containerChecks(
   config: Config,
   env: NodeJS.ProcessEnv,
   timeout = DOCKER_TIMEOUT_MS,
 ): Promise<Check[]> {
-  const check = (status: Status, detail: string): Check => ({ status, what: 'isolation', detail })
   const version = await dockerVersion(timeout).catch((e: Error) => e)
-  if (version instanceof Error) return [check('FAIL', `container, but ${version.message}`)]
-  const checks = [
-    check(
-      'ok',
-      `container: setup, the agent and the checks run in a fresh container of the repo's image (Docker ${version})`,
-    ),
-  ]
+  if (version instanceof Error) return [boxCheck('FAIL', `container, but ${version.message}`)]
+  const checks = [dockerReady(version)]
   const docker = (...args: string[]) => execa(bin('docker'), args, { reject: false, timeout })
   const clis = config.providers.map(({ id, config: cfg }) =>
     isCommandProvider(cfg)
@@ -432,7 +474,9 @@ export async function containerChecks(
       })
       if (pulled.failed) {
         const why = pulled.stderr.trim().split('\n').at(-1) || pulled.shortMessage
-        checks.push(check('FAIL', `${repo}: ${image} isn't here and couldn't be pulled (${why})`))
+        checks.push(
+          boxCheck('FAIL', `${repo}: ${image} isn't here and couldn't be pulled (${why})`),
+        )
         continue
       }
     }
@@ -446,7 +490,7 @@ export async function containerChecks(
       if (ran.failed) {
         const why = ran.stderr.trim().split('\n')[0] || ran.shortMessage
         checks.push(
-          check(
+          boxCheck(
             'FAIL',
             `the engine can't mount ${runsDir}, where the clones go (${why}): share it with the engine's VM`,
           ),
@@ -460,23 +504,19 @@ export async function containerChecks(
       if (ran.failed) missing.push(id)
       else found.push(`${id} ${ran.stdout.trim().split('\n')[0]}`)
     }
-    if (found.length) checks.push(check('ok', `${repo}: ${image} has ${found.join(', ')}`))
-    if (missing.length)
-      checks.push(
-        check('warn', `${repo}: ${image} can't run ${missing.join(', ')}: its units fail there`),
-      )
+    checks.push(...imageClis(repo, image, found, missing))
   }
   const ids = config.providers.map((p) => p.id)
   if (ids.includes('claude') && !env.CLAUDE_CODE_OAUTH_TOKEN)
     checks.push(
-      check(
+      boxCheck(
         'warn',
         "CLAUDE_CODE_OAUTH_TOKEN unset: a container can't see your keychain login; make one with claude setup-token and put it in the env file",
       ),
     )
   if (ids.includes('codex') && !existsSync(codexLogin(env)))
     checks.push(
-      check(
+      boxCheck(
         'warn',
         `no ${codexLogin(env)} to lend the container: Codex needs its login in a file (codex login)`,
       ),

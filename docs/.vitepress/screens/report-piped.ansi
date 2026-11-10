@@ -1,0 +1,9 @@
+$ awaywork report | cat
+[1mRun 20261019-220012: 1 draft PR, 1 report, 3 units[22m
+[...]
+[1mQuota[22m
+  away run (inside a window): session_max
+  claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
+
+[2mawaywork report 20261019-220012 --unit <n|key>    shows one[22m
+[2mawaywork report 20261019-220012 --skipped [kind]  lists the skipped items[22m

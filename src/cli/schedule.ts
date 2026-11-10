@@ -122,13 +122,7 @@ export async function printStatus(
     const job = await scheduler.read()
     if (!job) continue
     found = true
-    console.log(
-      olderJob(job)
-        ? `Scheduled with ${scheduler.id}, installed by an older awaywork; run \`awaywork schedule install\` again`
-        : `Scheduled with ${scheduler.id}, keeping awaywork watch running`,
-    )
-    console.log(`Config: ${jobConfig(job) ?? 'the default'}`)
-    console.log(`Log: ${job.log}`)
+    for (const line of jobLines(scheduler.id, job)) console.log(line)
     if (!olderJob(job)) watched = jobConfig(job) ?? configPath(config)
   }
   const root = await gitRoot()
@@ -144,6 +138,15 @@ export async function printStatus(
   if (watched || (await lockHolder(watchLockPath)))
     for (const line of await watchStatus(watched ?? configPath(config))) console.log(line)
 }
+
+/** `schedule status`'s lines on a job `scheduler` installed. */
+export const jobLines = (scheduler: string, job: Schedule) => [
+  olderJob(job)
+    ? `Scheduled with ${scheduler}, installed by an older awaywork; run \`awaywork schedule install\` again`
+    : `Scheduled with ${scheduler}, keeping awaywork watch running`,
+  `Config: ${jobConfig(job) ?? 'the default'}`,
+  `Log: ${job.log}`,
+]
 
 /** Refuses, saying so, in a process awaywork watch started: stopping the daemon would stop this too. */
 function insideWatch(): boolean {
@@ -344,12 +347,16 @@ const secretsOf = (config: Config, providers: Provider[]) => [
   ]),
 ]
 
+/** E.g. `codex won't run in this workflow: <why>`. */
+export const wontRun = (provider: string, where: string, why: string) =>
+  `${provider} won't run in ${where}: ${why}`
+
 /** The config's providers that run in `env`, saying which won't and why. */
 const usedProviders = (config: Config, env: NodeJS.ProcessEnv, where: string) =>
   config.providers.flatMap((p) => {
     const provider = providerFor(p.id, p.config)
     const unavailable = provider?.unavailable?.(env)
-    if (unavailable) console.log(`${p.id} won't run in ${where}: ${unavailable}`)
+    if (unavailable) console.log(wontRun(p.id, where, unavailable))
     return provider && !unavailable ? [provider] : []
   })
 

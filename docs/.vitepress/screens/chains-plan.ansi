@@ -1,0 +1,7 @@
+[1mUnits 1[22m
+  [1m   item    rule  skill                 provider  deliver   title[22m
+  1  api#12  #1    implement (built-in)  claude    draft_pr  Rate-limit the export endpoint
+     then loop review ⇄ fix until verdict approve, at most 3 rounds
+       review (built-in) on codex
+       fix (built-in) on claude
+     then docs (user) on claude, when the branch changes src/**

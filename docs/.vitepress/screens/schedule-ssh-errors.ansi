@@ -1,0 +1,8 @@
+$ awaywork report
+can't reach AWAYWORK_REMOTE (ssh://dev@127.0.0.1:2222): Host key verification failed.
+$ awaywork report
+AWAYWORK_REMOTE (ssh://box): awaywork isn't on the box's PATH for non-interactive ssh; install it and node system-wide there, or link both into /usr/local/bin
+$ awaywork run --unit CH-1
+AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving, the box's /home/dev/.config/awaywork/env has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch
+$ awaywork report --list
+AWAYWORK_REMOTE (ssh://box): the box's daemon runs with another AWAYWORK_REMOTE_TOKEN than its env file; restart awaywork watch there

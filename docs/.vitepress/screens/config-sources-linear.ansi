@@ -1,0 +1,9 @@
+$ awaywork sources linear
+linear:
+  teams:
+    - key: ENG
+      name: Engineering
+      states:
+        - Todo
+        - In Progress
+    [...]

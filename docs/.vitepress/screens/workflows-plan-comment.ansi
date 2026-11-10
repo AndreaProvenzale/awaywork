@@ -1,0 +1,21 @@
+VAT export lands in two PRs: the endpoint first, then the button that calls it.
+
+- `api`: `GET /exports/vat` in `src/routes/exports.ts`, paged like `/exports/sales`, with a test next to `sales.test.ts`.
+- `web`: an Export button on the reports page, behind the `vat_export` flag; it waits for the endpoint to merge.
+
+Open question: should the export include voided invoices? I left them out.
+
+```yaml
+tasks:
+  - id: api
+    title: VAT export endpoint
+    description: Add GET /exports/vat to src/routes/exports.ts, paged like /exports/sales.
+  - id: web
+    title: Export button
+    description: Add an Export button to the reports page behind the vat_export flag.
+    after: { api: merged }
+```
+
+To approve, reply with approve as the first line; the lines below it reach the tasks as notes. Any other reply is feedback: awaywork plans again with it.
+
+— awaywork

@@ -1,0 +1,2 @@
+[32m✔[39m  isolation: container: setup, the agent and the checks run in a fresh container of the repo's image (Docker 27.4.0)
+[32m✔[39m  isolation: acme/leak: awaywork-leak has claude 2.1.290 (Claude Code stand-in), codex codex-cli 0.162.1 (stand-in)

@@ -1,0 +1,11 @@
+$ awaywork report --unit 2
+[1m2  web#3  WIP: new billing page[22m
+  skill   fix
+  status  done, 9 turns
+  result  nothing
+  item    https://github.com/acme/web/pull/3
+  files   ~/.local/state/awaywork/runs/20261019-220012/units/acme-web-3/1-fix/worker.log
+          ~/.local/state/awaywork/runs/20261019-220012/units/acme-web-3/out/pr.md
+
+Fix the billing page build
+[...]

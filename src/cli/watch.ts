@@ -66,7 +66,7 @@ export function watchCommand(program: Command, remote: Remote): void {
 type Trigger = 'window' | 'soon' | 'unit'
 
 /** What the daemon is doing, rewritten on each change. */
-interface WatchState {
+export interface WatchState {
   pid: number
   since: string
   config: string
@@ -87,7 +87,20 @@ export function appendLog(file: string, line: string, max = 5 * 2 ** 20): void {
   appendFileSync(file, `${line}\n`)
 }
 
-const event = (line: string) => appendLog(watchLogPath, `${localTime(new Date())} ${line}`)
+/** A watch.log line: the event at `at`, local time. */
+export const stamped = (at: Date, line: string) => `${localTime(at)} ${line}`
+
+const event = (line: string) => appendLog(watchLogPath, stamped(new Date(), line))
+
+export const watchStarted = (pid: number, config: string) =>
+  `awaywork watch started, pid ${pid}, config ${config}`
+
+/** A soon source's failed poll, `why` its first line, and the poll it backs off to. */
+export const failedPoll = (id: string, next: number, why: string, asked: boolean) =>
+  `source ${id}: poll failed, next at ${localTime(new Date(next))}${asked ? ', as it asked' : ''}: ${why}`
+
+export const recoveredPoll = (id: string, every: number) =>
+  `source ${id}: polled fine again, every ${describeSpan(every)}`
 
 const reason = (e: unknown) =>
   e instanceof ConfigError ? e.message : String((e as Error)?.stack ?? e)
@@ -254,11 +267,8 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
       polls[id] = next
       if (e) {
         const why = maskSecrets(sourceFailure(e).split('\n')[0] ?? '', secrets, ctx.env)
-        const asked = e.retryAfter ? ', as it asked' : ''
-        event(
-          `source ${id}: poll failed, next at ${localTime(new Date(next.next))}${asked}: ${why}`,
-        )
-      } else if (before) event(`source ${id}: polled fine again, every ${describeSpan(interval)}`)
+        event(failedPoll(id, next.next, why, !!e.retryAfter))
+      } else if (before) event(recoveredPoll(id, interval))
     }
     const units = dueUnits(plan, await loadAttempts(attemptsPath), seen, held, Date.now())
     if (config.watch.debug) {
@@ -318,9 +328,8 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
       return refuse(
         `run ${started.runId} (pid ${started.pid}) holds the run lock; try again once it ends`,
       )
-    const behind = running.size > 1 ? ', behind the runs in progress' : ''
     return {
-      stdout: `Queued ${key} as run ${started}${behind}; awaywork report ${started} shows it once it ends\n`,
+      stdout: `${queuedLine(key, started, running.size > 1)}\n`,
       stderr: '',
       code: 0,
     }
@@ -328,7 +337,7 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
 
   let polling: Promise<void> | undefined
   let pollFailed: string | undefined
-  event(`awaywork watch started, pid ${process.pid}, config ${path}`)
+  event(watchStarted(process.pid, path))
   const server = serveRemote(remote, { config: path, log: event, runUnit })
   await save()
   try {
@@ -383,6 +392,12 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
   }
 }
 
+/** What `run --unit` says once the daemon queued it. */
+export function queuedLine(key: string, runId: string, behind: boolean) {
+  const after = behind ? ', behind the runs in progress' : ''
+  return `Queued ${key} as run ${runId}${after}; awaywork report ${runId} shows it once it ends`
+}
+
 /** The plan with only the chain `unit` names. */
 function chainOf(plan: RunPlan, unit: string): RunPlan {
   const heads = new Set(namedChains(plan, unit).map((p) => p.unit.id))
@@ -404,6 +419,13 @@ interface DaemonRun extends Pick<RunArgs, 'until' | 'soon' | 'claim' | 'turn' | 
   isolated: Promise<void>
 }
 
+/** E.g. `soon run 20261025-151751 started for ch-1`. */
+export function runStarted(r: Pick<DaemonRun, 'trigger' | 'runId' | 'until' | 'soon' | 'unit'>) {
+  const until = r.until ? `, until ${localTime(r.until)}` : ''
+  const units = r.soon ? ` for ${r.soon.units.join(', ')}` : r.unit ? ` for ${r.unit}` : ''
+  return `${r.trigger} run ${r.runId} started${until}${units}`
+}
+
 /** One of the daemon's runs, its full output in `run.log` in its run dir; never throws. */
 async function daemonRun(r: DaemonRun): Promise<void> {
   const runDir = join(runsDir, r.runId)
@@ -418,9 +440,7 @@ async function daemonRun(r: DaemonRun): Promise<void> {
       event(line)
     },
   }
-  const until = r.until ? `, until ${localTime(r.until)}` : ''
-  const units = r.soon ? ` for ${r.soon.units.join(', ')}` : r.unit ? ` for ${r.unit}` : ''
-  event(`${r.trigger} run ${r.runId} started${until}${units}`)
+  event(runStarted(r))
   try {
     await r.isolated
     await mkdir(runDir, { recursive: true, mode: 0o700 })
@@ -453,23 +473,32 @@ export async function watchStatus(config: string, now = new Date()): Promise<str
     .catch(() => undefined)
   const pid = await lockHolder(watchLockPath)
   const up = pid !== undefined && state?.pid === pid
-  const lines = [
-    up
-      ? `Daemon: running, pid ${pid}, since ${localTime(new Date(state.since))}`
-      : 'Daemon: not running',
-  ]
-  for (const run of up ? (state.runs ?? []) : []) {
-    const until = run.until ? `, until ${localTime(new Date(run.until))}` : ''
-    lines.push(`Run in progress: ${run.trigger} run ${run.runId}${until}`)
-  }
-  for (const [id, p] of Object.entries(up ? (state.polls ?? {}) : {})) {
-    const backoff = p.failures ? `, backing off after ${counted(p.failures, 'failed poll')}` : ''
-    lines.push(`Next poll of ${id}: ${localTime(new Date(p.next))}${backoff}`)
-  }
   const windows = await loadConfig(up ? state.config : config, { pin: false }).then(
     (c) => c.windows,
     () => undefined,
   )
+  return daemonLines(up ? state : undefined, windows, now)
+}
+
+/** The daemon's lines, `running` its state while it runs; the next window is left out when the config didn't load. */
+export function daemonLines(
+  running: WatchState | undefined,
+  windows: Config['windows'] | undefined,
+  now: Date,
+): string[] {
+  const lines = [
+    running
+      ? `Daemon: running, pid ${running.pid}, since ${localTime(new Date(running.since))}`
+      : 'Daemon: not running',
+  ]
+  for (const run of running?.runs ?? []) {
+    const until = run.until ? `, until ${localTime(new Date(run.until))}` : ''
+    lines.push(`Run in progress: ${run.trigger} run ${run.runId}${until}`)
+  }
+  for (const [id, p] of Object.entries(running?.polls ?? {})) {
+    const backoff = p.failures ? `, backing off after ${counted(p.failures, 'failed poll')}` : ''
+    lines.push(`Next poll of ${id}: ${localTime(new Date(p.next))}${backoff}`)
+  }
   const next = windows && firstOpening(windows, now.getTime() + 1, now.getTime() + 8 * DAY)
   if (windows)
     lines.push(`Next window: ${next ? localTime(new Date(next)) : 'none, no windows set'}`)

@@ -1,0 +1,28 @@
+☾ [1m[38;2;247;178;64m>_[39m[22m [1mawaywork[22m  [2mYou're away, your agents work[22m
+
+[1mRun 20261019-220012: 1 draft PR, 1 report, 3 units[22m
+2026-10-19 22:00:12 to 2026-10-19 23:47:40
+away run (inside a window): session_max
+claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
+
+▾ [1mNeeds you 1[22m
+  ▾ tracker T 1
+    T-4  Export invoices as CSV  [33madd repo[39m
+
+▾ [1mUnits 3[22m
+    [1m   item  skill   status          result[22m
+  ▾ acme/api 2
+    1  #1    fix     [32mdone, 14 turns[39m  https://github.com/acme/api/pull/14
+    [2m   Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a…[22m
+    3  #2    review  [32mdone, 6 turns [39m  report, verdict approve
+    [2m   Approve: the session cache keys on the user id and expires with the token.[22m
+  ▾ acme/web 1
+[7m    2  #3    fix     [32mdone, 9 turns [39m  nothing[27m
+    [2m   No code changes: the red check is the visual diff job, which fails on main too since #212.[22m
+
+▾ [1mSkipped 2[22m: 1 no_rule, 1 over_cap
+  ▸ tracker T 1
+  ▸ acme/api 1
+
+⏎ read  o open  l log  [2md diff[22m  s skip  a approve  ? help  q quit
+diff: this unit left no diff

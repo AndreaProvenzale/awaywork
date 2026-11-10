@@ -1,0 +1,6 @@
+2026-10-25 16:17:51 awaywork watch started, pid 27290, config ~/.config/awaywork/config.yml
+2026-10-25 16:17:51 source flaky: poll failed, next at 2026-10-25 16:21:00: Command failed with exit code 1: ./flaky.sh
+2026-10-25 16:17:51 soon run 20261025-151751 started for ch-1
+[...]
+2026-10-25 16:21:00 source flaky: polled fine again, every 2m
+2026-10-25 16:22:00 soon run 20261025-152200 started for ch-1

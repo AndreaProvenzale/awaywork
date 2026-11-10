@@ -1,0 +1,28 @@
+☾ [1m[38;2;247;178;64m>_[39m[22m [1mawaywork[22m  [2mYou're away, your agents work[22m
+
+[1mProviders[22m
+[2m  present run (outside the windows): present_session_max[22m
+  [1mprovider  window     used  ceiling  set by  resets in  session / stop at[22m
+  claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
+[2m    other limits: reserve cap 90%[22m
+
+▾ [1mNeeds you 1[22m
+  ▾ tracker T 1
+    T-4  Export invoices as CSV  [33madd repo[39m
+
+▾ [1mUnits 3[22m
+    [1m   item  rule  skill              provider  deliver   title[22m
+  ▾ acme/api 2
+    1  #1    #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
+       + api#5: same feature, matched #3
+    3  #2    #2    review (built-in)  claude    report    Cache user sessions
+  ▾ acme/web 1
+    2  #3    #1    fix (built-in)     claude    draft_pr  WIP: new billing page
+
+▾ [1mSkipped 2[22m: 1 no_rule, 1 over_cap
+  ▾ tracker T 1
+    T-7  Onboarding emails  [2mno rule[22m
+    [2m     closest #3 implement: type is task, wants issue[22m
+[7m  ▸ acme/api 1[27m
+
+⏎ unfold  [2mo open[22m  [2ms skip[22m  [2ma approve[22m  ? help  q quit

@@ -379,13 +379,13 @@ export async function isolateFor(
   boxed = true
 }
 
-/** The sudoers lines `isolation: user` needs from `user`: anything as the worker, and the two chowns it does, on a clone's folder only. */
-export function sudoersLines(user = userInfo().username): string[] {
+/** The sudoers lines `isolation: user` needs from `user` (uid:gid `owner`): anything as the worker, and the two chowns it does, on a clone's folder only. */
+export function sudoersLines(user = userInfo().username, owner = developer()): string[] {
   const clone = `${ROOT}${'[A-Za-z0-9]'.repeat(6)}`
-  const line = (owner: string) => [...CHOWN, owner.replace(':', '\\:'), clone].join(' ')
+  const line = (to: string) => [...CHOWN, to.replace(':', '\\:'), clone].join(' ')
   return [
     `${user} ALL=(${WORKER}) NOPASSWD:SETENV: ALL`,
-    `${user} ALL=(root) NOPASSWD: ${line(`${WORKER}:`)}, ${line(developer())}`,
+    `${user} ALL=(root) NOPASSWD: ${line(`${WORKER}:`)}, ${line(owner)}`,
   ]
 }
 

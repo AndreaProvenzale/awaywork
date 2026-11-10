@@ -1,0 +1,9 @@
+$ awaywork schedule status
+Scheduled with launchd, keeping awaywork watch running
+Config: ~/.config/awaywork/config.yml
+Log: ~/.local/state/awaywork/schedule.log
+Daemon: running, pid 67014, since 2026-10-25 17:26:00
+Run in progress: soon run 20261025-162625
+Next poll of flaky: 2026-10-25 17:30:00, backing off after 1 failed poll
+Next window: none, no windows set
+Daemon log: ~/.local/state/awaywork/watch.log

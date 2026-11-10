@@ -1,0 +1,11 @@
+$ awaywork plan --why T-7
+tracker T-7  Onboarding emails
+  https://tracker.acme.dev/T-7
+  skipped: no_rule
+    matched no rule; closest #3 implement: type is task, wants issue
+
+Queue
+  #1  fix        type=pr mine=true
+  #2  review     type=pr review_requested=true
+  #3  implement  type=issue
+  #4  fix        column=QA
