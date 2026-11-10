@@ -1,6 +1,6 @@
 import { pct } from './budget.js'
-import { matchesValue } from './queue.js'
 import type { Condition } from './types.js'
+import { matchesValue } from './where.js'
 
 /** What awaywork knows when it checks a condition: the verdict, and whether the command and paths passed. */
 export interface Facts {

@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { killGroupWhenDone } from '../core/group.js'
-import { AGENT_HOME, launch } from '../core/launch.js'
+import { AGENT_HOME } from '../core/isolation.js'
+import { launch } from '../core/launch.js'
 import type { Job, McpServer, Provider, WorkerEvent } from '../core/types.js'
 
 /** Never `--force` or `--approve-mcps`: the allowlist in `cli-config.json` decides, and the clone's `.cursor/mcp.json` stays off. */

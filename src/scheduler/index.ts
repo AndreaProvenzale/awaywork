@@ -21,9 +21,6 @@ export interface Schedule {
 /** Whether a job is the per-window kind an older awaywork installed, starting `awaywork run`. */
 export const olderJob = (job: Schedule) => !job.command.includes('watch')
 
-/** A scheduler install that failed for a reason the user can act on. */
-export class SchedulerError extends Error {}
-
 export interface Scheduler {
   id: string
   /** Installs or replaces the job; returns where it lives. */

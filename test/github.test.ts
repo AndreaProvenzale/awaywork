@@ -4,16 +4,9 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { bin } from '../src/config/paths.js'
+import { awaitsAnswer, isAwayworkComment, markComment } from '../src/core/comments.js'
 import { NOT_YOURS } from '../src/core/continue.js'
-import {
-  awaitsAnswer,
-  footer,
-  footerItems,
-  footerLeft,
-  isAwayworkComment,
-  isOurs,
-  markComment,
-} from '../src/core/footer.js'
+import { footer, footerItems, footerLeft, isOurs } from '../src/core/footer.js'
 import type { Ctx, Item, Write } from '../src/core/types.js'
 import { type Exec, exec } from '../src/forge/gh.js'
 import { githubForge } from '../src/forge/github.js'

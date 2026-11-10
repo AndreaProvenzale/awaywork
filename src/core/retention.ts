@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { attemptsPath, runsDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadAttempts } from './attempts.js'
-import { spanMs } from './queue.js'
+import { spanMs } from './where.js'
 
 export interface Pruned {
   removed: number
