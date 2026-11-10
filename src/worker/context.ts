@@ -7,7 +7,7 @@ import { slug } from '../core/foreman.js'
 import type { Item } from '../core/types.js'
 import { runCommand } from './setup.js'
 import { setupEnv } from './steps.js'
-import { WORK_DIR } from './workspace.js'
+import { WORK_DIR } from './work-dir.js'
 
 /** `dir` is the folder of the config file that set the command, set when the config loads. */
 export type ContextSource = { context?: { command: string; secrets: string[]; dir?: string } }

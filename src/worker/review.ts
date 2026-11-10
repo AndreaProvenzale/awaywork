@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import type { Forge, Review, Unit } from '../core/types.js'
 import type { Outcome } from './publish.js'
-import { readOutput } from './workspace.js'
+import { readOutput } from './safe-files.js'
 
 const MAX_BYTES = 100_000
 const MAX_COMMENTS = 100

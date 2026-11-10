@@ -4,7 +4,7 @@ import { parseEnv } from 'node:util'
 import { confirm, isCancel, log, select } from '@clack/prompts'
 import { envFile } from '../config/paths.js'
 import type { Ask, Choice } from '../core/types.js'
-import { brandHeader } from './format.js'
+import { brandHeader } from './format/terminal.js'
 
 export class Cancelled extends Error {}
 

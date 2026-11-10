@@ -9,7 +9,7 @@ import {
   WORKER,
   workerHome,
   workerRoot,
-} from '../src/core/launch.js'
+} from '../src/core/isolation.js'
 
 // A file of its own: bin() keeps the first sudo it finds, here the fake one.
 it('chowns a clone and its home only as the sudoers lines allow, a folder straight under /tmp', async () => {

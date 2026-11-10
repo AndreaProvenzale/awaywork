@@ -1,26 +1,18 @@
 import { describe, expect, it } from 'vitest'
+import { reportJson } from '../src/cli/format/json.js'
+import { formatPlan, listedUnits } from '../src/cli/format/plan.js'
+import { findChains, formatRun, formatUnit } from '../src/cli/format/report.js'
+import { describeRule } from '../src/cli/format/rules.js'
+import { formatSkipped, groupOf, type SkipRow, skipRows } from '../src/cli/format/skips.js'
 import {
-  ambiguous,
   brandHeader,
   clip,
-  describeRule,
-  findChains,
-  formatPlan,
-  formatRun,
-  formatSkipped,
-  formatUnit,
-  formatWhy,
-  groupOf,
-  listedUnits,
-  namedItems,
   pad,
-  reportJson,
-  type SkipRow,
-  skipRows,
   statusMarker,
   warningLines,
   width,
-} from '../src/cli/format.js'
+} from '../src/cli/format/terminal.js'
+import { ambiguous, formatWhy, namedItems } from '../src/cli/format/why.js'
 import { parseConfig } from '../src/config/load.js'
 import { allowance } from '../src/core/budget.js'
 import { type PlannedUnit, planRun, type RunPlan } from '../src/core/foreman.js'
