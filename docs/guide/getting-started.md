@@ -12,7 +12,7 @@ description: Install awaywork, write a config, preview the next run with plan, r
 - At least one agent CLI, installed and logged in with your subscription:
   - [Claude Code](https://code.claude.com): `claude` logged in, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
   - [Codex](https://developers.openai.com/codex): `codex login`.
-  - [Cursor](https://cursor.com/docs/cli/overview): its `agent` CLI and a `CURSOR_API_KEY` from the dashboard, even on your own machine. awaywork runs it in a `HOME` of its own, where your `agent login` doesn't reach. Until the key is set, the setup leaves Cursor out.
+  - [Cursor](https://cursor.com/docs/cli/overview): its `agent` CLI and a `CURSOR_API_KEY` from the dashboard, even on your own machine. awaywork runs it in a `HOME` of its own, where your `agent login` doesn't reach, so the setup leaves Cursor out until the key is set.
 - Optionally an Asana personal access token, a Linear personal API key or an Atlassian API token for Jira Cloud, if your tasks live there.
 
 ## Install
@@ -28,7 +28,7 @@ awaywork --help
 awaywork init
 ```
 
-`init` doesn't ask you a wall of questions: it opens Claude Code on `/away set up awaywork`, and the [`/away` skill](./away.md) does the setup with you. No awaywork plugin in Claude Code yet? It offers to install it first:
+`init` opens Claude Code on `/away set up awaywork`, and the [`/away` skill](./away.md) does the setup with you in a few rounds of questions. No awaywork plugin in Claude Code yet? It offers to install it first:
 
 ```text
 $ awaywork init
@@ -41,11 +41,13 @@ $ awaywork init
 ●  Opening Claude Code on /away set up awaywork; /exit comes back here
 ```
 
-Say no and that one session loads the plugin from the npm package instead (`--plugin-dir`), nothing installed.
+Say no and that one session loads the plugin from the npm package instead (`--plugin-dir`), nothing installed. The setup in full, and the pane `/away` opens once there's a config, are in [`/away` in Claude Code](./away.md). Run `init` again with a config there and `/away` tells you where it stands and what you could change.
 
-The setup in full, and the pane `/away` opens once there is a config, are in [`/away` in Claude Code](./away.md).
+No Claude Code? `init` says what to do instead:
 
-Run `init` again with a config there and `/away` tells you where it stands and what you could change. No Claude Code? `init` says what to do instead: Codex gets the same plugin (see [Codex and friends](./agents.md#codex-and-friends)), any agent that loads skills can take them from the package, and `awaywork init --yes` asks nothing and writes the detected defaults, for a container or CI.
+- Codex gets the same plugin: see [Codex and friends](./agents.md#codex-and-friends).
+- Any agent that loads skills can take them from the package.
+- `awaywork init --yes` asks nothing and writes the detected defaults, for a container or CI.
 
 Or write a minimal config by hand:
 
@@ -55,7 +57,7 @@ sources:
   github: { repos: [acme/*] }
 ```
 
-With no `queue`, the [default queue](./how-it-works.md#the-queue) applies. Assigned GitHub issues need a rule of their own, e.g. `implement` for issues labelled `awaywork` (see [Configuration](./configuration.md)). The label isn't enough on its own: awaywork reads only the issues assigned to you, so assign yourself too.
+With no `queue`, the [default queue](./how-it-works.md#the-queue) applies. GitHub issues need a rule of their own, e.g. `implement` for issues labelled `awaywork` (see [Configuration](./configuration.md)). awaywork reads the issues assigned to you, so assign yourself too: the label alone plans nothing, unless a [`search`](./how-it-works.md#items) reads it.
 
 Check it:
 
@@ -103,4 +105,4 @@ awaywork report                # browse the last run; piped, its morning report
 awaywork schedule install      # asks where; this machine is launchd, systemd or cron
 ```
 
-The job keeps `awaywork watch` running, which starts a run when a window opens (default `01:00`) and stops it when the window ends (`07:00`). To run in GitHub Actions instead, pick it when asked, or pass `--with github-actions`; see [Scheduling](./scheduling.md).
+The job keeps `awaywork watch` running, which starts a run when a window opens and stops it when the window ends (01:00 to 07:00 by default). For GitHub Actions instead, pick it when asked or pass `--with github-actions`: see [Scheduling](./scheduling.md).

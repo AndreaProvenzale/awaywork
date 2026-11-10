@@ -9,9 +9,20 @@
 
 > A harness that runs your coding agents on your real tasks, under rules you set. It paces your quota and keeps you in control of what truly matters.
 
-You log off with red CI, 11 PR comments and a QA ticket that just says "broken on Safari"; your agents don't have to.
+You log off with red CI, 11 PR comments and a QA ticket that just says "broken on Safari"; your agents pick them up.
 
 awaywork is a CLI. It pulls items from your forge and task tracker, and rules you write pick what runs and with which skill. The vendors' stock agent CLIs do the work headless, with your login. You get draft PRs, reports and questions on your own items, and you decide at the points that matter: approving a plan, answering a question, settling what a gate flagged, merging.
+
+```mermaid
+flowchart LR
+  subgraph awaywork["awaywork: plain code"]
+    direction TB
+    pick["collect items, match rules,<br/>budget the quota"]
+    publish["push a branch, open the PR,<br/>post on your item"]
+  end
+  pick -- dispatch --> worker["worker: your agent CLI<br/>in a clone, no forge token"]
+  worker -- commits --> publish
+```
 
 ## Quick start
 
@@ -20,8 +31,10 @@ npm i -g awaywork
 awaywork init                 # opens Claude Code on /away, which sets it up with you
 awaywork plan                 # a dry look at the next run; only a tiny quota probe
 awaywork run --unit <item>    # one item for real
-awaywork schedule install     # asks where: launchd, systemd, cron, GitHub Actions or a container
+awaywork schedule install     # asks: this machine (launchd, systemd or cron), GitHub Actions or a container
 ```
+
+No Claude Code? Codex gets the same skill through [its plugin](docs/guide/agents.md#codex-and-friends) and other agents from the package, and `awaywork init --yes` writes the detected defaults without asking, for a container or CI. Or [write the config by hand](docs/guide/getting-started.md#configure): a few lines of YAML.
 
 ![awaywork plan loading its steps and showing the next run's units, then awaywork report on the night's run: a review report opened and a draft PR's diff](https://andreaprovenzale.github.io/awaywork/demo/quickstart.gif)
 
@@ -54,8 +67,6 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 ⏎ read  o open  l log  d diff  s skip  a approve  ? help  q quit
 ```
-
-No Claude Code? Codex and friends get the same `/away` skill through the [plugin](docs/guide/agents.md#codex-and-friends), and `awaywork init --yes` writes the detected defaults without asking, for a container or CI. Or [write the config by hand](docs/guide/getting-started.md#configure): a few lines of YAML.
 
 ## What it can do
 

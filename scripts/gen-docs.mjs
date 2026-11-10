@@ -47,8 +47,11 @@ ${sections.join('\n\n')}
 `
 }
 
-// Vue compiles the page, so a bare <name> outside a code span would open an element.
-const literalTags = (s) => s.replace(/`[^`]*`|</g, (m) => (m === '<' ? '\\<' : m))
+// Vue compiles the page: a bare <name> outside a code span would open an element, and {{ }} interpolate.
+const literalTags = (s) => {
+  if (s.includes('{{')) throw new Error(`Vue would interpolate the {{ in: ${s}`)
+  return s.replace(/(`+).*?\1|\\?</gs, (m) => (m === '<' ? '\\<' : m))
+}
 
 const cell = (s) => literalTags(String(s)).replaceAll('|', '\\|').replaceAll('\n', ' ')
 
