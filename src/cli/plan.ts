@@ -31,18 +31,12 @@ import { maskSecrets } from '../worker/setup.js'
 import { checkPins } from '../worker/store.js'
 import { interactive, itemCommands, openScreen } from './browse.js'
 import { reportConfigError } from './config-error.js'
-import {
-  ambiguous,
-  clip,
-  formatPlan,
-  formatRules,
-  formatSkipped,
-  formatWhy,
-  namedItems,
-  planJson,
-  rulesJson,
-  warningLines,
-} from './format.js'
+import { planJson } from './format/json.js'
+import { formatPlan } from './format/plan.js'
+import { formatRules, rulesJson } from './format/rules.js'
+import { formatSkipped } from './format/skips.js'
+import { clip, warningLines } from './format/terminal.js'
+import { ambiguous, formatWhy, namedItems } from './format/why.js'
 import { linkThreads } from './threads.js'
 import { type OnProgress, planTriage } from './triage.js'
 

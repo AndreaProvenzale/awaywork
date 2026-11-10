@@ -33,7 +33,7 @@ import { exec } from '../forge/gh.js'
 import { holdAwake } from '../scheduler/wake.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedChains } from '../worker/units.js'
-import { ambiguous } from './format.js'
+import { ambiguous } from './format/why.js'
 import { probeAndPlan, sourceFailure } from './plan.js'
 import { type Output, type Remote, serveRemote } from './remote.js'
 import {

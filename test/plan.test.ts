@@ -2,15 +2,11 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import {
-  describeAllowance,
-  formatPlan,
-  formatWhy,
-  listedUnits,
-  namedItems,
-  planJson,
-  queueLines,
-} from '../src/cli/format.js'
+import { describeAllowance } from '../src/cli/format/allowances.js'
+import { planJson } from '../src/cli/format/json.js'
+import { formatPlan, listedUnits } from '../src/cli/format/plan.js'
+import { queueLines } from '../src/cli/format/rules.js'
+import { formatWhy, namedItems } from '../src/cli/format/why.js'
 import { finishedSince, probeAndPlan, ruleNumber } from '../src/cli/plan.js'
 import { oneOffRefusal } from '../src/cli/run.js'
 import type { Step } from '../src/cli/triage.js'

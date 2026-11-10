@@ -8,24 +8,11 @@ import {
   type RunReport,
 } from '../core/report.js'
 import type { Item } from '../core/types.js'
-import {
-  byGroup,
-  columns,
-  formatWhy,
-  graphemes,
-  heading,
-  listedUnits,
-  pad,
-  planUnitTable,
-  providerLines,
-  reportUnitTable,
-  runHeader,
-  type SkipRow,
-  skippedHeading,
-  skipRows,
-  warningBlock,
-  width,
-} from './format.js'
+import { listedUnits, planUnitTable, providerLines } from './format/plan.js'
+import { reportUnitTable, runHeader } from './format/report.js'
+import { byGroup, type SkipRow, skippedHeading, skipRows } from './format/skips.js'
+import { columns, graphemes, heading, pad, warningBlock, width } from './format/terminal.js'
+import { formatWhy } from './format/why.js'
 
 /** What a key does on a row. */
 export type Action = 'read' | 'open' | 'log' | 'diff' | 'skip' | 'approve'
