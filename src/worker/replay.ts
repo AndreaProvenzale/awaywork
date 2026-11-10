@@ -16,10 +16,10 @@ import {
 } from '../core/launch.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
+import { configSecrets } from './secrets.js'
 import { runSetup } from './setup.js'
 import {
   commandEnv,
-  configSecrets,
   copyOut,
   inClone,
   prepareWorkspace,

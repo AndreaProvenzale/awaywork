@@ -8,7 +8,7 @@ import { forgeFor } from '../forge/index.js'
 import { providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { replayUnit } from '../worker/replay.js'
-import { reportConfigError } from './config.js'
+import { reportConfigError } from './config-error.js'
 import { abortOnSignals } from './run.js'
 
 export function replayCommand(program: Command): void {

@@ -1,6 +1,6 @@
 import { posix } from 'node:path'
-import { MAX_ATTEMPTS } from './attempts.js'
 import { placeholderProblem } from './branch.js'
+import { MAX_ATTEMPTS } from './max-attempts.js'
 import type { Contract } from './plan.js'
 import type { Item } from './types.js'
 

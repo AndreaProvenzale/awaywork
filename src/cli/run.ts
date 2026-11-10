@@ -44,7 +44,7 @@ import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedChains, type RunInput, runUnits } from '../worker/units.js'
 import { type ItemCommands, interactive, itemCommands, openScreen, type Screen } from './browse.js'
-import { reportConfigError } from './config.js'
+import { reportConfigError } from './config-error.js'
 import {
   ambiguous,
   findChains,
@@ -56,8 +56,8 @@ import {
   reportJson,
   summarize,
 } from './format.js'
+import { gitRoot } from './git-root.js'
 import { probeAndPlan, ruleNumber, skipKinds } from './plan.js'
-import { gitRoot } from './schedule.js'
 import { unitsFile } from './stats.js'
 import { type OnProgress, runTriage, type UnitFiles } from './triage.js'
 

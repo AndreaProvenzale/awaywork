@@ -7,8 +7,8 @@ import { decisionPost } from '../core/posts.js'
 import type { Ctx, Forge, Source } from '../core/types.js'
 import { forgeFor } from '../forge/index.js'
 import { sourceFor, writeItem } from '../sources/index.js'
-import { linkThreads, threadHosts } from './plan.js'
 import { checkKey, printOutcome } from './skip.js'
+import { linkThreads, threadHosts } from './threads.js'
 
 export function approveCommand(program: Command): void {
   program
