@@ -24,15 +24,9 @@ import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
 import { cursor } from '../src/providers/cursor.js'
-import {
-  copyOut,
-  gateEnv,
-  prepareWorkspace,
-  readOutput,
-  restoreGitConfig,
-  workerEnv,
-  writeOutput,
-} from '../src/worker/workspace.js'
+import { gateEnv, workerEnv } from '../src/worker/env.js'
+import { copyOut, readOutput, writeOutput } from '../src/worker/safe-files.js'
+import { prepareWorkspace, restoreGitConfig } from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'

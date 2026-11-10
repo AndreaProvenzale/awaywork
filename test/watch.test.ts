@@ -14,7 +14,7 @@ import {
   watchStatePath,
 } from '../src/config/paths.js'
 import type { Config } from '../src/config/schema.js'
-import { contained, isolateFor } from '../src/core/launch.js'
+import { contained, isolateFor } from '../src/core/isolation.js'
 import type { Job } from '../src/core/types.js'
 import type { Schedule, Scheduler } from '../src/scheduler/index.js'
 

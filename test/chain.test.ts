@@ -15,21 +15,16 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
-import { formatPlan, summarize } from '../src/cli/format.js'
+import { formatPlan } from '../src/cli/format/plan.js'
+import { summarize } from '../src/cli/format/report.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
-import {
-  asWorker,
-  contain,
-  containerize,
-  isolate,
-  launch,
-  lostToWorker,
-} from '../src/core/launch.js'
+import { asWorker, contain, containerize, isolate, lostToWorker } from '../src/core/isolation.js'
+import { launch } from '../src/core/launch.js'
 import { formatReport, type RunReport, runHeadline, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Forge, Item, Login, Provider, Source } from '../src/core/types.js'

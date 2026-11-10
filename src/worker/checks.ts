@@ -4,15 +4,10 @@ import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import { type Facts, holds } from '../core/condition.js'
 import type { Condition, Unit } from '../core/types.js'
+import { checkEnv, gateEnv } from './env.js'
+import { refuseSymlinks, writeOutput } from './safe-files.js'
 import { runCommand } from './setup.js'
-import {
-  checkEnv,
-  gateEnv,
-  inClone,
-  refuseSymlinks,
-  restoreGitConfig,
-  writeOutput,
-} from './workspace.js'
+import { inClone, restoreGitConfig } from './workspace.js'
 
 const CHECK_LOG_CHARS = 8000
 

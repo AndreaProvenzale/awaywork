@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import { pagerCommand } from '../src/cli/browse.js'
-import { brandHeader } from '../src/cli/format.js'
+import { brandHeader } from '../src/cli/format/terminal.js'
 import {
   clipLine,
   type Loading,

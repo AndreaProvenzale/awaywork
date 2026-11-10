@@ -5,50 +5,34 @@ import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance, pct } from '../core/budget.js'
+import { markComment, threadClosed } from '../core/comments.js'
 import { taskBranches, taskPr } from '../core/fanout.js'
-import {
-  commentKind,
-  isAwayworkComment,
-  markComment,
-  renderLink,
-  threadClosed,
-} from '../core/footer.js'
+import { renderLink } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { heldMove, withApproved } from '../core/posts.js'
-import {
-  DEFAULT_LOOKBACK,
-  defaultRules,
-  itemState,
-  lookback,
-  ruleThread,
-  spanMs,
-} from '../core/queue.js'
+import { defaultRules, ruleThread } from '../core/queue.js'
 import { counted, type Moved } from '../core/report.js'
 import { builtinSkills, type SkillCatalog } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
-import type { Ctx, Forge, Item, Rule, Source, Thread } from '../core/types.js'
+import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
+import { DEFAULT_LOOKBACK, itemState, lookback, spanMs } from '../core/where.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
 import { sourceFor, threadHost, writeItem } from '../sources/index.js'
 import { nextOccurrences, type RoutinesConfig } from '../sources/routines.js'
+import { configSecrets } from '../worker/secrets.js'
 import { maskSecrets } from '../worker/setup.js'
 import { checkPins } from '../worker/store.js'
-import { configSecrets } from '../worker/workspace.js'
 import { interactive, itemCommands, openScreen } from './browse.js'
-import { reportConfigError } from './config.js'
-import {
-  ambiguous,
-  clip,
-  formatPlan,
-  formatRules,
-  formatSkipped,
-  formatWhy,
-  namedItems,
-  planJson,
-  rulesJson,
-  warningLines,
-} from './format.js'
+import { reportConfigError } from './config-error.js'
+import { planJson } from './format/json.js'
+import { formatPlan } from './format/plan.js'
+import { formatRules, rulesJson } from './format/rules.js'
+import { formatSkipped } from './format/skips.js'
+import { clip, warningLines } from './format/terminal.js'
+import { ambiguous, formatWhy, namedItems } from './format/why.js'
+import { linkThreads } from './threads.js'
 import { type OnProgress, planTriage } from './triage.js'
 
 export function planCommand(program: Command): void {
@@ -475,72 +459,6 @@ export async function linkTasks(
   }
   if (tasks.length)
     onProgress?.({ name: 'linking PRs', state: 'done', detail: `${tasks.length}/${tasks.length}` })
-}
-
-/** Each thread host a rule names, with the sources its rules take items from. */
-export function threadHosts(config: Pick<Config, 'sources' | 'queue'>): Map<string, string[]> {
-  const hosts = new Map<string, string[]>()
-  for (const r of config.queue ?? []) {
-    const host = ruleThread(r)
-    if (host)
-      hosts.set(host, [
-        ...(hosts.get(host) ?? []),
-        ...(r.source ? [r.source] : Object.keys(config.sources)),
-      ])
-  }
-  return hosts
-}
-
-/**
- * Each of your items a rule with a `thread` can take gets the thread awaywork opened for it, if any: its comments
- * follow the card's, and a reply there changes the item as one on the card would. Returns the items but those whose
- * threads couldn't be read: planned without them, they'd post a second plan.
- */
-export async function linkThreads(
-  items: Item[],
-  config: Pick<Config, 'sources' | 'queue'>,
-  forge: Forge,
-  ctx: Ctx,
-): Promise<Item[]> {
-  const unread = new Set<Item>()
-  for (const [name, sources] of threadHosts(config)) {
-    const host = threadHost(name, config.sources, forge, ctx)
-    const repoOf = (i: Item) =>
-      host?.byRepo && typeof i.fields.repo === 'string' ? i.fields.repo : undefined
-    const threaded = items.filter(
-      (i) => i.mine && !i.thread && sources.includes(i.source) && (!host?.byRepo || repoOf(i)),
-    )
-    for (const repo of new Set(threaded.map(repoOf))) {
-      const here = threaded.filter((i) => repoOf(i) === repo)
-      const found = await host?.threads(repo).catch((e: Error) => {
-        const keys = here.map((i) => i.key).join(', ')
-        const on = repo ? `in ${repo}` : `on ${name}`
-        ctx.log(`couldn't read awaywork's threads ${on}, so left out ${keys}: ${e.message}`)
-        for (const item of here) unread.add(item)
-      })
-      for (const item of here) {
-        const thread = found?.find((t) => t.item === `${item.source}:${item.key}`)
-        if (thread) linkThread(item, thread)
-      }
-    }
-  }
-  return items.filter((i) => !unread.has(i))
-}
-
-/** The item with its thread's comments after its own, and the newest reply there as its updated time when newer. */
-function linkThread(
-  item: Item,
-  { thread, comments }: { thread: Thread; comments: Item['comments'] },
-): void {
-  // Awaywork's own posts there leave the item as it was, as they do on the card.
-  const replied = comments
-    .filter((c) => !isAwayworkComment(c) || commentKind(c) === 'approve')
-    .at(-1)?.at
-  const card = item.fields.updated
-  const newer = !!replied && !(typeof card === 'string' && Date.parse(card) >= Date.parse(replied))
-  item.thread = { ...thread, ...(newer && typeof card === 'string' && { card }) }
-  item.comments = [...item.comments, ...comments]
-  if (newer) item.fields.updated = replied
 }
 
 /** Closes the thread of each card its source says is done, with a line saying so; a dry run only says it. */

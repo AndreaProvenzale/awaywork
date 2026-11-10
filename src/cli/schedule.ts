@@ -22,6 +22,7 @@ import { describeWindow, startsOf, type Window } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { providerFor } from '../providers/index.js'
 import { dockerFiles, imageVersion, removeDocker } from '../scheduler/docker.js'
+import { SchedulerError } from '../scheduler/error.js'
 import {
   isPlainSelfHosted,
   isSelfHosted,
@@ -36,7 +37,6 @@ import {
   olderJob,
   type Schedule,
   type Scheduler,
-  SchedulerError,
   type Start,
   schedulers,
 } from '../scheduler/index.js'
@@ -45,7 +45,8 @@ import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { contextSecrets } from '../worker/context.js'
 import { Cancelled, printBrand, terminalAsk } from './ask.js'
-import { reportConfigError } from './config.js'
+import { reportConfigError } from './config-error.js'
+import { gitRoot } from './git-root.js'
 import { stopWatch, watchStatus } from './watch.js'
 
 const GITHUB_ACTIONS = 'github-actions'
@@ -181,9 +182,6 @@ export async function staleSchedules(
   }
   return []
 }
-
-export const gitRoot = (run: Exec = exec) =>
-  run('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
 /** The `--with` value: '' for this machine's default scheduler. */
 export const whereToRun = (ask: Ask) =>

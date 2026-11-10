@@ -13,17 +13,14 @@ import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
 import {
   commentKind,
-  footer,
-  footerPins,
   leanPlanComment,
   markComment,
-  type Pin,
-  pinBlock,
   pinsOf,
   planComment,
   resultComment,
   resultOf,
-} from '../src/core/footer.js'
+} from '../src/core/comments.js'
+import { footer, footerPins, type Pin, pinBlock } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
 import { cardTasks, planState } from '../src/core/plan.js'
 import { postAnswer, readBackPosts, reportPost, withApproved } from '../src/core/posts.js'

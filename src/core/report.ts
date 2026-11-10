@@ -1,7 +1,7 @@
 import type { Outcome } from '../worker/publish.js'
 import type { WorkerStatus } from '../worker/run.js'
 import { type Allowance, pct, presenceLine } from './budget.js'
-import type { PostState } from './footer.js'
+import type { PostState } from './comments.js'
 import {
   describeChain,
   needsYou,
