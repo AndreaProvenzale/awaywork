@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import type { Config } from '../config/schema.js'
-import { approveReply } from '../core/footer.js'
+import { approveReply } from '../core/comments.js'
 import { cardTasks, planThread } from '../core/plan.js'
 import { decisionPost } from '../core/posts.js'
 import type { Ctx, Forge, Source } from '../core/types.js'

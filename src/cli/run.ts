@@ -19,7 +19,7 @@ import { loadSkills } from '../config/skills.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { type Allowance, route } from '../core/budget.js'
 import { isNamed, type PlannedUnit, type RunPlan } from '../core/foreman.js'
-import { isolateFor } from '../core/launch.js'
+import { isolateFor } from '../core/isolation.js'
 import { ruleFor } from '../core/queue.js'
 import {
   type Chain,
@@ -45,17 +45,11 @@ import { maskSecrets } from '../worker/setup.js'
 import { namedChains, type RunInput, runUnits } from '../worker/units.js'
 import { type ItemCommands, interactive, itemCommands, openScreen, type Screen } from './browse.js'
 import { reportConfigError } from './config-error.js'
-import {
-  ambiguous,
-  findChains,
-  formatPlan,
-  formatRun,
-  formatSkipped,
-  formatUnit,
-  listedUnits,
-  reportJson,
-  summarize,
-} from './format.js'
+import { reportJson } from './format/json.js'
+import { formatPlan, listedUnits } from './format/plan.js'
+import { findChains, formatRun, formatUnit, summarize } from './format/report.js'
+import { formatSkipped } from './format/skips.js'
+import { ambiguous } from './format/why.js'
 import { gitRoot } from './git-root.js'
 import { probeAndPlan, ruleNumber, skipKinds } from './plan.js'
 import { unitsFile } from './stats.js'

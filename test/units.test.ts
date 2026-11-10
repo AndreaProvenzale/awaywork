@@ -14,22 +14,22 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
-import { formatPlan, formatRun, summarize } from '../src/cli/format.js'
+import { formatPlan } from '../src/cli/format/plan.js'
+import { formatRun, summarize } from '../src/cli/format/report.js'
 import { linkPlanTasks } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts, unchangedSince } from '../src/core/attempts.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { GITHUB_ONLY } from '../src/core/continue.js'
 import {
   commentKind,
-  footer,
-  type Left,
   markComment,
   planComment,
   questionsComment,
   resultComment,
-} from '../src/core/footer.js'
+} from '../src/core/comments.js'
+import { GITHUB_ONLY } from '../src/core/continue.js'
+import { footer, type Left } from '../src/core/footer.js'
 import { planRun, slug } from '../src/core/foreman.js'
 import { formatReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'

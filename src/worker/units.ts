@@ -6,18 +6,17 @@ import { isDeepStrictEqual } from 'node:util'
 import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
-import { describeCondition, holds } from '../core/condition.js'
-import { byHand } from '../core/continue.js'
 import {
   leanPlanComment,
-  type Pin,
   type PostState,
-  pinBlock,
   planComment,
   questionsComment,
   resultComment,
   type Status,
-} from '../core/footer.js'
+} from '../core/comments.js'
+import { describeCondition, holds } from '../core/condition.js'
+import { byHand } from '../core/continue.js'
+import { type Pin, pinBlock } from '../core/footer.js'
 import {
   describeChain,
   modelFor,
@@ -37,7 +36,7 @@ import {
   lostToWorker,
   workerHome,
   workerRoot,
-} from '../core/launch.js'
+} from '../core/isolation.js'
 import {
   checkPlan,
   contractName,
@@ -74,10 +73,12 @@ import type {
 import { type Threads, threaded, unwritable, writeItem } from '../sources/index.js'
 import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
+import { gateEnv, workerEnv } from './env.js'
 import { notifyUnit } from './notify.js'
 import type { Outcome } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
+import { copyOut, notSymlink, readOutput, refuseSymlinks, writeOutput } from './safe-files.js'
 import { configSecrets } from './secrets.js'
 import { maskSecrets, runSetup } from './setup.js'
 import {
@@ -112,22 +113,8 @@ import {
   type Resolving,
 } from './sync.js'
 import { shortage } from './watchdog.js'
-import {
-  copyOut,
-  gateEnv,
-  notSymlink,
-  outputFile,
-  type Previous,
-  prepareWorkspace,
-  readOutput,
-  refuseSymlinks,
-  reportsOnly,
-  revealHidden,
-  type Shipped,
-  WORK_DIR,
-  workerEnv,
-  writeOutput,
-} from './workspace.js'
+import { outputFile, reportsOnly, WORK_DIR } from './work-dir.js'
+import { type Previous, prepareWorkspace, revealHidden, type Shipped } from './workspace.js'
 
 export interface RunInput {
   config: Config

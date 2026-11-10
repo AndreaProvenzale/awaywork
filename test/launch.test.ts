@@ -9,11 +9,11 @@ import {
   AWAYWORK_ENV,
   dockerArgs,
   isolate,
-  launch,
   sudoArgs,
   WORKER,
   workerFor,
-} from '../src/core/launch.js'
+} from '../src/core/isolation.js'
+import { launch } from '../src/core/launch.js'
 import type { Job, Unit } from '../src/core/types.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'
@@ -21,8 +21,8 @@ import { commandProvider } from '../src/providers/command.js'
 import { cursorProvider } from '../src/providers/cursor.js'
 import { createChecks } from '../src/worker/checks.js'
 import { fetchContexts } from '../src/worker/context.js'
+import { commandEnv, gateEnv, workerEnv } from '../src/worker/env.js'
 import { runSetup } from '../src/worker/setup.js'
-import { commandEnv, gateEnv, workerEnv } from '../src/worker/workspace.js'
 import { escaped, escaping } from './fakes/escape.js'
 import { fakeItem } from './fakes/items.js'
 

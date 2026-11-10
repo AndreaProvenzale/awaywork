@@ -1,5 +1,5 @@
 import type { Config } from '../config/schema.js'
-import { commentKind, isAwayworkComment } from '../core/footer.js'
+import { commentKind, isAwayworkComment } from '../core/comments.js'
 import { ruleThread } from '../core/queue.js'
 import type { Ctx, Forge, Item, Thread } from '../core/types.js'
 import { threadHost } from '../sources/index.js'

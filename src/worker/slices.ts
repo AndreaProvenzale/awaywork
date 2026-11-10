@@ -14,14 +14,8 @@ import {
 import { describeFired, gateOut, gatesSection, type Judged, runGates, runJudges } from './gates.js'
 import { type Outcome, publish } from './publish.js'
 import { leaveReview } from './review.js'
-import {
-  outputFile,
-  readOutput,
-  refuseSymlinks,
-  reportsOnly,
-  WORK_DIR,
-  writeOutput,
-} from './workspace.js'
+import { readOutput, refuseSymlinks, writeOutput } from './safe-files.js'
+import { outputFile, reportsOnly, WORK_DIR } from './work-dir.js'
 
 const MAX_SUFFIX = 10
 

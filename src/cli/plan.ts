@@ -5,22 +5,17 @@ import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance, pct } from '../core/budget.js'
+import { markComment, threadClosed } from '../core/comments.js'
 import { taskBranches, taskPr } from '../core/fanout.js'
-import { markComment, renderLink, threadClosed } from '../core/footer.js'
+import { renderLink } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { heldMove, withApproved } from '../core/posts.js'
-import {
-  DEFAULT_LOOKBACK,
-  defaultRules,
-  itemState,
-  lookback,
-  ruleThread,
-  spanMs,
-} from '../core/queue.js'
+import { defaultRules, ruleThread } from '../core/queue.js'
 import { counted, type Moved } from '../core/report.js'
 import { builtinSkills, type SkillCatalog } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
+import { DEFAULT_LOOKBACK, itemState, lookback, spanMs } from '../core/where.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
@@ -31,18 +26,12 @@ import { maskSecrets } from '../worker/setup.js'
 import { checkPins } from '../worker/store.js'
 import { interactive, itemCommands, openScreen } from './browse.js'
 import { reportConfigError } from './config-error.js'
-import {
-  ambiguous,
-  clip,
-  formatPlan,
-  formatRules,
-  formatSkipped,
-  formatWhy,
-  namedItems,
-  planJson,
-  rulesJson,
-  warningLines,
-} from './format.js'
+import { planJson } from './format/json.js'
+import { formatPlan } from './format/plan.js'
+import { formatRules, rulesJson } from './format/rules.js'
+import { formatSkipped } from './format/skips.js'
+import { clip, warningLines } from './format/terminal.js'
+import { ambiguous, formatWhy, namedItems } from './format/why.js'
 import { linkThreads } from './threads.js'
 import { type OnProgress, planTriage } from './triage.js'
 

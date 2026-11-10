@@ -6,8 +6,9 @@ import { bin } from '../config/paths.js'
 import { type Left, type Pin, trailerKey } from '../core/footer.js'
 import { counted } from '../core/report.js'
 import type { Forge, Unit } from '../core/types.js'
+import { readOutput, refuseSymlinks, writeOutput } from './safe-files.js'
 import type { Held } from './slices.js'
-import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
+import { outputFile, WORK_DIR } from './work-dir.js'
 
 export type Outcome =
   | {

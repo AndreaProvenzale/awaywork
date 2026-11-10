@@ -1,9 +1,9 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { MAX_ATTEMPTS } from './max-attempts.js'
-import { itemState } from './queue.js'
 import type { RunReport, UnitResult } from './report.js'
 import type { Item, PrRef } from './types.js'
+import { itemState } from './where.js'
 
 // Hours short of a week, so next week's run at the same time isn't a day late, in a DST week too.
 const GAVE_UP_MS = (7 * 24 - 3) * 3600_000

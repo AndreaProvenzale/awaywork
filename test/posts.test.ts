@@ -10,7 +10,7 @@ import {
   postState,
   resultComment,
   resultOf,
-} from '../src/core/footer.js'
+} from '../src/core/comments.js'
 import { planRun } from '../src/core/foreman.js'
 import { approvedSkill, heldMove, postAnswer, reportPost } from '../src/core/posts.js'
 import type { Item } from '../src/core/types.js'

@@ -2,11 +2,11 @@ import type { Config } from '../config/schema.js'
 import { type Attempts, gaveUpUntil, pushedOnto, unchangedSince } from './attempts.js'
 import { isValidRef } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
+import { awaitsAnswer } from './comments.js'
 import { holds } from './condition.js'
 import { byHand } from './continue.js'
 import { dedupe } from './dedupe.js'
 import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
-import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
 import { MAX_ATTEMPTS } from './max-attempts.js'
 import { elsewhere, latestResult, planState, planThread } from './plan.js'
@@ -14,21 +14,14 @@ import { postAnswer, reportPost } from './posts.js'
 import {
   closestRule,
   defaultRules,
-  describeComparison,
   doneWith,
-  failedIn,
-  fieldValue,
-  implicitWhere,
   isAwayworkPr,
   isLoop,
-  isMatch,
   matches,
   type Ranked,
   rank,
   ruleFor,
-  TOP,
   waitsOn,
-  within,
 } from './queue.js'
 import type { Moved } from './report.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
@@ -46,6 +39,15 @@ import type {
   Where,
   WhereValue,
 } from './types.js'
+import {
+  describeComparison,
+  failedIn,
+  fieldValue,
+  implicitWhere,
+  isMatch,
+  TOP,
+  within,
+} from './where.js'
 
 export interface PlannedUnit {
   unit: Unit
