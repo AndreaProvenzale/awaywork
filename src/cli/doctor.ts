@@ -33,7 +33,8 @@ import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { describeAllowance, type Status, statusMarker } from './format.js'
-import { gitRoot, staleSchedules } from './schedule.js'
+import { gitRoot } from './git-root.js'
+import { staleSchedules } from './schedule.js'
 
 interface Check {
   status: Status

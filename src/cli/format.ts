@@ -1,5 +1,4 @@
 import { stripVTControlCharacters, styleText } from 'node:util'
-import { MAX_ATTEMPTS } from '../core/attempts.js'
 import { type Allowance, pct, presenceLine } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import { cardRepo, unpassed } from '../core/fanout.js'
@@ -11,6 +10,7 @@ import {
   type SkipKind,
   shortRef,
 } from '../core/foreman.js'
+import { MAX_ATTEMPTS } from '../core/max-attempts.js'
 import { isCheck, openedChain } from '../core/plan.js'
 import {
   bounds,

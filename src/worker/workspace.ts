@@ -17,15 +17,14 @@ import { dirname, join, relative, resolve, sep } from 'node:path'
 import { execa } from 'execa'
 import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
-import { MAX_ATTEMPTS } from '../core/attempts.js'
 import { describeCondition } from '../core/condition.js'
 import { taskMarkdown } from '../core/fanout.js'
 import { type LoopRound, slug } from '../core/foreman.js'
 import { gitUnrestored, markGitRestored } from '../core/launch.js'
+import { MAX_ATTEMPTS } from '../core/max-attempts.js'
 import { planContract, taskPrUrls } from '../core/plan.js'
 import { assemblePrompt } from '../core/prompt.js'
 import type { Ctx, Deliver, Forge, Item, Provider, Source, Unit } from '../core/types.js'
-import { contextSecrets } from './context.js'
 import type { Judged } from './gates.js'
 
 /** Context, output and prompt live here inside the clone; git ignores it. */
@@ -427,23 +426,6 @@ export async function gateEnv(
     ...(start && { GIT_ATTR_SOURCE: start }),
     GIT_CONFIG_GLOBAL: file,
   }
-}
-
-/** Every secret the config names, for `workerEnv` to withhold. */
-export function configSecrets(
-  config: Config,
-  providers: Record<string, Provider>,
-  sources: Record<string, Source>,
-): string[] {
-  return [
-    ...Object.values(providers).flatMap((p) => p.secrets),
-    ...Object.entries(config.sources).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
-    ...contextSecrets(config),
-    ...(config.notify?.secrets ?? []),
-    ...(config.store?.secrets ?? []),
-    ...Object.values(config.repos).flatMap((r) => r.secrets),
-    ...Object.values(config.mcp).flatMap((s) => s.secrets),
-  ]
 }
 
 /** The skill copies awaywork made in each clone, which a chain's later steps replace rather than keep. Per process. */

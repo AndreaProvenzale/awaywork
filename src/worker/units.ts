@@ -78,6 +78,7 @@ import { notifyUnit } from './notify.js'
 import type { Outcome } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
+import { configSecrets } from './secrets.js'
 import { maskSecrets, runSetup } from './setup.js'
 import {
   describeLoop,
@@ -112,7 +113,6 @@ import {
 } from './sync.js'
 import { shortage } from './watchdog.js'
 import {
-  configSecrets,
   copyOut,
   gateEnv,
   notSymlink,
