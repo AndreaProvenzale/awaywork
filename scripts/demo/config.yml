@@ -1,0 +1,20 @@
+providers: [claude]
+sources:
+  github: { repos: [acme/*] }
+  tracker:
+    command: node tracker.mjs
+    write: node tracker.mjs write
+    fields: [column]
+queue:
+  - skill: fix
+    source: github
+    where: { mine: true, checks: failing }
+  - skill: review
+    source: github
+    where: { review_requested: true }
+  - skill: implement
+    source: github
+    where: { type: issue, label: awaywork }
+  - skill: implement
+    source: tracker
+    where: { column: Ready }

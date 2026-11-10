@@ -69,6 +69,8 @@ awaywork doctor   # the config, binaries, credentials, quota, sources
 awaywork plan
 ```
 
+![awaywork plan loading its steps and showing the next run's units, then awaywork report on the night's run: a review report opened and a draft PR's diff](/demo/quickstart.gif)
+
 `plan` reads your sources and each provider's quota and shows what a run would do, without running an agent. In a terminal it opens at once and shows each step as it loads:
 
 ```

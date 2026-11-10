@@ -23,6 +23,8 @@ awaywork run --unit <item>    # one item for real
 awaywork schedule install     # asks where: launchd, systemd, cron, GitHub Actions or a container
 ```
 
+![awaywork plan loading its steps and showing the next run's units, then awaywork report on the night's run: a review report opened and a draft PR's diff](https://andreaprovenzale.github.io/awaywork/demo/quickstart.gif)
+
 `awaywork report` opens what a run left. Arrow to a unit, `⏎` reads it, `o` opens its PR:
 
 ```
