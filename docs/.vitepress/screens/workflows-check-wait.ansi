@@ -1,0 +1,6 @@
+$ awaywork plan --skipped
+Needs you 1
+  ENG-2101/api: waiting for review: awaywork PR https://github.com/acme/backend/pull/41 is open
+Skipped 2: 1 fanned_out, 1 waiting_for_task
+  ENG-2101: fanned out: api PR open, web waits for api's check Vercel Preview
+  ENG-2101/web: waiting for api's check Vercel Preview (pending)

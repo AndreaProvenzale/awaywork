@@ -1,0 +1,4 @@
+$ awaywork plan --rules
+Queue
+  #1  review  type=pr mine=true state=merged closed:newer_than=14d deliver=report
+       85 taken: acme/api#329, acme/api#328, acme/api#327, …

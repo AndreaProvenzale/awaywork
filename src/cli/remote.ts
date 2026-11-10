@@ -188,14 +188,31 @@ async function overSsh(args: string[], url: string): Promise<number> {
   })
   const { exitCode, originalMessage } = await ssh
   clearTimeout(hold)
-  if (exitCode === 255)
-    return fail(`can't reach ${at}: ${held.trim().split('\n').at(-1)?.trim() || 'ssh exited 255'}`)
-  if (exitCode === 127)
-    return fail(
-      `${at}: awaywork isn't on the box's PATH for non-interactive ssh; install it and node system-wide there, or link both into /usr/local/bin`,
-    )
+  const failed = sshFailure(url, exitCode, held)
+  if (failed) return fail(failed)
   flush()
   return exitCode ?? fail(`can't reach ${at}: ${originalMessage}`)
+}
+
+/** What a call over ssh says when ssh exits 255, failing itself, or 127, the box missing awaywork or node; `stderr` is ssh's. */
+export function sshFailure(url: string, exitCode: number | undefined, stderr: string) {
+  const at = `AWAYWORK_REMOTE (${url})`
+  if (exitCode === 255)
+    return `can't reach ${at}: ${stderr.trim().split('\n').at(-1)?.trim() || 'ssh exited 255'}`
+  if (exitCode === 127)
+    return `${at}: awaywork isn't on the box's PATH for non-interactive ssh; install it and node system-wide there, or link both into /usr/local/bin`
+}
+
+/** What the box says to a call over ssh, `via` its remote, while its daemon has no token: its env file `env` has none. */
+export const noBoxToken = (via: string, env: string) =>
+  `AWAYWORK_REMOTE (${via}): the box's daemon isn't serving, the box's ${env} has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch`
+
+/** What a 401 from the daemon says: on the box, a call `via` ssh. */
+export function tokenRefused(url: string, via?: string) {
+  const at = `AWAYWORK_REMOTE (${via ?? url})`
+  return via
+    ? `${at}: the box's daemon runs with another AWAYWORK_REMOTE_TOKEN than its env file; restart awaywork watch there`
+    : `${at} refused AWAYWORK_REMOTE_TOKEN`
 }
 
 /** On the box, a call that came over ssh, `[via, ...args]` as base64url JSON: forwarded to this box's daemon until the laptop's end goes. */
@@ -207,10 +224,7 @@ async function fromSsh(word = '', url = '', token = ''): Promise<number> {
   if (!Array.isArray(call) || !call.length || !call.every((a) => typeof a === 'string'))
     return fail(`awaywork ${FROM_SSH}: not a call as awaywork sends it over ssh`)
   const [via, ...args] = call as string[]
-  if (!token)
-    return fail(
-      `AWAYWORK_REMOTE (${via}): the box's daemon isn't serving, the box's ${envFile} has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch`,
-    )
+  if (!token) return fail(noBoxToken(via as string, envFile))
   // ssh passes no Ctrl-C without a terminal, but the laptop's end going closes stdin.
   process.stdin.once('end', () => process.exit(130)).resume()
   const code = await forward(args, { url, token }, via)
@@ -242,12 +256,7 @@ export async function forward(
         : `can't reach ${at}: ${reason}`,
     )
   }
-  if (res.status === 401)
-    return fail(
-      via
-        ? `${at}: the box's daemon runs with another AWAYWORK_REMOTE_TOKEN than its env file; restart awaywork watch there`
-        : `${at} refused AWAYWORK_REMOTE_TOKEN`,
-    )
+  if (res.status === 401) return fail(tokenRefused(remote.url, via))
   const unlike = `answered HTTP ${res.status}, not as awaywork watch does`
   if (!res.ok || !res.body) {
     const body: { error?: string } = await res.json().catch(() => ({}))

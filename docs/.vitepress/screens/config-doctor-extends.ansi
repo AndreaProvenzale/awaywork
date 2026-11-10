@@ -1,0 +1,2 @@
+$ awaywork doctor --config roles/developer.yml
+[31m✖[39m  team/base.yml: windows[0].end: expected a time like "01:00"

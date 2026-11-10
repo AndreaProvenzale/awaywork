@@ -407,7 +407,7 @@ export function githubThreads(base: Exec = exec, host?: string): ThreadHost {
         'api',
         `repos/${repo}/issues`,
         '-f',
-        `title=${item.key}: ${item.title}`,
+        `title=${threadTitle(item)}`,
         '-f',
         `body=${threadBody(item)}`,
         '-f',
@@ -676,8 +676,11 @@ const startedByTrusted = (t: { comments: Nodes<By> }) => {
   return first !== undefined && isTrusted(first)
 }
 
+/** The title of the issue a rule's thread opens for `item`. */
+export const threadTitle = (item: Pick<Item, 'key' | 'title'>) => `${item.key}: ${item.title}`
+
 /** Where text from someone else was left out, so the agent and you know. */
-const hiddenNote = (count: number, one: string, many: string) =>
+export const hiddenNote = (count: number, one: string, many: string) =>
   count
     ? `\n_Hidden: ${count} ${count > 1 ? many : one} from outside the repo's owners, members and collaborators._\n`
     : ''

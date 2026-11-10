@@ -1,0 +1,12 @@
+## Needs a decision
+
+### Gates (from scripts)
+
+- schema: migrations/20261023_add_vat_mode.ts
+- routes: + GET /exports/vat   + POST /exports/vat/retry
+
+### Judge
+
+- risk: VAT rounding moved from the invoice total to each line → totals change on open invoices
+
+---

@@ -28,7 +28,7 @@ import { interactive, itemCommands, openScreen } from './browse.js'
 import { reportConfigError } from './config-error.js'
 import { planJson } from './format/json.js'
 import { formatPlan } from './format/plan.js'
-import { formatRules, rulesJson } from './format/rules.js'
+import { formatQueue, rulesJson } from './format/rules.js'
 import { formatSkipped } from './format/skips.js'
 import { clip, warningLines } from './format/terminal.js'
 import { ambiguous, formatWhy, namedItems } from './format/why.js'
@@ -262,11 +262,7 @@ async function describeRules(config: Config, json = false): Promise<string> {
   const masked = warnings.map((w) => maskSecrets(w, secrets, ctx.env))
   const rules = config.queue ?? defaultRules(Object.keys(config.sources))
   if (json) return rulesJson(rules, items, !config.queue, masked)
-  return [
-    ...warningLines(masked),
-    config.queue ? 'Queue' : 'Queue (default: no queue in config)',
-    ...formatRules(rules, items).map((line) => `  ${line}`),
-  ].join('\n')
+  return [...warningLines(masked), ...formatQueue(rules, items, !config.queue)].join('\n')
 }
 
 function configuredSources(config: Config): Record<string, Source> {
@@ -301,7 +297,7 @@ export async function collectItems(
         onProgress?.({ name: id, state: 'done', detail: counted(read.length, 'item') })
       },
       (e: Error) => {
-        ctx.log(`source ${id}: ${sourceFailure(e)}`)
+        ctx.log(sourceWarning(id, e))
         opts.failed?.(id, e)
         onProgress?.({ name: id, state: 'failed', detail: firstLine(e.message) })
       },
@@ -388,6 +384,10 @@ function readForThread(item: Item, queue: Rule[]): boolean {
 }
 
 const FAILURE_LINE = 300
+
+/** The warning a source that couldn't be read leaves. */
+export const sourceWarning = (id: string, e: Error & { stderr?: unknown }) =>
+  `source ${id}: ${sourceFailure(e)}`
 
 /** An error's first line and its stderr's last error line, else its last: a crashing script's whole stderr would bury the warning. */
 export function sourceFailure(e: Error & { stderr?: unknown }): string {

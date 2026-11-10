@@ -1,0 +1,3 @@
+  [1m   item     skill  status  result[22m
+  1  api#191  sync   [32mdone  [39m  pushed onto https://github.com/acme/api/pull/191, gate resolved fired
+  [2m   - resolved: resolve-probe/a.txt[22m

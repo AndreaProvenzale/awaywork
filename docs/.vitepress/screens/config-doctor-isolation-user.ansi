@@ -1,0 +1,6 @@
+[31m✖[39m  isolation: user, but can't run as the awaywork user (sudo: unknown user awaywork); make the worker user once:
+    sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin awaywork
+    echo awaywork | sudo tee -a /etc/cron.deny /etc/at.deny
+    sudo visudo -f /etc/sudoers.d/awaywork   # with these two lines:
+    runner ALL=(awaywork) NOPASSWD:SETENV: ALL
+    runner ALL=(root) NOPASSWD: /usr/bin/chown -R -h -P awaywork\: /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9], /usr/bin/chown -R -h -P 1001\:1001 /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]

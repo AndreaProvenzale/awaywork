@@ -1,0 +1,2 @@
+warning: source chores: Command failed with exit code 1: ./chores.sh
+  Error: CHORES_TOKEN is not set

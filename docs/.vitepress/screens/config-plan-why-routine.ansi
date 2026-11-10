@@ -1,0 +1,5 @@
+$ awaywork plan --why sentry-triage-20261026-0900
+routines sentry-triage-20261026-0900  Triage last week's Sentry issues
+  https://github.com/acme/api
+  routine sentry-triage, due mon 2026-10-26 09:00; next mon 2026-11-02 09:00
+  [...]

@@ -1,0 +1,10 @@
+octocat commented
+
+Before I write code for "Add rate limits":
+
+1. Per user or per API key? The issue says "per client", and src/auth.ts has both.
+2. Should a burst over the limit get a 429, or wait for the bucket to refill?
+
+Reply here to answer: awaywork's next run takes this up again with your reply.
+
+— awaywork

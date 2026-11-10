@@ -1,0 +1,11 @@
+$ awaywork run --unit CH-1
+Queued CH-1 as run 20261104-220657; awaywork report 20261104-220657 shows it once it ends
+$ awaywork skip chores:CH-1 --until 2030-01-01
+skipped with awaywork skip chores:CH-1 until 2030-01-01
+$ awaywork report 20261104-220657 --unit CH-1
+[1m1  CH-1  Write a hello report[22m
+  status  done
+  files   /home/away/.local/state/awaywork/runs/20261104-220657/units/ch-1/1-plan/worker.log
+          [...]
+
+Hello from the stand-in agent, as awaywork

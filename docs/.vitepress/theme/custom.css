@@ -1,0 +1,13 @@
+/* Shiki sets these for bold and inverse ANSI in `ansi` blocks; VitePress applies only the colors. */
+.vp-code span {
+  font-weight: var(--shiki-light-font-weight, inherit);
+}
+.dark .vp-code span {
+  font-weight: var(--shiki-dark-font-weight, inherit);
+}
+.vp-code span[style*="--shiki-light-bg"] {
+  background-color: var(--shiki-light-bg);
+}
+.dark .vp-code span[style*="--shiki-dark-bg"] {
+  background-color: var(--shiki-dark-bg);
+}

@@ -283,9 +283,13 @@ async function detachRun(unit: string): Promise<number> {
     await rmdir(runDir).catch(() => {})
     return 1
   }
-  console.log(`Started ${unit} as run ${runId}; awaywork report ${runId} shows it once it ends`)
+  console.log(detachedLine(unit, runId))
   return 0
 }
+
+/** What `run --detach` says once the unit started. */
+export const detachedLine = (unit: string, runId: string) =>
+  `Started ${unit} as run ${runId}; awaywork report ${runId} shows it once it ends`
 
 /** A run's id: its start in UTC, as `YYYYMMDD-HHMMSS`. */
 export const newRunId = () =>
@@ -341,6 +345,9 @@ const inSaving = serial()
  * Plans and runs the units, writes the run's report and attempts, and notifies, a soon
  * run per unit only; false when the options name no unit. The caller holds the run lock.
  */
+/** A plan warning as `run` logs it, its later lines indented under the first. */
+export const warningLine = (w: string) => `warning: ${w.replaceAll('\n', '\n  ')}`
+
 export async function executeRun(a: RunArgs): Promise<boolean> {
   const { config, path, runId, log } = a
   const badSkill = a.skill !== undefined && (await skillRefusal(a.skill, skillsDirOf(path)))
@@ -360,7 +367,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     moves: { dryRun: !!a.dryRun, log: (line) => log.info(`  ${line}`, true) },
   })
   const { warnings, ctx, sources, secrets } = planned
-  const warned = warnings.map((w) => `warning: ${w.replaceAll('\n', '\n  ')}`)
+  const warned = warnings.map(warningLine)
   for (const line of warned) log.error(line)
   const refuse = (why: string) => {
     log.error(why)
@@ -483,6 +490,13 @@ interface Run {
   uploaded?: UploadedRun
 }
 
+/** A run's `report --list` line, tagged with the workflow that uploaded it. */
+export const listedRun = (
+  id: string,
+  report: string | undefined,
+  uploaded?: Pick<UploadedRun, 'workflow'>,
+) => runLine(id, report) + (uploaded ? `  (github: ${uploaded.workflow})` : '')
+
 /** Prints a run's report, or lists the last 20; inside a control repo, with the runs its workflows uploaded. */
 export async function printReport(
   id: string | undefined,
@@ -512,10 +526,7 @@ export async function printReport(
     const fetched = last.map((r) => r.uploaded && fetchRun(r.uploaded, r.dir, run))
     const failed = (await Promise.allSettled(fetched)).find((f) => f.status === 'rejected')
     if (failed) warnRemote(failed.reason)
-    for (const r of last) {
-      const tag = r.uploaded ? `  (github: ${r.uploaded.workflow})` : ''
-      console.log(runLine(r.id, await read(r)) + tag)
-    }
+    for (const r of last) console.log(listedRun(r.id, await read(r), r.uploaded))
     return
   }
   // A run still going, or one that died, has no report.json: the last one that does stands for what reads it.
