@@ -19,6 +19,8 @@ with:
 `awaywork doctor` validates what the schema cannot, such as
 `where` keys and skill names.
 
+::: v-pre
+
 ## Top level
 
 | Key | Type | Default | Description |
@@ -614,3 +616,5 @@ What comes back into a unit's context when it reads its item's thread.
 |---|---|---|---|
 | `max_mb` | number | `10` | At most this many MB of a unit's files come back; the rest stay links |
 | `files` | string[] | `[]` | Globs of the file names that come back, e.g. ["*.md", "*.yml"]; default every file |
+
+:::
