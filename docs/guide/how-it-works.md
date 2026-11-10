@@ -4,12 +4,27 @@ description: How a run works, from items to units, the queue of rules, deduplica
 
 # How it works
 
-```
-collect ──> match ──> dedupe ──> budget ──> dispatch ──> publish ──> report
-(sources)   (queue    (one unit  (quota     (workers,    (forge,     (morning
-             rules ->  per        probes,    one per      no model)   report)
-             skills)   feature)   caps)      unit)
-└──────────────── foreman, no model call ────────────────┘
+A run collects items from your sources, matches each to a queue rule's skill, dedupes them into one unit per feature, budgets the quota, dispatches a worker per unit, publishes what it left on your forge and tracker, and reports.
+
+```mermaid
+flowchart TD
+  subgraph before["awaywork, plain code, no model"]
+    collect["collect: items from your sources"]
+    match["match: queue rules pick a skill"]
+    dedupe["dedupe: one unit per feature"]
+    budget["budget: quota probes and caps"]
+  end
+  subgraph workers["workers: the only model calls"]
+    worker["one per unit: the agent CLI<br/>in a fresh clone, no forge token"]
+  end
+  subgraph after["awaywork, plain code, no model"]
+    publish["publish: push, open the PR, post on your item"]
+    report["report: the morning report"]
+  end
+  collect --> match --> dedupe --> budget
+  budget -- dispatch --> worker
+  worker -- "commits and .away/out/" --> publish
+  publish --> report
 ```
 
 Only the workers call a model. Everything else is plain code you can inspect with `awaywork plan` before a run.

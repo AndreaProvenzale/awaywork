@@ -13,6 +13,17 @@ You log off with red CI, 11 PR comments and a QA ticket that just says "broken o
 
 awaywork is a CLI. It pulls items from your forge and task tracker, and rules you write pick what runs and with which skill. The vendors' stock agent CLIs do the work headless, with your login. You get draft PRs, reports and questions on your own items, and you decide at the points that matter: approving a plan, answering a question, settling what a gate flagged, merging.
 
+```mermaid
+flowchart LR
+  subgraph awaywork["awaywork: plain code, no model"]
+    direction TB
+    pick["collect items, match rules,<br/>budget the quota"]
+    publish["push the PR, post on your item"]
+  end
+  pick -- dispatch --> worker["worker: your agent CLI<br/>in a clone, no forge token"]
+  worker -- commits --> publish
+```
+
 ## Quick start
 
 ```sh

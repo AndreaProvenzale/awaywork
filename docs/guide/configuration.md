@@ -526,6 +526,19 @@ queue:
 
 Types, defaults and full meanings are in the [reference](../reference/config.md#queue).
 
+An item goes down the list and stops at the first rule whose `source` and `where` it matches. One that matches none is skipped as `no_rule`, and `plan --why <key>` names the closest rule and the conditions it failed:
+
+```mermaid
+flowchart TD
+  item["An item from a source"] --> r1{"Rule 1: source and where match?"}
+  r1 -- yes --> s1["Rule 1's skill and deliver"]
+  r1 -- no --> r2{"Rule 2 matches?"}
+  r2 -- yes --> s2["Rule 2's skill and deliver"]
+  r2 -- no --> rn{"... the last rule matches?"}
+  rn -- yes --> sn["That rule's skill and deliver"]
+  rn -- no --> skip["Skipped as no_rule:<br/>plan --why names the closest rule"]
+```
+
 ### `where`
 
 ```yaml

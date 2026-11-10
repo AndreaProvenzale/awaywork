@@ -21,3 +21,10 @@ watch(isDark, draw)
 <template>
   <div class="mermaid" v-html="svg" />
 </template>
+
+<style>
+/* Mermaid sizes labels at its own line height; the doc's taller one clipped them. */
+.vp-doc .mermaid p {
+  line-height: inherit;
+}
+</style>
