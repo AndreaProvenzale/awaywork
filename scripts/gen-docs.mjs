@@ -47,8 +47,8 @@ ${sections.join('\n\n')}
 `
 }
 
-// Vue compiles the page, so a bare <name> outside a code span would open an element.
-const literalTags = (s) => s.replace(/`[^`]*`|</g, (m) => (m === '<' ? '\\<' : m))
+// Vue compiles the page, so a bare <name> outside a code span would open an element; v-pre below stops {{ }}.
+const literalTags = (s) => s.replace(/(`+).*?\1|\\?</gs, (m) => (m === '<' ? '\\<' : m))
 
 const cell = (s) => literalTags(String(s)).replaceAll('|', '\\|').replaceAll('\n', ' ')
 
@@ -133,7 +133,11 @@ with:
 \`awaywork doctor\` validates what the schema cannot, such as
 \`where\` keys and skill names.
 
+::: v-pre
+
 ${unique.join('\n\n')}
+
+:::
 `
 }
 
