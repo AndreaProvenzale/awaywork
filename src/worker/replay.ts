@@ -13,20 +13,15 @@ import {
   lostToWorker,
   workerHome,
   workerRoot,
-} from '../core/launch.js'
+} from '../core/isolation.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
+import { commandEnv, workerEnv } from './env.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
+import { copyOut } from './safe-files.js'
+import { configSecrets } from './secrets.js'
 import { runSetup } from './setup.js'
-import {
-  commandEnv,
-  configSecrets,
-  copyOut,
-  inClone,
-  prepareWorkspace,
-  restoreGitConfig,
-  WORK_DIR,
-  workerEnv,
-} from './workspace.js'
+import { WORK_DIR } from './work-dir.js'
+import { inClone, prepareWorkspace, restoreGitConfig } from './workspace.js'
 
 /** What a chain's first step leaves in `units/<id>/1-<skill>/replay.json` so it can be rebuilt: the clone's commit before any worker ran. */
 export interface ReplayState {

@@ -7,7 +7,7 @@ import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '../src/core/types.js'
 import { claudeProvider, toEvents } from '../src/providers/claude.js'
-import { commandEnv, workerEnv } from '../src/worker/workspace.js'
+import { commandEnv, workerEnv } from '../src/worker/env.js'
 import { providerContract } from './contracts/provider.contract.js'
 import { fakeItem } from './fakes/items.js'
 

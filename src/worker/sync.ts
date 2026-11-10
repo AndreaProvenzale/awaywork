@@ -4,8 +4,10 @@ import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import { counted } from '../core/report.js'
 import { git } from './checks.js'
+import { writeOutput } from './safe-files.js'
 import { addTo } from './steps.js'
-import { inClone, outputFile, WORK_DIR, writeOutput } from './workspace.js'
+import { outputFile, WORK_DIR } from './work-dir.js'
+import { inClone } from './workspace.js'
 
 /** What awaywork's own merge of a PR's base did: made the merge `commit`, stopped on conflicting `paths` of the base at `head`, `byHand` naming what of them no worker can resolve, or found nothing to merge. */
 export type Merge =

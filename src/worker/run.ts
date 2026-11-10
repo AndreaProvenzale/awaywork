@@ -1,5 +1,5 @@
 import { type Allowance, pct } from '../core/budget.js'
-import { asWorker } from '../core/launch.js'
+import { asWorker } from '../core/isolation.js'
 import type { Job, Provider, Quota } from '../core/types.js'
 import { startWatchdog, type Watchdog } from './watchdog.js'
 

@@ -11,7 +11,7 @@ import {
   postState,
   resultOf,
   resultStatus,
-} from './footer.js'
+} from './comments.js'
 import { globToRegExp } from './glob.js'
 import type { Item, TaskPr } from './types.js'
 

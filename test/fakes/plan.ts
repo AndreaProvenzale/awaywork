@@ -1,5 +1,5 @@
 import { expect } from 'vitest'
-import { markComment, planComment } from '../../src/core/footer.js'
+import { markComment, planComment } from '../../src/core/comments.js'
 import { planState, planYaml } from '../../src/core/plan.js'
 import type { Item } from '../../src/core/types.js'
 
