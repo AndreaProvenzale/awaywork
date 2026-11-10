@@ -16,7 +16,7 @@ import { fakeForge } from './fakes/forge.js'
 import { githubPr, issue } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
 import { fakeSource } from './fakes/source.js'
-import { committer, git, looper, originForge, quota, week, worker } from './fakes/units.js'
+import { committer, git, looper, loopRun, originForge, quota, week, worker } from './fakes/units.js'
 
 it("starts each of a repo's draft PRs from the default branch, not on this run's last one", async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-stack-'))
@@ -734,6 +734,26 @@ repos:
   ])
   expect(forge.stacked).toEqual([[link.url, 'https://example.com/acme/api/pull/away/acme-api-9']])
   expect(await readFile(join(root, 'run/units/acme-api-9/1-fix/setup.txt'), 'utf8')).toBe('\n')
+})
+
+it("stacks a chain's draft PR on an awaywork PR a rule took up, whichever step committed", async () => {
+  const pr = githubPr(9, { ours: true })
+  const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
+  const stackedOn = async (then: string) => {
+    const { opened } = await loopRun(
+      `queue: [{ skill: review, where: { type: pr, ours: true }, then: ${then} }]`,
+      [{ ...pr, linkedPrs: [link] }],
+      looper({ 'acme-api-9-review-1': 'approve' }),
+    )
+    return opened.map((o) => [o.head, o.base, o.body.includes(`Stacked on ${link.url}`)])
+  }
+
+  expect(await stackedOn('[{ skill: fix, when: { verdict: changes } }, implement]')).toEqual([
+    ['away/acme-api-9', 'away/acme-api-5', true],
+  ])
+  expect(
+    await stackedOn('[{ loop: [review, fix], until: { verdict: approve }, max: 1 }, implement]'),
+  ).toEqual([['away/acme-api-9', 'away/acme-api-5', true]])
 })
 
 it("matches changed against a taken-up awaywork PR's branch, not its own commits", async () => {

@@ -7,7 +7,7 @@ import { expect, it, vi } from 'vitest'
 import { bin } from '../src/config/paths.js'
 import { recordAttempts } from '../src/core/attempts.js'
 import { formatReport, runLine } from '../src/core/report.js'
-import type { Provider, PrRef } from '../src/core/types.js'
+import type { Provider } from '../src/core/types.js'
 import { fakeItem, githubPr, issue } from './fakes/items.js'
 import { looper, loopRun } from './fakes/units.js'
 
@@ -526,26 +526,6 @@ it("doesn't write a check's log through a symlink a round left in the clone", as
   expect(report.results[1]?.status).toBe('error')
   expect(report.results[1]?.reason).toBe('.away/out/check.log in the clone is a symlink')
   expect(await readFile(outside, 'utf8')).toBe('mine\n')
-})
-
-it("stacks a chain's draft PR on an awaywork PR a rule took up, whichever step committed", async () => {
-  const pr = githubPr(9, { ours: true })
-  const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
-  const stackedOn = async (then: string) => {
-    const { opened } = await loopRun(
-      `queue: [{ skill: review, where: { type: pr, ours: true }, then: ${then} }]`,
-      [{ ...pr, linkedPrs: [link] }],
-      looper({ 'acme-api-9-review-1': 'approve' }),
-    )
-    return opened.map((o) => [o.head, o.base, o.body.includes(`Stacked on ${link.url}`)])
-  }
-
-  expect(await stackedOn('[{ skill: fix, when: { verdict: changes } }, implement]')).toEqual([
-    ['away/acme-api-9', 'away/acme-api-5', true],
-  ])
-  expect(
-    await stackedOn('[{ loop: [review, fix], until: { verdict: approve }, max: 1 }, implement]'),
-  ).toEqual([['away/acme-api-9', 'away/acme-api-5', true]])
 })
 
 it("puts back a loop clone's git config after each worker, and refuses a borrowed object store", async () => {
