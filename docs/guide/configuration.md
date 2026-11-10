@@ -304,7 +304,11 @@ linear:
 
 `github` lists your login and orgs; `asana` the workspaces, then the configured one's projects and sections; `jira` the projects and statuses, once `site` and `email` are set.
 
-::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
+::: warning Experimental
+
+`github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+
+:::
 
 ### Tracker tokens
 
@@ -343,15 +347,7 @@ sources:
     repo_map: { ENG: acme/api }    # project key -> workspace/name on Bitbucket
 ```
 
-It goes through Atlassian's `twg` CLI, and git over SSH with your keys. You need `twg` logged in (`twg setup bitbucket`, or a token in `TWG_BBC_TOKEN`) and an SSH key git can use without a passphrase prompt, since launchd and cron have no terminal; a key in an agent your scheduler sees works too. `doctor` checks both:
-
-```text
-ok    twg: 1.3.8
-ok    twg acme
-ok    git over ssh: acme/api
-```
-
-`twg acme` is `twg bb workspace get` per workspace; `git over ssh` a `git ls-remote` with `-o BatchMode=yes` added to git's ssh command (`GIT_SSH_COMMAND`, else `core.sshCommand`, else `ssh`; a `GIT_SSH` wrapper runs as is), so a prompting key fails here, not at 3am. It warns when twg keeps its login anywhere but a file ([Safety](./safety.md#what-the-agent-can-reach)).
+It goes through Atlassian's `twg` CLI, and git over SSH with your keys. You need `twg` logged in (`twg setup bitbucket`, or a token in `TWG_BBC_TOKEN`) and an SSH key git can use without a passphrase prompt, since launchd and cron have no terminal; a key in an agent your scheduler sees works too. `doctor` checks both (details at the end of this section).
 
 A run ends as on GitHub, with a draft PR whose footer links back to the item. `away/{key}` puts the Jira key in the branch, which Jira's development panel links on. [Plans](./workflows.md#plans) work too: twg finds task PRs, reads files a task [ships](./workflows.md#across-repos), and the build statuses a task [waits on](./workflows.md#waiting-on-a-check). Not yet:
 
@@ -362,6 +358,16 @@ A run ends as on GitHub, with a draft PR whose footer links back to the item. `a
 - **GitHub Actions or a container:** `schedule install` refuses both; use launchd, systemd or cron.
 - **Fork PRs:** no pull refs to fetch, so the unit fails.
 - `github` and `bitbucket` together: one forge per config.
+
+What `doctor` prints:
+
+```text
+ok    twg: 1.3.8
+ok    twg acme
+ok    git over ssh: acme/api
+```
+
+`twg acme` is `twg bb workspace get` per workspace; `git over ssh` a `git ls-remote` with `-o BatchMode=yes` added to git's ssh command (`GIT_SSH_COMMAND`, else `core.sshCommand`, else `ssh`; a `GIT_SSH` wrapper runs as is), so a prompting key fails here, not in a scheduled run. It warns when twg keeps its login anywhere but a file ([Safety](./safety.md#what-the-agent-can-reach)).
 
 ### Routines
 
@@ -491,7 +497,7 @@ Every config command that touches a clone. All run in a shell outside the model,
 | `repos.<repo>.setup` | Once per unit, before the first agent; not for later steps, nor on an untrusted author's PR | Its repo's `secrets`; none on someone else's PR or an awaywork branch a rule took up | Non-zero, over 15 minutes or the window's end skips the unit, the tail in the report |
 | `sources.<id>.context.command` | Per item, before setup; not on a dry run | Its own `secrets` | Logged; the unit runs without `extra/`. Over two minutes, the window's end, over 1 MB, or a symlink or non-file in its output count as failures |
 | `repos.<repo>.test` | Never by awaywork: the agent runs it if it wants | The agent's: its provider's and its rule's MCP servers' | Up to the agent |
-| `repos.<repo>.verify` | Once per chain that ends with commits, before publishing, once per commit; not for `report` | None | Its tail in the PR body or push summary; a `pr` PR opens as a draft; still published |
+| `repos.<repo>.verify` | Once per chain that ends with commits, before publishing; not for `report` | None | Its tail in the PR body or push summary; a `pr` PR opens as a draft; still published |
 | `when.command` | Before a step's agent; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain, which publishes |
 | `until.command` | After every loop step; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain; a loop ending on a failure puts the tail in the PR body |
 | `gates.<name>.command` | Once per chain with commits, after `verify`; not for `report` or `pending_review`, nor a dry run. A plan or report rule's own gate after its step, with `$AWAYWORK_OUT_DIR` | None | The gate fires: stdout in the decision card, a `pr` PR opens as a draft, a plan or report waits. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted PR ([Gates](./workflows.md#gates)) |
@@ -577,7 +583,11 @@ awaywork's own PRs match only rules whose top-level `where` names `ours` (in `an
   where: { type: pr, mine: true, ours: true, my_unresolved_threads: { not: 0 } }
 ```
 
-The new PR stacks on awaywork's, on a branch named after it (`away/acme-api-9` for #9). Merge it, and the next pickup takes `-2`; while it's open or closed unmerged, #9 is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`. Resolve the threads it answered, or the rule takes #9 up again for them. The rule runs on threads you started, but the agent reads every unresolved one. `ours` is the GitHub source's: a custom source's `ours` field holds nothing back.
+- The new PR stacks on awaywork's, on a branch named after it (`away/acme-api-9` for #9).
+- Merge it, and the next pickup takes `-2`. While it's open or closed unmerged, #9 is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`.
+- Resolve the threads it answered, or the rule takes #9 up again for them.
+- The rule runs on threads you started, but the agent reads every unresolved one.
+- `ours` is the GitHub source's: a custom source's `ours` field holds nothing back.
 
 #### A plan's tasks
 
@@ -702,7 +712,7 @@ Details:
 `notify.command` runs as you, with your environment, on two events in `AWAYWORK_EVENT`:
 
 - **`run`**, when a run ends, dry runs included: `AWAYWORK_REPORT` is the morning report's path, with `report.json` beside it, and `AWAYWORK_RUN_ID` the run.
-- **`unit`**, for every step of a unit once it published, before the next unit. None on a dry run; Ctrl-C fires no more.
+- **`unit`**, for every step of a unit once it published, before the next unit. None on a dry run; Ctrl-C stops the running one and fires no more.
 
 ```yaml
 notify:                         # a line per step
@@ -741,7 +751,7 @@ notify:
 ```
 
 - `set -e` stops at a failing `gh`; the next step tries again.
-- `--base develop` moves the base too, but not for [stacked tasks](./workflows.md#the-feature-block) or a PR stacked on an awaywork PR.
+- `--base develop` moves the base too. Leave it out on a plan's [stacked tasks](./workflows.md#the-feature-block) and on a rule that takes up an awaywork PR: their PRs sit on another PR's branch, and moving the base breaks the stack.
 - It's your token, not a worker's. A reviewer, and the CODEOWNERS a ready PR asks, get notified: treat that like a comment you'd post.
 
 ## MCP servers
