@@ -19,14 +19,14 @@ Turn what the developer wants offloaded into rules, check them on their real ite
        where: { status: Ready, labels: awaywork }
    ```
 
-   A plan or report rule takes more keys, none of them on a `planned` rule (the rest: https://andreaprovenzale.github.io/awaywork/guide/configuration.md#gates-of-a-rules-own and https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#posts-that-wait):
+   A plan or report rule takes more keys, none of them on a `planned` rule (the rest: https://andreaprovenzale.github.io/awaywork/guide/workflows.md#gates-of-a-rule-s-own and https://andreaprovenzale.github.io/awaywork/guide/workflows.md#posts-that-wait):
 
    - `wait`, `deliver: plan` or `report` only, a PR rule refuses it: the post waits for their `approve`. Default `true` on a plan, `false` on a report.
    - `gates`, the same limit: the rule's own, `{ <name>: { skill: judge } }` or `{ <name>: { command: <script> } }`, no `changed` and no name a top-level or repo gate has. One that fires makes the post wait, so `wait: false` with a judge waits only when the judge fires.
    - `post`: `summary`, the default with a `store` and an error without one, or `full`, the report inline.
    - `thread`: `item` (the default), `github` (an issue in the item's repo, assigned to them, for a source that can't write) or a custom source with `thread: true`.
 
-   `where: { approved: <skill> }` takes the items whose newest post that they approved or that went ahead is that skill's, even on a tracker awaywork can't move cards on. Top-level `store: { command, secrets, read }` is a script that keeps the files a post pins (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#store); with one, posts are lean.
+   `where: { approved: <skill> }` takes the items whose newest post that they approved or that went ahead is that skill's, even on a tracker awaywork can't move cards on. Top-level `store: { command, secrets, read }` is a script that keeps the files a post pins (https://andreaprovenzale.github.io/awaywork/guide/workflows.md#store); with one, posts are lean.
 
 5. **Check on real items.** `awaywork --config <draft> plan --rules --json` reads the sources and probes no provider. It prints:
 
