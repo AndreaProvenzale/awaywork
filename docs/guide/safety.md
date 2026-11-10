@@ -8,7 +8,7 @@ An agent working unattended on your repos is only acceptable if the worst run le
 
 In short:
 
-- **Workers hold no forge token.** Of your secrets they get only their own agent's and those of the MCP servers their rule names: [What the agent can reach](#what-the-agent-can-reach).
+- **Workers hold no forge token.** Of the secrets awaywork knows about, they get only their own agent's and those of the MCP servers their rule names: [What the agent can reach](#what-the-agent-can-reach).
 - **awaywork does every write, where the config says**, and the model never picks where its work goes: [What awaywork publishes](#what-awaywork-publishes).
 - **Not a sandbox by default.** With `isolation: none` the agent can read what you can; a worker user or a container closes most of that: [Not a sandbox](#not-a-sandbox).
 - **A watchdog** stops a unit that runs the machine low, and kills what it left running: [Resources](#resources).
@@ -36,7 +36,7 @@ Sources prefetch context into files before the agent starts, and awaywork makes 
 
 ### Setup, context and checks outside the agent
 
-- **Setup** runs before the agent, without its secret and with only its repo's `secrets`. None on someone else's PR or a branch a worker wrote: earlier in the run, an awaywork PR a rule took up, or the task PR a plan's task stacks on. On a PR by someone without write access or org membership it doesn't run. What it leaves running is stopped first.
+- **Setup** runs before the agent, without the agent's secret and with only its repo's `secrets` added, and none of those on someone else's PR or a branch a worker wrote: earlier in the run, an awaywork PR a rule took up, or the task PR a plan's task stacks on. On a PR by someone without write access or org membership, setup doesn't run at all. What it leaves running is stopped before the agent starts.
 - **Context:** a `context` command runs with its own `secrets`, in the config's folder, not the clone, so nothing the branch commits runs with them. Only the regular files it writes reach the agent: write no secret there.
 - **Checks:** `until` and `when` run the worker's code like setup on a worker's branch: no repo `secrets`, outside the agent's sandbox, as the [worker user](#a-worker-user-on-your-linux-machine) under `isolation: user` and on hosted runners, in a [container](#a-container-on-your-machine) of their own under `container`. So they don't run on an untrusted author's PR.
 
@@ -101,7 +101,7 @@ With [`isolation: user`](./configuration.md#isolation), setup, the agent and the
 - **What one unit leaves the next:** its `HOME` is a fresh `/tmp/awaywork-XXXXXX` per clone, removed with it; there's no `/home/awaywork`. An `~/.npmrc`, a Claude hook or a shim in `~/.local/bin` never reaches another repo.
 - **A swapped clone:** `/tmp` is sticky, so the worker could rename its folder and leave a link to yours. After each phase awaywork checks clone and home are the same folders (`lstat`, same inode) and closes them (`chmod -R u+rwX,go-rwx`, top folder `711` for the next phase; a fresh clone is `700`). Otherwise the clone is lost: no more phases, no git of awaywork's, nothing published.
 
-A lost clone keeps the worker's `.git`, config and hooks: run nothing in it, as with [replay's](./skills.md#try-an-edit-on-a-past-unit); `git fetch <clone> <branch>` from your checkout is safe. Tried: a worker that moved its clone or `HOME` and linked one of the developer's repos there lost the clone, and that repo's `.git/config` was untouched; `chmod 777` on the clone, its `.git` and `~` left `711`, `700` and `711`, unwritable to another local user.
+A lost clone keeps the worker's `.git`, config and hooks: run nothing in it, as with [replay's](./skills.md#try-an-edit-on-a-past-unit); `git fetch <clone> <branch>` from your checkout runs nothing of it. Tried: a worker that moved its clone or `HOME` and linked one of the developer's repos there lost the clone, and that repo's `.git/config` was untouched; `chmod 777` on the clone, its `.git` and `~` left `711`, `700` and `711`, unwritable to another local user.
 
 A real run in a Debian 12 container, a leak script as the agent, the developer's home at 755. With `none` it read the env file, the home, gh's `hosts.yml` and the ssh agent, and left a detached `sleep` running after the run. With `user`, after `chmod o-rwx ~`:
 
@@ -126,17 +126,25 @@ The sudoers lines give your user no more than that. The first runs anything as t
 - **No link followed:** `-h -P` changes links themselves, and `doctor` and `run` refuse a kernel with `fs.protected_hardlinks` off.
 - **No env:** the root line has no `SETENV`, so sudo refuses `--preserve-env=PATH` and drops `LD_PRELOAD`.
 
-Tried with only those two lines (sudo 1.9.13p3): everything but the exact commands asked for a password (`/etc/shadow`, a seventh character, `../`, a space, a second path, `-L`, `root:`, `-u root`, `-g root`); the same words split differently passed sudo and `chown` refused them; through links to `/etc` and `/etc/shadow` only the links changed, `ln /etc/shadow` failed, and 30 rounds of a loop swapping folders for links changed nothing. No file under `/etc` ended up anyone's but root's.
+Tried with only those two lines (sudo 1.9.13p3):
+
+- Everything but the exact two commands asked for a password: `/etc/shadow`, a seventh character, `../`, a space, a second path, `-L`, `root:`, `-u root`, `-g root`.
+- The same words split differently passed sudo, and `chown` refused them.
+- Through links to `/etc` and `/etc/shadow`, only the links changed; `ln /etc/shadow` failed.
+- 30 rounds of a loop swapping folders for links to `/etc` changed nothing there.
+- No file under `/etc` ended up anyone's but root's.
 
 Still open:
 
 - **The network.**
-- **The worker's own login,** in its env as it must be: `CLAUDE_CODE_OAUTH_TOKEN`, `CURSOR_API_KEY`, or a copy of your Codex `auth.json` in its `HOME`.
+- **The worker's own login,** in its env as it must be: `CLAUDE_CODE_OAUTH_TOKEN`, `CURSOR_API_KEY`, or a copy of your Codex `auth.json` in its `HOME` ([the lent Codex login](#the-lent-codex-login)).
 - **`/tmp`:** every unit is the same user, so a file left in `/tmp` or `/var/tmp` outside its folders is there for a later unit. Nothing runs it unless something looks.
 - **The machine:** localhost services answer it, and anything world-writable is a place to plant a binary you run later. Hosted runners clear that bit; on your machine `find / -xdev -perm -o+w ! -type l ! -perm -1000` lists them.
 - **Other developers:** the `chown` line reaches any awaywork clone, so one developer per worker user.
 
-The lent Codex login: awaywork has none of its own and lends the file your `codex` uses (`$CODEX_HOME/auth.json`, env file included, else `~/.codex/auth.json`). Since a refresh rotates it, awaywork saves back only a refresh (tokens and `last_refresh`), refused when the mode, API key or account differs, and only while yours is still the one lent.
+#### The lent Codex login
+
+awaywork has no Codex login of its own and lends the file your `codex` uses (`$CODEX_HOME/auth.json`, env file included, else `~/.codex/auth.json`). Since a refresh rotates it, awaywork saves back only a refresh (tokens and `last_refresh`), refused when the mode, API key or account differs, and only while yours is still the one lent.
 
 The tokens are the worker's word, though: a hostile worker can return another account's, labelled with your `account_id`, and your Codex then runs on that account, awaywork's runs and your own sessions, prompts and code included, until you `codex login` again. Codex being experimental, that ships as is; [#315](https://github.com/AndreaProvenzale/awaywork/issues/315) tracks a login it can't swap.
 
@@ -147,8 +155,8 @@ With [`isolation: container`](./configuration.md#in-a-container), every setup, a
 - **Your files:** only the clone in your home is mounted: no env file, `hosts.yml`, `~/.ssh`, `~/.gitconfig` or keychain files, and no `security` to ask the keychain.
 - **Other processes:** its own `/proc`, never awaywork's env. Neither the ssh agent's socket nor the docker socket is mounted, so no container of its own with your disk.
 - **Root inside:** your uid and gid, no capabilities, `no-new-privileges`, so a setuid `sudo` goes nowhere, even with `NOPASSWD: ALL`. Setuid files it makes are yours and Colima keeps the bit, so awaywork drops it when copying `.away` out, and the run dir is `700`.
-- **Your env:** the image's, awaywork's placeholders and git config, that phase's secrets by name (`-e NAME`), never on argv.
-- **Nothing outlives its phase:** a container goes with its command, and awaywork `docker rm -f`s it on a timeout, the window's end, Ctrl-C or the watchdog. If one may still be running, listed or docker silent for a minute, the clone is lost as with the worker user, Codex's lent login included. A lost clone may still have a container: run nothing in it.
+- **Your env:** the image's, awaywork's placeholders and git config, and that phase's secrets by name (`-e NAME`, never on argv), nothing else of yours.
+- **Nothing outlives its phase:** a container goes with its command, and awaywork `docker rm -f`s it on a timeout, the window's end, Ctrl-C or the watchdog. If one may still be running, listed or docker silent for a minute, the clone is lost, as with the worker user: nothing is published from it, awaywork leaves it alone and saves no Codex login back from it. A lost clone may still have a container: run nothing in it.
 
 A real run on a Mac (Colima 0.8.1, Docker 27.4.0), a leak script as setup, `when` check and Claude stand-in, in an image granting `NOPASSWD: ALL`:
 
@@ -171,10 +179,10 @@ agent: left a detached sleep 4242 behind
 No container or `sleep` was left; an agent hung past `unit_minutes: 1` was stopped at 64 s. Still open:
 
 - **The network:** what it reads, it can send. Colima's gateway didn't reach a Mac `localhost` service here, but your LAN is reachable, and Docker Desktop's `host.docker.internal` is your Mac. Domain allowlists: [#316](https://github.com/AndreaProvenzale/awaywork/issues/316).
-- **The agent's secrets:** its token, Codex's `auth.json` for the run, its MCP servers' secrets. The Codex login it hands back has [the worker user's](#a-worker-user-on-your-linux-machine) limits.
+- **The agent's secrets:** its token, Codex's `auth.json` for the run, its MCP servers' secrets. The Codex login it hands back has [the worker user's](#the-lent-codex-login) limits.
 - **The clone:** what a phase leaves is what checks run and awaywork publishes, though awaywork restores git config and refuses links after each phase.
 - **The image:** a token baked into a layer or `.npmrc` reaches every unit.
-- **The kernel:** a container is a namespace, not a VM. On a Mac a breakout lands in the VM, and Colima mounts your whole home read-write (`colima ssh -- mount` shows `/Users/<you>` over sshfs, `rw`), so the VM is no second wall.
+- **The kernel:** a container shares the VM's kernel, on Linux your machine's: it's a namespace, not a VM, and a kernel bug is a way out. On a Mac that lands in the VM, and Colima mounts your whole home read-write (`colima ssh -- mount` shows `/Users/<you>` over sshfs, `rw`), so the VM is no second wall.
 - **Memory on a Mac:** the watchdog watches your Mac, not the VM, whose OOM killer can take `dockerd` and lose the clone. The disk floor holds.
 
 ### A worker user on GitHub-hosted runners
@@ -211,7 +219,7 @@ That spike predates per-clone `HOME`s, now a `/tmp/awaywork-XXXXXX`. Still open:
 
 ### A worker user in awaywork's image
 
-The [container](./scheduling.md#in-a-container) for `awaywork watch` is built from awaywork's Dockerfile, which sets `AWAYWORK_IMAGE=1`: setup, the agent and the checks always run as `awaywork`, whatever `isolation` says. awaywork runs as `away`, whose env holds `GH_TOKEN` (`/proc/1/environ`). Another image without the user refuses: `can't run as the awaywork user in this image: build it from awaywork's Dockerfile, which creates it`.
+The [container](./scheduling.md#in-a-container) for `awaywork watch` is built from awaywork's Dockerfile, which sets `AWAYWORK_IMAGE=1`: setup, the agent and the checks always run as `awaywork`, whatever `isolation` says. awaywork runs as `away`, whose env holds `GH_TOKEN`, so an agent running as `away` could read it from `/proc/1/environ`. Another image without the user refuses: `can't run as the awaywork user in this image: build it from awaywork's Dockerfile, which creates it`.
 
 At build, the Dockerfile makes the worker as the action does: no sudo, cron or `at`, `nologin`, no home, `/home/away` `700`, world-writable bits and default ACLs cleared. `away` gets the two [`isolation: user`](#a-worker-user-on-your-linux-machine) sudoers lines, kept equal by a test. The kernel settings are the host's, checked at the daemon's first run. A stand-in agent:
 
@@ -321,7 +329,11 @@ A `skill` gate's judge is a model and can be fooled, which only makes it fail to
 
 ### Tracker writes
 
-Tracker writes are awaywork's, never the agent's, and only these:
+Tracker writes are awaywork's, never the agent's. The model writes only the text, never where it goes.
+
+#### What it writes
+
+Only these:
 
 - A step's [questions](./workflows.md#questions), as one comment on the first of the unit's items from the rule's source that is **yours**; a `deliver: plan` rule's [plan](./workflows.md#plans) the same way, once `plan.yml` passed its checks.
 - Your `approve` reply, when you run `awaywork approve` on an item whose plan or result waits, through the same check.
@@ -329,12 +341,28 @@ Tracker writes are awaywork's, never the agent's, and only these:
 - What [`on_done`](./configuration.md#on-done) asks: once the chain published, the unit's result on each of its items that is yours, from the rule's source, then a move to the status, state, section or label the config names.
 - A plan's [task](./workflows.md#tasks) isn't a tracker item: its questions, a [report task](./workflows.md#report-tasks)'s result and its rule's `on_done` go to its card, whose ownership is reread every run.
 
-The model writes only the text, never where it goes. The item's description can steer that text, mentions included (on GitHub it isn't filtered by author like comments), the same exposure as a PR body.
+The item's description can steer that text, mentions included (on GitHub it isn't filtered by author like comments), the same exposure as a PR body.
 
-- Yours is your own PR, an issue assigned to you, a Jira, Linear or Asana item (read only when assigned to you) or a custom source's item. Right before writing to an issue or tracker item, awaywork rereads it and refuses one no longer assigned to you; a custom `write` checks that itself.
+#### On whose items
+
+- Yours is your own PR, an issue assigned to you, a Jira, Linear or Asana item (read only when assigned to you) or a custom source's item.
 - Never a PR you were asked to review, an item only an extra `search` found, a new item but a [thread issue](#thread-issues), or a destination a model picked.
-- It writes as you, with the source's token (GitHub through `gh`, trackers with their `token_env`, which needs write scope). A source that can't write (Bitbucket, a custom source without `write`) leaves items alone; a failed write is reported, never fails the unit.
-- Its comments end with `— awaywork`, counted as its own only when that line comes from your account. So pasting it can't fake an item waiting for an answer, approve a plan, or put text under the `awaywork's questions` or `awaywork's plan` heading the agent reads; nor can editing your comment on GitHub and Jira, where a comment someone else edited last isn't yours. Linear, Asana and custom sources don't say who edited, so a teammate allowed to edit yours could add the line there.
+- It writes as you, with the source's token (GitHub through `gh`, trackers with their `token_env`, which needs write scope). A failed write is reported, never fails the unit.
+
+Right before writing, awaywork checks the item is still yours:
+
+| Source | Writes | Before each write | Knows who edited a comment last |
+| --- | --- | --- | --- |
+| GitHub | Yes | An issue is reread and refused once no longer assigned to you; a PR's author can't change, so your PR stays yours | Yes |
+| Jira, Linear, Asana | Yes | Reread and refused once no longer assigned to you | Jira yes; Linear and Asana no |
+| Custom source | Through its `write` | Its `write` checks that itself | No |
+| Bitbucket, a custom source without `write` | No: leaves items alone | — | — |
+
+#### How its comments are marked
+
+- Its comments end with `— awaywork`, counted as its own only when that line comes from your account.
+- So pasting the line can't fake an item waiting for an answer, approve a plan, or put text under the `awaywork's questions` or `awaywork's plan` heading the agent reads.
+- Nor can editing your comment where the source knows who edited (the table above): there a comment someone else edited last isn't yours. Where it doesn't, a teammate allowed to edit yours could add the line.
 
 ### Files in the store
 
@@ -347,7 +375,7 @@ A new issue only as a rule's [thread](./workflows.md#threads): one per item a `t
 - awaywork's posts for the item go there, marked as usual, and only your replies there are answers.
 - It finds the issue again only among open issues your account opened whose marker names the item, so someone else's issue with the marker is never taken for it (it stays an ordinary item).
 - It closes only that issue, with a marked comment, once the card's source says it's done. Whether the card is yours is read off the card, every run.
-- A [custom thread host](./custom-sources.md#thread-hosts) opens, comments on and closes threads through its `write`, and marks your replies with `mine`; awaywork sends it only the card's key, title and link and its own posts. It must keep each post one comment, since part of a post is the model's text and a split-off piece could pass for your reply.
+- A [custom thread host](./custom-sources.md#thread-hosts) opens, comments on and closes threads through its `write`, and says which replies are yours with `mine`; awaywork sends it only the card's key, title and link and its own posts. It must keep each post one comment, since part of a post is the model's text and a split-off piece could pass for your reply.
 
 ### Publishing from the clone
 
