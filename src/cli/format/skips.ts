@@ -1,7 +1,18 @@
 import { type SkipKind, shortRef } from '../../core/foreman.js'
 import { byKind, needsYouOn, type ReportedSkip } from '../../core/report.js'
 import type { Item } from '../../core/types.js'
-import { brief, CELL, clip, heading, indent, type Style, TITLE, table, width } from './terminal.js'
+import {
+  brief,
+  byGroup,
+  CELL,
+  clip,
+  heading,
+  indent,
+  type Style,
+  TITLE,
+  table,
+  width,
+} from './terminal.js'
 
 /** The skipped items you can act on, under their groups: a row each ending on its action, and what its reason adds under the title. */
 export function needsYouLines(skipped: ReportedSkip[], style: Style = (_, text) => text): string[] {
@@ -76,17 +87,6 @@ export function groupOf({ source, key }: Pick<Item, 'source' | 'key'>): string {
 /** `#7` for an item of `group`, else its short ref. */
 export const refIn = (group: string, item: Pick<Item, 'key'>) =>
   item.key.startsWith(`${group}#`) ? item.key.slice(group.length) : shortRef(item)
-
-/** `list` by group, the groups in the order they first come, each one's by `rank`. */
-export function byGroup<T>(
-  list: T[],
-  group: (t: T) => string,
-  rank: (t: T) => number = () => 0,
-): [string, T[]][] {
-  const groups = new Map<string, T[]>()
-  for (const t of list) groups.set(group(t), [...(groups.get(group(t)) ?? []), t])
-  return [...groups].map(([name, ts]) => [name, ts.toSorted((a, b) => rank(a) - rank(b))])
-}
 
 export interface SkipRow {
   skipped: ReportedSkip

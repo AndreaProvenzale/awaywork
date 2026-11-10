@@ -98,6 +98,17 @@ export function table(
   )
 }
 
+/** `list` by group, the groups in the order they first come, each one's by `rank`. */
+export function byGroup<T>(
+  list: T[],
+  group: (t: T) => string,
+  rank: (t: T) => number = () => 0,
+): [string, T[]][] {
+  const groups = new Map<string, T[]>()
+  for (const t of list) groups.set(group(t), [...(groups.get(group(t)) ?? []), t])
+  return [...groups].map(([name, ts]) => [name, ts.toSorted((a, b) => rank(a) - rank(b))])
+}
+
 export type Status = 'ok' | 'warn' | 'FAIL'
 
 const markers = { ok: ['✔', 'green'], warn: ['⚠', 'yellow'], FAIL: ['✖', 'red'] } as const
