@@ -33,7 +33,7 @@ process.stdout.on('error', (e: NodeJS.ErrnoException) => {
 })
 
 const program = new Command('awaywork')
-  .description("Spend idle coding-subscription quota while you're away")
+  .description('Run your coding agents on your real tasks, under rules you set')
   .version(packageVersion)
   .option(
     '-c, --config <path>',

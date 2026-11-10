@@ -1,7 +1,7 @@
 {
   "name": "awaywork",
   "version": "0.1.0-rc.3",
-  "description": "Schedule headless coding agents to spend idle subscription quota",
+  "description": "A harness that runs your coding agents on your real tasks, under rules you set",
   "keywords": [
     "claude-code",
     "codex",
