@@ -55,14 +55,15 @@ export async function outFiles(dir: string): Promise<string[]> {
 /** What a put says a file is: `plan`, `contract`, `report`, else its name. */
 export type Kind = 'plan' | 'contract' | 'report' | (string & {})
 
-/** The `url` a put printed; its output is never quoted, since it may hold a secret. */
-function urlOf(stdout: string): string {
-  let printed: { url?: unknown } | null
+/** The `url` a put printed, none when it skipped the file; its output is never quoted, since it may hold a secret. */
+function urlOf(stdout: string): string | undefined {
+  let printed: { url?: unknown; skip?: unknown } | null
   try {
     printed = JSON.parse(stdout)
   } catch {
     throw new Error(`printed ${stdout.length} characters that aren't JSON, not {"url": "…"}`)
   }
+  if (printed?.skip === true) return undefined
   const url = printed?.url
   if (typeof url !== 'string' || !/^\S+$/.test(url)) throw new Error('printed no {"url": "…"}')
   return url
@@ -71,7 +72,7 @@ function urlOf(stdout: string): string {
 /**
  * Puts each file of `dir` named in `files` in the store, the item and unit it's for alongside, gets it back once, and
  * pins it by the URL the store printed, its size and sha256; a put that fails, or whose get gives back other bytes,
- * pins nothing for its file, its line in `failed`.
+ * pins nothing for its file, its line in `failed`. A file the store skips is neither pinned nor failed.
  */
 export async function putFiles(
   store: Store,
@@ -91,6 +92,7 @@ export async function putFiles(
         const url = urlOf(
           (await runShell(store.command, store.dir, env, JSON.stringify(op))).stdout,
         )
+        if (url === undefined) continue
         const [hash, { size }] = await Promise.all([sha256(path), stat(path)])
         const back = join(tmp, String(n))
         await getFile(store, env, url, back).catch((e: Error) => {

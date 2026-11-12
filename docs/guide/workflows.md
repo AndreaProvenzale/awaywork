@@ -743,6 +743,7 @@ if (op.op === 'put') {
 It gets one JSON op on stdin per call, with your environment, like a [custom source](./custom-sources.md):
 
 - `{"op": "put", "item": "ENG-2101", "unit": "eng-2101", "path": "/…/units/eng-2101/out/plan.yml", "kind": "plan"}` prints `{"url": "…"}`. `path` is awaywork's copy out of the clone, readable during the put. `kind` is `plan`, `contract`, `report`, or the file's name under `.away/out/`, so one script can send recordings to a bucket and plans to Notion.
+  - It may print `{"skip": true}` instead, to keep a file home (a 200 MB trace, a kind that may hold secrets): the file stays in the run dir, the post goes out without a link to it, and nothing is reported. Any other output is a failed put. A lean plan still needs its `plan.yml` and contract in the store.
 - `{"op": "get", "url": "…"}` prints the bytes exactly as put. A put-only store sets `get: false`, and awaywork reads back with a plain HTTP GET, within the command's 10 minutes.
 
 After each put awaywork gets the file back and compares its sha256, which the pin carries. A store that returns other bytes (a CMS adding a newline, Notion round-tripping markdown) would make every post look edited, so that file isn't pinned: `report.md not stored: the store gave back different bytes than awaywork put`. Keep such a page for people, the bytes somewhere that keeps them.
@@ -750,7 +751,7 @@ After each put awaywork gets the file back and compares its sha256, which the pi
 The script's job, not awaywork's:
 
 - **A URL that lasts.** It's read back days later. An S3 presigned link expires within a week: re-sign in `get` from a key in the URL, or pick a host whose links don't expire.
-- **Secrets in what leaves.** A log or recording can hold a token the agent saw: redact before it leaves, or keep those kinds out.
+- **Secrets in what leaves.** A log or recording can hold a token the agent saw: redact before it leaves, or skip those kinds.
 - **Only its own URLs.** awaywork reads pins only off its own posts and the PRs it opened for you, and on GitHub and Jira skips any someone else edited last. Asana, Linear and custom sources don't say who edited a comment, so a teammate who can edit yours can edit a pin line; a `get` that refuses URLs it didn't print, as above, stops the store fetching what they name.
   - With `get: false` nothing refuses. A file changed in the store no longer matches its pin and is left out of the step, but a rewritten pin line (a new URL with its own hash) passes, and awaywork fetches it at every `plan`. On those sources it trusts whoever can edit the post.
   - A file edited after its pin never reaches a step: the edit reruns the step without it.
@@ -758,7 +759,7 @@ The script's job, not awaywork's:
 When the store fails:
 
 - A failed put leaves the file in the run dir, pins nothing and adds a morning report line (`fail.bin not stored: Command failed with exit code 1: …`, or `printed 11 characters that aren't JSON, not {"url": "…"}`, never quoting the output); post and PR still go out.
-- A lean report whose own `report.md` failed posts the whole report in place of the summary, other pins kept, and says so; over 30 KB it fails like any result.
+- A lean report whose own `report.md` failed, or was skipped, posts the whole report in place of the summary, other pins kept, and says so; over 30 KB it fails like any result.
 - A failed get on a post the unit depends on (the one an approval covers, its own when it runs again, a PR's footer) skips the unit as `fix store`, with why, counting no attempt.
 - On any other post (an older plan, a newer report) it costs only that post's files and a morning report line, so an expired `plan.yml` on an old plan stops nothing.
 

@@ -302,6 +302,18 @@ describe('lean posts', () => {
     ])
   })
 
+  it('posts with no pin and no report line when the store skips every file', async () => {
+    const store = await folderStore('console.log(JSON.stringify({ skip: true }))\n')
+    const { body, report: r } = await run(
+      store.config,
+      '  - { skill: review, deliver: report, post: full, on_done: { comment: result } }',
+      [yours(1)],
+      writer({ 'report.md': 'The report.', 'notes.txt': 'n' }, { prompts: [], read: [] }),
+    )
+    expect(body()).toBe(markComment(resultComment('The report.', 'done', 'review')))
+    expect(r.results[0]?.store).toBeUndefined()
+  })
+
   describe('without its report in the store', () => {
     const refusing = () => folderStore(storeScript.replace("'fail.bin'", "'report.md'"))
 
@@ -850,6 +862,42 @@ describe('put', () => {
       pins: [],
       failed: ['report.md not stored: the store gave back different bytes than awaywork put'],
     })
+  })
+
+  it('neither pins nor fails a file the store skips, and never gets it back', async () => {
+    const store = await folderStore(
+      storeScript.replace(
+        "if (basename(op.path) === 'fail.bin') throw new Error('bucket full')",
+        "if (basename(op.path) === 'trace.bin') {\n    console.log(JSON.stringify({ skip: true }))\n    process.exit()\n  }",
+      ),
+    )
+    const dir = await files('the report')
+    await writeFile(join(dir, 'trace.bin'), 'x')
+    const put = await putFiles(
+      storeOf(store.config),
+      process.env,
+      dir,
+      [
+        { name: 'trace.bin', kind: 'trace.bin' },
+        { name: 'report.md', kind: 'report' },
+      ],
+      at,
+    )
+    expect(put.failed).toEqual([])
+    expect(put.pins.map((p) => p.name)).toEqual(['report.md'])
+    expect(existsSync(join(dir, 'trace.bin'))).toBe(true)
+  })
+
+  it('fails a put that prints a skip that is not true', async () => {
+    const store = await folderStore("console.log(JSON.stringify({ skip: 'yes' }))\n")
+    const put = await putFiles(
+      storeOf(store.config),
+      process.env,
+      await files('x'),
+      [{ name: 'report.md', kind: 'report' }],
+      at,
+    )
+    expect(put).toEqual({ pins: [], failed: ['report.md not stored: printed no {"url": "…"}'] })
   })
 
   it("never quotes what a put printed that isn't JSON", async () => {

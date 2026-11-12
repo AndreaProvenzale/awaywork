@@ -388,7 +388,7 @@ Right before writing, awaywork checks the item is still yours:
 
 ### Files in the store
 
-Files go only to the [store](./workflows.md#store) the config names, put by awaywork's call of your command after the step. The model picks neither store nor URL, and a post links only what awaywork put, below the model's text. Files come back only off awaywork's own posts and the PRs it opened for you, into the item's context as data, outside the tracked tree. Lasting links and redacting secrets are your script's job.
+Files go only to the [store](./workflows.md#store) the config names, put by awaywork's call of your command after the step. The model picks neither store nor URL, and a post links only what awaywork put, below the model's text. Files come back only off awaywork's own posts and the PRs it opened for you, into the item's context as data, outside the tracked tree. Lasting links, redacting secrets and skipping what should stay home are your script's job.
 
 ### Thread issues
 
