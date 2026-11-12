@@ -530,7 +530,7 @@ describe('github source', () => {
     expect(checks).toContain('not a GitHub Actions job')
     expect(checks).toContain('## ci/legacy: ERROR\n\nBuild errored')
     expect(checks).toMatch(
-      /\n## Other checks\n\n- lint: SUCCESS https:\/\/github\.com\/acme\/api\/actions\/runs\/100\/job\/200\n- e2e: IN_PROGRESS https:\/\/github\.com\/acme\/api\/actions\/runs\/100\/job\/202\n- Vercel Preview: SUCCESS https:\/\/api-git-rate-limits\.vercel\.app\n$/,
+      /\n## Not failing\n\n- lint: SUCCESS https:\/\/github\.com\/acme\/api\/actions\/runs\/100\/job\/200\n- e2e: IN_PROGRESS https:\/\/github\.com\/acme\/api\/actions\/runs\/100\/job\/202\n- Vercel Preview: SUCCESS https:\/\/api-git-rate-limits\.vercel\.app\n- ci\/external: PENDING\n$/,
     )
   })
 

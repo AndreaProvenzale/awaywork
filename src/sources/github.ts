@@ -757,10 +757,10 @@ async function checksMarkdown(run: Exec, repo: string, checks: Check[]): Promise
     .filter((c) => !isFailing(c))
     .map((c) =>
       c.__typename === 'StatusContext'
-        ? `- ${c.context}: ${c.state} ${c.targetUrl ?? ''}`
+        ? `- ${c.context}: ${[c.state, c.targetUrl].filter(Boolean).join(' ')}`
         : `- ${c.name}: ${c.conclusion ?? c.status} ${c.detailsUrl}`,
     )
-  const rest = others.length ? `\n## Other checks\n\n${others.join('\n')}\n` : ''
+  const rest = others.length ? `\n## Not failing\n\n${others.join('\n')}\n` : ''
   const sections = await Promise.all(
     failed.map(async (c) => {
       if (c.__typename === 'StatusContext')

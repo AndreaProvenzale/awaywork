@@ -190,6 +190,13 @@
                         "state": "SUCCESS",
                         "targetUrl": "https://api-git-rate-limits.vercel.app",
                         "description": "Deployment has completed"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "ci/external",
+                        "state": "PENDING",
+                        "targetUrl": null,
+                        "description": null
                       }
                     ]
                   }
