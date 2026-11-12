@@ -337,7 +337,8 @@ export function planState(
     item,
     (pr) => pr.state === 'closed' && Date.parse(pr.closedAt ?? '') < posted,
   )
-  const checked = checkPlan(planOf(thread.plan), { ...limits, retired })
+  // The task cap is the writing rule's, checked when the plan is posted: the card may have moved since.
+  const checked = checkPlan(planOf(thread.plan), { ...limits, maxTasks: Infinity, retired })
   if ('problem' in checked) return { state: 'invalid', problem: checked.problem }
   const { contract: path } = checked.plan
   const name = path && contractName(path)

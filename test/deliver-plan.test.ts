@@ -122,7 +122,7 @@ describe('the plan comment', () => {
   })
 
   it('reads back a plan whose task shows an indented yaml example, fences only at line start', () => {
-    const example = `tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      Document it like this:\n      \`\`\`yaml\n      limits: { plan_tasks: 8 }\n      \`\`\`\n`
+    const example = `tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      Document it like this:\n      \`\`\`yaml\n      budget: { per_run: 8% }\n      \`\`\`\n`
     const body = planComment('One task.', example)
     expect(planYaml(body)).toBe(example.trim())
     expect(state(posted(body))).toEqual({ state: 'waiting' })

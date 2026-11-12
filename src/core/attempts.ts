@@ -105,7 +105,7 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
     if (head.unit.oneOff) continue
     const id = head.unit.id
     const chain = chainResults(report, id)
-    // A rule's own `when` that didn't hold: the item is still waiting for it, not handled.
+    // A rule's own `quota` that didn't hold: the item is still waiting for it, not handled.
     if (chain[0]?.passedOver) continue
     // Each slice's outcome is on its first step.
     const push = chain.find((r) => r.outcome?.kind === 'pushed')?.outcome
