@@ -782,7 +782,7 @@
                   "type": "object",
                   "properties": {
                     "changed": {
-                      "description": "Git globs from the repo root; fires when the chain's commits change a matching path",
+                      "description": "Git globs from the repo root; fires when the chain's commits change a matching path; not on a plan or report rule's gate, which has no commits",
                       "anyOf": [
                         {
                           "type": "string"
@@ -796,12 +796,12 @@
                       ]
                     },
                     "command": {
-                      "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+                      "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, unset on a plan or report, and reads AWAYWORK_OUT_DIR, a read-only copy of what the steps left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
                       "type": "string",
                       "minLength": 1
                     },
                     "skill": {
-                      "description": "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+                      "description": "A skill, yours or built in, that a model runs on the chain's commits and a read-only copy of what the steps left in .away/out, a plan's or report's out files alone, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
                       "type": "string",
                       "minLength": 1
                     },
@@ -857,7 +857,7 @@
         "type": "object",
         "properties": {
           "changed": {
-            "description": "Git globs from the repo root; fires when the chain's commits change a matching path",
+            "description": "Git globs from the repo root; fires when the chain's commits change a matching path; not on a plan or report rule's gate, which has no commits",
             "anyOf": [
               {
                 "type": "string"
@@ -871,12 +871,12 @@
             ]
           },
           "command": {
-            "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+            "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, unset on a plan or report, and reads AWAYWORK_OUT_DIR, a read-only copy of what the steps left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
             "type": "string",
             "minLength": 1
           },
           "skill": {
-            "description": "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+            "description": "A skill, yours or built in, that a model runs on the chain's commits and a read-only copy of what the steps left in .away/out, a plan's or report's out files alone, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
             "type": "string",
             "minLength": 1
           },
@@ -1113,7 +1113,7 @@
             "type": "boolean"
           },
           "gates": {
-            "description": "deliver: plan or report: gates of the rule's own, on top of the top-level ones, run on what the step left: a command reads AWAYWORK_OUT_DIR, a skill a read-only copy of .away/out; one that fires puts its line on the post and makes it wait",
+            "description": "Gates of the rule's own, under names no top-level or repo gate has. On a rule that opens a PR or pushes they run with those, and one that fires does what theirs does; on deliver: plan or report, where those never run, they run on what the step left, without changed, and one that fires puts its line on the post and makes it wait; not on pending_review, nor on a planned rule that reports",
             "type": "object",
             "propertyNames": {
               "type": "string",
@@ -1123,7 +1123,7 @@
               "type": "object",
               "properties": {
                 "changed": {
-                  "description": "Git globs from the repo root; fires when the chain's commits change a matching path",
+                  "description": "Git globs from the repo root; fires when the chain's commits change a matching path; not on a plan or report rule's gate, which has no commits",
                   "anyOf": [
                     {
                       "type": "string"
@@ -1137,12 +1137,12 @@
                   ]
                 },
                 "command": {
-                  "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+                  "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, unset on a plan or report, and reads AWAYWORK_OUT_DIR, a read-only copy of what the steps left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
                   "type": "string",
                   "minLength": 1
                 },
                 "skill": {
-                  "description": "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+                  "description": "A skill, yours or built in, that a model runs on the chain's commits and a read-only copy of what the steps left in .away/out, a plan's or report's out files alone, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
                   "type": "string",
                   "minLength": 1
                 },

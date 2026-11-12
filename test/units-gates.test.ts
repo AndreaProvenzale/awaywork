@@ -107,6 +107,24 @@ it('opens a deliver: pr PR as a draft when a gate fired, its card first in the b
   )
 })
 
+it("runs a PR rule's own gates with the top-level and repo ones, every command reading the diff and what the steps left", async () => {
+  const title = 'head -1 "$AWAYWORK_OUT_DIR/pr.md"; exit 1'
+  const diff =
+    'git diff --name-only "$AWAYWORK_FROM" HEAD; test -w "$AWAYWORK_OUT_DIR/pr.md" && echo writable; exit 1'
+  const { body, outcome } = await verified(
+    `gates: { repo: { command: '${title}' } }`,
+    `pr, gates: { ids: { changed: '*.txt' }, own: { command: '${diff}' }, ok: { command: 'true' } }`,
+    'gates: { deps: { changed: package.json } }',
+  )
+  expect(outcome).toMatchObject({ kind: 'pr', draft: 'gates repo, ids, own fired' })
+  expect(body).toMatch(
+    /^Add rate limits\n\n## Needs a decision\n\n### Gates \(from scripts\)\n\n- repo: Add rate limits\n- ids: acme-api-1\.txt\n- own: acme-api-1\.txt\n\n---\n\nDone\./,
+  )
+  const quiet = await verified('', "pr, gates: { ok: { command: 'true' } }")
+  expect(quiet.outcome).toMatchObject({ kind: 'pr', ready: true })
+  expect(quiet.body).toMatch(/^Add rate limits\n\nGates: none fired \(ok\)\n\n---\n\nDone\./)
+})
+
 it('keeps a draft_pr PR a draft with the card, says which gates ran when none fired, and adds nothing without gates', async () => {
   const fired = await verified("gates: { ids: { changed: '*.txt' } }")
   expect(fired.outcome).toMatchObject({ kind: 'pr' })
@@ -438,10 +456,12 @@ const verdict =
 
 it("drafts a deliver: pr PR when its judge fires, the report's lines in the card's Judge part", async () => {
   let prompt = ''
+  let left = ''
   const { opened, outcomes } = await gated(
     `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
     judgedBy(async (dir) => {
       prompt = await readFile(join(dir, '.away/prompt.md'), 'utf8')
+      left = await readFile(join(dir, '.away/context/out/pr.md'), 'utf8')
       await verdict('fires', '- VAT rounding moved from the invoice total to each line\n')(dir)
     }),
   )
@@ -450,6 +470,10 @@ it("drafts a deliver: pr PR when its judge fires, the report's lines in the card
     /^implement\n\n## Needs a decision\n\n### Judge\n\n- risk: VAT rounding moved from the invoice total to each line\n\n---\n\nDone\./,
   )
   expect(prompt).toMatch(/You judge the commits on this branch since `[0-9a-f]{40}`/)
+  expect(prompt).toContain(
+    'A read-only copy of what its steps left in `.away/out/` is in `.away/context/out/`',
+  )
+  expect(left).toMatch(/^implement\n\nDone\./)
   expect(prompt).toContain('# Judge')
 })
 

@@ -11,7 +11,7 @@ import {
   commitsSince,
   type RanCheck,
 } from './checks.js'
-import { describeFired, gateOut, gatesSection, type Judged, runGates, runJudges } from './gates.js'
+import { describeFired, gateOut, gatesSection, type Judged } from './gates.js'
 import { type Outcome, publish } from './publish.js'
 import { leaveReview } from './review.js'
 import { readOutput, refuseSymlinks, writeOutput } from './safe-files.js'
@@ -81,7 +81,7 @@ export interface Publisher {
     log: (line: string) => void,
     options?: CheckOptions,
   ) => Promise<Check>
-  /** Runs gate `gate`'s judge `skill`, reading the gate's `instructions`, on the chain's commits since a commit in the clone, or on what a step left, as a step runs; why it didn't run or finish, if so. */
+  /** Runs gate `gate`'s judge `skill`, reading the gate's `instructions`, on what the steps left and the chain's commits since a commit in the clone, if any, as a step runs; why it didn't run or finish, if so. */
   judge: (
     gate: string,
     skill: string,
@@ -122,7 +122,7 @@ export async function publishSlice(
       return { kind: 'none', reason: reportsOnly(deliver) ? 'no report written' : 'nothing' }
     // A plan's or report's own gates judge what its step left, their card atop the post.
     const ran = unit.waits !== undefined && unit.gates && Object.keys(unit.gates)
-    const fired = ran ? await gateOut(deps, unit, dir, start, joined) : []
+    const fired = ran ? await gateOut(deps, unit, dir, undefined, start, joined) : []
     if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
     const card = ran ? gatesSection(ran, fired) : ''
     const text = ran ? `${card}\n\n${joined}` : joined
@@ -146,8 +146,7 @@ export async function publishSlice(
   const failed = await verify(deps, unit, dir, checked)
   // A resolved merge's gates read only what the worker wrote on top of git's automatic merge.
   const gatesFrom = unit.automatic ?? checked
-  const fired = await runGates(deps.check, unit, dir, gatesFrom, unit.automatic ?? start)
-  fired.push(...(await runJudges(deps.judge, unit, dir, { from: gatesFrom })))
+  const fired = await gateOut(deps, unit, dir, gatesFrom, unit.automatic ?? start)
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   if (unit.gates) {

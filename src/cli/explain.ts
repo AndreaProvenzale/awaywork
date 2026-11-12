@@ -128,8 +128,11 @@ export function explainConfig(text: string, path: string, skills: SkillCatalog) 
           : { skill: s.skill },
       ),
       leaves: leaves(r, skills),
-      // Whether this rule can stop for you: a plan's post, its own `wait`, or a gate that fires.
-      waits: (r.deliver === 'plan' && r.wait !== false) || r.wait === true || !!r.gates,
+      // Whether this rule's post can stop for you: a plan's, its own `wait`, or a gate of its own that fires.
+      waits:
+        (r.deliver === 'plan' && r.wait !== false) ||
+        r.wait === true ||
+        (!!r.gates && (r.deliver === 'plan' || r.deliver === 'report')),
       plan: r.deliver === 'plan',
       planned: 'planned' in r.where,
       soon: r.run === 'soon',

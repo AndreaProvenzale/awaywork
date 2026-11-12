@@ -33,7 +33,7 @@ export interface CheckOptions {
   published?: boolean
   /** A gate's chain start: the check runs even when this commit's result is known, keeps nothing, and its git reads attributes from `start` on a fresh global config. */
   start?: string
-  /** A plan's or report's gate: the read-only copy of what its step left, the command's `AWAYWORK_OUT_DIR`. */
+  /** A gate: the read-only copy of what the steps left, the command's `AWAYWORK_OUT_DIR`. */
   outDir?: string
 }
 

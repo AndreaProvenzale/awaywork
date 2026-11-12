@@ -513,9 +513,9 @@ it("posts a report that waits with how to answer, holding on_done's move until y
   )
 })
 
-it("runs a report rule's own command gate on a read-only copy of what the step left: one that fires holds the post, one that holds lets it go ahead", async () => {
+it("runs a report rule's own command gate on a read-only copy of what the step left, with no commit to diff from: one that fires holds the post, one that holds lets it go ahead", async () => {
   const gate = (exit: number) =>
-    `  - { skill: review, deliver: report, on_done: { move: QA }, gates: { taste: { command: '(echo hacked >> "$AWAYWORK_OUT_DIR/report.md" || touch "$AWAYWORK_OUT_DIR/new") 2>/dev/null || cat "$AWAYWORK_OUT_DIR/report.md"; exit ${exit}' } } }`
+    `  - { skill: review, deliver: report, on_done: { move: QA }, gates: { taste: { command: 'test -z "$AWAYWORK_FROM" || echo diffed; (echo hacked >> "$AWAYWORK_OUT_DIR/report.md" || touch "$AWAYWORK_OUT_DIR/new") 2>/dev/null || cat "$AWAYWORK_OUT_DIR/report.md"; exit ${exit}' } } }`
   const fired = await finishedRun(gate(1), [yours(1)])
   const card =
     '## Needs a decision\n\n### Gates (from scripts)\n\n- taste: acme-api-1 says nothing.\n\n---'

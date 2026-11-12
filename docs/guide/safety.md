@@ -341,7 +341,7 @@ To [continue](./workflows.md#continue) its work, the next run fast-forwards away
 
 Gates fail closed. A `command` gate fires when it can't run, times out, is stopped or isn't run on an untrusted author's PR, and, without running, when a file it names differs from the chain's start.
 
-It runs afresh with `$AWAYWORK_FROM`, ignoring replace refs, reading attributes from the start and a fresh global config the steps can't edit, unlike `verify`, `when` and `until`. It still runs repo code the agent may have changed, and a process that outlived the watchdog could swap the script after the comparison, so `changed` gates are the trustworthy kind ([Gates](./workflows.md#gates)).
+It runs afresh with `$AWAYWORK_FROM` and a read-only copy of the steps' `.away/out/`, ignoring replace refs, reading attributes from the start and a fresh global config the steps can't edit, unlike `verify`, `when` and `until`. It still runs repo code the agent may have changed, and a process that outlived the watchdog could swap the script after the comparison, so `changed` gates are the trustworthy kind ([Gates](./workflows.md#gates)).
 
 A `skill` gate's judge is a model and can be fooled, which only makes it fail to fire: it adds lines to the card, never clears a script's gate.
 

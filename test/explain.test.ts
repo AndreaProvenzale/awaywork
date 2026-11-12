@@ -53,6 +53,7 @@ describe('explainConfig', () => {
     [', deliver: report, wait: false, gates: { product: { skill: judge } }', true],
     [', deliver: report, wait: true', true],
     [', deliver: report', false],
+    [', deliver: pr, gates: { proof: { command: x } }', false],
   ])('says whether a rule with%s can stop for you', (extra, waits) => {
     expect(rule('{ type: issue }', extra, 'plan')?.waits).toBe(waits)
   })

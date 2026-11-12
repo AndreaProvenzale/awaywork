@@ -492,7 +492,7 @@ describe('config', () => {
     ])
   })
 
-  it('takes wait and gates on plan and report rules only, a rule gate without changed or a shared name', () => {
+  it('takes wait on plan and report rules only, and gates of its own on any rule but a pending review or a task that reports, without a shared name or, with no commits, changed', () => {
     const rules = (queue: string) =>
       problems(
         `${unlisted}gates: { risk: { skill: judge } }\nrepos: { acme/api: { gates: { routes: { command: x } } } }\nqueue:\n${queue}\n  - { skill: implement, where: { planned: true } }`,
@@ -502,13 +502,29 @@ describe('config', () => {
         '  - { skill: plan, deliver: plan, wait: false, gates: { product: { skill: judge, instructions: judges/product.md } } }\n  - { skill: story, deliver: report, wait: true, gates: { taste: { command: \'test -s "$AWAYWORK_OUT_DIR/report.md"\' } } }',
       ),
     ).toEqual([])
-    const why =
-      'needs deliver: plan or report; a PR is already the decision, and commits take top-level or repo gates'
     expect(rules('  - { skill: implement, deliver: pr, wait: true }')).toEqual([
-      `queue[0].wait: wait ${why}`,
+      'queue[0].wait: wait needs deliver: plan or report: a PR is already the decision',
     ])
-    expect(rules('  - { skill: implement, gates: { x: { command: x } } }')).toEqual([
-      `queue[0].gates: gates ${why}`,
+    const own = "gates: { x: { command: x }, ui: { changed: 'src/**' } }"
+    expect(
+      rules(
+        `  - { skill: implement, ${own} }\n  - { skill: fix-ci, deliver: push, ${own} }\n  - { skill: implement, deliver: pr, where: { planned: true }, ${own} }`,
+      ),
+    ).toEqual([])
+    expect(
+      rules(
+        '  - { skill: qa, deliver: report, where: { planned: true }, gates: { x: { command: x } } }',
+      ),
+    ).toEqual([
+      "queue[0].gates: a task's report takes no gates for now: its approval is the plan's; a task that opens a PR takes them",
+    ])
+    expect(
+      rules('  - { skill: review, deliver: pending_review, gates: { x: { command: x } } }'),
+    ).toEqual([
+      'queue[0].gates: gates check commits or a post, and pending_review leaves neither: the review stays yours to submit',
+    ])
+    expect(rules('  - { skill: implement, gates: { risk: { command: x } } }')).toEqual([
+      'queue[0].gates.risk: a top-level or repo gate is named risk too: name this one otherwise',
     ])
     expect(
       rules('  - { skill: qa, deliver: report, where: { planned: true }, wait: true }'),
@@ -516,7 +532,7 @@ describe('config', () => {
     expect(
       rules("  - { skill: story, deliver: report, gates: { ui: { changed: 'src/**' } } }"),
     ).toEqual([
-      'queue[0].gates.ui.changed: a report has no diff: changed needs commits, in a top-level or repo gate',
+      'queue[0].gates.ui.changed: a report has no diff: changed needs commits, on a rule that opens a PR or pushes, or in a top-level or repo gate',
     ])
     expect(
       rules(

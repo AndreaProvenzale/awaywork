@@ -71,7 +71,7 @@ export interface WorkspaceInput {
   loop?: LoopRound
   /** A replay: the clone starts at `commit` and its context is copied from a past run's `context/`, with no source asked. */
   replay?: { commit: string; context: string }
-  /** A gate's judge of the chain's commits since `from`, or of what a plan's or report's step left in `out`: its unit is `foreign`, as the agent wrote the clone. */
+  /** A gate's judge of what the steps left, copied to `out`, and of the chain's commits since `from`, if any: its unit is `foreign`, as the agent wrote the clone. */
   judge?: Judged
   /** For a task: the files its tasks in other repos ship, read from their PRs. */
   shipped?: Shipped[]

@@ -19,10 +19,15 @@ Turn what the developer wants offloaded into rules, check them on their real ite
        where: { status: Ready, labels: awaywork }
    ```
 
-   A plan or report rule takes more keys, none of them on a `planned` rule (the rest: https://andreaprovenzale.github.io/awaywork/guide/workflows.md#gates-of-a-rule-s-own and https://andreaprovenzale.github.io/awaywork/guide/workflows.md#posts-that-wait):
+   A rule takes `gates` of its own, `{ <name>: { skill: judge } }`, `{ <name>: { command: <script> } }` or `{ <name>: { changed: [<glob>] } }`, under no name a top-level or repo gate has (https://andreaprovenzale.github.io/awaywork/guide/workflows.md#gates-of-a-rule-s-own). A gate checks what the unit leaves, and where it fires decides what happens:
+
+   - On a rule that opens a PR or pushes, a `planned` one included, they run with the top-level and repo gates when the chain has commits: one that fires puts its line on the PR's decision card and keeps a `deliver: pr` PR a draft. A command reads the diff from `$AWAYWORK_FROM` and the files the steps left in `$AWAYWORK_OUT_DIR`.
+   - On a `deliver: plan` or `report` rule they are the only gates, on the step's files in `$AWAYWORK_OUT_DIR`, with no `changed`: one that fires makes the post wait, so `wait: false` with a judge waits only when the judge fires.
+   - Not on `pending_review`, nor on a `planned` rule that reports.
+
+   A plan or report rule takes more keys, none of them on a `planned` rule (the rest: https://andreaprovenzale.github.io/awaywork/guide/workflows.md#posts-that-wait):
 
    - `wait`, `deliver: plan` or `report` only, a PR rule refuses it: the post waits for their `approve`. Default `true` on a plan, `false` on a report.
-   - `gates`, the same limit: the rule's own, `{ <name>: { skill: judge } }` or `{ <name>: { command: <script> } }`, no `changed` and no name a top-level or repo gate has. One that fires makes the post wait, so `wait: false` with a judge waits only when the judge fires.
    - `post`: `summary`, the default with a `store` and an error without one, or `full`, the report inline.
    - `thread`: `item` (the default), `github` (an issue in the item's repo, assigned to them, for a source that can't write) or a custom source with `thread: true`.
 
