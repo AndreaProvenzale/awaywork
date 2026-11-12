@@ -483,7 +483,7 @@ describe('github source', () => {
     expect(pages.map((call) => call.join(' ').match(/PR_\d+/g)?.length)).toEqual([100, 1])
   })
 
-  it('prefetches a PR: view, diff, deduped trusted threads, failed-check logs', async () => {
+  it('prefetches a PR: view, diff, deduped trusted threads, failed-check logs, the other checks listed', async () => {
     const [pr1] = await items()
     const dir = await tmp()
     await source.prefetch(pr1 as never, dir, ctx)
@@ -529,6 +529,9 @@ describe('github source', () => {
     expect(checks).toContain('## deploy: CANCELLED\n\nhttps://deploy.example.com/acme-api/1')
     expect(checks).toContain('not a GitHub Actions job')
     expect(checks).toContain('## ci/legacy: ERROR\n\nBuild errored')
+    expect(checks).toMatch(
+      /\n## Other checks\n\n- lint: SUCCESS https:\/\/github\.com\/acme\/api\/actions\/runs\/100\/job\/200\n- e2e: IN_PROGRESS https:\/\/github\.com\/acme\/api\/actions\/runs\/100\/job\/202\n- Vercel Preview: SUCCESS https:\/\/api-git-rate-limits\.vercel\.app\n$/,
+    )
   })
 
   it('hides ghost reviews and replies, and every thread when no one trusted started any', async () => {
