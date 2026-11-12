@@ -5,11 +5,11 @@ import type { RunReport } from '../../src/core/report.js'
 import { builtinSkills } from '../../src/core/skills.js'
 import { asanaTask, githubPr } from './items.js'
 
-/** An acme plan: one unit, one over the cap, one matching no rule and a task with no repo. */
 /** The config text, listing every acme repo unless it has a `repos` of its own. */
 export const withRepos = (yaml: string) =>
   /^repos:/m.test(yaml) ? yaml : `repos: { acme/*: {} }\n${yaml}`
 
+/** An acme plan: one unit, one over the cap, one matching no rule and a task with no repo. */
 export function acmePlan() {
   const config = parseConfig(`
 limits: { units: 1 }

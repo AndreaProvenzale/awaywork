@@ -168,7 +168,7 @@ describe('asana config and linking', () => {
 
   it('maps projects to repos written as owner/repo', () => {
     const mapped = (repo: string) =>
-      `providers: [claude]\nsources: { asana: { workspace: "100", repo_map: { "11": ${repo} } } }`
+      `providers: [claude]\nrepos: { acme/api: }\nsources: { asana: { workspace: "100", repo_map: { "11": ${repo} } } }`
     expect(() => parseConfig(mapped('acme/api'))).not.toThrow()
     expect(() => parseConfig(mapped('api'))).toThrow('repo_map')
     expect(() => parseConfig(yaml('{ repo: acme/api }'))).not.toThrow()

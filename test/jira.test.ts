@@ -283,7 +283,7 @@ describe('jira source', () => {
 
   it('takes a site host and projects mapped to owner/repo', () => {
     const configured = (site: string, repo: string) =>
-      `providers: [claude]\nsources: { jira: { site: ${site}, email: a@b.c, repo_map: { ENG: ${repo} } } }`
+      `providers: [claude]\nrepos: { acme/api: }\nsources: { jira: { site: ${site}, email: a@b.c, repo_map: { ENG: ${repo} } } }`
     expect(() => parseConfig(configured('acme.atlassian.net', 'acme/api'))).not.toThrow()
     expect(() => parseConfig(configured('acme.atlassian.net', 'api'))).toThrow('repo_map')
     expect(() => parseConfig(configured('acme.atlassian.net', 'acme/sub/api'))).toThrow('repo_map')

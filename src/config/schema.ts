@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
 import { headerSecret } from '../core/mcp.js'
 import { ruleSteps, ruleThread } from '../core/queue.js'
-import { settingsFor } from '../core/repos.js'
+import { repoListed, settingsFor } from '../core/repos.js'
 import { builtinSkills } from '../core/skills.js'
 import type { Provider, Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import {
@@ -224,7 +224,9 @@ const forge = z
     error: (issue) =>
       typeof issue.input === 'string'
         ? `unknown forge "${issue.input}": github or bitbucket`
-        : nested(issue.errors[1]),
+        : typeof issue.input === 'object' && issue.input !== null && 'github' in issue.input
+          ? nested(issue.errors[1])
+          : 'expected github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } }; bitbucket takes no settings',
   })
   .transform(
     (f): ForgeConfig => (typeof f === 'string' ? { id: f } : { id: 'github', ...f.github }),
@@ -878,12 +880,31 @@ export const configSchema = z
         path: ['sources', 'github'],
         message: 'one forge per config: the github source reads GitHub, and forge is bitbucket',
       })
-    if (sourceIds.includes('github') && Object.keys(cfg.repos).length === 0)
+    if ((bitbucket || sourceIds.includes('github')) && Object.keys(cfg.repos).length === 0)
       ctx.addIssue({
         code: 'custom',
         path: ['repos'],
-        message: 'the github source reads the repos listed here: add one, e.g. acme/api or acme/*',
+        message: `${bitbucket ? 'forge: bitbucket works in' : 'the github source reads'} the repos listed here: add one, e.g. acme/api or acme/*`,
       })
+    for (const [id, source] of Object.entries(
+      cfg.sources as Record<string, Record<string, unknown>>,
+    )) {
+      const named =
+        id === routines.id
+          ? Object.entries(source).map(([name, r]) => [
+              name,
+              'repo',
+              (r as { repo?: unknown } | null)?.repo,
+            ])
+          : Object.entries(source?.repo_map ?? {}).map(([key, repo]) => ['repo_map', key, repo])
+      for (const [at, key, repo] of named)
+        if (typeof repo === 'string' && !repoListed(cfg.repos, repo))
+          ctx.addIssue({
+            code: 'custom',
+            path: ['sources', id, at, key],
+            message: `${repo} isn't in repos: awaywork works only in the repos listed there, so add it as a key`,
+          })
+    }
     for (const name of bitbucket ? Object.keys(cfg.repos) : [])
       if (name.split('/')[0]?.includes('*'))
         ctx.addIssue({

@@ -10,7 +10,7 @@ export const forgeFor = (config: Config): Forge =>
     ? bitbucketForge(bitbucketWorkspaces(config))
     : {
         ...githubForge(undefined, githubHost(config)),
-        threads: githubThreads(undefined, githubHost(config)),
+        threads: githubThreads(undefined, githubHost(config), config.repos),
       }
 
 /** The repo's web page on the configured forge. */

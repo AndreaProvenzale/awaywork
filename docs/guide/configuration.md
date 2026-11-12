@@ -46,7 +46,7 @@ For autocompletion in editors with the YAML language server, start the file with
 
 ## Stability
 
-From 0.1.0-rc.1, a config valid on one minor release stays valid on the next. Keys marked experimental may change in a minor release, with a note in the release notes: so far only `github.host`.
+From 0.1.0-rc.1, a config valid on one minor release stays valid on the next. Keys marked experimental may change in a minor release, with a note in the release notes: so far only `forge.github.host`.
 
 ## A full example
 
@@ -340,7 +340,6 @@ A built-in source's `context` command fetches what an item points at, a Sentry i
 ```yaml
 sources:
   github:
-    repos: [acme/*]
     context:
       command: ./fetch-sentry.sh   # reads $AWAYWORK_ITEM_URL, writes $AWAYWORK_CONTEXT_DIR/sentry.md
       secrets: [SENTRY_TOKEN]      # kept out of the agent's env
@@ -350,7 +349,7 @@ It runs per item before the worker, in the config's folder, never the clone, wit
 
 ### Bitbucket and Jira
 
-Code on Bitbucket Cloud, tickets in Jira? Set `forge: bitbucket`, and draft PRs open on Bitbucket:
+Code on Bitbucket Cloud, tickets in Jira? Set `forge: bitbucket` and list at least one repo, and draft PRs open on Bitbucket:
 
 ```yaml
 forge: bitbucket
@@ -493,7 +492,7 @@ repos:
     instructions: notes/acme-api.md
 ```
 
-- **It's the allowlist.** The `github` source reads these repos, and an item from any source, a custom one too, that names a repo no key matches is skipped; `awaywork plan --skipped unlisted_repo` shows them.
+- **It's the allowlist.** The `github` source reads these repos, and an item from any source, a custom one too, that names a repo no key matches, as its `repo` or its linked PR's, is skipped; `awaywork plan --skipped unlisted_repo` shows them. A repo the config names itself, a routine's `repo` or a `repo_map` value, has to be listed, or the config is refused.
 - **A key** is `owner/name` or a `*` glob, which stays within the owner or the name (`acme/*`, `acme/api-*`).
 - **Settings merge.** A repo takes the settings of every key that names it: globs first, in the order written, then its own key, a later one winning per setting. `secrets` add up and `gates` merge by name. Above, `acme/api` gets the glob's `setup` and its own `verify`.
 

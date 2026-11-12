@@ -5,9 +5,9 @@ import { planRun } from '../src/core/foreman.js'
 import { checkPlan } from '../src/core/plan.js'
 import { repoListed, settingsFor } from '../src/core/repos.js'
 import { builtinSkills } from '../src/core/skills.js'
-import { githubSource } from '../src/sources/github.js'
+import { githubSource, githubThreads } from '../src/sources/github.js'
 import { githubRoutes, recorded } from './fakes/gh.js'
-import { fakeItem } from './fakes/items.js'
+import { fakeItem, githubPr } from './fakes/items.js'
 
 const config = (top: string, sources = '{ github: {} }') =>
   `providers: [claude]\n${top}\nsources: ${sources}\n`
@@ -84,6 +84,16 @@ describe('forge', () => {
     expect(forge('{ github: { host: "https://github.acme.com" } }')).toEqual([
       'forge.github.host: host only, no scheme or path',
     ])
+    const forms =
+      'forge: expected github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } }; bitbucket takes no settings'
+    expect(forge('{ bitbucket: {} }')).toEqual([forms])
+    expect(forge('{}')).toEqual([forms])
+  })
+
+  it('needs a repo listed on Bitbucket', () => {
+    expect(problems(config('forge: bitbucket', "{ tracker: { command: 'echo []' } }"))).toEqual([
+      'repos: forge: bitbucket works in the repos listed here: add one, e.g. acme/api or acme/*',
+    ])
   })
 })
 
@@ -118,11 +128,11 @@ describe('keys that moved', () => {
 })
 
 describe('the allowlist', () => {
-  const tracker = (repos: string) =>
+  const tracker = (repos: string, thread = '') =>
     parseConfig(
       config(
         `repos: ${repos}`,
-        "{ tracker: { command: 'echo []' } }\nqueue: [{ skill: plan, deliver: plan }, { skill: implement, where: { planned: true } }]",
+        `{ tracker: { command: 'echo []' } }\nqueue: [{ skill: plan, deliver: plan${thread} }, { skill: implement, where: { planned: true } }]`,
       ),
     )
   const card = (repo: string) =>
@@ -143,6 +153,67 @@ describe('the allowlist', () => {
         "acme/billing isn't in repos: awaywork works only in the repos listed there",
       ],
     ])
+  })
+
+  it('skips an item whose own repo no key names, though its linked PR is in a listed one', () => {
+    const item = fakeItem({
+      source: 'tracker',
+      key: 'ENG-1',
+      type: 'task',
+      mine: true,
+      linkedPrs: githubPr(1).linkedPrs,
+      fields: { repo: 'other/unlisted' },
+    })
+    const plan = planRun({
+      config: tracker('{ acme/api: }', ', thread: github'),
+      items: [item],
+      allowances: {},
+      skills: { builtin: builtinSkills },
+    })
+    expect(plan.units).toEqual([])
+    expect(plan.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
+      [
+        'ENG-1',
+        'unlisted_repo',
+        "other/unlisted isn't in repos: awaywork works only in the repos listed there",
+      ],
+    ])
+  })
+
+  it('opens, comments on and closes a thread issue only in a repo a key names', async () => {
+    const run = recorded([])
+    const threads = githubThreads(run, undefined, { 'acme/*': {} })
+    const refused = "other/unlisted isn't in repos: awaywork writes only in the repos listed there"
+    const thread = { host: 'github', key: 'other/unlisted#7', url: 'https://github.com/x' }
+    await expect(threads.openThread('other/unlisted', fakeItem())).rejects.toThrow(refused)
+    await expect(threads.threadComment(thread, 'hi')).rejects.toThrow(refused)
+    await expect(threads.closeThread(thread, 'done')).rejects.toThrow(refused)
+    expect(run.calls).toEqual([])
+  })
+
+  it('refuses a repo the config names outside repos: a routine’s, a tracker’s repo_map', () => {
+    const unlisted = (repo: string) =>
+      `${repo} isn't in repos: awaywork works only in the repos listed there, so add it as a key`
+    const routine = (repo: string) =>
+      problems(
+        config(
+          'repos: { acme/*: }',
+          `{ routines: { nightly: { at: "03:00", repo: ${repo}, title: T } } }`,
+        ),
+      )
+    expect(routine('acme/api')).toEqual([])
+    expect(routine('other/x')).toEqual([`sources.routines.nightly.repo: ${unlisted('other/x')}`])
+    const jira = (top: string) =>
+      problems(
+        config(
+          top,
+          '{ jira: { site: acme.atlassian.net, email: a@b.c, repo_map: { ENG: acme/api } } }',
+        ),
+      )
+    expect(jira('repos: { acme/api: }')).toEqual([])
+    expect(jira('')).toEqual([`sources.jira.repo_map.ENG: ${unlisted('acme/api')}`])
+    // What init --yes --source jira writes: no repo_map, no repos.
+    expect(problems(config('', '{ jira: { site: acme.atlassian.net, email: a@b.c } }'))).toEqual([])
   })
 
   it('lets a plan task name only a repo a key names', () => {

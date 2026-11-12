@@ -133,7 +133,7 @@ describe('linear source', () => {
 
   it('maps teams to repos written as owner/repo', () => {
     const mapped = (repo: string) =>
-      `providers: [claude]\nsources: { linear: { repo_map: { ENG: ${repo} } } }`
+      `providers: [claude]\nrepos: { acme/api: }\nsources: { linear: { repo_map: { ENG: ${repo} } } }`
     expect(() => parseConfig(mapped('acme/api'))).not.toThrow()
     expect(() => parseConfig(mapped('api'))).toThrow('repo_map')
   })

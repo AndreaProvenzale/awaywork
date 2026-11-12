@@ -397,8 +397,15 @@ export function planRun(input: {
       continue
     }
     if (onlyRepo && !onlyRepo.test(repo)) continue
-    if (!repoListed(config.repos, repo)) {
-      skip('unlisted_repo', `${repo} isn't in repos: awaywork works only in the repos listed there`)
+    // Its thread opens in the repo an item names, so that one is listed too.
+    const unlisted = [repo, ...items.map((i) => i.fields.repo)].find(
+      (r) => typeof r === 'string' && !repoListed(config.repos, r),
+    )
+    if (unlisted) {
+      skip(
+        'unlisted_repo',
+        `${unlisted} isn't in repos: awaywork works only in the repos listed there`,
+      )
       continue
     }
     if (review && !pr) {

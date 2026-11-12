@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { commentMarkdown } from '../core/comments.js'
 import { isOurs, leftIn, threadBody, threadOf } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
+import { repoListed } from '../core/repos.js'
 import type { Item, Thread as ItemThread, PrRef, Source, ThreadHost } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from '../forge/checks.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
@@ -343,14 +344,27 @@ export function githubSource(base: Exec = exec): Source<Config> {
 export const github = githubSource()
 
 /** The forge's thread issues on GitHub, read and written as you through `gh`: listed, not searched, so one opened a minute ago is found. */
-export function githubThreads(base: Exec = exec, host?: string): ThreadHost {
+export function githubThreads(
+  base: Exec = exec,
+  host?: string,
+  repos?: Record<string, unknown>,
+): ThreadHost {
   const run = onHost(base, host)
+  // No write lands in a repo `repos` doesn't list.
+  const listed = (repo: string) => {
+    if (repos && !repoListed(repos, repo))
+      throw new Error(`${repo} isn't in repos: awaywork writes only in the repos listed there`)
+    return repo
+  }
   let login: Promise<string> | undefined
   const viewer = () => {
     login ??= run('gh', ['api', 'user', '--jq', '.login']).then((l) => l.trim())
     return login
   }
-  const issuePath = (thread: ItemThread) => `repos/${thread.key.replace('#', '/issues/')}`
+  const issuePath = (thread: ItemThread) => {
+    const [repo = '', number] = thread.key.split('#')
+    return `repos/${listed(repo)}/issues/${number}`
+  }
   const comment = async (thread: ItemThread, body: string) =>
     (
       await run('gh', [
@@ -393,7 +407,7 @@ export function githubThreads(base: Exec = exec, host?: string): ThreadHost {
       if (!repo) throw new Error(`${item.key} has no repo to open its thread in`)
       const opened = await run('gh', [
         'api',
-        `repos/${repo}/issues`,
+        `repos/${listed(repo)}/issues`,
         '-f',
         `title=${threadTitle(item)}`,
         '-f',
