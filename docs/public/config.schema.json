@@ -304,6 +304,7 @@
           "type": "object",
           "properties": {
             "github": {
+              "description": "GitHub, through gh",
               "type": "object",
               "properties": {
                 "host": {
@@ -317,8 +318,7 @@
                   "pattern": "^[A-Za-z0-9-]+$"
                 }
               },
-              "additionalProperties": false,
-              "description": "GitHub, through gh"
+              "additionalProperties": false
             }
           },
           "required": [

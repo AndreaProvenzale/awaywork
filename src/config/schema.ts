@@ -195,20 +195,23 @@ const sourcesConfig = z
 // Only GitHub has settings, so a map names one forge by construction.
 const forgeSettings = z.strictObject({
   github: z
-    .strictObject({
-      host: z
-        .string()
-        .regex(/^[^/\s]+$/, 'host only, no scheme or path')
-        .optional()
-        .describe('GitHub Enterprise host, e.g. github.acme.com; github.com by default'),
-      user: z
-        .string()
-        .regex(/^[A-Za-z0-9-]+$/, 'expected a GitHub login')
-        .optional()
-        .describe(
-          "The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins",
-        ),
-    })
+    .preprocess(
+      (raw) => (raw === null ? {} : raw),
+      z.strictObject({
+        host: z
+          .string()
+          .regex(/^[^/\s]+$/, 'host only, no scheme or path')
+          .optional()
+          .describe('GitHub Enterprise host, e.g. github.acme.com; github.com by default'),
+        user: z
+          .string()
+          .regex(/^[A-Za-z0-9-]+$/, 'expected a GitHub login')
+          .optional()
+          .describe(
+            "The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins",
+          ),
+      }),
+    )
     .describe('GitHub, through gh'),
 })
 const forgeIds = ['github', 'bitbucket'] as const
@@ -891,13 +894,15 @@ export const configSchema = z
               (r as { repo?: unknown } | null)?.repo,
             ])
           : Object.entries(source?.repo_map ?? {}).map(([key, repo]) => ['repo_map', key, repo])
-      for (const [at, key, repo] of named)
-        if (typeof repo === 'string' && !repoListed(cfg.repos, repo))
-          ctx.addIssue({
-            code: 'custom',
-            path: ['sources', id, at, key],
-            message: `${repo} isn't in repos: awaywork works only in the repos listed there, so add it as a key`,
-          })
+      for (const [at, key, repo] of named) {
+        if (typeof repo !== 'string') continue
+        const problem = repo.includes('*')
+          ? `expected one repo like acme/api, not the pattern ${repo}: a * goes only in a key of repos`
+          : !repoListed(cfg.repos, repo) &&
+            `${repo} isn't in repos: awaywork works only in the repos listed there, so add it as a key`
+        if (problem)
+          ctx.addIssue({ code: 'custom', path: ['sources', id, at, key], message: problem })
+      }
     }
     for (const name of bitbucket ? Object.keys(cfg.repos) : [])
       if (name.split('/')[0]?.includes('*'))
