@@ -328,7 +328,7 @@ it('posts no refused plan, keeps the reason in the report and fires no on_done',
     ],
     [planner(''), 'plan.yml: missing or empty'],
     [planner('tasks: ['), 'plan.yml: not YAML: '],
-    [planner(many), 'plan.yml: 9 tasks, over limits.plan_tasks (8)'],
+    [planner(many), 'plan.yml: 9 tasks, over plan_tasks (8)'],
     [planner(tasks, 'x'.repeat(30_001)), 'the plan comment is over 30000 bytes'],
     // Valid YAML, but its line-start fence ends the comment's yaml block early.
     [
@@ -358,7 +358,7 @@ it('posts no refused plan, keeps the reason in the report and fires no on_done',
 
 it('posts a plan whose task shows an indented yaml example', async () => {
   const example =
-    'tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      ```yaml\n      limits: { plan_tasks: 8 }\n      ```\n'
+    'tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      ```yaml\n      budget: { per_run: 8% }\n      ```\n'
   const { report, writes } = await finishedRun(planRule, [yours(1)], planner(example))
   expect(report.results[0]?.plan).toMatchObject({ tasks: ['cfg'], url: 'https://example.com/1' })
   expect(writes[0]).toEqual([

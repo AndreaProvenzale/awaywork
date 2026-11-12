@@ -64,7 +64,7 @@ describe('plan.yml', () => {
     )
     expect(problem(`tasks:\n${task('api')}notes: hi`)).toBe('Unrecognized key: "notes"')
     expect(problem(`tasks:\n${task('a')}${task('b')}${task('c')}${task('d')}`)).toBe(
-      '4 tasks, over limits.plan_tasks (3)',
+      '4 tasks, over plan_tasks (3)',
     )
     expect(problem(`tasks:\n${task('Api')}`)).toBe(
       `task id "Api" isn't lowercase letters, digits and dashes`,
@@ -122,7 +122,7 @@ describe('the plan comment', () => {
   })
 
   it('reads back a plan whose task shows an indented yaml example, fences only at line start', () => {
-    const example = `tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      Document it like this:\n      \`\`\`yaml\n      limits: { plan_tasks: 8 }\n      \`\`\`\n`
+    const example = `tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      Document it like this:\n      \`\`\`yaml\n      budget: { per_run: 8% }\n      \`\`\`\n`
     const body = planComment('One task.', example)
     expect(planYaml(body)).toBe(example.trim())
     expect(state(posted(body))).toEqual({ state: 'waiting' })

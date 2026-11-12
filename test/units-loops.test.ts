@@ -340,7 +340,7 @@ queue:
   )
 })
 
-it("skips a rule whose quota when doesn't hold, and runs one whose does", async () => {
+it("skips a rule whose quota doesn't hold, and runs one whose does", async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-when-quota-'))
   const { forge } = await originForge(root)
   const config = parseConfig(`
@@ -348,8 +348,8 @@ providers: [claude: {}]
 repos: { acme/*: {} }
 sources: { github: {} }
 queue:
-  - { skill: review, where: { title: { matches: one } }, deliver: report, when: { runs_until_reset: 1 } }
-  - { skill: implement, where: { title: { matches: two } }, when: { headroom: 10% } }
+  - { skill: review, where: { title: { matches: one } }, deliver: report, quota: { runs_until_reset: 1 } }
+  - { skill: implement, where: { title: { matches: two } }, quota: { headroom: 10% } }
 `)
   const plan = planRun({
     config,
@@ -378,16 +378,16 @@ queue:
   })
   const [review, implemented] = report.results
   expect(review?.status).toBe('skipped')
-  expect(review?.reason).toMatch(/^when the window resets within 1 run didn't hold/)
+  expect(review?.reason).toMatch(/^quota: the window resets within 1 run didn't hold/)
   expect(implemented?.status).toBe('done')
   expect(logged).toEqual([
-    "acme-api-1: skipped, when the window resets within 1 run didn't hold",
+    "acme-api-1: skipped, quota: the window resets within 1 run didn't hold",
     'acme-api-2: implement on claude',
     'acme-api-2: done',
   ])
 })
 
-it('records no attempt for a rule whose quota when does not hold', async () => {
+it('records no attempt for a rule whose quota does not hold', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-when-quota-'))
   const { forge } = await originForge(root)
   const config = parseConfig(`
@@ -397,7 +397,7 @@ sources: { github: {} }
 queue:
   - skill: implement
     where: { type: issue }
-    when: { runs_until_reset: 1 }
+    quota: { runs_until_reset: 1 }
 `)
   const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
   const plan = planRun({

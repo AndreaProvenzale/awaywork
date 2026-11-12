@@ -22,7 +22,7 @@ const yaml = JSON.stringify({
     chores: { command: 'node chores.mjs', fields: ['chore'] },
   },
   queue: [
-    { skill: 'implement', source: 'chores', where: { chore: 'tests' }, when: { headroom: '20%' } },
+    { skill: 'implement', source: 'chores', where: { chore: 'tests' }, quota: { headroom: '20%' } },
   ],
 })
 

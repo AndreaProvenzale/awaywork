@@ -57,7 +57,7 @@ Details:
 - On someone else's PR, `.awaywork/skills/` is the author's and skipped.
 - A skill from `~/.claude/skills/`: link it in, `ln -s ~/.claude/skills/<name> ~/.config/awaywork/skills/<name>`.
 - On a runner or in a container, yours are the copy `schedule install` puts in `.awaywork/skills/`.
-- `doctor` and `config edit` see user and built-in skills only, so they warn about repo skills, which resolve at run time; a skill found nowhere fails the unit with `unknown skill`.
+- `doctor` sees user and built-in skills only, so it warns about repo skills, which resolve at run time; a skill found nowhere fails the unit with `unknown skill`.
 
 ## Tweak a built-in
 
@@ -88,7 +88,7 @@ Details:
 - Not in top-level `skills`: that joins every unit, other repos and others' PRs too, where it fails with `unknown skill`.
 - They only fill in names: a rule's main skill never comes from them, so `.claude/skills/implement` doesn't replace the built-in. Move one to `.awaywork/skills/` to make it a main skill.
 - Like `.awaywork/skills/`, skipped on someone else's PR, where naming one fails with `unknown skill`.
-- They resolve at run time, so `doctor` and `config edit` warn; `config edit` saves anyway.
+- They resolve at run time, so `doctor` warns.
 
 ## Try an edit on a past unit
 

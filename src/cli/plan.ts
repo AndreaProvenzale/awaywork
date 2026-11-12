@@ -205,7 +205,10 @@ export async function probeAndPlan(
       reason = `probe failed: ${e.message}`
       return null
     })
-    const a = allowance(p.budget, quota ?? null, at.getTime(), config.windows, { present, reason })
+    const a = allowance(config.budget, quota ?? null, at.getTime(), config.windows, {
+      present,
+      reason,
+    })
     allowances[p.id] = a
     onProgress?.(
       a.kind === 'quota'

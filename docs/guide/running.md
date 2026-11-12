@@ -93,7 +93,7 @@ Queue (default: no queue in config)
   1 unmatched: acme/api#3
 ```
 
-An item goes to the first rule it matches; a later rule that matches it too shows `1 taken by #1: acme/api#1`. To reorder, move the rules in `awaywork config edit`.
+An item goes to the first rule it matches; a later rule that matches it too shows `1 taken by #1: acme/api#1`. To reorder, move the rules in the config.
 
 ## Run one unit
 

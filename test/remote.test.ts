@@ -71,7 +71,6 @@ describe('the remote allowlist', () => {
   it('refuses any other command, flag or extra argument, naming it', () => {
     expect(refused(['init'])).toBe('init')
     expect(refused(['config', 'show'])).toBe('config show')
-    expect(refused(['config', 'edit'])).toBe('config edit')
     expect(refused(['schedule', 'install'])).toBe('schedule install')
     expect(refused(['replay', 'x'])).toBe('replay')
     expect(refused(['watch'])).toBe('watch')

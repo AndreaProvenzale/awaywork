@@ -61,7 +61,7 @@ function plan(
   const config = parseConfig(yaml)
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers)
-    allowances[p.id] = allowance(p.budget, quotas[p.id] ?? null, now, config.windows)
+    allowances[p.id] = allowance(config.budget, quotas[p.id] ?? null, now, config.windows)
   return planRun({
     config,
     items,
@@ -162,7 +162,7 @@ queue:
       inRepo('acme/ops', 5),
     ]
     const allowances = Object.fromEntries(
-      config.providers.map((p) => [p.id, allowance(p.budget, week(0.1), now, config.windows)]),
+      config.providers.map((p) => [p.id, allowance(config.budget, week(0.1), now, config.windows)]),
     )
     const ids = (only: { repo?: string; rule?: number }) =>
       planRun({
@@ -288,7 +288,7 @@ sources: { github: {} }
     const allowances = Object.fromEntries(
       config.providers.map((p) => [
         p.id,
-        allowance(p.budget, quotas[p.id] ?? null, now, config.windows, { present: true }),
+        allowance(config.budget, quotas[p.id] ?? null, now, config.windows, { present: true }),
       ]),
     )
     const items = [githubPr(1, { checks: 'failing' })]
@@ -311,7 +311,7 @@ sources: { github: {} }
 
   it('routes between claude and codex on their own windows', () => {
     const yaml = `
-providers: [claude: {}, codex: { budget: { per_run: 10% } }]
+providers: [claude, codex]
 repos: { acme/api: {} }
 sources: { github: {} }
 queue:
@@ -335,11 +335,11 @@ queue:
     expect(formatPlan(result)).toContain(
       [
         '  codex     30d        4%    9%       pacing  28 runs    -',
-        '    other limits: per_run 14%, reserve cap 90%',
+        '    other limits: reserve cap 90%',
       ].join('\n'),
     )
     expect(describeAllowance('codex', result.allowances.codex as Allowance, 0.4)).toBe(
-      '30d 4% used, ceiling 9% set by pacing (per_run 14%, reserve cap 90%; resets in 28 runs)',
+      '30d 4% used, ceiling 9% set by pacing (reserve cap 90%; resets in 28 runs)',
     )
     expect(describeAllowance('claude', result.allowances.claude as Allowance, 0.4)).toBe(
       'seven_day 36% used, ceiling 70.7% set by pacing (reserve cap 90%; resets in 3 runs); session 2%, workers stop at 90% in windows, 40% outside',
@@ -393,7 +393,7 @@ queue:
     ])
   })
 
-  it('says why a quota when fails, on the rule only', () => {
+  it('says why a quota fails, on the rule only', () => {
     const yaml = (rule: string) => `
 providers: [claude: {}]
 repos: { acme/api: {} }
@@ -408,12 +408,12 @@ queue:
     const units = (rule: string, quota: Quota | null) =>
       plan(yaml(rule), items, { claude: quota }).units.map((u) => u.quotaUnmet)
     const unmet = "doesn't hold on the probe"
-    expect(units('when: { runs_until_reset: 1 }', week(0.36))).toEqual([unmet, undefined])
-    expect(units('when: { runs_until_reset: 3 }', week(0.36))).toEqual([undefined, undefined])
-    expect(units('when: { headroom: 10% }', week(0.36))).toEqual([undefined, undefined])
-    expect(units('when: { headroom: 40% }', week(0.36))).toEqual([unmet, undefined])
-    expect(units('when: { headroom: 1% }', null)[0]).toBe('no quota reading')
-    expect(units('when: { headroom: 1% }', week(0.95))).toEqual([undefined, undefined])
+    expect(units('quota: { runs_until_reset: 1 }', week(0.36))).toEqual([unmet, undefined])
+    expect(units('quota: { runs_until_reset: 3 }', week(0.36))).toEqual([undefined, undefined])
+    expect(units('quota: { headroom: 10% }', week(0.36))).toEqual([undefined, undefined])
+    expect(units('quota: { headroom: 40% }', week(0.36))).toEqual([unmet, undefined])
+    expect(units('quota: { headroom: 1% }', null)[0]).toBe('no quota reading')
+    expect(units('quota: { headroom: 1% }', week(0.95))).toEqual([undefined, undefined])
   })
 
   it("chains steps in one clone, each with the rule's settings unless it sets its own", () => {

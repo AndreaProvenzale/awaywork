@@ -144,7 +144,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   for (const c of isolation) report(c.status, c.what, c.detail)
   const asWorker = !boxed && isolation[0]?.status === 'ok'
 
-  for (const { id, config: providerConfig, budget } of config.providers) {
+  for (const { id, config: providerConfig } of config.providers) {
     const provider = providerFor(id, providerConfig)
     if (!provider) continue
     const unavailable = provider.unavailable?.(process.env)
@@ -179,8 +179,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     if (pin?.problem) continue
     await provider.probe(ctx).then(
       (quota) => {
-        const a = allowance(budget, quota, Date.now(), config.windows)
-        const line = describeAllowance(id, a, budget.present_session_max)
+        const a = allowance(config.budget, quota, Date.now(), config.windows)
+        const line = describeAllowance(id, a, config.budget.present_session_max)
         report(a.kind === 'quota' ? 'ok' : 'warn', `${id} quota`, line)
       },
       (e: Error) => report('FAIL', `${id} probe`, e.message),

@@ -24,8 +24,7 @@ Options:
 Commands:
   init [options]            set awaywork up with Claude Code's /away, or write
                             the detected defaults with --yes
-  config                    print the config's path or its schema, or edit the
-                            config
+  config                    print the config's path, what it says or its schema
   secret <name>             save a token to ~/.config/awaywork/env (mode 600),
                             from a hidden prompt or a pipe
   sources [options] [id]    list what a source's credentials can see
@@ -84,7 +83,7 @@ Options:
 ```text
 Usage: awaywork config [options] [command]
 
-print the config's path or its schema, or edit the config
+print the config's path, what it says or its schema
 
 Options:
   -h, --help      display help for command
@@ -95,8 +94,6 @@ Commands:
   explain         print what the config says as JSON, without reading a source
                   or a provider
   schema          print the config JSON Schema, for editor autocompletion
-  edit            open the config in $VISUAL or $EDITOR; it is saved only once
-                  valid
   help [command]  display help for command
 ```
 
@@ -128,17 +125,6 @@ Options:
 Usage: awaywork config schema [options]
 
 print the config JSON Schema, for editor autocompletion
-
-Options:
-  -h, --help  display help for command
-```
-
-## awaywork config edit
-
-```text
-Usage: awaywork config edit [options]
-
-open the config in $VISUAL or $EDITOR; it is saved only once valid
 
 Options:
   -h, --help  display help for command

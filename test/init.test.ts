@@ -62,10 +62,10 @@ describe('init --yes', () => {
     const { text, notes } = await init()
     expect(notes).toEqual([])
     expect(text).toMatchInlineSnapshot(`
-      "# awaywork config: \`awaywork config edit\` validates on save,
+      "# awaywork config: \`awaywork doctor\` checks it,
       # \`awaywork plan\` previews the next run, \`awaywork plan --rules\` what each rule takes.
       windows: [{ start: "01:00", end: "07:00" }]
-      budget:                         # every provider; override one with - <id>: { budget: … }
+      budget:                         # for every provider
         reserve: 10%                  # never go past 1 - reserve of any window
         session_max: 90%              # stop a worker past this share of the short window
         present_session_max: 40%      # the same, in a run outside every window

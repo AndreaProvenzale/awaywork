@@ -95,13 +95,6 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
-        },
-        "plan_tasks": {
-          "default": 8,
-          "description": "At most this many tasks in a deliver: plan plan",
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false
@@ -172,7 +165,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Quota shares; any provider can override them"
+      "description": "Quota shares, for every provider"
     },
     "providers": {
       "minItems": 1,
@@ -203,52 +196,6 @@
                     "type": "string",
                     "minLength": 1,
                     "description": "Model passed to the provider's binary; default the binary's"
-                  },
-                  "budget": {
-                    "type": "object",
-                    "properties": {
-                      "reserve": {
-                        "description": "Never go past 1 - reserve of any window",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "per_run": {
-                        "description": "At most this share of the long window per run",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "session_max": {
-                        "description": "Stop a worker past this share of the short window",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "present_session_max": {
-                        "description": "Stop a worker past this share of the short window in a run started outside every window",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "fallback": {
-                        "type": "object",
-                        "properties": {
-                          "units": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Units per run"
-                          },
-                          "turns": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Turns per unit"
-                          }
-                        },
-                        "additionalProperties": false,
-                        "description": "Caps when the provider's quota can't be read"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "description": "Overrides the top-level budget for this provider"
                   },
                   "config_dir": {
                     "type": "string",
@@ -281,52 +228,6 @@
                     "minLength": 1,
                     "description": "Model passed to the provider's binary; default the binary's"
                   },
-                  "budget": {
-                    "type": "object",
-                    "properties": {
-                      "reserve": {
-                        "description": "Never go past 1 - reserve of any window",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "per_run": {
-                        "description": "At most this share of the long window per run",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "session_max": {
-                        "description": "Stop a worker past this share of the short window",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "present_session_max": {
-                        "description": "Stop a worker past this share of the short window in a run started outside every window",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "fallback": {
-                        "type": "object",
-                        "properties": {
-                          "units": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Units per run"
-                          },
-                          "turns": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Turns per unit"
-                          }
-                        },
-                        "additionalProperties": false,
-                        "description": "Caps when the provider's quota can't be read"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "description": "Overrides the top-level budget for this provider"
-                  },
                   "config_dir": {
                     "type": "string",
                     "pattern": "^~?\\/",
@@ -343,52 +244,6 @@
                     "type": "string",
                     "minLength": 1,
                     "description": "Model passed to the provider's binary; default the binary's"
-                  },
-                  "budget": {
-                    "type": "object",
-                    "properties": {
-                      "reserve": {
-                        "description": "Never go past 1 - reserve of any window",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "per_run": {
-                        "description": "At most this share of the long window per run",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "session_max": {
-                        "description": "Stop a worker past this share of the short window",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "present_session_max": {
-                        "description": "Stop a worker past this share of the short window in a run started outside every window",
-                        "type": "string",
-                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                      },
-                      "fallback": {
-                        "type": "object",
-                        "properties": {
-                          "units": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Units per run"
-                          },
-                          "turns": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Turns per unit"
-                          }
-                        },
-                        "additionalProperties": false,
-                        "description": "Caps when the provider's quota can't be read"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "description": "Overrides the top-level budget for this provider"
                   }
                 },
                 "additionalProperties": false
@@ -421,58 +276,13 @@
                   "description": "Where the CLI finds skills in the clone",
                   "type": "string",
                   "minLength": 1
-                },
-                "budget": {
-                  "type": "object",
-                  "properties": {
-                    "reserve": {
-                      "description": "Never go past 1 - reserve of any window",
-                      "type": "string",
-                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                    },
-                    "per_run": {
-                      "description": "At most this share of the long window per run",
-                      "type": "string",
-                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                    },
-                    "session_max": {
-                      "description": "Stop a worker past this share of the short window",
-                      "type": "string",
-                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                    },
-                    "present_session_max": {
-                      "description": "Stop a worker past this share of the short window in a run started outside every window",
-                      "type": "string",
-                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                    },
-                    "fallback": {
-                      "type": "object",
-                      "properties": {
-                        "units": {
-                          "type": "integer",
-                          "exclusiveMinimum": 0,
-                          "maximum": 9007199254740991,
-                          "description": "Units per run"
-                        },
-                        "turns": {
-                          "type": "integer",
-                          "exclusiveMinimum": 0,
-                          "maximum": 9007199254740991,
-                          "description": "Turns per unit"
-                        }
-                      },
-                      "additionalProperties": false,
-                      "description": "Caps when the provider's quota can't be read"
-                    }
-                  },
-                  "additionalProperties": false,
-                  "description": "Overrides the top-level budget for this provider"
                 }
               },
               "required": [
                 "command"
               ],
-              "additionalProperties": false
+              "additionalProperties": false,
+              "description": "A custom provider: any agent CLI, run by a command"
             }
           }
         ]
@@ -1380,7 +1190,7 @@
               "updated"
             ]
           },
-          "when": {
+          "quota": {
             "description": "Run this rule's unit only when the quota holds; otherwise skip it",
             "type": "object",
             "properties": {
@@ -1397,6 +1207,12 @@
               }
             },
             "additionalProperties": false
+          },
+          "plan_tasks": {
+            "description": "deliver: plan: at most this many tasks in its plan; default 8",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           },
           "units": {
             "description": "At most this many units per run from this rule; a chain counts once",

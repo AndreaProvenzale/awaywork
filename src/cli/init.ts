@@ -325,10 +325,10 @@ export function renderConfig(c: {
   queue: Rule[]
 }): string {
   return [
-    '# awaywork config: `awaywork config edit` validates on save,',
+    '# awaywork config: `awaywork doctor` checks it,',
     '# `awaywork plan` previews the next run, `awaywork plan --rules` what each rule takes.',
     `windows: [{ start: "${c.window.start}", end: "${c.window.end}" }]`,
-    'budget:                         # every provider; override one with - <id>: { budget: … }',
+    'budget:                         # for every provider',
     commented('  reserve: 10%', 'never go past 1 - reserve of any window'),
     commented('  session_max: 90%', 'stop a worker past this share of the short window'),
     commented('  present_session_max: 40%', 'the same, in a run outside every window'),

@@ -42,7 +42,10 @@ export interface Contract {
   text: string
 }
 
-/** What a plan is checked against: `limits.plan_tasks`, the card's repo and the others a task may name, and, when given, the skills `planned` rules take and the retired task ids. */
+/** A plan's tasks when its rule sets no `plan_tasks`. */
+export const PLAN_TASKS = 8
+
+/** What a plan is checked against: its rule's `plan_tasks`, the card's repo and the others a task may name, and, when given, the skills `planned` rules take and the retired task ids. */
 export interface PlanLimits {
   maxTasks: number
   repo?: string
@@ -127,7 +130,7 @@ function tasksProblem(
   tasks: Task[],
   { maxTasks, repo, repos = [], skills, reports = [], retired = {} }: PlanLimits,
 ): string | undefined {
-  if (tasks.length > maxTasks) return `${tasks.length} tasks, over limits.plan_tasks (${maxTasks})`
+  if (tasks.length > maxTasks) return `${tasks.length} tasks, over plan_tasks (${maxTasks})`
   const ids = tasks.map((t) => t.id)
   const known = [...(repo ? [repo] : []), ...repos]
   const exactly = (glob: string) => new RegExp(globToRegExp(glob).source)
@@ -334,7 +337,8 @@ export function planState(
     item,
     (pr) => pr.state === 'closed' && Date.parse(pr.closedAt ?? '') < posted,
   )
-  const checked = checkPlan(planOf(thread.plan), { ...limits, retired })
+  // The task cap is the writing rule's, checked when the plan is posted: the card may have moved since.
+  const checked = checkPlan(planOf(thread.plan), { ...limits, maxTasks: Infinity, retired })
   if ('problem' in checked) return { state: 'invalid', problem: checked.problem }
   const { contract: path } = checked.plan
   const name = path && contractName(path)

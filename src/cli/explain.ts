@@ -109,7 +109,6 @@ export function explainConfig(text: string, path: string, skills: SkillCatalog) 
     return { valid: false as const, problems: e.problems }
   }
   const lines = ruleLines(text)
-  const budget = config.providers[0]?.budget
   return {
     valid: true as const,
     windows: config.windows.map(
@@ -117,7 +116,7 @@ export function explainConfig(text: string, path: string, skills: SkillCatalog) 
     ),
     providers: config.providers.map((p) => p.id),
     sources: Object.keys(config.sources),
-    reserve: budget && pct(budget.reserve),
+    reserve: pct(config.budget.reserve),
     rules: (config.queue ?? defaultRules(Object.keys(config.sources))).map((r, i) => ({
       rule: i + 1,
       line: lines[i],

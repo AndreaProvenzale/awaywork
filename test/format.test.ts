@@ -111,7 +111,7 @@ describe('listedUnits', () => {
 })
 
 describe('formatPlan', () => {
-  it('says why a quota when fails on its when line', () => {
+  it('says why a quota fails on its quota line', () => {
     const config = parseConfig(`
 providers: [claude: {}]
 repos: { acme/api: {} }
@@ -119,7 +119,7 @@ sources: { github: {} }
 queue:
   - skill: fix
     where: { checks: failing }
-    when: { runs_until_reset: 1 }
+    quota: { runs_until_reset: 1 }
 `)
     const now = Date.UTC(2026, 0, 1, 1)
     const quota = {
@@ -128,7 +128,7 @@ queue:
       ],
     }
     const allowances = Object.fromEntries(
-      config.providers.map((p) => [p.id, allowance(p.budget, quota, now, config.windows)]),
+      config.providers.map((p) => [p.id, allowance(config.budget, quota, now, config.windows)]),
     )
     const plan = planRun({
       config,
@@ -137,7 +137,7 @@ queue:
       skills: { builtin: builtinSkills },
     })
     expect(formatPlan(plan)).toContain(
-      "     when the window resets within 1 run (doesn't hold on the probe)",
+      "     quota: the window resets within 1 run (doesn't hold on the probe)",
     )
   })
 })

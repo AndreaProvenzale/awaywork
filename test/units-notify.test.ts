@@ -90,7 +90,7 @@ it('runs no notify unit event in a soon run for a step its when passed over, but
   const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-soon-')), 'out.txt')
   const hook = `notify: { command: 'echo "$AWAYWORK_UNIT $AWAYWORK_STATUS" >> ${out}' }`
   const passed = await loopRun(
-    `queue: [{ skill: plan, when: { runs_until_reset: 1 } }]\n${hook}`,
+    `queue: [{ skill: plan, quota: { runs_until_reset: 1 } }]\n${hook}`,
     [issue(1)],
     pusher,
     { soon: true },

@@ -183,12 +183,14 @@ function formatIssue(issue: z.core.$ZodIssue): string {
     .map((p, i) => (typeof p === 'number' ? `[${p}]` : i === 0 ? String(p) : `.${String(p)}`))
     .join('')
   // A command provider named like a built-in one, e.g. one written before it was built in.
-  const builtIn = issue.path[0] === 'providers' && issue.path.length === 3
-  if (builtIn && issue.code === 'unrecognized_keys' && issue.keys.includes('command'))
+  const provider = issue.path[0] === 'providers' && issue.path.length === 3
+  if (provider && issue.code === 'unrecognized_keys' && issue.keys.includes('command'))
     return `${at}: built in, so it takes no command; give your own provider another name`
+  // A removed key's path names no list index and no provider: queue.when, providers.budget.
+  const listed = provider ? 'providers' : at.replace(/\[\d+\]/g, '')
   const gone =
     issue.code === 'unrecognized_keys'
-      ? issue.keys.flatMap((key) => removedKeys[key] ?? removedKeys[`${at}.${key}`] ?? [])
+      ? issue.keys.flatMap((key) => removedKeys[key] ?? removedKeys[`${listed}.${key}`] ?? [])
       : []
   if (gone.length > 0) return at ? `${at}: ${gone.join('; ')}` : gone.join('; ')
   // A record key's own message, e.g. `expected owner/name`, sits under zod's generic one.
