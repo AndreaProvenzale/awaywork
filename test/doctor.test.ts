@@ -134,6 +134,34 @@ describe('doctor', () => {
     expect(checks.at(-1)?.what).toBe('github')
   })
 
+  it('warns about a rule whose gates could never run, as the plan skips its every item', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    const gates = "gates: { own: { command: 'true' } }"
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    await writeFile(
+      path,
+      `providers: [codex]
+repos: { a/b: {} }
+sources: { github: {} }
+queue:
+  - { skill: review, ${gates} }
+  - { skill: review, deliver: report, ${gates} }
+  - { skill: fix, ${gates} }
+`,
+    )
+    const checks = await runChecks(path, () => {})
+    vi.unstubAllEnvs()
+    expect(checks.filter((c) => c.what.endsWith('gates'))).toEqual([
+      {
+        status: 'warn',
+        what: 'rule #1 gates',
+        detail:
+          'its items are all skipped: set deliver: report: review commits nothing, so its gates would never run',
+      },
+    ])
+  })
+
   it("fails gh login with the fix when the pinned account has none, and counts no one else's items", async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
     const path = join(dir, 'config.yml')

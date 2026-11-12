@@ -6,7 +6,14 @@ import { awaitsAnswer } from './comments.js'
 import { holds } from './condition.js'
 import { byHand } from './continue.js'
 import { dedupe } from './dedupe.js'
-import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
+import {
+  branchName,
+  committingStep,
+  expandPlans,
+  gatesNeverRun,
+  planLimits,
+  stepReports,
+} from './fanout.js'
 import { globToRegExp } from './glob.js'
 import { MAX_ATTEMPTS } from './max-attempts.js'
 import { elsewhere, latestResult, planState, planThread } from './plan.js'
@@ -411,15 +418,9 @@ export function planRun(input: {
       continue
     }
     // A declared gate never stays off unsaid: one on a chain that only reports runs under deliver: report alone.
-    if (rule.gates && !committing && !planned && rule.deliver !== 'report') {
-      const fix =
-        'planned' in rule.where
-          ? "a task's report takes no gates for now: drop them"
-          : 'set deliver: report to run them on the report'
-      skip(
-        'refused_delivery',
-        `${rule.skill} commits nothing, so its gates would never run: ${fix}`,
-      )
+    const ungated = gatesNeverRun(rule, input.skills)
+    if (ungated) {
+      skip('refused_delivery', ungated)
       continue
     }
     const template = rule.branch ?? settingsFor(config.repos, repo).branch ?? config.branch

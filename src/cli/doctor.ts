@@ -9,8 +9,9 @@ import { ConfigError, configPath, loadConfig } from '../config/load.js'
 import { expandHome, loginCommand, type Pin, pinLogins } from '../config/logins.js'
 import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import { type Config, canMatch } from '../config/schema.js'
-import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
+import { hasSkills, loadSkills, unknownSkillsWarning } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
+import { gatesNeverRun } from '../core/fanout.js'
 import {
   DOCKER_TIMEOUT_MS,
   dockerVersion,
@@ -22,6 +23,7 @@ import {
 } from '../core/isolation.js'
 import { ruleThread } from '../core/queue.js'
 import { counted } from '../core/report.js'
+import { builtinSkills } from '../core/skills.js'
 import type { Ctx, Provider } from '../core/types.js'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
 import { type Exec, exec, onHost } from '../forge/gh.js'
@@ -201,6 +203,11 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       report('warn', id, 'the command reads your home folder, which GitHub Actions lacks')
   }
   if (!config.queue?.length) report('warn', 'queue', NO_QUEUE)
+  const skills = { user: await loadSkills(skillsDirOf(path)), builtin: builtinSkills }
+  config.queue?.forEach((rule, i) => {
+    const ungated = gatesNeverRun(rule, skills)
+    if (ungated) report('warn', `rule #${i + 1} gates`, `its items are all skipped: ${ungated}`)
+  })
   config.queue?.forEach((rule, i) => {
     // A report that waits posts on its item, as on_done does.
     const waits = rule.deliver === 'report' && (rule.wait || rule.gates)

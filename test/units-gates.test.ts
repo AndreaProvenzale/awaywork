@@ -182,7 +182,7 @@ queue: [${queue}]
   const skip = (skill: string) => [
     [
       'refused_delivery',
-      `${skill} commits nothing, so its gates would never run: set deliver: report to run them on the report`,
+      `set deliver: report: ${skill} commits nothing, so its gates would never run`,
     ],
   ]
   expect(reasons(`{ skill: review, ${own} }`).skipped).toEqual(skip('review'))

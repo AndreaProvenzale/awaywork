@@ -665,3 +665,44 @@ it("fires a post's gate with its judge's reason, masked, when the judge couldn't
     "- risk: judge didn't run: Not logged in as ***\n",
   )
 })
+
+it("runs a PR rule's own gates before on_done writes for a chain that left no commits, holding the comment and the move back when one fires", async () => {
+  const reads = 'test -z "$AWAYWORK_FROM" && cat "$AWAYWORK_OUT_DIR/report.md"'
+  // The top-level gate would fire if it ran: it needs commits.
+  const queue = (own: string) => `  - skill: review
+    on_done: { comment: result, move: QA }
+    then: [{ skill: implement, when: { verdict: changes } }]
+    gates: { own: { command: '${own}' }, ids: { changed: '**' } }
+gates: { top: { command: 'exit 1' } }`
+  const approves = looper({ 'acme-api-1': 'approve' })
+  const clear = await finishedRun(queue(reads), [yours(1)], approves)
+  expect(clear.report.results[0]?.outcome).toEqual({
+    kind: 'report',
+    text: 'acme-api-1 says approve.',
+  })
+  expect(clear.writes.map(([, w]) => w.op)).toEqual(['comment', 'move'])
+
+  const fired = await finishedRun(queue(`${reads}; exit 1`), [yours(1)], approves)
+  expect(fired.report.results[0]?.outcome).toEqual({
+    kind: 'report',
+    text: '## Needs a decision\n\n### Gates (from scripts)\n\n- own: acme-api-1 says approve.\n\n---\n\nacme-api-1 says approve.',
+    unposted: 'gate own fired, on_done held back',
+  })
+  expect(fired.writes).toEqual([])
+  expect(fired.opened).toEqual([])
+  expect(fired.report.results[0]).not.toHaveProperty('moved')
+  expect(formatReport(fired.report)).toContain(
+    'report below (not posted: gate own fired, on_done held back)',
+  )
+
+  // Without on_done nothing would be written, so no gate runs.
+  const local = await finishedRun(
+    queue('exit 1').replace(/\n {4}on_done.*/, ''),
+    [yours(1)],
+    approves,
+  )
+  expect(local.report.results[0]?.outcome).toEqual({
+    kind: 'report',
+    text: 'acme-api-1 says approve.',
+  })
+})

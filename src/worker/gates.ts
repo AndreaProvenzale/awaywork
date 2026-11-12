@@ -31,7 +31,7 @@ export interface Fired {
  * A command fires when it exits non-zero, its stdout the line, and fails closed: also when it can't
  * run, times out or is stopped, and, without running, when a file it names by its path from the repo
  * root isn't the one the clone held at `start`, before the chain's setup and workers. `outDir` is the copy of what
- * the steps left, the command's `AWAYWORK_OUT_DIR`; a plan or report has no commits, so no `from`.
+ * the steps left, the command's `AWAYWORK_OUT_DIR`; without commits there's no `from`, and no glob matches.
  */
 export async function runGates(
   check: Publisher['check'],
@@ -45,7 +45,8 @@ export async function runGates(
   const fired: Fired[] = []
   for (const [name, gate] of Object.entries(unit.gates)) {
     const lines: string[] = []
-    const matched = gate.changed.length ? await gatedPaths(dir, unit, from, gate.changed) : []
+    const matched =
+      from && gate.changed.length ? await gatedPaths(dir, unit, from, gate.changed) : []
     if (matched.length) lines.push(listed(matched))
     for (const command of gate.commands) {
       const swapped = await swappedFile(dir, start, command)

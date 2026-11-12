@@ -859,6 +859,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       event(`${unit.id}: ${result.status}`)
     }
 
+    const { on_done: onDone, gates: declared } = input.plan.queue[first.rule] ?? {}
+    // A rule's gate shares no name with a top-level or repo one.
+    const ownGates =
+      declared &&
+      first.unit.gates &&
+      Object.fromEntries(Object.entries(first.unit.gates).filter(([name]) => name in declared))
+
     /** Publishes the chain once its last step ended. */
     const publishChain = async () => {
       const lead = done.find(
@@ -871,6 +878,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           !r.retried &&
           (/^(failed|stopped|error)/.test(r.status) || (r.status === 'skipped' && !r.passedOver)),
       )
+      // on_done writes only for a chain that finished: without commits, the rule's own gates run first.
+      const writes =
+        onDone && !failed && (!ended || ended.when) && Object.values(loops).every((l) => l.held)
       if (from !== undefined && lead && ran && !input.dryRun) {
         publishedBy = lead
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
@@ -909,6 +919,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 base === '' || (!!shape.resume && !shape.stackedOn),
                 (failed && notReady(failed)) || leaves?.byHand,
                 held,
+                writes ? ownGates : undefined,
               )
           // Its questions stay in the report only with a draft.
           if (leaves?.byHand && lead.outcome.kind === 'pr')
@@ -1314,7 +1325,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await publishChain()
-    const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
     // Answers to a draft awaywork can't push onto would reach no later run.
     if (asked && lead)

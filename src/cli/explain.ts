@@ -1,6 +1,6 @@
 import { isMap, isSeq, LineCounter, parseDocument } from 'yaml'
 import { ConfigError, parseConfig } from '../config/load.js'
-import { committingStep } from '../core/fanout.js'
+import { committingStep, gatesNeverRun } from '../core/fanout.js'
 import { isLoop } from '../core/queue.js'
 import type { SkillCatalog } from '../core/skills.js'
 import type { Rule, Where } from '../core/types.js'
@@ -76,8 +76,9 @@ const delivers: Record<string, string> = {
   pending_review: 'pending review',
 }
 
-/** What a rule leaves, as the run decides it: a rule with no committing step reports. */
+/** What a rule leaves, as the run decides it: a rule with no committing step reports, one the plan always skips nothing. */
 function leaves(r: Rule, skills: SkillCatalog): string {
+  if (gatesNeverRun(r, skills)) return 'nothing'
   const own = r.deliver === 'pending_review' || r.deliver === 'plan'
   const deliver = own || committingStep(r, skills) ? (r.deliver ?? 'draft_pr') : 'report'
   return delivers[deliver] ?? deliver
