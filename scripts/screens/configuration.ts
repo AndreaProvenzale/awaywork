@@ -85,7 +85,9 @@ function sourcesLinear(): string {
 }
 
 async function bitbucketDoctor(): Promise<string> {
-  const config = parseConfig('providers: [claude]\nsources:\n  bitbucket: { repos: [acme/api] }')
+  const config = parseConfig(
+    'providers: [claude]\nforge: bitbucket\nrepos: { acme/api: {} }\nsources: { jira: { site: acme.atlassian.net, email: me@acme.com } }',
+  )
   const run: Exec = async (cmd, args) => {
     if (cmd === 'git')
       return args[0] === 'config' ? '' : '0000000000000000000000000000000000000000\tHEAD'
@@ -107,7 +109,8 @@ async function extendsDoctor(): Promise<string> {
       `windows: [{ start: "01:00", end: "7:00" }]
 limits: { unit_minutes: 45 }
 providers: [claude]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 instructions: [notes/team.md]`,
     )
     await writeFile(
@@ -139,7 +142,7 @@ queue:
 }
 
 async function loginsDoctor(): Promise<string> {
-  const gh: Pin = { what: 'gh', key: 'sources.github.user', name: 'GH_TOKEN', value: 'gho_x' }
+  const gh: Pin = { what: 'gh', key: 'forge.github.user', name: 'GH_TOKEN', value: 'gho_x' }
   const claudePin: Pin = {
     what: 'claude',
     key: 'providers[0].claude.config_dir',
@@ -201,6 +204,7 @@ function routineWhy(): string {
     },
   })
   const yaml = `providers: [claude]
+repos: { acme/api: {} }
 sources:
   routines:
     sentry-triage: { days: [mon], at: "09:00", repo: acme/api, title: Triage last week's Sentry issues }
@@ -217,8 +221,9 @@ queue:
 
 function mergedRules(): string {
   const yaml = `providers: [claude]
+repos: { acme/api: {} }
 sources:
-  github: { repos: [acme/api] }
+  github: {}
 queue:
   - skill: review
     where: { type: pr, mine: true, state: merged, closed: { newer_than: 14d } }
@@ -247,6 +252,7 @@ queue:
 
 function onDoneReport(): string {
   const yaml = `providers: [claude]
+repos: { acme/api: {} }
 sources:
   jira: { site: acme.atlassian.net, email: dev@acme.com, repo_map: { ENG: acme/api } }
 queue:

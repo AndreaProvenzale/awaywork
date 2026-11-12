@@ -378,7 +378,7 @@ Right before writing, awaywork checks the item is still yours:
 | GitHub | Yes | An issue is reread and refused once no longer assigned to you; a PR's author can't change, so your PR stays yours | Yes |
 | Jira, Linear, Asana | Yes | Reread and refused once no longer assigned to you | Jira yes; Linear and Asana no |
 | Custom source | Through its `write` | Its `write` checks that itself | No |
-| Bitbucket, a custom source without `write` | No: leaves items alone | — | — |
+| A custom source without `write` | No: leaves items alone | — | — |
 
 #### How its comments are marked
 

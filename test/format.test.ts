@@ -77,7 +77,8 @@ describe('describeRule', () => {
   it('lists the where keys in order, with any last and its entries split by |', () => {
     const cfg = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - skill: fix
     where: { type: pr, any: [{ checks: failing, label: urgent }, { any: [{ mine: true }] }], draft: false }
@@ -90,7 +91,8 @@ queue:
   it("shows a post's wait and its rule's own gates", () => {
     const cfg = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - { skill: story, where: { type: issue }, deliver: report, wait: true, gates: { taste: { skill: judge }, size: { command: 'true' } } }
 `)
@@ -112,7 +114,8 @@ describe('formatPlan', () => {
   it('says why a quota when fails on its when line', () => {
     const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - skill: fix
     where: { checks: failing }
@@ -147,7 +150,8 @@ describe('reportJson', () => {
   it('keeps the run header and only references to its items', () => {
     const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue: [{ skill: fix, where: { checks: failing } }]
 `)
     const secret = { description: 'PRIVATE', comments: [{ author: 'a', body: 'PRIVATE', at: '' }] }
@@ -420,7 +424,8 @@ describe('plan views', () => {
   it("names an item by its exact key, source:key or ref, never a tracker key's look-alike", () => {
     const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: fix }]
 `)
     const labs = {

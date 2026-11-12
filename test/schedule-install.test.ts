@@ -91,7 +91,7 @@ afterEach(() => {
 async function setup() {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
   const config = join(await mkdtemp(join(tmpdir(), 'awaywork-home-')), 'config.yml')
-  await writeFile(config, 'providers: [claude]\nsources: { github: { repos: [acme/api] } }\n')
+  await writeFile(config, 'providers: [claude]\nrepos: { acme/api: {} }\nsources: { github: {} }\n')
   const io = (script: [RegExp, unknown][], interactive: boolean): Io => ({
     run: async () => root,
     ask: scriptedAsk(script),
@@ -139,7 +139,7 @@ it('installs a job keeping awaywork watch running, and offers no wake without wi
   expect(out[0]).toBe('Scheduled awaywork watch with cron for 01:00-07:00: /fake/cron')
   await writeFile(
     config,
-    'windows: []\nproviders: [claude]\nsources: { github: { repos: [a/b] } }\n',
+    'windows: []\nproviders: [claude]\nrepos: { a/b: {} }\nsources: { github: {} }\n',
   )
   await installSchedule(config, 'cron', io([], true))
   expect(out).toContain('Scheduled awaywork watch with cron, no windows yet: /fake/cron')

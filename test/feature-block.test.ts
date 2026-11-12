@@ -34,7 +34,8 @@ const git = (dir: string, ...args: string[]) =>
 const configOf = (extra = '', rules = '') =>
   parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 ${extra}queue:
   - { skill: plan, deliver: plan }
   - { skill: implement, where: { planned: true } }
@@ -130,7 +131,8 @@ describe('the feature block', () => {
   it("runs a card's tasks back to back in the order they wait on each other, each stacking on the one before", () => {
     const cfg = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: plan, deliver: plan, where: { label: feature } }
   - { skill: implement, where: { planned: true } }

@@ -24,6 +24,7 @@ import {
   waitsOn,
 } from './queue.js'
 import type { Moved } from './report.js'
+import { repoListed, settingsFor } from './repos.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
 import type {
@@ -97,6 +98,7 @@ export type SkipKind =
   | 'all_tasks_done'
   | 'gave_up'
   | 'no_repo'
+  | 'unlisted_repo'
   | 'invalid_branch'
   | 'refused_delivery'
   | 'draft_moved'
@@ -123,6 +125,7 @@ export const needsYou: Record<SkipKind, boolean> = {
   all_tasks_done: true,
   gave_up: true,
   no_repo: true,
+  unlisted_repo: false,
   invalid_branch: true,
   refused_delivery: true,
   draft_moved: true,
@@ -394,11 +397,22 @@ export function planRun(input: {
       continue
     }
     if (onlyRepo && !onlyRepo.test(repo)) continue
+    // Its thread opens in the repo an item names, so that one is listed too.
+    const unlisted = [repo, ...items.map((i) => i.fields.repo)].find(
+      (r) => typeof r === 'string' && !repoListed(config.repos, r),
+    )
+    if (unlisted) {
+      skip(
+        'unlisted_repo',
+        `${unlisted} isn't in repos: awaywork works only in the repos listed there`,
+      )
+      continue
+    }
     if (review && !pr) {
       skip('refused_delivery', 'deliver pending_review: no pull request to review')
       continue
     }
-    const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
+    const template = rule.branch ?? settingsFor(config.repos, repo).branch ?? config.branch
     // A chain's name takes the type of its first committing step; the list's words keep it a valid ref.
     const branch = branchName(config, rule, repo, items[0] as Item, committing, input.skills)
     if (!isValidRef(branch)) {
@@ -492,11 +506,11 @@ export function planRun(input: {
         ? route(providers, allowances, oneOff ? {} : routed)
         : { passed: [] }
       if (provider) routed[provider] = (routed[provider] ?? 0) + 1
-      const repoInstructions = config.repos[repo]?.instructions
+      const settings = settingsFor(config.repos, repo)
       const unit: Unit = {
         ...at,
         id: unitId,
-        verify: config.repos[repo]?.verify,
+        verify: settings.verify,
         // Gates check what a model wrote, and a merge with no model has nothing of its; a plan's or report's are its rule's own, on what it left.
         gates: decides
           ? ruleGates(rule)
@@ -514,7 +528,7 @@ export function planRun(input: {
         providers,
         instructions: [
           ...config.instructions,
-          ...(repoInstructions ? [repoInstructions] : []),
+          ...(settings.instructions ? [settings.instructions] : []),
           ...step.instructions,
         ],
         deliver: review ? 'pending_review' : planned ? 'plan' : reports(step) ? 'report' : deliver,
@@ -643,7 +657,7 @@ function gatesFor(config: Config, repo: string): Record<string, Gate> | undefine
   const gates = new Map<string, Gate>()
   for (const [name, g] of [
     ...Object.entries(config.gates),
-    ...Object.entries(config.repos[repo]?.gates ?? {}),
+    ...Object.entries(settingsFor(config.repos, repo).gates),
   ]) {
     const gate = gates.get(name) ?? { changed: [], commands: [], skills: [], instructions: [] }
     gate.changed.push(...(g.changed ?? []))

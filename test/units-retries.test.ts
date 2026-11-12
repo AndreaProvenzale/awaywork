@@ -14,6 +14,7 @@ import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
 import type { Provider, Source } from '../src/core/types.js'
 import { runUnits } from '../src/worker/units.js'
+import { withRepos } from './fakes/acme.js'
 import { fakeForge } from './fakes/forge.js'
 import { githubPr } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
@@ -92,10 +93,10 @@ async function retried(
   }
   const config = parseConfig(`
 providers: [claude]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 queue:
   - ${rule}
-${repos}
+${withRepos(repos)}
 `)
   const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const allowances = {

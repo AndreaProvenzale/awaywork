@@ -123,6 +123,7 @@ describe('the move a waiting post holds', () => {
 describe('planning a report rule whose post waits', () => {
   const config = parseConfig(`
 providers: [claude: {}]
+repos: { acme/*: {} }
 sources: { tracker: { command: 'echo []', write: 'cat' } }
 queue:
   - { skill: story, where: { type: task }, deliver: report, wait: true, on_done: { move: Ready } }
@@ -184,7 +185,8 @@ describe('a post that waits holds its card for its rule only', () => {
   const plan = (queue: string, items: Item[]) => {
     const config = parseConfig(`
 providers: [claude: {}]
-sources: { asana: { workspace: '1' }, github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { asana: { workspace: '1' }, github: {} }
 queue:
 ${queue}`)
     const p = planRun({
@@ -251,6 +253,7 @@ ${queue}`)
 it('posts a report rule with wait: false and no gates of its own as a plain result, as one without wait', () => {
   const config = parseConfig(`
 providers: [claude: {}]
+repos: { acme/*: {} }
 sources: { tracker: { command: 'echo []', write: 'cat' } }
 queue: [{ skill: story, deliver: report, wait: false, on_done: { comment: result } }]
 `)

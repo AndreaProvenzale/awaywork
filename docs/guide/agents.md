@@ -106,6 +106,7 @@ A skipped entry is `{ item, kind, reason }`, plus `url` when it waits on an away
 | `invalid_branch`, `refused_delivery` | yes | fix the rule |
 | `draft_moved`, `continue_cap` | yes | finish, mark ready or close awaywork's draft that moved or said `continue` 3 times |
 | `no_rule`, `over_cap`, `unchanged`, `skipped_by_you` | no | the config doing its job |
+| `unlisted_repo` | no | the item's repo is not in `repos` |
 | `approved` | no | a report rule is done with the item: you approved its result, or it went ahead |
 | `fanned_out` | no | a card whose plan became tasks |
 | `waiting_for_task` | no | a task waiting for another's PR to merge, or to open, or for a check on it to pass |

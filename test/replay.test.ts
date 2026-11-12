@@ -15,6 +15,7 @@ import { type Exec, exec } from '../src/forge/gh.js'
 import { githubForge } from '../src/forge/github.js'
 import { replayUnit } from '../src/worker/replay.js'
 import { runUnits } from '../src/worker/units.js'
+import { withRepos } from './fakes/acme.js'
 import { fakeForge } from './fakes/forge.js'
 import { githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -50,10 +51,10 @@ async function pastRun(extra = '') {
   }
   const config = parseConfig(`
 providers: [claude]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 queue:
   - { skill: fix, where: { checks: failing } }
-${extra}`)
+${withRepos(extra)}`)
   const quota = {
     windows: [
       { name: 'five_hour', span: 'short' as const, used: 0.1, resetsAt: 1790254200 },
@@ -254,7 +255,8 @@ it('replays a fork unit on its saved commit after the PR moved', async () => {
   }
   const config = parseConfig(`
 providers: [claude]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: review }]
 `)
   const forked = githubPr(3)

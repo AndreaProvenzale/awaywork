@@ -70,8 +70,8 @@ describe('the latest occurrence', () => {
   })
 })
 
-const config = (sources: string, queue = '') =>
-  parseConfig(`providers: [claude]\nsources:\n${sources}\n${queue}`)
+const config = (sources: string, queue = '', top = '') =>
+  parseConfig(`providers: [claude]\n${top}\nrepos: { acme/*: {} }\nsources:\n${sources}\n${queue}`)
 
 const triage = `  routines:
     sentry-triage:
@@ -82,10 +82,10 @@ const triage = `  routines:
       description: Group new issues, link duplicates.`
 
 describe('routine items', () => {
-  const itemsAt = async (now: string, sources = triage) => {
+  const itemsAt = async (now: string, sources = triage, forge = '') => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(local(now))
-    const cfg = config(sources).sources.routines as RoutinesConfig
+    const cfg = config(sources, '', forge).sources.routines as RoutinesConfig
     return routines.items(cfg, { env: {}, log: () => {} })
   }
 
@@ -124,10 +124,10 @@ describe('routine items', () => {
   })
 
   it('links the repo on the configured forge', async () => {
-    const at = (sources: string) => itemsAt('2026-10-28T12:00', `${sources}\n${triage}`)
-    const [enterprise] = await at('  github: { repos: [acme/*], host: github.acme.com }')
+    const at = (forge: string) => itemsAt('2026-10-28T12:00', triage, forge)
+    const [enterprise] = await at('forge: { github: { host: github.acme.com } }')
     expect(enterprise?.url).toBe('https://github.acme.com/acme/api')
-    const [bitbucket] = await at('  bitbucket: { repos: [acme/*] }')
+    const [bitbucket] = await at('forge: bitbucket')
     expect(bitbucket?.url).toBe('https://bitbucket.org/acme/api')
   })
 })

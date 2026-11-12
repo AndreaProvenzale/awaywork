@@ -374,7 +374,7 @@ const localTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
 
 /** Why a repo's copy of the config can't run `where`; undefined when it can. */
 const unfitForRepo = (loaded: Config, path: string, where: string) =>
-  loaded.sources.bitbucket
+  loaded.forge.id === 'bitbucket'
     ? `${where} runs only with the GitHub forge; schedule a Bitbucket config with launchd, systemd or cron`
     : loaded.extends
       ? `${where} gets a copy of ${path} alone, without the base it extends; schedule a config with extends with launchd, systemd or cron`

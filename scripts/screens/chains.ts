@@ -48,7 +48,8 @@ function plan(queue: string, items: Item[]) {
   // Enough fallback units that no step runs out of claude.
   const config = parseConfig(`budget: { fallback: { units: 8 } }
 providers: [claude: {}, codex: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 ${queue}`)
   const fallback = () => allowance(config.budget, null, now, config.windows)
   return planRun({

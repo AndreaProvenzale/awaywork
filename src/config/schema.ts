@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
 import { headerSecret } from '../core/mcp.js'
 import { ruleSteps, ruleThread } from '../core/queue.js'
+import { repoListed, settingsFor } from '../core/repos.js'
 import { builtinSkills } from '../core/skills.js'
 import type { Provider, Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import {
@@ -39,9 +40,17 @@ const oneOrMany = z
 
 const units = z.int().positive()
 
-/** Keys a release dropped, with what to write instead: the config refuses them with this. */
+/** Keys a release dropped, by name or by path, with what to write instead: the config refuses them with this. */
 export const removedKeys: Record<string, string> = {
   stack: 'stack was removed: split work into tasks with a deliver: plan rule',
+  'sources.github.repos':
+    'repos was removed: list each repo as a key of the top-level repos, e.g. repos: { acme/api: }',
+  'sources.github.host':
+    'host was removed: it goes on the forge, forge: { github: { host: github.acme.com } }',
+  'sources.github.user':
+    'user was removed: it goes on the forge, forge: { github: { user: octocat } }',
+  'sources.bitbucket':
+    'the bitbucket source was removed: write forge: bitbucket at the top level and list each repo as a key of repos',
 }
 
 /** A built-in skill whose merge awaywork makes itself, like `sync`. */
@@ -162,14 +171,69 @@ function builtinConfig(s: Source): z.ZodObject {
     .describe(s.configSchema.description ?? '')
 }
 
-const sourcesConfig = z
-  .object({
-    ...Object.fromEntries(Object.values(sources).map((s) => [s.id, builtinConfig(s).optional()])),
-    [routines.id]: z.preprocess(refuseOwnKeys, builtinConfig(routines)).optional(),
+/** Refuses `sources.bitbucket`, a forge now, before it's read as a custom source. */
+function refuseBitbucket(raw: unknown, ctx: z.RefinementCtx): unknown {
+  if (typeof raw !== 'object' || raw === null || !('bitbucket' in raw)) return raw
+  ctx.addIssue({
+    code: 'custom',
+    path: ['bitbucket'],
+    message: removedKeys['sources.bitbucket'] as string,
   })
-  .catchall(commandConfig)
-  .refine((s) => Object.keys(s).length > 0, 'configure at least one source')
+  const { bitbucket: _, ...rest } = raw
+  return rest
+}
+
+const sourcesConfig = z
+  .preprocess(
+    refuseBitbucket,
+    z
+      .object({
+        ...Object.fromEntries(
+          Object.values(sources).map((s) => [s.id, builtinConfig(s).optional()]),
+        ),
+        [routines.id]: z.preprocess(refuseOwnKeys, builtinConfig(routines)).optional(),
+      })
+      .catchall(commandConfig)
+      .refine((s) => Object.keys(s).length > 0, 'configure at least one source'),
+  )
   .describe('Where work comes from: built-in sources or your own commands; at least one')
+
+// Only GitHub has settings, so a map names one forge by construction.
+const forgeSettings = z.strictObject({
+  github: z
+    .preprocess(
+      (raw) => (raw === null ? {} : raw),
+      z.strictObject({
+        host: z
+          .string()
+          .regex(/^[^/\s]+$/, 'host only, no scheme or path')
+          .optional()
+          .describe('GitHub Enterprise host, e.g. github.acme.com; github.com by default'),
+        user: z
+          .string()
+          .regex(/^[A-Za-z0-9-]+$/, 'expected a GitHub login')
+          .optional()
+          .describe(
+            "The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins",
+          ),
+      }),
+    )
+    .describe('GitHub, through gh'),
+})
+const forgeIds = ['github', 'bitbucket'] as const
+type ForgeConfig = { id: (typeof forgeIds)[number]; host?: string; user?: string }
+const forge = z
+  .union([z.enum(forgeIds), forgeSettings], {
+    error: (issue) =>
+      typeof issue.input === 'string'
+        ? `unknown forge "${issue.input}": github or bitbucket`
+        : typeof issue.input === 'object' && issue.input !== null && 'github' in issue.input
+          ? nested(issue.errors[1])
+          : 'expected github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } }; bitbucket takes no settings',
+  })
+  .transform(
+    (f): ForgeConfig => (typeof f === 'string' ? { id: f } : { id: 'github', ...f.github }),
+  )
 
 const scalar = z.union([z.string(), z.number(), z.boolean()])
 const scalars = z.union([scalar, z.array(scalar).min(1)])
@@ -569,7 +633,7 @@ const mcpServer = z
         )
   })
 
-const repo = z.strictObject({
+const repoSettings = z.strictObject({
   branch: branch.optional().describe('Branch name template for this repo'),
   setup: z
     .string()
@@ -598,6 +662,8 @@ const repo = z.strictObject({
       "Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain",
     ),
 })
+// A bare key lists the repo with no settings.
+const repo = z.union([repoSettings, z.null().transform(() => repoSettings.parse({}))])
 
 export const configSchema = z
   .strictObject({
@@ -668,6 +734,11 @@ export const configSchema = z
       .array(providerEntry)
       .min(1)
       .describe('Providers to use, a name or a map to override; order = routing preference'),
+    forge: forge
+      .prefault('github')
+      .describe(
+        'Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } }',
+      ),
     sources: sourcesConfig,
     branch: branch
       .default(defaultBranch)
@@ -677,7 +748,9 @@ export const configSchema = z
     repos: z
       .record(z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'), repo)
       .prefault({})
-      .describe('Per-repo settings, keyed by owner/name'),
+      .describe(
+        'The repos awaywork works in: each key an owner/name or a * glob such as acme/*, with its settings or nothing. A repo takes the settings of every key naming it, globs in the order written and its own key last, a later one winning; an item in a repo no key names is skipped',
+      ),
     gates: gates.describe(
       "Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body",
     ),
@@ -760,8 +833,8 @@ export const configSchema = z
   })
   .superRefine((cfg, ctx) => {
     if (cfg.isolation === 'container')
-      for (const [name, repo] of Object.entries(cfg.repos))
-        if (!repo.image)
+      for (const name of Object.keys(cfg.repos))
+        if (!settingsFor(cfg.repos, name).image)
           ctx.addIssue({
             code: 'custom',
             path: ['repos', name, 'image'],
@@ -803,13 +876,47 @@ export const configSchema = z
           message: 'expected a lowercase name like sentry',
         })
     const sourceIds = Object.keys(cfg.sources)
-    const bitbucket = sourceIds.includes('bitbucket')
+    const bitbucket = cfg.forge.id === 'bitbucket'
     if (bitbucket && sourceIds.includes('github'))
       ctx.addIssue({
         code: 'custom',
-        path: ['sources', 'bitbucket'],
-        message: 'one forge per config: github or bitbucket, not both',
+        path: ['sources', 'github'],
+        message: 'one forge per config: the github source reads GitHub, and forge is bitbucket',
       })
+    if ((bitbucket || sourceIds.includes('github')) && Object.keys(cfg.repos).length === 0)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['repos'],
+        message: `${bitbucket ? 'forge: bitbucket works in' : 'the github source reads'} the repos listed here: add one, e.g. acme/api or acme/*`,
+      })
+    for (const [id, source] of Object.entries(
+      cfg.sources as Record<string, Record<string, unknown>>,
+    )) {
+      const named =
+        id === routines.id
+          ? Object.entries(source).map(([name, r]) => [
+              name,
+              'repo',
+              (r as { repo?: unknown } | null)?.repo,
+            ])
+          : Object.entries(source?.repo_map ?? {}).map(([key, repo]) => ['repo_map', key, repo])
+      for (const [at, key, repo] of named) {
+        if (typeof repo !== 'string') continue
+        const problem = repo.includes('*')
+          ? `expected one repo like acme/api, not the pattern ${repo}: a * goes only in a key of repos`
+          : !repoListed(cfg.repos, repo) &&
+            `${repo} isn't in repos: awaywork works only in the repos listed there, so add it as a key`
+        if (problem)
+          ctx.addIssue({ code: 'custom', path: ['sources', id, at, key], message: problem })
+      }
+    }
+    for (const name of bitbucket ? Object.keys(cfg.repos) : [])
+      if (name.split('/')[0]?.includes('*'))
+        ctx.addIssue({
+          code: 'custom',
+          path: ['repos', name],
+          message: 'expected workspace/repo; * globs the repo, never the workspace',
+        })
     providerIds.forEach((id, i) => {
       if (providerIds.indexOf(id) !== i)
         ctx.addIssue({ code: 'custom', path: ['providers', i], message: `"${id}" is listed twice` })
@@ -1185,6 +1292,8 @@ export const configSchema = z
   })
   .transform(({ providers: entries, ...cfg }) => ({
     ...cfg,
+    // The github source reads the listed repos, on the forge's host.
+    sources: withScope(cfg.sources, { repos: Object.keys(cfg.repos), host: cfg.forge.host }),
     providers: entries.flatMap((entry) =>
       Object.entries(entry as Record<string, ProviderConfig>).map(
         ([id, { model, budget: override, config_dir, ...config }]) => ({
@@ -1204,11 +1313,14 @@ export const configSchema = z
 
 export type Config = z.output<typeof configSchema>
 
+const withScope = <S extends Record<string, unknown>>(sources: S, scope: object): S =>
+  sources.github ? { ...sources, github: { ...sources.github, ...scope } } : sources
+
 type Sources = Record<string, unknown>
 
 const fieldsOf = (configured: Sources, id: string) => sourceFor(id, configured[id])?.fields ?? {}
 
-/** Whether source `id`'s items can match `where`: it has fields, and so items, unlike bitbucket, and one for each key. */
+/** Whether source `id`'s items can match `where`: it has fields, and so items, and one for each key. */
 export function canMatch(configured: Sources, id: string, where: Where): boolean {
   const fields = fieldsOf(configured, id)
   const fits = (w: Where): boolean =>

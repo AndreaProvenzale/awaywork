@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { commentMarkdown } from '../core/comments.js'
 import { isOurs, leftIn, threadBody, threadOf } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
+import { repoListed } from '../core/repos.js'
 import type { Item, Thread as ItemThread, PrRef, Source, ThreadHost } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from '../forge/checks.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
@@ -11,19 +12,6 @@ import { EDITED, type Edited, notYours } from '../forge/github.js'
 
 const config = z
   .strictObject({
-    repos: z.array(z.string()).min(1).describe('Repos to read, owner/name; * globs, e.g. acme/*'),
-    host: z
-      .string()
-      .regex(/^[^/\s]+$/, 'host only, no scheme or path')
-      .optional()
-      .describe('GitHub Enterprise host, e.g. github.acme.com; github.com by default'),
-    user: z
-      .string()
-      .regex(/^[A-Za-z0-9-]+$/, 'expected a GitHub login')
-      .optional()
-      .describe(
-        "The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins",
-      ),
     search: z
       .array(z.string().min(1))
       .optional()
@@ -32,9 +20,10 @@ const config = z
       ),
   })
   .describe(
-    'My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge',
+    'My PRs, PRs awaiting my review and issues assigned to me, in the repos the top-level repos lists, plus any extra searches',
   )
-type Config = z.infer<typeof config>
+/** With the config's `repos` keys and the forge's host, which the loaded config adds. */
+type Config = z.infer<typeof config> & { repos: string[]; host?: string }
 
 const PAGE = 100
 /** Finished PRs come in pages this small: a page of 100 with their files timed out on GitHub. */
@@ -355,14 +344,27 @@ export function githubSource(base: Exec = exec): Source<Config> {
 export const github = githubSource()
 
 /** The forge's thread issues on GitHub, read and written as you through `gh`: listed, not searched, so one opened a minute ago is found. */
-export function githubThreads(base: Exec = exec, host?: string): ThreadHost {
+export function githubThreads(
+  base: Exec = exec,
+  host?: string,
+  repos?: Record<string, unknown>,
+): ThreadHost {
   const run = onHost(base, host)
+  // No write lands in a repo `repos` doesn't list.
+  const listed = (repo: string) => {
+    if (repos && !repoListed(repos, repo))
+      throw new Error(`${repo} isn't in repos: awaywork writes only in the repos listed there`)
+    return repo
+  }
   let login: Promise<string> | undefined
   const viewer = () => {
     login ??= run('gh', ['api', 'user', '--jq', '.login']).then((l) => l.trim())
     return login
   }
-  const issuePath = (thread: ItemThread) => `repos/${thread.key.replace('#', '/issues/')}`
+  const issuePath = (thread: ItemThread) => {
+    const [repo = '', number] = thread.key.split('#')
+    return `repos/${listed(repo)}/issues/${number}`
+  }
   const comment = async (thread: ItemThread, body: string) =>
     (
       await run('gh', [
@@ -405,7 +407,7 @@ export function githubThreads(base: Exec = exec, host?: string): ThreadHost {
       if (!repo) throw new Error(`${item.key} has no repo to open its thread in`)
       const opened = await run('gh', [
         'api',
-        `repos/${repo}/issues`,
+        `repos/${listed(repo)}/issues`,
         '-f',
         `title=${threadTitle(item)}`,
         '-f',

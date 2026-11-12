@@ -52,7 +52,7 @@ One config covers one account's work; another account gets its own setup later. 
 
 The next rounds:
 
-- **Repos,** from your sessions. Remotes off github.com are never guessed: an ssh alias (`git@github-work:widgets/art`) waits for you to name its repo, and Bitbucket Cloud is left out (setup writes no [Bitbucket source](./configuration.md#bitbucket-and-jira)).
+- **Repos,** from your sessions. Remotes off github.com are never guessed: an ssh alias (`git@github-work:widgets/art`) waits for you to name its repo, and Bitbucket Cloud is left out (setup writes no [`forge: bitbucket`](./configuration.md#bitbucket-and-jira)).
 - **Tracker:** an MCP server for one is a hint. Jira also needs your Cloud site, Atlassian email and whether the API token is scoped.
 - **Window:** 01:00–07:00 your time by default.
 - **Providers,** if several are ready: which goes first; the next takes over when its quota runs out.
@@ -69,7 +69,7 @@ Tokens never go through the chat. You run `awaywork secret LINEAR_API_KEY` (in C
 
 ### The draft
 
-`awaywork init --yes` renders the draft, `config.draft.yml` beside the config, after the round that picks repos and a window. The skill then edits in your repos, your tracker, the rules you picked with real status names, and the gh account and Claude login, pinned as `sources.github.user` and `config_dir` where a scheduled job wouldn't find them ([Which login](./configuration.md#which-login)). It fills in on the Config tab as you watch.
+`awaywork init --yes` renders the draft, `config.draft.yml` beside the config, after the round that picks repos and a window. The skill then edits in your repos, your tracker, the rules you picked with real status names, and the gh account and Claude login, pinned as `forge.github.user` and `config_dir` where a scheduled job wouldn't find them ([Which login](./configuration.md#which-login)). It fills in on the Config tab as you watch.
 
 `awaywork plan --rules --json` shows what each rule takes now and the closest misses, since taking nothing today doesn't make a rule wrong. On your yes the draft becomes the config and `doctor` runs once:
 

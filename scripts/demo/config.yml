@@ -1,6 +1,7 @@
 providers: [claude]
+repos: { acme/*: {} }
 sources:
-  github: { repos: [acme/*] }
+  github: {}
   tracker:
     command: node tracker.mjs
     write: node tracker.mjs write

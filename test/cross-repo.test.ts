@@ -42,8 +42,8 @@ const git = (dir: string, ...args: string[]) =>
 const configOf = (extra = '') =>
   parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
-repos: { other/docs: {} }
+sources: { github: {} }
+repos: { acme/*: {}, other/docs: {} }
 ${extra}queue:
   - { skill: plan, deliver: plan }
   - { skill: implement, where: { planned: true } }
@@ -117,7 +117,7 @@ describe('repos in a plan', () => {
     return 'problem' in checked ? checked.problem : undefined
   }
 
-  it("takes the card's repo, a repo the forge source globs or the config names, and refuses others", () => {
+  it("takes the card's repo or one a `repos` key names, and refuses others", () => {
     expect(planLimits(config, config.queue ?? [], card(crossRepo), skills).repos).toEqual([
       'acme/*',
       'other/docs',

@@ -99,8 +99,7 @@ type Stack = {
   pull_requests: { number: number }[]
 }
 
-export const githubHost = (config: Config) =>
-  (config.sources.github as { host?: string } | undefined)?.host
+export const githubHost = (config: Config) => config.forge.host
 
 export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
   const run = onHost(base, host === 'github.com' ? undefined : host)

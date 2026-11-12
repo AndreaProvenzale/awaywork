@@ -10,7 +10,7 @@ import type { Config } from './schema.js'
 export interface Pin {
   /** The provider's id, or `gh`. */
   what: string
-  /** Where the config pins it, e.g. `sources.github.user`. */
+  /** Where the config pins it, e.g. `forge.github.user`. */
   key: string
   name: string
   value?: string
@@ -35,7 +35,7 @@ export const expandHome = (path: string) =>
   path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
 
 /**
- * Points `env` at the logins the config pins, each provider's `config_dir` and `sources.github.user`'s gh account,
+ * Points `env` at the logins the config pins, each provider's `config_dir` and `forge.github.user`'s gh account,
  * where the environment brings no login of its own. Returns every pin, the ones it couldn't make included.
  * Resolves every pin before touching `env`, then sets them all at once, so a run spawned meanwhile keeps the
  * previous pins; a pin it can't make leaves that variable as it was.
@@ -92,13 +92,12 @@ export const loginCommand = (login: NonNullable<Provider['loginDir']>, dir: stri
     : `${login.env}=${dir} ${login.command}`
 
 async function ghPin(config: Config, env: NodeJS.ProcessEnv, run: Exec): Promise<Pin | undefined> {
-  const github = config.sources.github as { user?: string; host?: string } | undefined
-  if (!github?.user) return
-  const { user, host } = github
+  const { user, host } = config.forge
+  if (!user) return
   const names = host
     ? ['GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
     : ['GH_TOKEN', 'GITHUB_TOKEN']
-  const pin = { what: 'gh', key: 'sources.github.user', name: names[0] as string }
+  const pin = { what: 'gh', key: 'forge.github.user', name: names[0] as string }
   const by = names.find((name) => own(env, name))
   if (by) return { ...pin, by }
   const hostname = host ? ['--hostname', host] : []

@@ -382,7 +382,7 @@ describe('schedule install --with github-actions', () => {
     process.exitCode = undefined
   })
 
-  const CONFIG = 'providers: [claude]\nsources: { github: { repos: [acme/api] } }\n'
+  const CONFIG = 'providers: [claude]\nrepos: { acme/api: {} }\nsources: { github: {} }\n'
 
   /** A repo and a user's config with a skill of its own and one linked from elsewhere. */
   async function setup() {
@@ -467,7 +467,7 @@ describe('schedule install --with github-actions', () => {
     await writeFile(
       config,
       `providers: [claude]
-sources: { github: { repos: [acme/api] }, asana: { workspace: "100" } }
+sources: { github: {}, asana: { workspace: "100" } }
 repos: { acme/api: { secrets: [DATABASE_URL] } }
 notify: { command: "true", secrets: [SLACK_WEBHOOK, ASANA_TOKEN, HOOK_TOKEN] }
 mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
@@ -562,7 +562,10 @@ mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
 
   it('refuses a Bitbucket config and writes nothing', async () => {
     const { root, config } = await setup()
-    await writeFile(config, 'providers: [claude]\nsources: { bitbucket: { repos: [acme/api] } }\n')
+    await writeFile(
+      config,
+      "providers: [claude]\nforge: bitbucket\nrepos: { acme/api: {} }\nsources: { tracker: { command: 'echo []' } }\n",
+    )
     await installWorkflow(config, {
       run: async () => root,
       ask: scriptedAsk([]),

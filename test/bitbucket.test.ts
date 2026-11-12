@@ -391,8 +391,8 @@ describe('bitbucket forge', () => {
 })
 
 describe('bitbucket config', () => {
-  const config = (sources: string, queue = '') =>
-    `providers: [claude]\nsources:\n${sources}\n${queue}`
+  const config = (repos: string, queue = '', forge = 'bitbucket') =>
+    `providers: [claude]\nforge: ${forge}\nrepos: { ${repos} }\nsources: { tracker: { command: ./tracker } }\n${queue}`
   const problems = (text: string) => {
     try {
       parseConfig(text)
@@ -402,27 +402,30 @@ describe('bitbucket config', () => {
     }
   }
 
-  it('picks the Bitbucket forge from sources.bitbucket', async () => {
-    const forge = forgeFor(parseConfig(config('  bitbucket: { repos: [andrea89/*] }')))
+  it('picks the Bitbucket forge from forge: bitbucket', async () => {
+    const forge = forgeFor(parseConfig(config('andrea89/*:')))
     expect(await forge.fastForward('/work/u1', 'b', 'abc1234', { repo: sandbox, pr: 4 })).toMatch(
       /^Bitbucket can't push onto a PR/,
     )
   })
 
   it('takes a literal workspace, one forge, and no push', () => {
-    expect(problems(config('  bitbucket: { repos: ["*/api"] }'))).toEqual([
-      'sources.bitbucket.repos[0]: expected workspace/repo; * globs the repo, never the workspace',
+    expect(problems(config('"*/api":'))).toEqual([
+      'repos.*/api: expected workspace/repo; * globs the repo, never the workspace',
     ])
+    expect(problems(config('"*/api":', '', 'github'))).toEqual([])
     expect(
-      problems(config('  bitbucket: { repos: [acme/api] }\n  github: { repos: [acme/*] }')),
-    ).toEqual(['sources.bitbucket: one forge per config: github or bitbucket, not both'])
+      problems(config('acme/api:').replace('tracker: { command: ./tracker }', 'github: {}')),
+    ).toEqual([
+      'sources.github: one forge per config: the github source reads GitHub, and forge is bitbucket',
+    ])
     const push = 'queue:\n  - { skill: fix, deliver: push }'
-    expect(problems(config('  bitbucket: { repos: [acme/api] }', push))).toEqual([
+    expect(problems(config('acme/api:', push))).toEqual([
       expect.stringMatching(/^queue\[0\]\.deliver: push isn't available on Bitbucket/),
     ])
-    expect(problems(config('  github: { repos: [acme/*] }', push))).toEqual([])
+    expect(problems(config('acme/*:', push, 'github'))).toEqual([])
     const review = 'queue:\n  - { skill: review, deliver: pending_review }'
-    expect(problems(config('  bitbucket: { repos: [acme/api] }', review))).toEqual([
+    expect(problems(config('acme/api:', review))).toEqual([
       expect.stringMatching(/^queue\[0\]\.deliver: pending_review isn't available on Bitbucket/),
     ])
   })

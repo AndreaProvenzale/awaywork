@@ -9,7 +9,8 @@ import { fakeSource } from './fakes/source.js'
 const ctx = { env: {}, log: () => {} }
 const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: plan, deliver: plan }, { skill: implement, where: { planned: true } }]
 `)
 

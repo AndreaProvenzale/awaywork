@@ -186,8 +186,11 @@ function formatIssue(issue: z.core.$ZodIssue): string {
   const builtIn = issue.path[0] === 'providers' && issue.path.length === 3
   if (builtIn && issue.code === 'unrecognized_keys' && issue.keys.includes('command'))
     return `${at}: built in, so it takes no command; give your own provider another name`
-  const gone = issue.code === 'unrecognized_keys' && issue.keys.find((key) => removedKeys[key])
-  if (gone) return at ? `${at}: ${removedKeys[gone]}` : (removedKeys[gone] as string)
+  const gone =
+    issue.code === 'unrecognized_keys'
+      ? issue.keys.flatMap((key) => removedKeys[key] ?? removedKeys[`${at}.${key}`] ?? [])
+      : []
+  if (gone.length > 0) return at ? `${at}: ${gone.join('; ')}` : gone.join('; ')
   // A record key's own message, e.g. `expected owner/name`, sits under zod's generic one.
   const message =
     issue.code === 'invalid_key' ? (issue.issues[0]?.message ?? issue.message) : issue.message

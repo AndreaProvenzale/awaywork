@@ -77,10 +77,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const loaded = await loadConfig(path, { pin: false }).catch((e: Error) => e)
   const pins = loaded instanceof Error ? [] : await pinLogins(loaded)
   const ghPin = pins.find((p) => p.what === 'gh')
-  const github =
-    loaded instanceof Error
-      ? undefined
-      : (loaded.sources.github as { user?: string; host?: string } | undefined)
+  const github = loaded instanceof Error ? undefined : loaded.forge
   const workspaces = loaded instanceof Error ? [] : bitbucketWorkspaces(loaded)
   for (const bin of ['git', workspaces.length ? 'twg' : 'gh']) {
     const version = await exec(bin, ['--version']).catch(() => undefined)
@@ -256,7 +253,7 @@ export function ghLogin(
     return [
       'warn',
       'gh login',
-      `${login} from ${token ?? "gh's active account"}, not sources.github.user ${user}: a token in the environment wins; make it ${user}'s, or unset it`,
+      `${login} from ${token ?? "gh's active account"}, not forge.github.user ${user}: a token in the environment wins; make it ${user}'s, or unset it`,
     ]
   return ['ok', 'gh login', `${login}, ${token ? `from ${token}` : "gh's active account"}`]
 }
@@ -318,7 +315,7 @@ export async function bitbucketChecks(config: Config, run: Exec = exec): Promise
       () => check('ok', `twg ${w}`),
       (e: Error) => check('FAIL', `twg ${w}`, `${e.message.replace(/\.$/, '')}; ${login}`),
     )
-  const repos = (config.sources.bitbucket as { repos: string[] }).repos
+  const repos = Object.keys(config.repos)
   const any = ['bb', 'repo', 'query', '-w', workspaces[0] ?? '', '-n', '1']
   const repo =
     repos.find((r) => !r.includes('*')) ??

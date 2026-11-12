@@ -48,6 +48,7 @@ const actions: Record<SkipKind, string> = {
   draft_moved: 'finish by hand',
   continue_cap: 'finish by hand',
   no_rule: 'no rule',
+  unlisted_repo: 'not in repos',
   over_cap: 'over cap',
   unchanged: 'unchanged',
   skipped_by_you: 'skipped by you',

@@ -190,7 +190,7 @@ describe('run command', () => {
     await writeFile(join(dir, 'items.json'), JSON.stringify([{ ...item, fields: { repo: 'a/b' } }]))
     await writeFile(
       path,
-      `providers: [claude]\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
+      `providers: [claude]\nwindows: []\nrepos: { a/b: {} }\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
     )
     const held = new Map([['chores:CH-1', '20261025-115900']])
     const runId = '20261025-120200'
@@ -221,7 +221,7 @@ describe('run command', () => {
     await writeFile(join(dir, 'items.json'), JSON.stringify([item(1), item(2)]))
     await writeFile(
       path,
-      `providers: [claude]\nwindows: []\nlimits: { units: 1 }\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
+      `providers: [claude]\nwindows: []\nlimits: { units: 1 }\nrepos: { a/b: {} }\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
     )
     const errors: string[] = []
     const at = (runId: string, unit: string) =>
@@ -249,7 +249,7 @@ describe('run command', () => {
     const path = join(dir, 'config.yml')
     await writeFile(
       path,
-      `providers: [claude]\nwindows: []\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix, deliver: push }]\n`,
+      `providers: [claude]\nwindows: []\nrepos: { acme/api: {} }\nsources: { github: {} }\nqueue: [{ skill: fix, deliver: push }]\n`,
     )
     const pr = (n: number) => {
       const item = githubPr(n)

@@ -27,7 +27,7 @@ const git = async (dir: string, ...args: string[]) =>
 const withRepo = (setup: string, verify: string) =>
   parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 queue:
   - skill: sync
     where: { type: pr, mine: true, behind: { gt: 0 } }
@@ -87,7 +87,7 @@ const bothSides = async (dir: string) => {
 
 const resolving = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 queue:
   - skill: sync
     where: { type: pr, mine: true, behind: { gt: 0 } }
@@ -221,7 +221,8 @@ describe('sync', () => {
   it("refuses a merging skill of yours that doesn't push", () => {
     const own = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: catch-up, where: { type: pr } }]
 `)
     const { skipped } = planRun({
@@ -304,7 +305,8 @@ queue: [{ skill: catch-up, where: { type: pr } }]
     const at = await origin({})
     const byIssue = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: sync, where: { type: issue }, deliver: push }]
 `)
     const issue = (head: string): Item => ({
@@ -680,7 +682,8 @@ for b in main feature-1; do git checkout -q $b && echo $b > "$n" && git add -A &
     const at = await origin({ 'a.txt': 'theirs' }, { 'a.txt': 'mine' })
     const judged = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: sync, where: { type: pr }, deliver: push }]
 gates: { risk: { skill: judge } }
 `)

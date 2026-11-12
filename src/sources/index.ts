@@ -3,7 +3,6 @@ import { markComment, type PostState } from '../core/comments.js'
 import type { Ctx, Forge, Item, Source, ThreadHost, Write } from '../core/types.js'
 import { itemStates } from '../core/where.js'
 import { asana } from './asana.js'
-import { bitbucket } from './bitbucket.js'
 import { commandSource, commandThreads, isCommand } from './command.js'
 import { github } from './github.js'
 import { jira } from './jira.js'
@@ -13,7 +12,6 @@ import { routines } from './routines.js'
 // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config
 export const sources: Record<string, Source<any>> = {
   github,
-  bitbucket,
   asana,
   linear,
   jira,

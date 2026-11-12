@@ -11,6 +11,7 @@ import { formatReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, PrRef, Source } from '../src/core/types.js'
 import { runUnits } from '../src/worker/units.js'
+import { withRepos } from './fakes/acme.js'
 import { githubPr, issue } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
 import { fakeSource } from './fakes/source.js'
@@ -23,7 +24,7 @@ async function verified(repoConfig: string, deliver = 'draft_pr', top = '') {
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 ${top}
 repos:
   acme/api: { ${repoConfig} }
@@ -148,7 +149,8 @@ it('pushes onto your PR when a gate fired, with the card atop the summary in the
   await git(origin, 'branch', 'feature-1')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 gates: { ids: { changed: '*.txt' } }
 queue: [{ skill: fix, deliver: push }]
 `)
@@ -212,7 +214,7 @@ async function gated(
   await git(origin, 'commit', '-qm', 'gate')
   const ids = Object.keys(fallback ?? { claude: 0 })
   const config = parseConfig(
-    `providers: [${ids.map((id) => `${id}: {}`).join(', ')}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
+    `providers: [${ids.map((id) => `${id}: {}`).join(', ')}]\nsources: { github: {} }\n${withRepos(yaml)}`,
   )
   const allowances = Object.fromEntries(
     ids.map((id): [string, Allowance] => [

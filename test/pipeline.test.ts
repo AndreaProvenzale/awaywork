@@ -62,7 +62,8 @@ const git = (dir: string, ...args: string[]) =>
 
 const configYaml = (events: string) => `providers: [claude]
 windows: []
-sources: { github: { repos: [acme/api, acme/web] } }
+repos: { acme/api: {}, acme/web: {} }
+sources: { github: {} }
 gates: { schema: { changed: ["**/migrations/**"] } }
 notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT $AWAYWORK_STATUS" >> ${events}' }
 queue:

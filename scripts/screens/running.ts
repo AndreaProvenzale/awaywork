@@ -92,8 +92,9 @@ const card = (key: string, title: string, column: string) =>
 const config = parseConfig(`
 limits: { units_per_repo: 2 }
 providers: [claude: {}]
+repos: { acme/api: {}, acme/web: {} }
 sources:
-  github: { repos: [acme/api, acme/web] }
+  github: {}
   tracker: { command: ./tracker.sh, fields: [column] }
 queue:
   - { skill: fix, where: { type: pr, mine: true } }

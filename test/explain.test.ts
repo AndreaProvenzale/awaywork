@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { explainConfig } from '../src/cli/explain.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 
-const base = 'providers: [claude]\nsources: { github: { repos: [a/b] } }\n'
+const base = 'providers: [claude]\nrepos: { a/b: {} }\nsources: { github: {} }\n'
 const builtin: SkillCatalog = { builtin: builtinSkills }
 
 function rule(where: string, extra = '', skill = 'fix', skills = builtin) {
@@ -58,7 +58,7 @@ describe('explainConfig', () => {
   })
 
   it('gives each rule its line in the file', () => {
-    expect(rule('{ type: pr }')?.line).toBe(4)
+    expect(rule('{ type: pr }')?.line).toBe(5)
   })
 
   it('reports a config that does not validate instead of throwing', () => {

@@ -33,9 +33,11 @@ process.env.GIT_COMMITTER_EMAIL ??= 't@t'
 const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
-const configOf = (sources = 'github: { repos: [acme/*] }') =>
+const configOf = (sources = 'github: {}', forge = 'github') =>
   parseConfig(`
 providers: [claude: {}]
+forge: ${forge}
+repos: { acme/*: {} }
 sources: { ${sources} }
 queue:
   - { skill: plan, deliver: plan }
@@ -413,9 +415,7 @@ describe('a plan fanned out on Bitbucket', () => {
   it('stacks by PR destination, waits for a build status, and reads shipped files through twg', async () => {
     const root = await mkdtemp(join(tmpdir(), 'awaywork-bb-'))
     const bb = await fakeBitbucket(root, ['acme/backend', 'acme/web'])
-    const cfg = configOf(
-      "bitbucket: { repos: [acme/*] }, tracker: { command: 'echo []', write: 'cat' }",
-    )
+    const cfg = configOf("tracker: { command: 'echo []', write: 'cat' }", 'bitbucket')
     const yaml = `tasks:
   - { id: api, title: VAT export endpoint, ships: [openapi.yaml] }
   - { id: ui, title: Export page, after: { api: opened } }

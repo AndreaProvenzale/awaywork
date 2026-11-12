@@ -10,6 +10,7 @@ import { planRun } from '../../src/core/foreman.js'
 import { builtinSkills } from '../../src/core/skills.js'
 import type { Forge, Item, Provider, Quota, Source, Write } from '../../src/core/types.js'
 import { type RunInput, runUnits } from '../../src/worker/units.js'
+import { withRepos } from './acme.js'
 import { fakeForge } from './forge.js'
 import { fakeProvider } from './provider.js'
 import { fakeSource } from './source.js'
@@ -173,8 +174,8 @@ export async function loopRun(
   for (const branch of new Set(items.flatMap((i) => i.linkedPrs.map((pr) => pr.branch))))
     await git(origin, 'branch', branch)
   const config = parseConfig(`providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
-${yaml}`)
+sources: { github: {} }
+${withRepos(yaml)}`)
   const plan = planRun({
     config,
     items,
@@ -215,7 +216,8 @@ export async function finishedRun(
   await git(origin, 'branch', 'feature-2')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] }, tracker: { command: 'echo []', write: 'true' } }
+repos: { acme/*: {} }
+sources: { github: {}, tracker: { command: 'echo []', write: 'true' } }
 queue:
 ${queue}
 `)

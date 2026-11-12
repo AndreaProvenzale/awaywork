@@ -116,7 +116,7 @@ describe('the launcher', () => {
     try {
       await fetchContexts([fakeItem({ source: 'github', key: 'ACME-1' })], dir, {
         config: parseConfig(
-          `providers: [claude: {}]\nsources: { github: { repos: [acme/*], context: ${JSON.stringify(context)} } }`,
+          `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: { context: ${JSON.stringify(context)} } }`,
         ),
         configDir: dir,
         env,

@@ -146,7 +146,8 @@ describe('plan', () => {
     const config = parseConfig(`
 limits: { units: 2, units_per_repo: 1 }
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: fix, where: { checks: failing } }
   - { skill: implement, where: { type: issue } }
@@ -180,7 +181,7 @@ queue:
   })
 
   it('uses the default queue for configured sources only', () => {
-    const yaml = 'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'
+    const yaml = 'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }'
     const items = [
       githubPr(1, { mine: false, review_requested: true, trusted: true }),
       githubPr(2, { unresolved_threads: 4 }),
@@ -201,7 +202,8 @@ queue:
   it('names the failing comparison of the closest rule', () => {
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue: [{ skill: fix, where: { unresolved_threads: { gte: 2, lt: 5 } } }]`
     const result = plan(yaml, [githubPr(1, { unresolved_threads: 1 })], { claude: week(0.1) })
     expect(result.skipped.map((s) => [s.kind, s.reason])).toEqual([
@@ -213,7 +215,8 @@ queue: [{ skill: fix, where: { unresolved_threads: { gte: 2, lt: 5 } } }]`
   it('names the failing relative date of the closest rule', () => {
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue: [{ skill: fix, where: { updated: { older_than: 3d } } }]`
     const now = new Date().toISOString()
     const result = plan(yaml, [githubPr(1, { updated: now })], { claude: week(0.1) })
@@ -226,7 +229,8 @@ queue: [{ skill: fix, where: { updated: { older_than: 3d } } }]`
   it('names the failed text match', () => {
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue: [{ skill: fix, where: { description: { matches: '^\\[bug\\]' } } }]`
     const item = { ...githubPr(1, {}), description: 'Line one\nLine two' }
     const result = plan(yaml, [item], { claude: week(0.1) })
@@ -238,7 +242,8 @@ queue: [{ skill: fix, where: { description: { matches: '^\\[bug\\]' } } }]`
   it('names the failing entries of any', () => {
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue: [{ skill: fix, where: { any: [{ checks: failing }, { title: { matches: zzz } }] } }]`
     const result = plan(yaml, [githubPr(1, {})], { claude: week(0.1) })
     const reason = result.skipped[0]?.reason
@@ -251,7 +256,8 @@ queue: [{ skill: fix, where: { any: [{ checks: failing }, { title: { matches: zz
     const yaml = `
 budget: { fallback: { units: 1, turns: 30 } }
 providers: [claude: {}, codex: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - { skill: fix, where: { checks: failing } }
   - { skill: fix, provider: [codex], where: { unresolved_threads: { not: 0 } } }
@@ -275,7 +281,8 @@ queue:
   it('says a present run skips providers it cannot read and stops at present_session_max', () => {
     const config = parseConfig(`
 providers: [codex, claude]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 `)
     const quotas: Record<string, Quota | null> = { claude: week(0.36), codex: null }
     const allowances = Object.fromEntries(
@@ -305,7 +312,8 @@ sources: { github: { repos: [acme/api] } }
   it('routes between claude and codex on their own windows', () => {
     const yaml = `
 providers: [claude: {}, codex: { budget: { per_run: 10% } }]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - { skill: fix, where: { checks: failing } }
   - { skill: review, provider: [codex, claude], where: { review_requested: true } }
@@ -345,7 +353,8 @@ queue:
   it('resolves skills and delivery: a skill commits unless it reports, whatever the rule says', () => {
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - { skill: review, where: { review_requested: true } }
   - { skill: plan, deliver: draft_pr, where: { type: issue } }
@@ -368,7 +377,8 @@ queue:
   it("adds the top-level skills to every unit, before the rule's or step's", () => {
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 skills: [house-style]
 queue:
   - skill: fix
@@ -386,7 +396,8 @@ queue:
   it('says why a quota when fails, on the rule only', () => {
     const yaml = (rule: string) => `
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - skill: fix
     where: { checks: failing }
@@ -408,7 +419,8 @@ queue:
   it("chains steps in one clone, each with the rule's settings unless it sets its own", () => {
     const yaml = `
 providers: [claude, codex]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 mcp: { sentry: { command: sentry-mcp } }
 queue:
   - skill: plan
@@ -470,7 +482,8 @@ queue:
     const yaml = `
 budget: { fallback: { units: 6, turns: 30 } }
 providers: [claude]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - skill: fix
     where: { type: pr }
@@ -523,7 +536,8 @@ queue:
 limits: { units: 3 }
 budget: { fallback: { units: 20, turns: 30 } }
 providers: [claude]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - skill: implement
     where: { type: pr }
@@ -545,7 +559,7 @@ queue:
 
   it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
     const yaml = (skill: string, step: string) =>
-      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: ${skill}, then: ${step} }]`
+      `providers: [claude]\nrepos: { acme/api: {} }\nsources: { github: {} }\nqueue: [{ skill: ${skill}, then: ${step} }]`
     const theirs = githubPr(2, { checks: 'failing', mine: false })
     expect(plan(yaml('review', 'plan'), [theirs], {}).units.map((u) => u.unit.foreign)).toEqual([
       true,
@@ -564,7 +578,8 @@ queue:
   it("refuses a chain that could commit onto someone else's PR or a fork, and reports there", () => {
     const yaml = `
 providers: [claude]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - { skill: review, where: { type: pr }, then: { loop: [review, implement], until: { verdict: approve }, max: 2 } }
   - { skill: review, where: { type: issue }, deliver: report, then: [implement] }
@@ -602,7 +617,8 @@ queue:
   it("pushes a chain only onto your own PR's branch, the deliver of every step that commits", () => {
     const yaml = `
 providers: [claude]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - { skill: fix, where: { type: pr }, deliver: push, then: [review, { loop: [implement], until: { verdict: approve }, max: 2 }] }
   - { skill: implement, where: { type: issue }, deliver: push }
@@ -631,7 +647,7 @@ queue:
     const mine = githubPr(1).linkedPrs[0] as PrRef
     const issue = { ...githubPr(5), linkedPrs: [theirs, mine] }
     const yaml = (deliver: string) =>
-      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: implement, deliver: ${deliver} }]`
+      `providers: [claude]\nrepos: { acme/api: {} }\nsources: { github: {} }\nqueue: [{ skill: implement, deliver: ${deliver} }]`
     const pushed = plan(yaml('push'), [issue], {})
     expect(pushed.units.map(({ unit }) => [unit.deliver, unit.base])).toEqual([
       ['push', 'feature-1'],
@@ -656,7 +672,8 @@ queue:
   it('plans a pending_review chain on any PR, every step reporting, and refuses one with no PR to review', () => {
     const yaml = `
 providers: [claude]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue: [{ skill: plan, deliver: pending_review, then: [review] }]
 `
     const fork = { ...githubPr(2, { mine: false, trusted: false }) }
@@ -688,7 +705,8 @@ queue: [{ skill: plan, deliver: pending_review, then: [review] }]
     const yaml = `
 limits: { units: 4, units_per_repo: 2 }
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: fix, where: { checks: failing }, units: 1 }
   - { skill: implement, where: { type: issue } }
@@ -722,7 +740,8 @@ queue:
     const yaml = `
 limits: { units: 4, units_per_repo: 2 }
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: fix, where: { checks: failing }, units: 1 }
   - { skill: implement, where: { type: issue } }
@@ -769,7 +788,8 @@ queue:
     const yaml = `
 limits: { units: 1 }
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: fix, deliver: push }]`
     const updated = '2026-01-02T00:00:00Z'
     const at = (n: number, head: string) => {
@@ -829,7 +849,8 @@ queue: [{ skill: fix, deliver: push }]`
     const yaml = `
 limits: { units: 1 }
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: fix
     then:
@@ -850,7 +871,8 @@ queue:
     const yaml = `
 limits: { units: 1 }
 providers: [claude: {}, codex: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue:
   - { skill: implement, provider: [codex], where: { type: issue } }
   - { skill: fix, where: { checks: failing } }
@@ -1053,7 +1075,7 @@ describe('branch', () => {
     expect(templateProblem('{key}.lock')).toMatch(/invalid branch name/)
     expect(() =>
       parseConfig(
-        'providers: [claude: {}]\nsources: { github: { repos: [a/b] } }\nbranch: x y {key}',
+        'providers: [claude: {}]\nrepos: { a/b: {} }\nsources: { github: {} }\nbranch: x y {key}',
       ),
     ).toThrow('branch: renders an invalid branch name')
   })
@@ -1061,9 +1083,9 @@ describe('branch', () => {
   it('takes the rule template, then the repo, then the global one', () => {
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 branch: bot/{key}
-repos: { acme/api: { branch: 'feat/{key}-{title}' } }
+repos: { acme/api: { branch: 'feat/{key}-{title}' }, acme/web: }
 queue:
   - { skill: fix, where: { checks: failing }, branch: 'fix/{key}' }
   - { skill: review, where: { review_requested: true } }
@@ -1084,7 +1106,7 @@ queue:
   it('fills {type} from the first skill in the chain that commits', () => {
     const branches = (queue: string) =>
       plan(
-        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nbranch: '{type}/{key}'\nqueue: [${queue}]`,
+        `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nbranch: '{type}/{key}'\nqueue: [${queue}]`,
         [githubPr(1, { checks: 'failing', review_requested: true })],
         {},
       ).units.map((u) => u.unit.branch)
@@ -1102,7 +1124,7 @@ queue:
     const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true }
     const task = asanaTask(4, {}, { linkedPrs: [pr] })
     const yaml =
-      'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix }]'
+      'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {}, asana: { workspace: "1" } }\nqueue: [{ skill: fix }]'
     const result = plan(yaml, [{ ...ours, linkedPrs: [pr] }, task], {})
     expect(result.units).toEqual([])
     expect(result.skipped.map((s) => [s.kind, s.reason])).toEqual([
@@ -1124,7 +1146,8 @@ queue:
   it('holds a PR awaywork pushed onto while its head is still the one the push left', () => {
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: fix, deliver: push }]`
     const at = (head: string, updated: string, n = 1) => {
       const item = githubPr(n, { updated })
@@ -1164,7 +1187,8 @@ queue: [{ skill: fix, deliver: push }]`
   it('records the push of a chain aborted after it, without finishing the chain', () => {
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: fix, deliver: push, then: review }]`
     const item = githubPr(1, { updated: '2026-01-01T00:00:00Z' })
     const planned = plan(yaml, [item], {})
@@ -1193,7 +1217,8 @@ queue: [{ skill: fix, deliver: push, then: review }]`
     const linked = { ...issue, linkedPrs: [pr] }
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: implement, where: { type: issue } }
   - { skill: fix, where: { type: pr, unresolved_threads: { gt: 0 } } }
@@ -1213,7 +1238,8 @@ queue:
     const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'away/acme-api-5', ours: true }
     const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: fix
     where: { type: pr, ours: true }
@@ -1229,7 +1255,7 @@ queue:
   })
 
   it('addresses the threads you started on an awaywork PR by default, not anyone else', () => {
-    const yaml = 'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'
+    const yaml = 'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }'
     const ours = (n: number, mine: number) => {
       const pr = githubPr(n, { ours: true, unresolved_threads: 2, my_unresolved_threads: mine })
       return { ...pr, linkedPrs: [{ ...(pr.linkedPrs[0] as PrRef), ours: true }] }
@@ -1249,7 +1275,7 @@ queue:
     const pr = githubPr(1, { checks: 'failing' })
     const task = asanaTask(7, {}, { linkedPrs: pr.linkedPrs })
     const yaml =
-      'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix, where: { type: [pr, task] } }]'
+      'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {}, asana: { workspace: "1" } }\nqueue: [{ skill: fix, where: { type: [pr, task] } }]'
     const result = planRun({
       config: parseConfig(yaml),
       items: [pr, task, issue],
@@ -1268,7 +1294,7 @@ queue:
 
 describe('attempts', () => {
   const yaml =
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix }]'
+    'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {}, asana: { workspace: "1" } }\nqueue: [{ skill: fix }]'
   const at = '2026-01-01T00:00:00Z'
   const startedAt = new Date(now)
   const failedAt = startedAt.toISOString()
@@ -1501,7 +1527,8 @@ describe('attempts', () => {
 describe('waiting for an answer', () => {
   const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: implement
 `
@@ -1548,7 +1575,8 @@ queue:
 describe('run --unit --skill', () => {
   const yaml = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 limits: { units: 1 }
 queue:
   - { skill: fix, where: { type: pr, checks: failing } }
@@ -1639,7 +1667,8 @@ ${yaml.replace('limits: { units: 1 }\n', '')}`
 describe('a plan on the card', () => {
   const yaml = (deliver = 'plan') => `
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: plan, deliver: ${deliver} }
   - { skill: implement, where: { planned: true } }
@@ -1715,7 +1744,8 @@ queue:
   it('takes no cap room for a task you name of a card you skipped', () => {
     const capped = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 limits: { units: 1 }
 queue:
   - { skill: plan, deliver: plan, where: { type: issue } }
@@ -1775,7 +1805,8 @@ describe('finished items', () => {
   const merged = { ...githubPr(8, { state: 'merged', closed, updated: closed }), linkedPrs: [] }
   const yaml = (deliver: string) => `
 providers: [claude]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 queue: [{ skill: fix, where: { type: pr, state: merged }, deliver: ${deliver} }]
 `
 

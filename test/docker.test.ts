@@ -42,7 +42,7 @@ describe('schedule install --with docker', () => {
     process.exitCode = undefined
   })
 
-  const CONFIG = 'providers: [claude]\nsources: { github: { repos: [acme/api] } }\n'
+  const CONFIG = 'providers: [claude]\nrepos: { acme/api: {} }\nsources: { github: {} }\n'
 
   async function setup(text = CONFIG) {
     const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
@@ -93,7 +93,7 @@ describe('schedule install --with docker', () => {
   it("fits the files to the config: codex kept, cursor's installer as root, each secret and the timezone in compose", async () => {
     const { install, read } = await setup(`providers: [claude, codex, cursor]
 sources:
-  github: { repos: [acme/api] }
+  github: {}
   board: { command: ./board, secrets: [BOARD_TOKEN], setup: "go build -o board ." }
 repos: { acme/api: { secrets: [DATABASE_URL] } }
 `)
@@ -148,7 +148,7 @@ repos: { acme/api: { secrets: [DATABASE_URL] } }
 
   it('refuses a Bitbucket config and writes nothing', async () => {
     const { root, install } = await setup(
-      'providers: [claude]\nsources: { bitbucket: { repos: [acme/api] } }\n',
+      "providers: [claude]\nforge: bitbucket\nrepos: { acme/api: {} }\nsources: { tracker: { command: 'echo []' } }\n",
     )
     await install()
     expect(process.exitCode).toBe(1)

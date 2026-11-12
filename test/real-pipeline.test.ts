@@ -123,8 +123,9 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
     config = join(home, 'config.yml')
     const cfg = {
       providers: ['claude'],
+      repos: { [repo]: {} },
       sources: {
-        github: { repos: [repo] },
+        github: {},
         asana: { workspace, projects: [project], repo_map: { [project]: repo } },
       },
       queue: [

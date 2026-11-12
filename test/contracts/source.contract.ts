@@ -8,17 +8,19 @@ import { itemFields, sourceField } from '../../src/sources/index.js'
 
 /**
  * Every source adapter must pass this suite; `rawConfig` is its config as a
- * user writes it, and `move` is where a source that writes moves its first item.
+ * user writes it, `move` is where a source that writes moves its first item,
+ * and `scope` is what the loaded config adds to its config.
  */
 export function sourceContract(
   source: Source<unknown>,
   rawConfig: unknown,
   env: Ctx['env'] = {},
   move?: string,
+  scope: object = {},
 ): void {
   const ctx: Ctx = { env, log: () => {} }
   describe(`source contract: ${source.id}`, () => {
-    const cfg = () => source.configSchema.parse(rawConfig)
+    const cfg = () => ({ ...source.configSchema.parse(rawConfig), ...scope })
 
     it('declares a usable id, config and secrets', () => {
       expect(source.id).toMatch(/^[a-z][a-z0-9-]*$/)
