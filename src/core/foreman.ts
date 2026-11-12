@@ -410,6 +410,18 @@ export function planRun(input: {
       skip('refused_delivery', 'deliver pending_review: no pull request to review')
       continue
     }
+    // A declared gate never stays off unsaid: one on a chain that only reports runs under deliver: report alone.
+    if (rule.gates && !committing && !planned && rule.deliver !== 'report') {
+      const fix =
+        'planned' in rule.where
+          ? "a task's report takes no gates for now: drop them"
+          : 'set deliver: report to run them on the report'
+      skip(
+        'refused_delivery',
+        `${rule.skill} commits nothing, so its gates would never run: ${fix}`,
+      )
+      continue
+    }
     const template = rule.branch ?? settingsFor(config.repos, repo).branch ?? config.branch
     // A chain's name takes the type of its first committing step; the list's words keep it a valid ref.
     const branch = branchName(config, rule, repo, items[0] as Item, committing, input.skills)

@@ -1,4 +1,4 @@
-import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -18,7 +18,12 @@ import { fakeSource } from './fakes/source.js'
 import { committer, git, looper, originForge } from './fakes/units.js'
 
 /** The PR body, the unit's `out/` in the run dir, what the run printed and what it published. */
-async function verified(repoConfig: string, deliver = 'draft_pr', top = '') {
+async function verified(
+  repoConfig: string,
+  deliver = 'draft_pr',
+  top = '',
+  provider: Provider = looper({}),
+) {
   const lines: string[] = []
   const root = await mkdtemp(join(tmpdir(), 'awaywork-verify-'))
   const { opened, forge } = await originForge(root)
@@ -44,7 +49,7 @@ queue:
     runId: 'r1',
     runDir: join(root, 'run'),
     dryRun: false,
-    providers: { claude: looper({}) },
+    providers: { claude: provider },
     sources: { github: fakeSource() as Source },
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: (line) => lines.push(line) },
@@ -123,6 +128,80 @@ it("runs a PR rule's own gates with the top-level and repo ones, every command r
   const quiet = await verified('', "pr, gates: { ok: { command: 'true' } }")
   expect(quiet.outcome).toMatchObject({ kind: 'pr', ready: true })
   expect(quiet.body).toMatch(/^Add rate limits\n\nGates: none fired \(ok\)\n\n---\n\nDone\./)
+})
+
+it("restores what the steps left in .away/out/ after a PR's gates: a command's writes reach neither the body nor the kept files", async () => {
+  const meddle = 'cd .away/out && echo HACK >> pr.md && echo x > added.txt; echo no; exit 1'
+  const { body, out, outcome } = await verified('', `pr, gates: { own: { command: '${meddle}' } }`)
+  expect(outcome).toMatchObject({ kind: 'pr', draft: 'gate own fired' })
+  expect(body).not.toContain('HACK')
+  expect(await readFile(join(out, 'pr.md'), 'utf8')).not.toContain('HACK')
+  expect(await readdir(out)).not.toContain('added.txt')
+})
+
+it('reports a PR rule whose chain left no commits without running a gate, top-level or its own', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-ungated-'))
+  const idle: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      await writeFile(join(job.dir, '.away/out/report.md'), 'Nothing to do.')
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const { body, outcome } = await verified(
+    '',
+    `pr, gates: { own: { command: 'touch ${root}/own; exit 1' } }`,
+    `gates: { top: { command: 'touch ${root}/top; exit 1' } }`,
+    idle,
+  )
+  expect(outcome).toEqual({ kind: 'report', text: 'Nothing to do.' })
+  expect(body).toBe('')
+  expect(await readdir(root)).toEqual([])
+})
+
+it('skips a rule with gates whose chain only reports and names no deliver: report, so a declared gate never stays off unsaid', () => {
+  const reasons = (queue: string, user = {}) => {
+    const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: {} }
+repos: { acme/api: {} }
+queue: [${queue}]
+`)
+    const { skipped, units } = planRun({
+      config,
+      items: [issue(1)],
+      allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+      skills: { user, builtin: builtinSkills },
+    })
+    return {
+      skipped: skipped.map((s) => [s.kind, s.reason]),
+      gates: units.map((u) => Object.keys(u.unit.gates ?? {})),
+    }
+  }
+  const own = "gates: { own: { command: 'true' } }"
+  const skip = (skill: string) => [
+    [
+      'refused_delivery',
+      `${skill} commits nothing, so its gates would never run: set deliver: report to run them on the report`,
+    ],
+  ]
+  expect(reasons(`{ skill: review, ${own} }`).skipped).toEqual(skip('review'))
+  expect(reasons(`{ skill: review, deliver: pr, ${own} }`).skipped).toEqual(skip('review'))
+  expect(reasons(`{ skill: audit, ${own} }`, { audit: { deliver: 'report' } }).skipped).toEqual(
+    skip('audit'),
+  )
+  const gated = ['own']
+  expect(reasons(`{ skill: review, deliver: report, ${own} }`)).toEqual({
+    skipped: [],
+    gates: [gated],
+  })
+  // A step that commits, or a skill only the repo has, read after the plan, runs them once there are commits.
+  expect(reasons(`{ skill: review, then: [{ skill: implement }], ${own} }`)).toEqual({
+    skipped: [],
+    gates: [gated, gated],
+  })
+  expect(reasons(`{ skill: audit, ${own} }`)).toEqual({ skipped: [], gates: [gated] })
+  expect(reasons('{ skill: review }')).toEqual({ skipped: [], gates: [[]] })
 })
 
 it('keeps a draft_pr PR a draft with the card, says which gates ran when none fired, and adds nothing without gates', async () => {

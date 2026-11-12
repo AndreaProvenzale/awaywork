@@ -451,7 +451,7 @@ export interface Unit {
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** Checks run before publishing commits, the top-level ones merged with the repo's: with the rule's own: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own alone, on what its step left. */
+  /** Checks run before publishing commits, the top-level ones merged with the repo's and the rule's own: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own alone, on what its step left. */
   gates?: Record<string, Gate>
   /** A plan's or report's post: it waits for your approve, or goes ahead unless one of its gates fires; unset, a report posts as a plain result. */
   waits?: boolean

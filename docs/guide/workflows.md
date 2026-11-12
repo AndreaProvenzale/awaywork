@@ -217,6 +217,7 @@ Details:
 - The command must name its script by repo-root path, as a word of its own: `bash ./scripts/route-diff.sh` or `(scripts/route-diff.sh) && echo ok` count, `cd scripts && sh route-diff.sh` doesn't.
 - A named file missing at the chain's start always fires it, so don't name one the command writes.
 - Only named files are compared, and the command runs repo code the agent may have changed: a sourced helper, code it calls, a module loaded from beside it. `python3 scripts/gate.py` imports an agent-committed `scripts/json.py` before the real `json`, so run Python with `-I`; Node looks for `node_modules` up from the script the same way.
+- A gate can't change `.away/out/`: once the gates ran, awaywork puts back what the steps left, as plain files, so a link or an executable bit in it is dropped.
 - What can't blank the diff: replace refs (the command's git ignores them); attributes like `* -diff`, which make it `Binary files … differ` (awaywork deletes `.git/info/attributes` first, and git reads `.gitattributes` files, committed or not, from the start commit, not the worktree; older git ignores that, hence `--text`); the steps' git config, like `diff.external` or a textconv driver (the command's git reads a fresh global config awaywork writes, with your identity and git-lfs's filter, no attributes file).
 
 ### Judges
@@ -247,7 +248,9 @@ queue:
       copy: { changed: ["src/locales/**"] }
 ```
 
-Like the others, they run only when the chain has commits. A `deliver: plan` or `report` rule's own gates are the only ones it has (top-level and repo ones never run there: no diff). They run on what the step left, and one that fires makes the [post wait](#posts-that-wait) for your approve, the card on top:
+Like the others, they run only when the chain has commits: one that left none reports, ungated. A rule whose skills all report, as `review` does, could never run them, so its items are skipped with `commits nothing, so its gates would never run`: give it `deliver: report`.
+
+A `deliver: plan` or `report` rule's own gates are the only ones it has (top-level and repo ones never run there: no diff). They run on what the step left, and one that fires makes the [post wait](#posts-that-wait) for your approve, the card on top:
 
 ```yaml
 queue:
