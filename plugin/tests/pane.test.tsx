@@ -1057,7 +1057,6 @@ const explained = {
   windows: ['01:00–07:00'],
   providers: ['claude'],
   sources: ['github'],
-  defaultQueue: false,
   rules: [
     ['my PRs, checks failing', 'fix', 'draft PR'],
     ['PRs, review requested', 'review', 'report'],

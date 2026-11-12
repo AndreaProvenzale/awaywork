@@ -73,7 +73,7 @@ queue:
 
 GitHub reads only issues assigned to you, so a labelled issue nobody assigned to you plans nothing, unless a `search` reads it (then `mine: true` keeps a rule to yours). Within a rule, items come in the source's order (GitHub: newest first) unless the rule sets `order`.
 
-With no `queue`, the default applies, minus rules for sources you didn't configure:
+With no `queue`, or an empty one, nothing runs: `plan` says so and `doctor` warns. `awaywork init` writes these rules, minus those for sources you didn't configure:
 
 | #   | Skill       | Source | Where                                        |
 | --- | ----------- | ------ | -------------------------------------------- |

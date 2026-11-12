@@ -175,21 +175,17 @@ function planWhy(): string {
   return command('awaywork plan --why T-7', t7 ? formatWhy(planned, t7) : '')
 }
 
-/** `plan --rules` on the default queue, its third rule cut as the doc does. */
+/** `plan --rules` on the queue `init` writes, its third rule cut as the doc does. */
 function planRules(): string {
-  const listed = formatQueue(
-    defaultRules(['github']),
-    [
-      pr('acme/api', 1, 'Add rate limits to the public API', {
-        mine: true,
-        checks: 'failing',
-        unresolved_threads: 0,
-      }),
-      pr('acme/api', 2, 'Cache user sessions', { review_requested: true, trusted: true }),
-      pr('acme/api', 3, 'Bump the SDK'),
-    ],
-    true,
-  )
+  const listed = formatQueue(defaultRules(['github']), [
+    pr('acme/api', 1, 'Add rate limits to the public API', {
+      mine: true,
+      checks: 'failing',
+      unresolved_threads: 0,
+    }),
+    pr('acme/api', 2, 'Cache user sessions', { review_requested: true, trusted: true }),
+    pr('acme/api', 3, 'Bump the SDK'),
+  ])
   const third = listed.findIndex((line) => line.startsWith('  #3'))
   const fourth = listed.findIndex((line) => line.startsWith('  #4'))
   return [...listed.slice(0, third), '  [...]', ...listed.slice(fourth)].join('\n')

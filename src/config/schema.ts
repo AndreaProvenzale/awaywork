@@ -762,7 +762,7 @@ export const configSchema = z
     queue: z
       .array(rule)
       .optional()
-      .describe('Rules mapping items to skills; default the built-in queue'),
+      .describe('Rules mapping items to skills; without any, nothing runs'),
     notify: z
       .strictObject({
         command: z

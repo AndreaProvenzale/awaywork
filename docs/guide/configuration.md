@@ -426,7 +426,7 @@ Details:
 - Any name but `context` and `every`.
 - On GitHub Actions, times are the workflow's `TZ`. Without `run: soon` it waits for a window: Monday's 09:00 runs Tuesday at 01:00 with the default one.
 - No tracker to write to: `on_done` and `deliver: plan` are refused, and results or questions stay in the report; [`notify`](#notify) can send them on.
-- It takes a [`context`](#context-commands) command. The built-in queue has no rules for routines: write yours.
+- It takes a [`context`](#context-commands) command. `init` writes no rules for routines: write yours.
 
 ## Branch names
 

@@ -7,6 +7,7 @@ import { isCheck, openedChain } from '../../core/plan.js'
 import type { Item } from '../../core/types.js'
 import { describeOccurrence } from '../../sources/routines.js'
 import { allowanceNote, allowanceRow } from './allowances.js'
+import { NO_QUEUE } from './rules.js'
 import { needsYouLines, refIn, skippedLines } from './skips.js'
 import {
   clip,
@@ -43,11 +44,9 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
   return out.join('\n')
 }
 
-/** The default queue's note, then each provider's window, ceiling and session. */
+/** A note when there is no queue, then each provider's window, ceiling and session. */
 export function providerLines(plan: RunPlan, style: Style = (_, text) => text): string[] {
-  const out = plan.defaultQueue
-    ? [style('dim', 'Queue: the default, no queue in config; awaywork plan --rules lists it'), '']
-    : []
+  const out = plan.queue.length === 0 ? [NO_QUEUE, ''] : []
   out.push(style('bold', 'Providers'))
   if (plan.present !== undefined) out.push(style('dim', `  ${presenceLine(plan.present)}`))
   const allowances = Object.entries(plan.allowances)

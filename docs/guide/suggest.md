@@ -62,12 +62,12 @@ Anything your config or `AGENTS.md` already has shows as "already rule #1". A pa
 
 ## What you see
 
-On one developer's repo, a month of history, a config with no `queue`: 86 interactive Claude Code sessions (of 163 files, the rest headless), 143 PRs, 76 issues and 20 failed runs, ending with, trimmed:
+On one developer's repo, a month of history, a config with the 4 rules `init` wrote: 86 interactive Claude Code sessions (of 163 files, the rest headless), 143 PRs, 76 issues and 20 failed runs, ending with, trimmed:
 
 ```text
 Rules
   1  fix my red PRs                                  seen 5×   forge (+1 session)
-     where: { type: pr, mine: true, checks: failing }   (already rule #1, default queue)
+     where: { type: pr, mine: true, checks: failing }   (already rule #1)
      takes now: nothing
 
   2  review my own green PRs before I merge them     seen 12×  sessions
@@ -90,7 +90,7 @@ Corrections
 Keep which? (e.g. 2, 3)
 ```
 
-Below it: 2 patterns dropped for having no visible trigger, the draft keeping the 4 default rules as #1 to #4 (a `queue` replaces the default one), `doctor` passing, neither rule widening delivery. Config, repo and `AGENTS.md` untouched. A month without a routine is an answer too.
+Below it: 2 patterns dropped for having no visible trigger, the draft keeping the 4 rules `init` wrote as #1 to #4, `doctor` passing, neither rule widening delivery. Config, repo and `AGENTS.md` untouched. A month without a routine is an answer too.
 
 ## You pick
 

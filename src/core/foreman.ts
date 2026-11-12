@@ -13,7 +13,6 @@ import { elsewhere, latestResult, planState, planThread } from './plan.js'
 import { postAnswer, reportPost } from './posts.js'
 import {
   closestRule,
-  defaultRules,
   doneWith,
   isAwayworkPr,
   isLoop,
@@ -144,7 +143,6 @@ export interface Skipped {
 
 export interface RunPlan {
   queue: Rule[]
-  defaultQueue: boolean
   units: PlannedUnit[]
   skipped: Skipped[]
   allowances: Record<string, Allowance>
@@ -179,7 +177,7 @@ export function planRun(input: {
 }): RunPlan {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
-  const queue = config.queue ?? defaultRules(Object.keys(config.sources))
+  const queue = config.queue ?? []
   const expanded = expandPlans(input.items, config, queue, input.skills, skips)
   const name = only.named
   // A task you name of a card you skipped runs; the card and its other tasks stay skipped.
@@ -558,7 +556,7 @@ export function planRun(input: {
     }
     for (const step of steps) add(step.written, step.id, step.loop)
   }
-  return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+  return { queue, units, skipped, allowances }
 }
 
 /** `run --skill`'s rule, for the one item it names: no delivery, on_done, wait, gates, thread or post of its own. */

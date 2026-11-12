@@ -60,7 +60,7 @@ Machine-readable docs:
 ### Setting up
 
 1. `npm install -g awaywork`; check `claude --version`, `codex --version`, `agent --version` (Cursor, which also needs `CURSOR_API_KEY` in the env file), `gh auth status`.
-2. `awaywork init --yes` writes `~/.config/awaywork/config.yml` without a terminal: the installed providers, `github` when `gh` is logged in (repos `<login>/*`), the default queue and a 01:00-07:00 window. It won't replace a config without `--force`.
+2. `awaywork init --yes` writes `~/.config/awaywork/config.yml` without a terminal: the installed providers, `github` when `gh` is logged in (repos `<login>/*`), its default rules for those sources and a 01:00-07:00 window. It won't replace a config without `--force`.
    - `--provider`, `--source` and `--window` override what it detects ([`init`](../reference/cli.md#awaywork-init)).
    - Asana is skipped with a note unless `ASANA_TOKEN` is set; then it takes the first workspace and every project with the user's tasks. Linear likewise needs `LINEAR_API_KEY`. Jira is skipped: it needs a site and an email.
    - Cursor counts as installed only with `CURSOR_API_KEY` set; `--provider cursor` takes it anyway. Where it's the only agent, `--yes` without either stops, naming the missing key.
@@ -89,7 +89,7 @@ Machine-readable docs:
 
 ### `plan --json`
 
-`awaywork plan --json` prints one object: `queue`, `defaultQueue`, `allowances` (per provider), `units`, `skipped` and `warnings`. Items leave out their raw source payload.
+`awaywork plan --json` prints one object: `queue`, `allowances` (per provider), `units`, `skipped` and `warnings`. Items leave out their raw source payload.
 
 A skipped entry is `{ item, kind, reason }`, plus `url` when it waits on an awaywork PR for review (the PR to open, maybe not the item) or on an answer or approval (the item awaywork asked or posted its plan on). The kinds the user can act on have `needsYou: true`:
 
@@ -124,12 +124,11 @@ Plans and tasks:
 ### The other `--json` outputs
 
 - `skills list --json`: `skills`, each `{ name, deliver, pickable }`: the delivery it defaults to, and whether `run --unit --skill` can run it on one item.
-- `plan --rules --json`: the queue against the items the sources return now, reading no quota, attempts or caps (so `plan --why <key>` says what a run would really do). `rules` gives each rule's `rule` number, `skill`, `summary`, the items it takes (`taken`, with `plan: true` on a card its `deliver: plan` rule keeps though its `where` no longer matches) and those another rule takes (`takenBy`, by that rule's number); then `defaultQueue`, `unmatched` (each with a `reason` naming the closest rule and the conditions it failed) and `warnings`. Items are references: `source`, `key`, `title`, `url`. On a repo with one review rule:
+- `plan --rules --json`: the queue against the items the sources return now, reading no quota, attempts or caps (so `plan --why <key>` says what a run would really do). `rules` gives each rule's `rule` number, `skill`, `summary`, the items it takes (`taken`, with `plan: true` on a card its `deliver: plan` rule keeps though its `where` no longer matches) and those another rule takes (`takenBy`, by that rule's number); then `unmatched` (each with a `reason` naming the closest rule and the conditions it failed) and `warnings`. Items are references: `source`, `key`, `title`, `url`. On a repo with one review rule:
 
   ```json
   {
     "rules": [{ "rule": 1, "skill": "review", "summary": "type=pr review_requested=true trusted=true", "taken": [], "takenBy": [] }],
-    "defaultQueue": false,
     "unmatched": [
       {
         "source": "github",

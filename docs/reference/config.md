@@ -38,7 +38,7 @@ with:
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
-| `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
+| `queue` | object[] |  | Rules mapping items to skills; without any, nothing runs |
 | `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
 | `store` | object |  | Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back |
 | `keep_runs` | string | `"30d"` | How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report |

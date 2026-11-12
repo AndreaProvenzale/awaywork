@@ -1,7 +1,7 @@
 import { isMap, isSeq, LineCounter, parseDocument } from 'yaml'
 import { ConfigError, parseConfig } from '../config/load.js'
 import { committingStep } from '../core/fanout.js'
-import { defaultRules, isLoop } from '../core/queue.js'
+import { isLoop } from '../core/queue.js'
 import type { SkillCatalog } from '../core/skills.js'
 import type { Rule, Where } from '../core/types.js'
 
@@ -87,7 +87,7 @@ function until(c: { verdict?: unknown; command?: string }): string {
   return c.command ?? [c.verdict].flat().join(' or ')
 }
 
-/** Each `queue` entry's first line in the file; none when the rules are the default queue. */
+/** Each `queue` entry's first line in the file; none without a queue. */
 function ruleLines(text: string): (number | undefined)[] {
   const counter = new LineCounter()
   const doc = parseDocument(text, { lineCounter: counter })
@@ -117,7 +117,7 @@ export function explainConfig(text: string, path: string, skills: SkillCatalog) 
     providers: config.providers.map((p) => p.id),
     sources: Object.keys(config.sources),
     reserve: pct(config.budget.reserve),
-    rules: (config.queue ?? defaultRules(Object.keys(config.sources))).map((r, i) => ({
+    rules: (config.queue ?? []).map((r, i) => ({
       rule: i + 1,
       line: lines[i],
       takes: takes(r),

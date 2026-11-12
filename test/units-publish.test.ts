@@ -703,6 +703,7 @@ it('stacks a draft PR on an awaywork PR it takes up, and runs setup there withou
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: {} }
+queue: [{ skill: fix, where: { ours: true, my_unresolved_threads: { not: 0 } } }]
 repos:
   acme/api:
     setup: 'echo "$NPM_TOKEN" > .away/setup.txt'
