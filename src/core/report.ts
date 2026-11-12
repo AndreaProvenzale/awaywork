@@ -26,7 +26,7 @@ export interface UnitResult {
   outcome?: Outcome
   /** The one word the unit wrote to `out/verdict`. */
   verdict?: string
-  /** Skipped because its `when` didn't hold, or after a step that left nothing: not a failure. */
+  /** Skipped because its `when` or its rule's `quota` didn't hold, or after a step that left nothing: not a failure. */
   passedOver?: true
   /** Failed, and ran again on its provider's next model: the retry is the next result. */
   retried?: true

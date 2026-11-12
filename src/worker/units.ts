@@ -164,11 +164,11 @@ async function earlierReport(
   }
 }
 
-/** A step that sat out or its `when` passed over: a poll tries it again an hour later. */
+/** A step that sat out, or its `when` or its rule's `quota` passed over: a poll tries it again an hour later. */
 const triedLater = (r: UnitResult) =>
   r.status === 'skipped' &&
   (!!r.reason?.startsWith('no provider left') ||
-    (!!r.passedOver && !!r.reason?.startsWith('when ')))
+    (!!r.passedOver && /^(when |quota: )/.test(r.reason ?? '')))
 
 /** Why a `deliver: pr` chain opens as a draft: a step that failed, stopped or never ran; `runLine` splits at `; `. */
 function notReady(r: UnitResult): string {
@@ -1110,11 +1110,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (!reuse) await baseline(dir)
         const when = unit.rule.when ?? unit.rule.quota
         if (when && !retryOf) {
+          const shown = `${unit.rule.when ? 'when' : 'quota:'} ${describeCondition(when)}`
           const met = await factsFor(when, unit, dir, since, verdict, log, whenLog, { from })
           Object.assign(met.facts, quotaFacts(a))
           // A check stopped or timed out before it exited says nothing: the chain ends without passing over it.
           if (met.check?.stopped || met.check?.timedOut) {
-            const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
+            const reason = `${shown} not checked: ${met.check.failed}`
             Object.assign(result, { status: 'skipped', reason })
             event(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
@@ -1124,7 +1125,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           }
           if (!holds(when, met.facts)) {
             const failed = met.check?.failed ? ` (${met.check.failed})` : ''
-            const reason = `when ${describeCondition(when)} didn't hold${failed}`
+            const reason = `${shown} didn't hold${failed}`
             Object.assign(result, { status: 'skipped', reason, passedOver: true })
             event(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
