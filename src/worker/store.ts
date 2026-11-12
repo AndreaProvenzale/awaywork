@@ -72,7 +72,7 @@ function urlOf(stdout: string): string | undefined {
 /**
  * Puts each file of `dir` named in `files` in the store, the item and unit it's for alongside, gets it back once, and
  * pins it by the URL the store printed, its size and sha256; a put that fails, or whose get gives back other bytes,
- * pins nothing for its file, its line in `failed`. A file the store skips is neither pinned nor failed.
+ * pins nothing for its file, its line in `failed`. A file the store skips is neither pinned nor failed, its name in `skipped`.
  */
 export async function putFiles(
   store: Store,
@@ -80,9 +80,10 @@ export async function putFiles(
   dir: string,
   files: { name: string; kind: Kind }[],
   at: { item: string; unit: string },
-): Promise<{ pins: Pin[]; failed: string[] }> {
+): Promise<{ pins: Pin[]; failed: string[]; skipped: string[] }> {
   const pins: Pin[] = []
   const failed: string[] = []
+  const skipped: string[] = []
   const tmp = await mkdtemp(join(tmpdir(), 'awaywork-put-'))
   try {
     for (const [n, { name, kind }] of files.entries()) {
@@ -92,7 +93,10 @@ export async function putFiles(
         const url = urlOf(
           (await runShell(store.command, store.dir, env, JSON.stringify(op))).stdout,
         )
-        if (url === undefined) continue
+        if (url === undefined) {
+          skipped.push(name)
+          continue
+        }
         const [hash, { size }] = await Promise.all([sha256(path), stat(path)])
         const back = join(tmp, String(n))
         await getFile(store, env, url, back).catch((e: Error) => {
@@ -108,7 +112,7 @@ export async function putFiles(
   } finally {
     await rm(tmp, { recursive: true, force: true })
   }
-  return { pins, failed }
+  return { pins, failed, skipped }
 }
 
 /** Gets the file at `url` into `to`, through the store's command, or with a plain HTTP GET when it has no get. */

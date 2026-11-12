@@ -347,7 +347,7 @@ Until you answer, the card is skipped as **waiting for your approval**, under Ne
 
 - The plan is awaywork's newest plan comment, read off the card every run. GitHub reads the whole thread, past its last 50 comments.
 - Edit the plan comment to fix a task, and the next run checks your edit; one that breaks it skips the card as **plan refused** with the reason, under Needs you. A plan comment someone else edited isn't awaywork's anymore ([Safety](./safety.md#what-awaywork-publishes)), so the card gets a new plan.
-- A plan isn't posted when it fails its checks (in the file, or read back from the comment), `plan.yml` or the contract is missing, or the comment with the contract passes 30 KB (a [lean](#files-that-come-back) plan pins them). The reason stays in the morning report (`plan not posted: plan.yml: task id "api" is used twice`) and `on_done` doesn't fire. Nor on an item that isn't yours, a source that can't write on a rule without a [thread](#threads), or a failed post. A step that asks [questions](#questions) posts those instead.
+- A plan isn't posted when it fails its checks (in the file, or read back from the comment), `plan.yml` or the contract is missing, or the comment with the contract passes 30 KB (a [lean](#files-that-come-back) plan pins them, and isn't posted when the [store](#store) fails or skips either: `plan.yml isn't in the store`). The reason stays in the morning report (`plan not posted: plan.yml: task id "api" is used twice`) and `on_done` doesn't fire. Nor on an item that isn't yours, a source that can't write on a rule without a [thread](#threads), or a failed post. A step that asks [questions](#questions) posts those instead.
 - A `deliver: plan` rule that matches only merged or closed items, names a `source` that can't write without [`thread: github`](#threads), or has no `planned` rule for its tasks is a config error.
 
 ### Tasks
@@ -743,7 +743,9 @@ if (op.op === 'put') {
 It gets one JSON op on stdin per call, with your environment, like a [custom source](./custom-sources.md):
 
 - `{"op": "put", "item": "ENG-2101", "unit": "eng-2101", "path": "/…/units/eng-2101/out/plan.yml", "kind": "plan"}` prints `{"url": "…"}`. `path` is awaywork's copy out of the clone, readable during the put. `kind` is `plan`, `contract`, `report`, or the file's name under `.away/out/`, so one script can send recordings to a bucket and plans to Notion.
-  - It may print `{"skip": true}` instead, to keep a file home (a 200 MB trace, a kind that may hold secrets): the file stays in the run dir, the post goes out without a link to it, and nothing is reported. Any other output is a failed put. A lean plan still needs its `plan.yml` and contract in the store.
+  - It may print `{"skip": true}` instead, to keep a file home (a 200 MB trace, a kind that may hold secrets): the file stays in the run dir, the post goes out without a link to it, and nothing is reported. Any other output is a failed put.
+  - A lean report whose `report.md` is skipped posts its summary with no link to the report, which stays home. A step that wrote no `summary.md` still gets the report's first lines posted in its place.
+  - A lean plan can't be approved or fanned out without its `plan.yml` and contract. Skip either and the plan isn't posted: `plan not posted: plan.yml isn't in the store`.
 - `{"op": "get", "url": "…"}` prints the bytes exactly as put. A put-only store sets `get: false`, and awaywork reads back with a plain HTTP GET, within the command's 10 minutes.
 
 After each put awaywork gets the file back and compares its sha256, which the pin carries. A store that returns other bytes (a CMS adding a newline, Notion round-tripping markdown) would make every post look edited, so that file isn't pinned: `report.md not stored: the store gave back different bytes than awaywork put`. Keep such a page for people, the bytes somewhere that keeps them.
@@ -759,7 +761,7 @@ The script's job, not awaywork's:
 When the store fails:
 
 - A failed put leaves the file in the run dir, pins nothing and adds a morning report line (`fail.bin not stored: Command failed with exit code 1: …`, or `printed 11 characters that aren't JSON, not {"url": "…"}`, never quoting the output); post and PR still go out.
-- A lean report whose own `report.md` failed, or was skipped, posts the whole report in place of the summary, other pins kept, and says so; over 30 KB it fails like any result.
+- A lean report whose own `report.md` failed posts the whole report in place of the summary, other pins kept, and says so; over 30 KB it fails like any result.
 - A failed get on a post the unit depends on (the one an approval covers, its own when it runs again, a PR's footer) skips the unit as `fix store`, with why, counting no attempt.
 - On any other post (an older plan, a newer report) it costs only that post's files and a morning report line, so an expired `plan.yml` on an old plan stops nothing.
 

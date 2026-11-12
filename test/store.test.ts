@@ -65,6 +65,14 @@ async function folderStore(script = storeScript): Promise<{ config: string; dir:
   return { config: `store: { command: 'node ${join(dir, 'store.mjs')}' }`, dir }
 }
 
+/** A store that skips the file named `name`. */
+const skipping = (name: string) =>
+  folderStore(
+    storeScript
+      .replace("throw new Error('bucket full')", 'process.exit(console.log(\'{"skip": true}\'))')
+      .replace("'fail.bin'", `'${name}'`),
+  )
+
 const storeOf = (top: string) =>
   parseConfig(`providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${top}\n`)
     .store as Store
@@ -311,6 +319,39 @@ describe('lean posts', () => {
       writer({ 'report.md': 'The report.', 'notes.txt': 'n' }, { prompts: [], read: [] }),
     )
     expect(body()).toBe(markComment(resultComment('The report.', 'done', 'review')))
+    expect(r.results[0]?.store).toBeUndefined()
+  })
+
+  it("posts a lean report's summary alone when the store skips report.md", async () => {
+    const store = await skipping('report.md')
+    const files = { 'report.md': 'The whole report.', 'summary.md': 'Short.', 'notes.txt': 'n' }
+    const { body, report: r } = await run(
+      store.config,
+      report,
+      [yours(1)],
+      writer(files, { prompts: [], read: [] }),
+    )
+    const pins = pinsOf(post(body()))
+    expect(pins.map((p) => p.name)).toEqual(['notes.txt'])
+    expect(body()).toBe(
+      markComment(`${resultComment('Short.', 'done', 'review')}${pinBlock(pins)}`),
+    )
+    expect(body()).not.toContain('The whole report.')
+    expect(r.results[0]?.store).toBeUndefined()
+  })
+
+  it('leaves a lean plan unposted when the store skips plan.yml', async () => {
+    const store = await skipping('plan.yml')
+    const yaml = 'tasks:\n  - { id: api, title: VAT endpoint }\n'
+    const files = { 'report.md': 'Narrative.', 'summary.md': 'One task.', 'plan.yml': yaml }
+    const { writes, report: r } = await run(
+      store.config,
+      '  - { skill: plan, deliver: plan }\n  - { skill: implement, where: { planned: true } }',
+      [yours(1)],
+      writer(files, { prompts: [], read: [] }),
+    )
+    expect(writes).toEqual([])
+    expect(r.results[0]?.plan).toEqual({ tasks: ['api'], unposted: "plan.yml isn't in the store" })
     expect(r.results[0]?.store).toBeUndefined()
   })
 
@@ -861,16 +902,12 @@ describe('put', () => {
     expect(put).toEqual({
       pins: [],
       failed: ['report.md not stored: the store gave back different bytes than awaywork put'],
+      skipped: [],
     })
   })
 
   it('neither pins nor fails a file the store skips, and never gets it back', async () => {
-    const store = await folderStore(
-      storeScript.replace(
-        "if (basename(op.path) === 'fail.bin') throw new Error('bucket full')",
-        "if (basename(op.path) === 'trace.bin') {\n    console.log(JSON.stringify({ skip: true }))\n    process.exit()\n  }",
-      ),
-    )
+    const store = await skipping('trace.bin')
     const dir = await files('the report')
     await writeFile(join(dir, 'trace.bin'), 'x')
     const put = await putFiles(
@@ -884,6 +921,7 @@ describe('put', () => {
       at,
     )
     expect(put.failed).toEqual([])
+    expect(put.skipped).toEqual(['trace.bin'])
     expect(put.pins.map((p) => p.name)).toEqual(['report.md'])
     expect(existsSync(join(dir, 'trace.bin'))).toBe(true)
   })
@@ -897,7 +935,11 @@ describe('put', () => {
       [{ name: 'report.md', kind: 'report' }],
       at,
     )
-    expect(put).toEqual({ pins: [], failed: ['report.md not stored: printed no {"url": "…"}'] })
+    expect(put).toEqual({
+      pins: [],
+      failed: ['report.md not stored: printed no {"url": "…"}'],
+      skipped: [],
+    })
   })
 
   it("never quotes what a put printed that isn't JSON", async () => {
