@@ -69,6 +69,7 @@ describe('forge', () => {
   it("is github unless set, by name or as a map of GitHub's settings", () => {
     expect(forgeOf('')).toEqual({ id: 'github' })
     expect(forgeOf('forge: github')).toEqual({ id: 'github' })
+    expect(forgeOf('forge: { github: }')).toEqual({ id: 'github' })
     expect(forgeOf('forge: bitbucket')).toEqual({ id: 'bitbucket' })
     expect(forgeOf('forge: { github: { host: github.acme.com, user: octocat } }')).toEqual({
       id: 'github',
@@ -212,6 +213,17 @@ describe('the allowlist', () => {
       )
     expect(jira('repos: { acme/api: }')).toEqual([])
     expect(jira('')).toEqual([`sources.jira.repo_map.ENG: ${unlisted('acme/api')}`])
+    const pattern = (repo: string) =>
+      `expected one repo like acme/api, not the pattern ${repo}: a * goes only in a key of repos`
+    expect(routine('acme/*')).toEqual([`sources.routines.nightly.repo: ${pattern('acme/*')}`])
+    expect(
+      problems(
+        config(
+          'repos: { acme/*: }',
+          '{ jira: { site: acme.atlassian.net, email: a@b.c, repo_map: { ENG: acme/* } } }',
+        ),
+      ),
+    ).toContain(`sources.jira.repo_map.ENG: ${pattern('acme/*')}`)
     // What init --yes --source jira writes: no repo_map, no repos.
     expect(problems(config('', '{ jira: { site: acme.atlassian.net, email: a@b.c } }'))).toEqual([])
   })
