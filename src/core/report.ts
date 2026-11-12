@@ -435,7 +435,7 @@ export function opened(o: Extract<Outcome, { kind: 'pr' }>): string {
   return o.draft ? `, draft: ${o.draft}` : ''
 }
 
-/** ` (not posted: <why>)` for a `deliver: pending_review` report left on no PR. */
+/** ` (not posted: <why>)` for a `deliver: pending_review` report left on no PR, or one whose `on_done` a gate held back. */
 export const unposted = (o: Extract<Outcome, { kind: 'report' }>) =>
   o.unposted ? ` (not posted: ${o.unposted})` : ''
 

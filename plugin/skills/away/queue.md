@@ -23,7 +23,7 @@ Turn what the developer wants offloaded into rules, check them on their real ite
 
    - On a rule that opens a PR or pushes, a `planned` one included, they run with the top-level and repo gates when the chain has commits: one that fires puts its line on the PR's decision card and keeps a `deliver: pr` PR a draft. A command reads the diff from `$AWAYWORK_FROM` and the files the steps left in `$AWAYWORK_OUT_DIR`. A chain that left no commits and has `on_done` to write runs the rule's own first, on those files alone: one that fires holds the comment and the move back.
    - On a `deliver: plan` or `report` rule they are the only gates, on the step's files in `$AWAYWORK_OUT_DIR`, with no `changed`: one that fires makes the post wait, so `wait: false` with a judge waits only when the judge fires.
-   - Not on `pending_review`, nor on a `planned` rule that reports. A rule whose skills all report (`review`) needs `deliver: report` to take them: without it its items are skipped (`set deliver: report: review commits nothing, so its gates would never run`) and `doctor` warns.
+   - Not on `pending_review`, nor on a `planned` rule that reports. A rule whose skills all report (`review`) needs `deliver: report` to take them: without it its items are skipped (`set deliver: report (review commits nothing, so its gates would never run)`) and `doctor` warns.
 
    A plan or report rule takes more keys, none of them on a `planned` rule (the rest: https://andreaprovenzale.github.io/awaywork/guide/workflows.md#posts-that-wait):
 

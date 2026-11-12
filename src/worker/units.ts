@@ -880,7 +880,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       )
       // on_done writes only for a chain that finished: without commits, the rule's own gates run first.
       const writes =
-        onDone && !failed && (!ended || ended.when) && Object.values(loops).every((l) => l.held)
+        onDone &&
+        !failed &&
+        (!ended || ended.when) &&
+        Object.values(loops).every((l) => l.held) &&
+        ownItems(first).some((i) => !commentRefused(first, i))
       if (from !== undefined && lead && ran && !input.dryRun) {
         publishedBy = lead
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')

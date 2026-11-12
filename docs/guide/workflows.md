@@ -248,9 +248,9 @@ queue:
       copy: { changed: ["src/locales/**"] }
 ```
 
-Like the others, they run only when the chain has commits: one that left none reports, ungated. The exception is a chain that left no commits and has `on_done` to write, say a `review` that approves, so the `fix` after it is passed over: the rule's own gates run first, on `$AWAYWORK_OUT_DIR` alone (no `$AWAYWORK_FROM`, and `changed` matches nothing), and one that fires holds `on_done`'s comment and move back, its line in the unit's report. Top-level and repo gates don't run there.
+Like the others, they run only when the chain has commits: one that left none reports, ungated. The exception is a chain that left no commits and has `on_done` to write, say a `review` that approves, so the `fix` after it is passed over: the rule's own gates run first, on `$AWAYWORK_OUT_DIR` alone (no `$AWAYWORK_FROM`, and `changed` matches nothing), and one that fires holds `on_done`'s comment and move back, its line in the unit's report. The unit is still handled: nothing retries it and `awaywork approve` has nothing to approve, so the comment and the move are yours to make, or change the item to run it again. Top-level and repo gates don't run there.
 
-A rule whose skills all report, as `review` does, could never run them, so its items are skipped with `set deliver: report: review commits nothing, so its gates would never run`, and `awaywork doctor` warns about the rule.
+A rule whose skills all report, as `review` does, could never run them, so its items are skipped with `set deliver: report (review commits nothing, so its gates would never run)`, and `awaywork doctor` warns about the rule.
 
 A `deliver: plan` or `report` rule's own gates are the only ones it has (top-level and repo ones never run there: no diff). They run on what the step left, and one that fires makes the [post wait](#posts-that-wait) for your approve, the card on top:
 

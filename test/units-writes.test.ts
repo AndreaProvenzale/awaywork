@@ -705,4 +705,11 @@ gates: { top: { command: 'exit 1' } }`
     kind: 'report',
     text: 'acme-api-1 says approve.',
   })
+
+  // Nor through a source that can't write: on_done has nothing to write there.
+  const readOnly = await finishedRun(queue('exit 1'), [yours(1)], approves, null)
+  expect(readOnly.report.results[0]?.outcome).toEqual({
+    kind: 'report',
+    text: 'acme-api-1 says approve.',
+  })
 })

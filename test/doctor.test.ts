@@ -148,6 +148,7 @@ queue:
   - { skill: review, ${gates} }
   - { skill: review, deliver: report, ${gates} }
   - { skill: fix, ${gates} }
+  - { skill: review, where: { planned: true }, ${gates} }
 `,
     )
     const checks = await runChecks(path, () => {})
@@ -157,7 +158,12 @@ queue:
         status: 'warn',
         what: 'rule #1 gates',
         detail:
-          'its items are all skipped: set deliver: report: review commits nothing, so its gates would never run',
+          'its items are all skipped: set deliver: report (review commits nothing, so its gates would never run)',
+      },
+      {
+        status: 'warn',
+        what: 'rule #4 gates',
+        detail: "its items are all skipped: drop its gates: a task's report takes none for now",
       },
     ])
   })

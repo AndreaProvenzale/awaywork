@@ -78,7 +78,7 @@ export function gatesNeverRun(rule: Rule, skills: SkillCatalog): string | undefi
   if (!rule.gates || posts || committingStep(rule, skills)) return undefined
   return 'planned' in rule.where
     ? "drop its gates: a task's report takes none for now"
-    : `set deliver: report: ${rule.skill} commits nothing, so its gates would never run`
+    : `set deliver: report (${rule.skill} commits nothing, so its gates would never run)`
 }
 
 /** The branch a rule's slice on the item publishes on: the template with the item and the type of the step it starts with. */
