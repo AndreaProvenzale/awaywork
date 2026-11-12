@@ -1093,7 +1093,7 @@ describe('a card carrying a plan', () => {
 
   it('shows under plan --rules by the plan rule, marked when its where no longer holds it', () => {
     const cards = [moved(card([planned()])), card([])]
-    expect(JSON.parse(rulesJson(sticky.queue ?? [], cards, false)).rules[0].taken).toEqual([
+    expect(JSON.parse(rulesJson(sticky.queue ?? [], cards)).rules[0].taken).toEqual([
       expect.objectContaining({ key: 'acme/api#1', plan: true }),
       expect.not.objectContaining({ plan: true }),
     ])

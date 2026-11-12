@@ -74,7 +74,7 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 | Capability | What you get |
 | --- | --- |
-| [Rules and the default queue](docs/guide/how-it-works.md#the-queue) | An ordered list: each item takes the first rule it matches. Write none and the default queue applies |
+| [Rules](docs/guide/how-it-works.md#the-queue) | An ordered list: each item takes the first rule it matches. With none, nothing runs |
 | [Skills](docs/guide/skills.md) | Plain Markdown: `fix`, `implement`, `review`, `plan` and more built in. Eject one or write your own |
 | [Chains and loops](docs/guide/chains.md) | More steps after a rule's skill, in the same clone: conditions, review-and-fix loops, pushing onto your PR |
 | [Plans](docs/guide/workflows.md#plans) | A feature split into tasks on your card. Once you approve, they run as PRs or reports, across repos too |

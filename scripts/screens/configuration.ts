@@ -245,9 +245,7 @@ queue:
     }),
   )
   // Cut before the unmatched count, as the doc does.
-  return ['$ awaywork plan --rules', ...formatQueue(queue ?? [], prs, false).slice(0, -1)].join(
-    '\n',
-  )
+  return ['$ awaywork plan --rules', ...formatQueue(queue ?? [], prs).slice(0, -1)].join('\n')
 }
 
 function onDoneReport(): string {

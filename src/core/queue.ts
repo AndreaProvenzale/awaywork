@@ -12,7 +12,7 @@ const rule = (skill: string, source: string, where: Where): Rule => ({
   instructions: [],
 })
 
-/** The prototype's order; rules for unconfigured sources are dropped. */
+/** `init`'s template, in the prototype's order; rules for unconfigured sources are dropped. */
 export const defaultQueue: Rule[] = [
   rule('fix', 'github', { type: 'pr', mine: true, checks: 'failing' }),
   rule('fix', 'asana', { section: 'QA' }),

@@ -10,7 +10,7 @@ import { taskBranches, taskPr } from '../core/fanout.js'
 import { renderLink } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { heldMove, withApproved } from '../core/posts.js'
-import { defaultRules, ruleThread } from '../core/queue.js'
+import { ruleThread } from '../core/queue.js'
 import { counted, type Moved } from '../core/report.js'
 import { builtinSkills, type SkillCatalog } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
@@ -263,9 +263,9 @@ async function describeRules(config: Config, json = false): Promise<string> {
   const items = await collectItems(config, ctx)
   const secrets = configSecrets(config, providersOf(config), configuredSources(config))
   const masked = warnings.map((w) => maskSecrets(w, secrets, ctx.env))
-  const rules = config.queue ?? defaultRules(Object.keys(config.sources))
-  if (json) return rulesJson(rules, items, !config.queue, masked)
-  return [...warningLines(masked), ...formatQueue(rules, items, !config.queue)].join('\n')
+  const rules = config.queue ?? []
+  if (json) return rulesJson(rules, items, masked)
+  return [...warningLines(masked), ...formatQueue(rules, items)].join('\n')
 }
 
 function configuredSources(config: Config): Record<string, Source> {
@@ -288,7 +288,7 @@ export async function collectItems(
 ): Promise<Item[]> {
   const { onProgress, forge = forgeFor(config) } = opts
   const found: Item[] = []
-  const queue = config.queue ?? defaultRules(Object.keys(config.sources))
+  const queue = config.queue ?? []
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
     if (!source || (opts.sources && !opts.sources.includes(id))) continue
@@ -412,7 +412,7 @@ export async function linkPlanTasks(
   ctx: Ctx,
   onProgress?: OnProgress,
 ): Promise<void> {
-  const queue = config.queue ?? defaultRules(Object.keys(config.sources))
+  const queue = config.queue ?? []
   const tasks = taskBranches(items, config, queue, skills)
   const failed = new Set<Item>()
   for (const [i, task] of tasks.entries()) {

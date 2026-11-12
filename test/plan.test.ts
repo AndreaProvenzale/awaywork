@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { describeAllowance } from '../src/cli/format/allowances.js'
 import { planJson } from '../src/cli/format/json.js'
 import { formatPlan, listedUnits } from '../src/cli/format/plan.js'
-import { queueLines } from '../src/cli/format/rules.js'
+import { formatQueue, queueLines } from '../src/cli/format/rules.js'
 import { formatWhy, namedItems } from '../src/cli/format/why.js'
 import { finishedSince, probeAndPlan, ruleNumber } from '../src/cli/plan.js'
 import { oneOffRefusal } from '../src/cli/run.js'
@@ -180,23 +180,25 @@ queue:
     expect(ids({ repo: '' })).toEqual([])
   })
 
-  it('uses the default queue for configured sources only', () => {
-    const yaml = 'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }'
-    const items = [
-      githubPr(1, { mine: false, review_requested: true, trusted: true }),
-      githubPr(2, { unresolved_threads: 4 }),
-      githubPr(3, { checks: 'failing', unresolved_threads: 2 }),
-      githubPr(4, { mine: false, review_requested: true, trusted: false }),
-    ]
+  it.each(['', '\nqueue: []'])('plans nothing without rules, and says so (%j)', (queue) => {
+    const yaml = `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }${queue}`
+    const items = [githubPr(1, { checks: 'failing' }), githubPr(2, { unresolved_threads: 4 })]
     const result = plan(yaml, items, { claude: week(0.1) })
-    expect(result.defaultQueue).toBe(true)
-    expect(result.queue.map((r) => r.skill)).toEqual(['fix', 'fix', 'fix', 'review'])
-    expect(rows(result).map((r) => [r[0], r[2]])).toEqual([
-      ['acme-api-3', 'fix'],
-      ['acme-api-2', 'fix'],
-      ['acme-api-1', 'review'],
+    expect(result.units).toEqual([])
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#1', 'matched no rule'],
+      ['acme/api#2', 'matched no rule'],
     ])
-    expect(result.skipped.map((s) => s.item.key)).toEqual(['acme/api#4'])
+    const line = 'Nothing will run: the config has no queue; /away or awaywork init writes one'
+    expect(formatPlan(result).split('\n').slice(0, 3)).toEqual([line, '', 'Providers'])
+    expect(why(result, 'acme/api#1')).toContain(line)
+    expect(formatQueue(result.queue, items)).toEqual([line])
+    const oneOff = plan(yaml, items, { claude: week(0.1) }, {}, {}, now, {
+      named: 'acme/api#1',
+      skill: 'review',
+    })
+    expect(oneOff.units).toHaveLength(1)
+    expect(formatPlan(oneOff)).not.toContain(line)
   })
 
   it('names the failing comparison of the closest rule', () => {
@@ -283,6 +285,7 @@ queue:
 providers: [codex, claude]
 repos: { acme/api: {} }
 sources: { github: {} }
+queue: [{ skill: fix, where: { checks: failing } }]
 `)
     const quotas: Record<string, Quota | null> = { claude: week(0.36), codex: null }
     const allowances = Object.fromEntries(
@@ -1254,18 +1257,22 @@ queue:
     ])
   })
 
-  it('addresses the threads you started on an awaywork PR by default, not anyone else', () => {
-    const yaml = 'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }'
+  it('addresses the threads you started on an awaywork PR, not anyone else', () => {
+    const yaml = `
+providers: [claude: {}]
+repos: { acme/*: {} }
+sources: { github: {} }
+queue: [{ skill: fix, where: { mine: true, ours: true, my_unresolved_threads: { not: 0 } } }]`
     const ours = (n: number, mine: number) => {
       const pr = githubPr(n, { ours: true, unresolved_threads: 2, my_unresolved_threads: mine })
       return { ...pr, linkedPrs: [{ ...(pr.linkedPrs[0] as PrRef), ours: true }] }
     }
     const result = plan(yaml, [ours(1, 1), ours(2, 0)], {})
-    expect(rows(result)).toEqual([['acme-api-1', 3, 'fix', 'claude', 'draft_pr']])
+    expect(rows(result)).toEqual([['acme-api-1', 1, 'fix', 'claude', 'draft_pr']])
     expect(result.skipped.map((s) => [s.kind, s.reason])).toEqual([
       [
         'waiting_for_review',
-        'waiting for review: awaywork PR https://github.com/acme/api/pull/2 is open; closest #3 fix: my_unresolved_threads is 0, wants not 0',
+        'waiting for review: awaywork PR https://github.com/acme/api/pull/2 is open; closest #1 fix: my_unresolved_threads is 0, wants not 0',
       ],
     ])
     expect(result.skipped[0]?.url).toBe('https://github.com/acme/api/pull/2')
@@ -1879,14 +1886,7 @@ describe('plan --json', () => {
   it('prints the plan and warnings, without raw source payloads', () => {
     const result = plan(example, [issue, githubPr(3)], { claude: week(0.36), codex: null })
     const json = JSON.parse(planJson(result, ['source asana: offline']))
-    expect(Object.keys(json)).toEqual([
-      'queue',
-      'defaultQueue',
-      'units',
-      'skipped',
-      'allowances',
-      'warnings',
-    ])
+    expect(Object.keys(json)).toEqual(['queue', 'units', 'skipped', 'allowances', 'warnings'])
     expect(json.warnings).toEqual(['source asana: offline'])
     expect(json.units[0].unit).toMatchObject({ id: 'acme-api-5', skill: 'implement' })
     expect(json.units[0].unit.items[0]).not.toHaveProperty('raw')

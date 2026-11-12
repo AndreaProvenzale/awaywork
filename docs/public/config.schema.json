@@ -990,7 +990,7 @@
       }
     },
     "queue": {
-      "description": "Rules mapping items to skills; default the built-in queue",
+      "description": "Rules mapping items to skills; without any, nothing runs",
       "type": "array",
       "items": {
         "type": "object",

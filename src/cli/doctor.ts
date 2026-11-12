@@ -33,6 +33,7 @@ import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { describeAllowance } from './format/allowances.js'
+import { NO_QUEUE } from './format/rules.js'
 import { type Status, statusMarker } from './format/terminal.js'
 import { gitRoot } from './git-root.js'
 import { staleSchedules } from './schedule.js'
@@ -199,6 +200,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     if (isCommand(cfg) && /(^|\s)(~|\$HOME)\//.test(cfg.command))
       report('warn', id, 'the command reads your home folder, which GitHub Actions lacks')
   }
+  if (!config.queue?.length) report('warn', 'queue', NO_QUEUE)
   config.queue?.forEach((rule, i) => {
     // A report that waits posts on its item, as on_done does.
     const waits = rule.deliver === 'report' && (rule.wait || rule.gates)

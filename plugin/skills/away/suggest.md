@@ -78,7 +78,7 @@ Their own PRs with the reviews on them (trimmed: a review's body is someone else
 | A correction only awaywork's workers need | A line in an awaywork `instructions` file, global or per repo |
 | A correction already written down, still made | A command instead of a second line: `repos.<repo>.verify` for a check every slice should pass, like `pnpm lint`, or a command gate when a human should look |
 
-Compare every candidate with what's there: the queue (or the default queue, when `plan --rules --json` says `defaultQueue: true`), the routines, the instructions files, the repo's `AGENTS.md` and `CLAUDE.md`. A match is shown as "already rule #2" or "already in AGENTS.md", not proposed again.
+Compare every candidate with what's there: the queue, the routines, the instructions files, the repo's `AGENTS.md` and `CLAUDE.md`. A match is shown as "already rule #2" or "already in AGENTS.md", not proposed again.
 
 A routine spends quota on every occurrence, work or not: show its units per week (days times times of day), and end its `description` with "stop with a one-line report when there's nothing new". A candidate that widens delivery or exposure, as `queue.md`'s Widening section lists, is flagged as such.
 

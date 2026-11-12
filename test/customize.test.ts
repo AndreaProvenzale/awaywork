@@ -48,7 +48,7 @@ describe('plan --rules', () => {
   })
 
   it('lists the same as JSON, with why each unmatched item misses', () => {
-    const json = JSON.parse(rulesJson(queue, items, false))
+    const json = JSON.parse(rulesJson(queue, items))
     expect(json.rules[2]).toMatchObject({
       rule: 3,
       skill: 'review',
@@ -63,7 +63,7 @@ describe('plan --rules', () => {
           'matched no rule; closest #3 review: type is task, wants pr; review_requested is unset, wants true',
       }),
     ])
-    expect(json).toMatchObject({ defaultQueue: false, warnings: [] })
+    expect(json).toMatchObject({ warnings: [] })
   })
 })
 

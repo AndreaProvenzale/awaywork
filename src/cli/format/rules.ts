@@ -5,21 +5,20 @@ import { bounds, comparisons, isAge, isMatch, spans } from '../../core/where.js'
 import { itemRef } from './json.js'
 import { indent, table } from './terminal.js'
 
+export const NO_QUEUE =
+  'Nothing will run: the config has no queue; /away or awaywork init writes one'
+
 /** The queue as numbered rules. */
-export function queueLines(plan: Pick<RunPlan, 'queue' | 'defaultQueue'>): string[] {
+export function queueLines(plan: Pick<RunPlan, 'queue'>): string[] {
+  if (plan.queue.length === 0) return [NO_QUEUE]
   const rules = plan.queue.map((r, i) => [`#${i + 1}`, r.skill, describeRule(r)])
-  return [
-    plan.defaultQueue ? 'Queue (default: no queue in config)' : 'Queue',
-    ...indent(table(rules)),
-  ]
+  return ['Queue', ...indent(table(rules))]
 }
 
-/** `plan --rules`: the queue under its heading, `defaulted` when the config has none. */
-export function formatQueue(rules: Rule[], items: Item[], defaulted: boolean): string[] {
-  return [
-    defaulted ? 'Queue (default: no queue in config)' : 'Queue',
-    ...formatRules(rules, items).map((line) => `  ${line}`),
-  ]
+/** `plan --rules`: the queue under its heading, or that the config has none. */
+export function formatQueue(rules: Rule[], items: Item[]): string[] {
+  if (rules.length === 0) return [NO_QUEUE]
+  return ['Queue', ...indent(formatRules(rules, items))]
 }
 
 /** What each rule takes now and what other rules take from it, then the unmatched items. */
@@ -49,12 +48,7 @@ export function formatRules(rules: Rule[], items: Item[]): string[] {
 }
 
 /** `formatRules` as JSON, every item listed, each unmatched one with why it misses its closest rule; `plan` marks a card its `deliver: plan` rule holds though its `where` no longer matches. */
-export function rulesJson(
-  rules: Rule[],
-  items: Item[],
-  defaultQueue: boolean,
-  warnings: string[] = [],
-): string {
+export function rulesJson(rules: Rule[], items: Item[], warnings: string[] = []): string {
   const matches = ruleMatches(items, rules)
   const matched = new Set(matches.flatMap((m) => m.taken))
   const described = rules.map((rule, i) => {
@@ -76,7 +70,7 @@ export function rulesJson(
   const unmatched = items
     .filter((i) => !matched.has(i))
     .map((item) => ({ ...itemRef(item), reason: noRuleReason(item, rules).reason }))
-  return JSON.stringify({ rules: described, defaultQueue, unmatched, warnings }, null, 2)
+  return JSON.stringify({ rules: described, unmatched, warnings }, null, 2)
 }
 
 export function describeRule(r: Rule): string {

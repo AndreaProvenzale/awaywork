@@ -252,6 +252,27 @@ describe('doctor', () => {
     })
   })
 
+  it.each(['', 'queue: []\n'])(
+    'warns, never fails, on a config without rules (%j)',
+    async (queue) => {
+      const path = join(await mkdtemp(join(tmpdir(), 'awaywork-doctor-')), 'config.yml')
+      await writeFile(
+        path,
+        `providers: [codex]\nrepos: { a/b: {} }\nsources: { github: {} }\n${queue}`,
+      )
+      vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+      const checks = await runChecks(path, () => {})
+      vi.unstubAllEnvs()
+      expect(checks.filter((c) => c.what === 'queue')).toEqual([
+        {
+          status: 'warn',
+          what: 'queue',
+          detail: 'Nothing will run: the config has no queue; /away or awaywork init writes one',
+        },
+      ])
+    },
+  )
+
   it("warns when a rule's on_done may meet a source that can't write", async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
     const path = join(dir, 'config.yml')

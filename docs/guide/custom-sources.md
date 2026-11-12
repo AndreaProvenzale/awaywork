@@ -29,7 +29,7 @@ queue:
     where: { column: In progress }
 ```
 
-The built-in queue has no rules for custom sources: write yours.
+`init` writes no rules for custom sources: write yours.
 
 ## Output
 

@@ -166,7 +166,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
 
 it('reports a run with no provider and a multi-line warning', () => {
   const at = new Date(2026, 9, 12, 22, 34, 18)
-  const plan = { queue: [], defaultQueue: true, units: [], skipped: [], allowances: {} }
+  const plan = { queue: [], units: [], skipped: [], allowances: {} }
   const run = { runId: 'r', dryRun: false, startedAt: at, finishedAt: at, plan, results: [] }
   expect(formatReport({ ...run, quotas: {} }, ['source chores: failed\n\nnot set'])).toBe(
     [
@@ -198,7 +198,7 @@ it('reports the moves held on posts you approved, made before any unit, and thos
     { item: 'linear:NIG-21', to: 'In Progress' },
     { item: 'jira:ENG-7', to: 'Ready', failed: 'no transition to Ready' },
   ]
-  const plan = { queue: [], defaultQueue: true, units: [], skipped: [], allowances: {}, moved }
+  const plan = { queue: [], units: [], skipped: [], allowances: {}, moved }
   const run = { runId: 'r', dryRun: false, startedAt: at, finishedAt: at, plan, results: [] }
   expect(formatReport({ ...run, quotas: {} })).toContain(
     [
