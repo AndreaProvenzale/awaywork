@@ -4,9 +4,9 @@ import { githubThreads } from '../sources/github.js'
 import { bitbucketForge, bitbucketWorkspaces } from './bitbucket.js'
 import { githubForge, githubHost } from './github.js'
 
-/** The forge of the configured forge source; GitHub when there is none, with its thread issues. */
+/** The config's forge; GitHub comes with its thread issues. */
 export const forgeFor = (config: Config): Forge =>
-  config.sources.bitbucket
+  config.forge.id === 'bitbucket'
     ? bitbucketForge(bitbucketWorkspaces(config))
     : {
         ...githubForge(undefined, githubHost(config)),
@@ -15,6 +15,6 @@ export const forgeFor = (config: Config): Forge =>
 
 /** The repo's web page on the configured forge. */
 export const repoUrl = (config: Config, repo: string): string =>
-  config.sources.bitbucket
+  config.forge.id === 'bitbucket'
     ? `https://bitbucket.org/${repo}`
     : `https://${githubHost(config) ?? 'github.com'}/${repo}`

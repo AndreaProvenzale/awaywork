@@ -116,9 +116,9 @@ describe('config edit', () => {
     const dir = await tmp()
     const path = join(dir, 'config.yml')
     const draft = join(dir, 'draft.yml')
-    const original = 'providers: [claude]\nsources: { github: { repos: [a/b] } }\n'
+    const original = 'providers: [claude]\nrepos: { a/b: {} }\nsources: { github: {} }\n'
     await writeFile(path, original)
-    const edits = [original.replace('claude', 'gemini'), original.replace('[a/b]', '[a/b, c/d]')]
+    const edits = [original.replace('claude', 'gemini'), original.replace('a/b: {}', 'c/d: {}')]
     const problems: string[][] = []
     const outcome = await editUntilValid({
       path,
@@ -133,13 +133,13 @@ describe('config edit', () => {
     })
     expect(outcome).toBe('saved')
     expect(problems).toEqual([['providers[0]: unknown provider "gemini"']])
-    expect(await readFile(path, 'utf8')).toContain('[a/b, c/d]')
+    expect(await readFile(path, 'utf8')).toContain('c/d: {}')
   })
 
   it('reports an untouched draft, and a discarded one leaves the config alone', async () => {
     const dir = await tmp()
     const path = join(dir, 'config.yml')
-    const original = 'providers: [claude]\nsources: { github: { repos: [a/b] } }\n'
+    const original = 'providers: [claude]\nrepos: { a/b: {} }\nsources: { github: {} }\n'
     await writeFile(path, original)
     const run = (edit: () => Promise<void>) =>
       editUntilValid({ path, original, draft: join(dir, 'd.yml'), edit, retry: async () => false })
@@ -151,7 +151,7 @@ describe('config edit', () => {
   it('saves a skill only the repo may have, and warns about it', async () => {
     const dir = await tmp()
     const path = join(dir, 'config.yml')
-    const original = 'providers: [claude]\nsources: { github: { repos: [a/b] } }\n'
+    const original = 'providers: [claude]\nrepos: { a/b: {} }\nsources: { github: {} }\n'
     await mkdir(join(dir, 'skills', 'mine'), { recursive: true })
     await writeFile(join(dir, 'skills', 'mine', 'SKILL.md'), '---\nname: mine\n---\n')
     await writeFile(path, original)

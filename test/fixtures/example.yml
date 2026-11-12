@@ -8,9 +8,10 @@ providers: # order = routing preference
   - claude
   - codex: { budget: { per_run: 5% } }
 sources:
-  github: { repos: [acme/*] }
+  github: {}
   asana: { workspace: "123", token_env: ASANA_TOKEN }
 repos:
+  acme/*:
   acme/api:
     setup: pnpm install --frozen-lockfile
     test: pnpm vitest run {files}

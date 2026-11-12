@@ -216,6 +216,7 @@ describe('planning a card whose rule talks on a thread', () => {
 
   const config = parseConfig(`
 providers: [claude]
+repos: { acme/api: {} }
 sources: { tracker: { command: 'cat items.json' } }
 queue:
   - { skill: plan, source: tracker, deliver: plan, thread: github }
@@ -438,6 +439,7 @@ writeFileSync('threads.json', JSON.stringify(threads))
 
   const config = parseConfig(`
 providers: [claude]
+repos: { acme/api: {} }
 sources:
   tracker: { command: 'cat items.json' }
   notes: { command: 'node host.mjs', write: 'node host.mjs write', thread: true }

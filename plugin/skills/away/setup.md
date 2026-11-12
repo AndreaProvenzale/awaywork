@@ -13,7 +13,7 @@ Ask in rounds, each one question tool call (`AskUserQuestion` in Claude Code): a
 Nothing here needs the developer. Run these together, from where you are (don't `cd` into this skill's folder), and wait for every one before the first round; one that failed or timed out is named in the lead-in:
 
 - `awaywork doctor --json`: `gh` and `gh login`, the config's `FAIL`, then each agent CLI, `ok` with its version or `warn` with why not. No gh login: it's the developer's `gh auth login`; wait.
-- `gh auth status --json hosts`: every gh account on github.com, and the active one. Each one's orgs come from a throwaway config pinning it, so awaywork takes the token from gh itself: `f=$(mktemp); printf 'providers: [claude]\nsources: {github: {repos: [<login>/*], user: <login>}}\n' >"$f"; awaywork --config "$f" sources github --json; rm "$f"`. Its `login` is the account that answered: when it isn't `<login>` (a `GH_TOKEN` here wins over the pin), or the lookup failed, that account's owners are unknown, so ask which owners it's for.
+- `gh auth status --json hosts`: every gh account on github.com, and the active one. Each one's orgs come from a throwaway config pinning it, so awaywork takes the token from gh itself: `f=$(mktemp); printf 'providers: [claude]\nforge: {github: {user: <login>}}\nrepos: {<login>/*: {}}\nsources: {github: {}}\n' >"$f"; awaywork --config "$f" sources github --json; rm "$f"`. Its `login` is the account that answered: when it isn't `<login>` (a `GH_TOKEN` here wins over the pin), or the lookup failed, that account's owners are unknown, so ask which owners it's for.
 - The agent logins. Claude Code: `~/.claude`, `$CLAUDE_CONFIG_DIR`, and what `$SHELL -ic 'type claude'` shows: a function or alias that picks `CLAUDE_CONFIG_DIR` is how they switch subscriptions, so read it for its folders. `claude auth status --json` names a folder's account and plan: `env -u CLAUDE_CONFIG_DIR` for `~/.claude` (set to it, Claude Code finds no login), `CLAUDE_CONFIG_DIR=<dir>` for any other, and only on a folder that exists, since it creates a missing one. Codex: `~/.codex` and `$CODEX_HOME`, `codex login status` with `CODEX_HOME=<dir>` for a folder other than `~/.codex`.
 - `sh <this file's folder>/scripts/folders.sh 30 <each Claude folder>`: the folders their interactive sessions ran in over the last 30 days, under a header. `-` is none (Codex has no Claude folder); `repo` is `owner/repo` on github.com, else the remote's URL without credentials. Then the `mcp servers` and the `user-level files` suggest would read. Read it whole, no `head`. Metadata and config only: what a session or memory says waits for suggest's consent.
 - `cd ~ && awaywork schedule status`: a job already scheduled here (inside a repo it also counts that repo's workflow).
@@ -27,11 +27,11 @@ Tracker hints: an MCP server named after a tracker, or one pointing at an in-hou
 - **Subscription,** with more than one Claude login: one option per login, its account and plan; recommended is the one whose folder holds most of that work's sessions. The same for Codex logins.
 - **Runs on:** this machine (launchd or systemd; on macOS awaywork runs as them, or in a container with Docker), GitHub Actions (a fresh VM each run, from a control repo, with a token secret), a box with Docker (Coolify or a VPS: the worker user is forced, and the CLI reaches it from the laptop over `AWAYWORK_REMOTE`). One machine runs one awaywork daemon: when one is already scheduled here, this machine isn't the default, and its description says why.
 
-Pin the logins in the draft (at the end of step 3): the gh account as `sources.github.user` when gh holds more than one; the login runs use, chosen or the only one, as that provider's `config_dir` when its folder isn't `~/.claude` or `~/.codex` (`providers: [{claude: {config_dir: ~/.claude-work}}, codex]`), one found through `$CLAUDE_CONFIG_DIR` or `$CODEX_HOME` included, since a scheduled job doesn't get those. Off this machine, or in a container here, the login comes from the environment instead (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#which-login).
+Pin the logins in the draft (at the end of step 3): the gh account as `forge: {github: {user: <login>}}` when gh holds more than one; the login runs use, chosen or the only one, as that provider's `config_dir` when its folder isn't `~/.claude` or `~/.codex` (`providers: [{claude: {config_dir: ~/.claude-work}}, codex]`), one found through `$CLAUDE_CONFIG_DIR` or `$CODEX_HOME` included, since a scheduled job doesn't get those. Off this machine, or in a container here, the login comes from the environment instead (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#which-login).
 
 ## 3. What it works on
 
-- **Repos:** the chosen owners' repos from `folders.sh`, multi-select. Up to 4, one option each; more, group them (all listed; the ones with most sessions; `owner/*`, every repo of the owner). Edits go in the free text. A remote that isn't github.com stays out of every option and you don't guess what it is: an ssh alias (`git@<alias>:owner/repo`) waits until they name its repo; a Bitbucket Cloud repo is awaywork's `bitbucket` source, which this setup doesn't write (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#bitbucket-and-jira).
+- **Repos:** the chosen owners' repos from `folders.sh`, multi-select. Up to 4, one option each; more, group them (all listed; the ones with most sessions; `owner/*`, every repo of the owner). Edits go in the free text. A remote that isn't github.com stays out of every option and you don't guess what it is: an ssh alias (`git@<alias>:owner/repo`) waits until they name its repo; a Bitbucket Cloud repo needs awaywork's `forge: bitbucket`, which this setup doesn't write (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#bitbucket-and-jira).
 - **Tracker:** a hint first; then Asana, Linear, Jira; none. One that isn't built in becomes a custom source (step 5).
 - **Window:** default 01:00–07:00 their time.
 - **Providers,** only with more than one ready: the order, the first taking units and the next taking over when its quota runs out. Cursor also needs `CURSOR_API_KEY`.
@@ -44,7 +44,7 @@ As soon as this round is answered, before the next one, so the developer sees it
 awaywork --config <draft> init --yes --provider <theirs, first first> --source github --window <start>-<end>
 ```
 
-It writes the providers, `github: {repos: [<login>/*]}`, the default GitHub rules and the window; ignore its `Next:` line. Then set `sources.github.repos` to their list and add the pins from step 2. A draft left by an earlier setup makes init refuse: ask whether to carry on from it or start over (`--force`).
+It writes the providers, `repos` with the one key `<login>/*`, `github: {}`, the default GitHub rules and the window; ignore its `Next:` line. Then make the keys of `repos` their list, a bare key each (awaywork works in no other repo), and add the pins from step 2. A draft left by an earlier setup makes init refuse: ask whether to carry on from it or start over (`--force`).
 
 ## 4. What to take off their plate
 
@@ -59,13 +59,17 @@ Once they've answered, drop the draft's rules they didn't pick, so what they see
 
 ## 5. Fill in the draft
 
-Then one `repos` entry per repo with `setup`, `test` and `verify` from its clone (the lockfile says the package manager: `bun.lock` is `bun install --frozen-lockfile`, not yarn; the scripts in `package.json`, `pyproject.toml` or the `Makefile` say the rest; `{files}` where the test runner takes paths). A clone you can't find: leave its entry out and say so.
+Then each repo's `repos` entry gets `setup`, `test` and `verify` from its clone (the lockfile says the package manager: `bun.lock` is `bun install --frozen-lockfile`, not yarn; the scripts in `package.json`, `pyproject.toml` or the `Makefile` say the rest; `{files}` where the test runner takes paths). A clone you can't find: leave its key bare and say so.
 
 **Built-in trackers:** for each, `awaywork --config <draft> sources <id> --json`. Jira's site and email are config: add `jira: {site, email}` first, plus `cloud_id` for a scoped token (`curl -s https://<site>/_edge/tenant_info`). A missing token fails naming its variable: in one message, `awaywork secret <NAME>` in their terminal, or `! pbpaste | awaywork secret <NAME>` here once copied, and where each is made (Asana: Settings > Apps; Linear: Settings > Account > Security & access; Jira: id.atlassian.com > Security > API tokens, scoped to `read:jira-work`); wait and rerun. Then one round from the real names: Asana's workspace and projects, Linear's teams, Jira's projects, and each one's repo. Write them in init's flow style:
 
 ```yaml
+forge: {github: {user: octocat-acme}}
+repos:
+  acme/api:
+  acme/web:
 sources:
-  github: {repos: [acme/api, acme/web], user: octocat-acme}
+  github: {}
   asana: {workspace: "1201", projects: ["1202"], repo_map: {"1202": acme/api}}
   linear: {repo_map: {ENG: acme/api}}
   jira: {site: acme.atlassian.net, email: me@acme.com, repo_map: {SHOP: acme/web}}

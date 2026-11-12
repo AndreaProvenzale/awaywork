@@ -53,8 +53,10 @@ Or write a minimal config by hand:
 
 ```yaml
 providers: [claude]
+repos:
+  acme/*:
 sources:
-  github: { repos: [acme/*] }
+  github: {}
 ```
 
 With no `queue`, the [default queue](./how-it-works.md#the-queue) applies. GitHub issues need a rule of their own, e.g. `implement` for issues labelled `awaywork` (see [Configuration](./configuration.md)). awaywork reads the issues assigned to you, so assign yourself too: the label alone plans nothing, unless a [`search`](./how-it-works.md#items) reads it.

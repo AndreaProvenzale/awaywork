@@ -41,7 +41,7 @@ function choresWarning(): string {
 }
 
 const config = parseConfig(
-  'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+  'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix }]',
 )
 
 const pr = (n: number): Item => ({
@@ -177,7 +177,7 @@ const remoteRunId = '20261104-220657'
 /** The run the daemon queued for CH-1 as the container reports it: a stand-in agent's plan. */
 function remoteReport(): RunReport {
   const choresConfig = parseConfig(
-    'providers: [claude: {}]\nsources: { chores: { command: ./chores.sh } }\nqueue: [{ skill: plan }]',
+    'providers: [claude: {}]\nrepos: { acme/chores: {} }\nsources: { chores: { command: ./chores.sh } }\nqueue: [{ skill: plan }]',
   )
   const ch1: Item = {
     source: 'chores',

@@ -15,7 +15,8 @@ await mkdir(join(tmp, '.away'))
 await writeFile(join(tmp, '.away', 'prompt.md'), 'fix it')
 
 const base = `
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 limits: { unit_minutes: 30 }
 `
 const config = (entry: string, extra = base) => `providers: [claude, ${entry}]\n${extra}`

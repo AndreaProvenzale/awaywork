@@ -66,7 +66,7 @@ async function folderStore(script = storeScript): Promise<{ config: string; dir:
 }
 
 const storeOf = (top: string) =>
-  parseConfig(`providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${top}\n`)
+  parseConfig(`providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${top}\n`)
     .store as Store
 
 const shared = await folderStore()
@@ -139,7 +139,7 @@ async function run(
     },
   }
   const config = parseConfig(
-    `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${top}\nqueue:\n${queue}\n`,
+    `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${top}\nqueue:\n${queue}\n`,
   )
   const plan = planRun({
     config,
@@ -411,7 +411,7 @@ describe('lean posts', () => {
     )
     expect(r.results[0]?.plan).toMatchObject({ tasks: ['api'], post: { waits: true } })
     const config = parseConfig(
-      `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${store.config}\n`,
+      `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${store.config}\n`,
     )
     const card = yours(1, [post(body()), post('approve', '2026-10-24T02:00:00Z')])
     await checkPins([card], config.store as Store, process.env)
@@ -903,7 +903,7 @@ describe('put', () => {
 
 describe('stale posts', () => {
   const config = parseConfig(
-    `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${shared.config}\nqueue:\n  - { skill: story, deliver: report, wait: true }\n  - { skill: prototype, deliver: report, where: { approved: story } }\n`,
+    `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${shared.config}\nqueue:\n  - { skill: story, deliver: report, wait: true }\n  - { skill: prototype, deliver: report, where: { approved: story } }\n`,
   )
   const waiting = (pins: Pin[]) =>
     post(
@@ -934,7 +934,7 @@ describe('stale posts', () => {
 
   it('plans an unanswered post whose file was edited as feedback, on the card and its PR, and while its pins match holds the card alone', async () => {
     const config = parseConfig(
-      `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${shared.config}\nqueue:\n  - { skill: story, where: { type: issue }, deliver: report, wait: true }\n  - { skill: fix, where: { type: pr, checks: failing } }\n`,
+      `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${shared.config}\nqueue:\n  - { skill: story, where: { type: issue }, deliver: report, wait: true }\n  - { skill: fix, where: { type: pr, checks: failing } }\n`,
     )
     const pr = githubPr(7, { checks: 'failing' })
     const plan = async (pin: Pin) => {
@@ -982,7 +982,7 @@ describe('stale posts', () => {
     const queue =
       '  - { skill: plan, deliver: plan }\n  - { skill: implement, where: { planned: true } }'
     const config = parseConfig(
-      `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${shared.config}\nqueue:\n${queue}\n`,
+      `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${shared.config}\nqueue:\n${queue}\n`,
     )
     const gone = { name: 'plan.yml', url: 'file:///nowhere/plan.yml', sha256: sha('x') }
     // A model's fenced example in its summary, which must never read as the plan.
@@ -1081,7 +1081,7 @@ describe('stale posts', () => {
 
     it("on a post another rule left doesn't stop this one", async () => {
       const other = parseConfig(
-        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${shared.config}\nqueue:\n  - { skill: review, deliver: report }\n`,
+        `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${shared.config}\nqueue:\n  - { skill: review, deliver: report }\n`,
       )
       const expired = { name: 'report.md', url: 'file:///nowhere/report.md', sha256: sha('x') }
       const card = yours(1, [waiting([expired])])
@@ -1106,7 +1106,7 @@ describe('stale posts', () => {
 
 describe('store config', () => {
   it('refuses post on a PR rule and post: summary without a store', () => {
-    const base = 'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n'
+    const base = 'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n'
     expect(() => parseConfig(`${base}queue:\n  - { skill: implement, post: full }\n`)).toThrow(
       'post needs deliver: plan or report',
     )

@@ -1,3 +1,3 @@
-[32m✔[39m  gh login: octocat-acme, pinned by sources.github.user
+[32m✔[39m  gh login: octocat-acme, pinned by forge.github.user
 [32m✔[39m  claude login: <email>, max, in ~/.claude-work, pinned by providers[0].claude.config_dir
 [31m✖[39m  codex login: ~/.codex-work doesn't exist; log in there with CODEX_HOME=~/.codex-work codex login

@@ -9,7 +9,7 @@ import { fakeItem } from './fakes/items.js'
 const item = fakeItem({ source: 'github', key: 'ACME-1', url: 'https://x/1', title: 'Crash' })
 const config = (context: string) =>
   parseConfig(
-    `providers: [claude: {}]\nsources: { github: { repos: [acme/*], context: ${context} } }`,
+    `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: { context: ${context} } }`,
   )
 
 async function run(command: string, env: NodeJS.ProcessEnv = {}) {

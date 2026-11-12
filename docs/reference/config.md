@@ -30,9 +30,10 @@ with:
 | `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image |
 | `budget` | object | `{}` | Quota shares; any provider can override them |
 | `providers` (required) | ("claude" \| "codex" \| "cursor" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
+| `forge` | "github" \| "bitbucket" \| object | `"github"` | Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } } |
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
 | `branch` | string | `"away/{key}"` | Branch name template; {key} or {title} is required, {type} is the conventional-commit type |
-| `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
+| `repos` | map | `{}` | The repos awaywork works in: each key an owner/name or a * glob such as acme/*, with its settings or nothing. A repo takes the settings of every key naming it, globs in the order written and its own key last, a later one winning; an item in a repo no key names is skipped |
 | `gates` | map | `{}` | Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills |
@@ -185,14 +186,28 @@ Same keys as `providers[].claude.budget`.
 
 Same keys as `providers[].claude.budget.fallback`.
 
+## `forge`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `github` (required) | object |  | GitHub, through gh |
+
+## `forge.github`
+
+GitHub, through gh.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
+| `user` | string |  | The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins |
+
 ## `sources`
 
 Where work comes from: built-in sources or your own commands; at least one.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `github` | object |  | My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge |
-| `bitbucket` | object |  | The forge for Bitbucket Cloud repos, through twg; no items of its own yet, so pair it with a source such as jira |
+| `github` | object |  | My PRs, PRs awaiting my review and issues assigned to me, in the repos the top-level repos lists, plus any extra searches |
 | `asana` | object |  | My incomplete Asana tasks |
 | `linear` | object |  | My open Linear issues |
 | `jira` | object |  | My unresolved Jira Cloud issues |
@@ -200,13 +215,10 @@ Where work comes from: built-in sources or your own commands; at least one.
 
 ## `sources.github`
 
-My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge.
+My PRs, PRs awaiting my review and issues assigned to me, in the repos the top-level repos lists, plus any extra searches.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `repos` (required) | string[] |  | Repos to read, owner/name; * globs, e.g. acme/* |
-| `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
-| `user` | string |  | The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins |
 | `search` | string[] |  | Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
 | `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
 | `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
@@ -219,20 +231,6 @@ Fetches more context for an item, with secrets kept out of the agent's environme
 |---|---|---|---|
 | `command` (required) | string |  | Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder |
 | `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
-
-## `sources.bitbucket`
-
-The forge for Bitbucket Cloud repos, through twg; no items of its own yet, so pair it with a source such as jira.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `repos` (required) | string[] |  | Bitbucket Cloud repos, workspace/name; * globs the name, e.g. acme/* |
-| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
-| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
-
-## `sources.bitbucket.context`
-
-Same keys as `sources.github.context`.
 
 ## `sources.asana`
 

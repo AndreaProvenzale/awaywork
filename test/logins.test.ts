@@ -16,10 +16,12 @@ import { recorded } from './fakes/gh.js'
 const fake = (name: string) => fileURLToPath(new URL(`./fakes/${name}.mjs`, import.meta.url))
 const folder = () => mkdtemp(join(tmpdir(), 'awaywork-login-'))
 const github = (keys: string) =>
-  parseConfig(`providers: [claude]\nsources: { github: { repos: [a/b]${keys} } }\n`)
+  parseConfig(
+    `providers: [claude]\nforge: { github: { ${keys} } }\nrepos: { a/b: {} }\nsources: { github: {} }\n`,
+  )
 const withProvider = (entry: string, isolation = 'none') =>
   parseConfig(
-    `isolation: ${isolation}\nproviders: [${entry}]\nsources: { github: { repos: [a/b] } }\n`,
+    `isolation: ${isolation}\nproviders: [${entry}]\nrepos: { a/b: {} }\nsources: { github: {} }\n`,
   )
 const problems = (text: string) => {
   try {
@@ -31,16 +33,16 @@ const problems = (text: string) => {
   }
 }
 
-describe('sources.github.user', () => {
+describe('forge.github.user', () => {
   const token = recorded([[/^gh auth token --user octocat$/, 'gho_octocat\n']])
 
   it("makes the account's gh token GH_TOKEN, once", async () => {
     const env: NodeJS.ProcessEnv = {}
-    const pins = await pinLogins(github(', user: octocat'), env, token)
+    const pins = await pinLogins(github('user: octocat'), env, token)
     expect(env.GH_TOKEN).toBe('gho_octocat')
     expect(pinned(env, 'GH_TOKEN')).toBe(true)
     expect(pins).toEqual([
-      { what: 'gh', key: 'sources.github.user', name: 'GH_TOKEN', value: 'gho_octocat' },
+      { what: 'gh', key: 'forge.github.user', name: 'GH_TOKEN', value: 'gho_octocat' },
     ])
   })
 
@@ -48,7 +50,7 @@ describe('sources.github.user', () => {
     for (const name of ['GH_TOKEN', 'GITHUB_TOKEN']) {
       const env: NodeJS.ProcessEnv = { [name]: 'from-actions' }
       const run = recorded([])
-      const [pin] = await pinLogins(github(', user: octocat'), env, run)
+      const [pin] = await pinLogins(github('user: octocat'), env, run)
       expect(pin?.by).toBe(name)
       expect(env).toEqual({ [name]: 'from-actions' })
       expect(pinned(env, name)).toBe(false)
@@ -59,20 +61,20 @@ describe('sources.github.user', () => {
   it('takes an Enterprise host its own token, as GH_ENTERPRISE_TOKEN', async () => {
     const env: NodeJS.ProcessEnv = {}
     const run = recorded([[/^gh auth token --user octocat --hostname github\.acme\.com$/, 'ghe']])
-    await pinLogins(github(', host: github.acme.com, user: octocat'), env, run)
+    await pinLogins(github('host: github.acme.com, user: octocat'), env, run)
     expect(env).toEqual({ GH_ENTERPRISE_TOKEN: 'ghe' })
   })
 
   it('says how to log in when gh has no login for the account, and sets nothing', async () => {
     const env: NodeJS.ProcessEnv = {}
-    const [pin] = await pinLogins(github(', user: nobody'), env, recorded([]))
+    const [pin] = await pinLogins(github('user: nobody'), env, recorded([]))
     expect(pin?.problem).toBe("nobody isn't logged in to gh; log in with gh auth login, as nobody")
     expect(env).toEqual({})
   })
 
   it('pins afresh when the config is loaded again, as watch does', async () => {
     const env: NodeJS.ProcessEnv = {}
-    await pinLogins(github(', user: octocat'), env, token)
+    await pinLogins(github('user: octocat'), env, token)
     await pinLogins(github(''), env, token)
     expect(env).toEqual({})
     expect(pinned(env, 'GH_TOKEN')).toBe(false)
@@ -80,10 +82,10 @@ describe('sources.github.user', () => {
 
   it("keeps the previous pin while a reload waits on gh, so a run spawned meanwhile doesn't act as gh's active account", async () => {
     const env: NodeJS.ProcessEnv = {}
-    await pinLogins(github(', user: octocat'), env, token)
+    await pinLogins(github('user: octocat'), env, token)
     let answer = (_: string) => {}
     const slow = (async () => new Promise<string>((resolve) => (answer = resolve))) as Exec
-    const reload = pinLogins(github(', user: hubot'), env, slow)
+    const reload = pinLogins(github('user: hubot'), env, slow)
     await Promise.resolve()
     expect(env.GH_TOKEN).toBe('gho_octocat')
     answer('gho_hubot')
@@ -93,8 +95,8 @@ describe('sources.github.user', () => {
 
   it('keeps the previous pin when a reload fails, and still reports why', async () => {
     const env: NodeJS.ProcessEnv = {}
-    await pinLogins(github(', user: octocat'), env, token)
-    const [pin] = await pinLogins(github(', user: octocat'), env, recorded([]))
+    await pinLogins(github('user: octocat'), env, token)
+    const [pin] = await pinLogins(github('user: octocat'), env, recorded([]))
     expect(pin?.problem).toMatch("octocat isn't logged in to gh")
     expect(env.GH_TOKEN).toBe('gho_octocat')
     expect(pinned(env, 'GH_TOKEN')).toBe(true)
@@ -103,14 +105,14 @@ describe('sources.github.user', () => {
   it("never takes a pinned token for the environment's own when two loads overlap", async () => {
     const env: NodeJS.ProcessEnv = {}
     await Promise.all([
-      pinLogins(github(', user: octocat'), env, token),
-      pinLogins(github(', user: octocat'), env, token),
+      pinLogins(github('user: octocat'), env, token),
+      pinLogins(github('user: octocat'), env, token),
     ])
     await Promise.all([
-      pinLogins(github(', user: octocat'), env, token),
-      pinLogins(github(', user: octocat'), env, token),
+      pinLogins(github('user: octocat'), env, token),
+      pinLogins(github('user: octocat'), env, token),
     ])
-    const [pin] = await pinLogins(github(', user: octocat'), env, token)
+    const [pin] = await pinLogins(github('user: octocat'), env, token)
     expect(pin?.by).toBeUndefined()
     await pinLogins(github(''), env, token)
     expect(env).toEqual({})
@@ -119,8 +121,10 @@ describe('sources.github.user', () => {
 
   it('rejects anything but a login', () => {
     expect(
-      problems('providers: [claude]\nsources: { github: { repos: [a/b], user: "a b" } }'),
-    ).toEqual(['sources.github.user: expected a GitHub login'])
+      problems(
+        'providers: [claude]\nforge: { github: { user: "a b" } }\nrepos: { a/b: {} }\nsources: { github: {} }',
+      ),
+    ).toEqual(['forge.github.user: expected a GitHub login'])
   })
 })
 
@@ -163,7 +167,7 @@ describe('config_dir', () => {
     const path = join(dir, 'config.yml')
     await writeFile(
       path,
-      'providers: [claude: { config_dir: /nowhere/.claude-work }]\nsources: { github: { repos: [a/b] } }\n',
+      'providers: [claude: { config_dir: /nowhere/.claude-work }]\nrepos: { a/b: {} }\nsources: { github: {} }\n',
     )
     vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', '')
     const error = await loadConfig(path).catch((e: ConfigError) => e)
@@ -175,7 +179,7 @@ describe('config_dir', () => {
 
   it('is never empty nor relative, and only on providers with a login folder', () => {
     const at = (entry: string) =>
-      problems(`providers: [${entry}]\nsources: { github: { repos: [a/b] } }`)
+      problems(`providers: [${entry}]\nrepos: { a/b: {} }\nsources: { github: {} }`)
     const expected = 'expected an absolute path or one under ~/'
     expect(at("claude: { config_dir: '' }")).toEqual([
       `providers[0].claude.config_dir: ${expected}`,
@@ -192,7 +196,7 @@ describe('config_dir', () => {
     for (const isolation of ['user', 'container'])
       expect(
         problems(
-          `isolation: ${isolation}\nproviders: [claude: { config_dir: ~/.claude-work }]\nsources: { github: { repos: [a/b] } }\nrepos: { a/b: { image: node } }`,
+          `isolation: ${isolation}\nproviders: [claude: { config_dir: ~/.claude-work }]\nsources: { github: {} }\nrepos: { a/b: { image: node } }`,
         ),
       ).toEqual([
         `providers[0].claude.config_dir: not with isolation: ${isolation}, which can't reach your login folder; set CLAUDE_CODE_OAUTH_TOKEN instead`,
@@ -293,21 +297,21 @@ describe('the login doctor names', () => {
   it("names gh's login and warns when the environment's isn't the pinned user", async () => {
     const env: NodeJS.ProcessEnv = {}
     const [pin] = await pinLogins(
-      github(', user: octocat'),
+      github('user: octocat'),
       env,
       recorded([[/auth token/, 'gho_octocat']]),
     )
     expect(ghLogin('octocat', 'octocat', pin, env)).toEqual([
       'ok',
       'gh login',
-      'octocat, pinned by sources.github.user',
+      'octocat, pinned by forge.github.user',
     ])
     const actions = { GH_TOKEN: 'ghp' }
-    const [wins] = await pinLogins(github(', user: octocat'), actions, recorded([]))
+    const [wins] = await pinLogins(github('user: octocat'), actions, recorded([]))
     expect(ghLogin('hubot', 'octocat', wins, actions)).toEqual([
       'warn',
       'gh login',
-      "hubot from GH_TOKEN, not sources.github.user octocat: a token in the environment wins; make it octocat's, or unset it",
+      "hubot from GH_TOKEN, not forge.github.user octocat: a token in the environment wins; make it octocat's, or unset it",
     ])
     expect(ghLogin('octocat', 'octocat', wins, actions)[2]).toBe('octocat, from GH_TOKEN')
     expect(ghLogin('hubot', undefined, undefined, {})[2]).toBe("hubot, gh's active account")
@@ -315,7 +319,7 @@ describe('the login doctor names', () => {
 
   it("doesn't offer a pinned token as a repository secret", async () => {
     const env: NodeJS.ProcessEnv = { CLAUDE_CODE_OAUTH_TOKEN: 'c' }
-    await pinLogins(github(', user: octocat'), env, recorded([[/auth token/, 'gho_octocat']]))
+    await pinLogins(github('user: octocat'), env, recorded([[/auth token/, 'gho_octocat']]))
     const asked: string[] = []
     const ask = {
       confirm: async (q: string) => asked.push(q) > 0,

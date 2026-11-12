@@ -22,7 +22,8 @@ it("loops review and fix in the chain's clone until the verdict holds, and repor
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: implement
     then:
@@ -117,7 +118,8 @@ it('ends a loop when no provider is left for a round, and publishes what it has'
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 budget: { fallback: { units: 3, turns: 10 } }
 queue:
   - skill: implement
@@ -161,7 +163,8 @@ it('loops after a report step up to max, and reports a chain whose loop only rep
   await git(origin, 'branch', 'feature-4')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: plan
     where: { type: issue }
@@ -226,7 +229,8 @@ it('ends a loop once its command passes, runs it once per commit without the ask
   const command = 'echo "run$GIT_ASKPASS" >> "$COUNT"; test -e acme-api-1-fix-2.txt'
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: implement
     then: { loop: [review, fix], until: { command: '${command}' }, max: 3 }
@@ -292,7 +296,8 @@ it("publishes a loop that reached max with the failing check's output in the PR 
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: implement
     then: { loop: fix, until: { command: 'echo 3 tests failed; false' }, max: 1 }
@@ -340,7 +345,8 @@ it("skips a rule whose quota when doesn't hold, and runs one whose does", async 
   const { forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: review, where: { title: { matches: one } }, deliver: report, when: { runs_until_reset: 1 } }
   - { skill: implement, where: { title: { matches: two } }, when: { headroom: 10% } }
@@ -386,7 +392,8 @@ it('records no attempt for a rule whose quota when does not hold', async () => {
   const { forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: implement
     where: { type: issue }
@@ -426,7 +433,8 @@ it("passes over a step whose when doesn't hold, and reads the latest verdict in 
   await writeFile(join(root, 'skills/triage/SKILL.md'), '---\nname: triage\n---\n')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: implement
     where: { type: issue }
@@ -506,7 +514,8 @@ it("passes over a loop step whose when doesn't hold, and still ends the loop at 
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: implement
     then:

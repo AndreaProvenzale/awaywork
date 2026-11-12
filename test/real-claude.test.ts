@@ -35,7 +35,9 @@ it.skipIf(!process.env.AWAYWORK_REAL)(
         await git(into, 'commit', '-qm', 'init')
       },
     }
-    const config = parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }')
+    const config = parseConfig(
+      'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }',
+    )
     const item = fakeItem({ type: 'issue', title: 'Fix the typos in hello.txt' })
     const unit: Unit = {
       id: 'fake-1',

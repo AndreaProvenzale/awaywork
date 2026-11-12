@@ -37,7 +37,7 @@ it("starts each of a repo's draft PRs from the default branch, not on this run's
     },
   }
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
+    'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: implement }]',
   )
   const plan = planRun({
     config,
@@ -88,7 +88,8 @@ it("publishes a chain as one draft PR, and starts the repo's next chain from the
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: implement, then: review }]
 `)
   const plan = planRun({
@@ -145,7 +146,8 @@ it("starts a chain on your own PR from its branch, and the repo's other units fr
   await git(origin, 'branch', 'feature-4')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: implement, where: { type: pr }, then: review }
   - { skill: implement }
@@ -188,7 +190,7 @@ it('pushes a chain onto your own PR once, with its summary in pr.md and setup ru
   await git(origin, 'branch', 'feature-1')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 queue: [{ skill: fix, deliver: push, then: implement }]
 repos:
   acme/api:
@@ -273,7 +275,8 @@ it("pushes every round's commits onto your PR once, with how the loop went in th
   await git(origin, 'branch', 'feature-1')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: fix
     deliver: push
@@ -323,7 +326,8 @@ it('leaves a pushed chain unpublished without a summary in pr.md', async () => {
   await git(origin, 'branch', 'feature-1')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: fix, deliver: push, then: review }]
 `)
   const plan = planRun({
@@ -372,7 +376,8 @@ it.each([
   await git(origin, 'branch', 'feature-1')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: fix, deliver: push }]
 `)
   const plan = planRun({
@@ -413,7 +418,7 @@ it("lists a slice's PR body and sums it up when its publish fails", async () => 
   const root = await mkdtemp(join(tmpdir(), 'awaywork-publish-error-'))
   const { forge } = await originForge(root)
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
+    'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: implement }]',
   )
   const plan = planRun({
     config,
@@ -457,7 +462,8 @@ it('leaves a push the forge refuses unpublished, not an error', async () => {
   await git(origin, 'branch', 'feature-1')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: fix, deliver: push }]
 `)
   const plan = planRun({
@@ -508,7 +514,7 @@ it('runs setup once per chain, on its clean base before any worker', async () =>
   const { forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 queue: [{ skill: implement, then: review }]
 repos:
   acme/api:
@@ -559,7 +565,8 @@ it("suffixes a taken branch, even one without a PR that awaywork didn't push, an
   forge.tips['acme/api:away/acme-api-1-3'] = 'Work in progress'
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: implement
     then:
@@ -642,7 +649,7 @@ it('skips a unit awaywork tried on a suffixed branch, one with every name taken,
     { url: 'https://github.com/acme/api/pull/10', body: footer('r0', [issue(9)]), merged: true },
   ]
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
+    'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: implement }]',
   )
   const plan = planRun({
     config,
@@ -695,7 +702,7 @@ it('stacks a draft PR on an awaywork PR it takes up, and runs setup there withou
   await git(origin, 'branch', 'away/acme-api-5')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 repos:
   acme/api:
     setup: 'echo "$NPM_TOKEN" > .away/setup.txt'
@@ -767,7 +774,8 @@ it("matches changed against a taken-up awaywork PR's branch, not its own commits
   await git(origin, 'checkout', '-q', 'main')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - skill: fix
     where: { type: pr, ours: true }

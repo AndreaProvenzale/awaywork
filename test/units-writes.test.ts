@@ -393,7 +393,8 @@ it('goes from no plan to a posted one, waits, re-plans on feedback, and stops on
   const { forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: plan, deliver: plan }
   - { skill: implement, where: { planned: true } }

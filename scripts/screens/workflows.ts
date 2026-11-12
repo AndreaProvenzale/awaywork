@@ -35,7 +35,8 @@ const configOf = (provider: string, rules: string) =>
 providers: [${provider}]
 windows: []
 limits: { unit_minutes: 60 }
-sources: { github: { repos: [acme/*] }, tracker: { command: node tracker.mjs, write: node tracker.mjs write } }
+repos: { acme/*: {} }
+sources: { github: {}, tracker: { command: node tracker.mjs, write: node tracker.mjs write } }
 queue:
 ${rules}`)
 

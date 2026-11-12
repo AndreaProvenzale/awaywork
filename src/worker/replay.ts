@@ -14,6 +14,7 @@ import {
   workerHome,
   workerRoot,
 } from '../core/isolation.js'
+import { settingsFor } from '../core/repos.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
 import { commandEnv, workerEnv } from './env.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
@@ -74,7 +75,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const { unit } = state
   const provider = r.providers[state.provider]
   if (!provider) throw new Error(`provider ${state.provider} is not configured`)
-  const image = r.config.repos[unit.repo]?.image
+  const image = settingsFor(r.config.repos, unit.repo).image
   if (contained() && !image)
     throw new Error(`no image for ${unit.repo}: isolation: container needs one in its repos entry`)
 
@@ -104,7 +105,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const gitConfig = await readFile(join(dir, '.git', 'config'), 'utf8')
   let worker: WorkerResult
   try {
-    const setup = r.config.repos[unit.repo]?.setup
+    const setup = settingsFor(r.config.repos, unit.repo).setup
     if (setup && !unit.untrusted) {
       const failed = await runSetup(setup, dir, commandEnv(r.ctx.env, dir, secrets), log, {
         secrets: [],

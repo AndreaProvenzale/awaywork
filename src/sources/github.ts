@@ -11,19 +11,6 @@ import { EDITED, type Edited, notYours } from '../forge/github.js'
 
 const config = z
   .strictObject({
-    repos: z.array(z.string()).min(1).describe('Repos to read, owner/name; * globs, e.g. acme/*'),
-    host: z
-      .string()
-      .regex(/^[^/\s]+$/, 'host only, no scheme or path')
-      .optional()
-      .describe('GitHub Enterprise host, e.g. github.acme.com; github.com by default'),
-    user: z
-      .string()
-      .regex(/^[A-Za-z0-9-]+$/, 'expected a GitHub login')
-      .optional()
-      .describe(
-        "The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins",
-      ),
     search: z
       .array(z.string().min(1))
       .optional()
@@ -32,9 +19,10 @@ const config = z
       ),
   })
   .describe(
-    'My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge',
+    'My PRs, PRs awaiting my review and issues assigned to me, in the repos the top-level repos lists, plus any extra searches',
   )
-type Config = z.infer<typeof config>
+/** With the config's `repos` keys and the forge's host, which the loaded config adds. */
+type Config = z.infer<typeof config> & { repos: string[]; host?: string }
 
 const PAGE = 100
 /** Finished PRs come in pages this small: a page of 100 with their files timed out on GitHub. */

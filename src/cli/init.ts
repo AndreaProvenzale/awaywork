@@ -255,11 +255,13 @@ export async function initConfig(input: InitInput): Promise<string> {
   }
 
   const configs: Record<string, Record<string, unknown>> = {}
+  const repos: string[] = []
   const names: Record<string, Record<string, string[]>> = {}
   for (const id of input.source ?? (input.ghLogin ? ['github'] : [])) {
     try {
       const setup = await setUp(id, registry.sources[id], ctx)
       configs[id] = setup.config
+      repos.push(...(setup.repos ?? []))
       names[id] = setup.names ?? {}
     } catch (e) {
       const { message, unset } = e as Error & { unset?: string }
@@ -285,18 +287,22 @@ export async function initConfig(input: InitInput): Promise<string> {
   })
 
   const [start, end] = input.window ?? ['01:00', '07:00']
-  return renderConfig({ window: { start, end }, providers: picked, sources: configs, queue })
+  return renderConfig({ window: { start, end }, providers: picked, repos, sources: configs, queue })
 }
 
-/** A source's config from what its credentials see, and the real names its rules' `where` may use. */
+/** A source's config from what its credentials see, the repos it reads, and the real names its rules' `where` may use. */
 async function setUp(
   id: string,
   source: Source | undefined,
   ctx: Ctx,
-): Promise<{ config: Record<string, unknown>; names?: Record<string, string[]> }> {
+): Promise<{
+  config: Record<string, unknown>
+  repos?: string[]
+  names?: Record<string, string[]>
+}> {
   if (!source?.discover) return { config: {} }
   const found = await source.discover(source.configSchema.partial().parse({}), ctx)
-  if (id === 'github') return { config: { repos: [`${found.login}/*`] } }
+  if (id === 'github') return { config: {}, repos: [`${found.login}/*`] }
   if (id === 'asana') {
     const [first] = (found.workspaces ?? []) as Discovery[]
     if (!first) throw new Error('this token sees no workspace')
@@ -314,6 +320,7 @@ const commented = (line: string, comment: string) => `${line.padEnd(31)} # ${com
 export function renderConfig(c: {
   window: { start: string; end: string }
   providers: string[]
+  repos?: string[]
   sources: Record<string, unknown>
   queue: Rule[]
 }): string {
@@ -327,6 +334,12 @@ export function renderConfig(c: {
     commented('  present_session_max: 40%', 'the same, in a run outside every window'),
     commented('  # per_run: 15%', 'at most this share of the long window per run'),
     commented(`providers: ${flow(c.providers)}`, 'order = routing preference'),
+    ...(c.repos?.length
+      ? [
+          commented('repos:', 'the only repos awaywork works in; a key takes settings'),
+          ...c.repos.map((repo) => `  ${repo}:`),
+        ]
+      : []),
     'sources:',
     ...Object.entries(c.sources).map(([id, cfg]) => `  ${id}: ${flow(cfg)}`),
     c.queue.length > 0 ? queueYaml(c.queue) : 'queue: []\n',

@@ -12,8 +12,10 @@ const example = await readFile(new URL('fixtures/example.yml', import.meta.url),
 
 const minimal = `
 providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 `
+const unlisted = minimal.replace('repos: { acme/api: {} }\n', '')
 
 function problems(text: string): string[] {
   try {
@@ -70,7 +72,7 @@ describe('config', () => {
   it('defaults fallback turns, inheriting top-level caps an override leaves out', () => {
     const fallbacks = (budget: string, override: string) =>
       parseConfig(
-        `providers: [claude: { budget: { fallback: ${override} } }, codex]\nsources: { github: { repos: [acme/api] } }\nbudget: { fallback: ${budget} }\n`,
+        `providers: [claude: { budget: { fallback: ${override} } }, codex]\nrepos: { acme/api: {} }\nsources: { github: {} }\nbudget: { fallback: ${budget} }\n`,
       ).providers.map((p) => p.budget.fallback)
     expect(fallbacks('{ units: 2 }', '{ units: 1 }')).toEqual([
       { units: 1, turns: 60 },
@@ -141,8 +143,8 @@ describe('config', () => {
 
   it('checks where keys against the rule source only', () => {
     const cfg = `${minimal}  asana: { workspace: "1" }\n`.replace(
-      'sources: { github: { repos: [acme/api] } }',
-      'sources:\n  github: { repos: [acme/api] }',
+      'repos: { acme/api: {} }\nsources: { github: {} }',
+      'repos: { acme/api: {} }\nsources:\n  github: {}',
     )
     expect(
       problems(`${cfg}queue: [{ skill: implement, source: github, where: { section: Ready } }]`),
@@ -205,21 +207,23 @@ describe('config', () => {
 
   it('needs an image for every repo under isolation: container', () => {
     const repos = 'repos: { acme/api: { setup: npm ci }, acme/web: { image: acme/web:dev } }'
-    expect(problems(`${minimal}isolation: container\n${repos}`)).toEqual([
+    expect(problems(`${unlisted}isolation: container\n${repos}`)).toEqual([
       'repos.acme/api.image: required with isolation: container: the image its units run in',
     ])
-    expect(problems(`${minimal}isolation: user\n${repos}`)).toEqual([])
+    expect(problems(`${unlisted}isolation: user\n${repos}`)).toEqual([])
   })
 
   it('rejects unknown and unconfigured providers and sources', () => {
-    expect(problems('providers: [gemini: {}]\nsources: { github: { repos: [a/b] } }')).toEqual([
+    expect(
+      problems('providers: [gemini: {}]\nrepos: { a/b: {} }\nsources: { github: {} }'),
+    ).toEqual([
       'providers[0]: gemini.command: not a built-in provider; a custom provider needs a `command`',
     ])
-    expect(problems('providers: [gemini]\nsources: { github: { repos: [a/b] } }')).toEqual([
+    expect(problems('providers: [gemini]\nrepos: { a/b: {} }\nsources: { github: {} }')).toEqual([
       'providers[0]: unknown provider "gemini"',
     ])
     const named =
-      'providers: [cursor: { command: agent -p }]\nsources: { github: { repos: [a/b] } }'
+      'providers: [cursor: { command: agent -p }]\nrepos: { a/b: {} }\nsources: { github: {} }'
     expect(problems(named)).toEqual([
       'providers[0].cursor: built in, so it takes no command; give your own provider another name',
     ])
@@ -498,7 +502,7 @@ describe('config', () => {
   it('takes wait and gates on plan and report rules only, a rule gate without changed or a shared name', () => {
     const rules = (queue: string) =>
       problems(
-        `${minimal}gates: { risk: { skill: judge } }\nrepos: { acme/api: { gates: { routes: { command: x } } } }\nqueue:\n${queue}\n  - { skill: implement, where: { planned: true } }`,
+        `${unlisted}gates: { risk: { skill: judge } }\nrepos: { acme/api: { gates: { routes: { command: x } } } }\nqueue:\n${queue}\n  - { skill: implement, where: { planned: true } }`,
       )
     expect(
       rules(
@@ -535,7 +539,7 @@ describe('config', () => {
   })
 
   it("refuses a report that waits on a source that can't write, and approved: true with what it names now", () => {
-    const quiet = `providers: [claude: {}]\nsources: { github: { repos: [acme/api] }, tracker: { command: 'echo []' } }\n`
+    const quiet = `providers: [claude: {}]\nrepos: { acme/api: {} }\nsources: { github: {}, tracker: { command: 'echo []' } }\n`
     expect(
       problems(`${quiet}queue: [{ skill: story, source: tracker, deliver: report, wait: true }]`),
     ).toEqual([
@@ -551,7 +555,7 @@ describe('config', () => {
   })
 
   it("takes a plan or a waiting report on a source that can't write with thread: github, never on Bitbucket or a task rule", () => {
-    const quiet = `providers: [claude: {}]\nsources: { github: { repos: [acme/api] }, tracker: { command: 'echo []' } }\n`
+    const quiet = `providers: [claude: {}]\nrepos: { acme/api: {} }\nsources: { github: {}, tracker: { command: 'echo []' } }\n`
     const task = '{ skill: implement, where: { planned: true } }'
     expect(
       problems(
@@ -570,7 +574,7 @@ describe('config', () => {
     ).toEqual([
       "queue[1].thread: thread goes on the plan's rule: its tasks post where the plan did",
     ])
-    const bitbucket = `providers: [claude: {}]\nsources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []' } }\n`
+    const bitbucket = `providers: [claude: {}]\nforge: bitbucket\nrepos: { acme/api: {} }\nsources: { tracker: { command: 'echo []' } }\n`
     expect(
       problems(
         `${bitbucket}queue: [{ skill: story, source: tracker, deliver: report, thread: github }]`,
@@ -581,7 +585,7 @@ describe('config', () => {
   })
 
   it('takes a custom thread host that says it opens threads, on Bitbucket too', () => {
-    const hosts = `providers: [claude: {}]\nsources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []' }, notes: { command: 'echo []', write: 'cat', thread: true } }\n`
+    const hosts = `providers: [claude: {}]\nforge: bitbucket\nrepos: { acme/api: {} }\nsources: { tracker: { command: 'echo []' }, notes: { command: 'echo []', write: 'cat', thread: true } }\n`
     const story = (thread: string) =>
       problems(
         `${hosts}queue: [{ skill: story, source: tracker, deliver: report, wait: true, thread: ${thread} }]`,
@@ -609,7 +613,7 @@ describe('config', () => {
 
   it('takes a custom source with a command and matches rules on its declared fields', () => {
     const cfg = minimal.replace(
-      'sources: { github: { repos: [acme/api] } }',
+      'repos: { acme/api: {} }\nsources: { github: {} }',
       'sources: { tracker: { command: ./tracker, fields: [column] } }',
     )
     const rule = (where: string) =>
@@ -635,7 +639,7 @@ describe('config', () => {
   })
 
   it('takes a link template on tracker and custom sources, with known placeholders', () => {
-    const sources = (yaml: string) => minimal.replace('{ github: { repos: [acme/api] } }', yaml)
+    const sources = (yaml: string) => minimal.replace('{ github: {} }', yaml)
     const linear = parseConfig(sources('{ linear: { link: "Refs {key}" } }'))
     expect(linear.sources.linear).toMatchObject({ link: 'Refs {key}' })
     expect(
@@ -646,7 +650,7 @@ describe('config', () => {
     expect(problems(sources('{ tracker: { command: ./tracker, link: Refs } }'))).toEqual([
       'sources.tracker.link: must contain {key}, {id} or {url}',
     ])
-    expect(problems(sources('{ github: { repos: [acme/api], link: "{url}" } }'))).toEqual([
+    expect(problems(sources('{ github: { link: "{url}" } }'))).toEqual([
       expect.stringContaining('Unrecognized key: "link"'),
     ])
   })
@@ -654,7 +658,6 @@ describe('config', () => {
   it('rejects an unknown source that has no command', () => {
     expect(problems(minimal.replace('github:', 'githb:'))).toEqual([
       'sources.githb.command: not a built-in source; a custom source needs a `command`',
-      expect.stringContaining('sources.githb: Unrecognized key: "repos"'),
     ])
   })
 
@@ -707,11 +710,11 @@ describe('config', () => {
     expect(rule('where: { state: closed, closed: { newer_than: 7d } }')).toEqual([
       'queue[0].deliver: plan waits for your reply on an open item, and this rule matches only merged or closed items; use report',
     ])
-    const bitbucket = minimal.replace('github', 'bitbucket')
+    const readOnly = minimal.replace('github: {}', 'tracker: { command: ./tracker }')
     expect(
-      problems(`${bitbucket}queue: [{ skill: plan, deliver: plan, source: bitbucket }, ${takes}]`),
+      problems(`${readOnly}queue: [{ skill: plan, deliver: plan, source: tracker }, ${takes}]`),
     ).toEqual([
-      "queue[0].deliver: plan posts on the item, and bitbucket can't write to its items; use report",
+      "queue[0].deliver: plan posts on the item, and tracker can't write to its items; use report, or thread: github",
     ])
   })
 
@@ -757,7 +760,7 @@ describe('skills', () => {
 
   it("checks a gate's judge, which never comes from the repo", async () => {
     const cfg = parseConfig(
-      `${minimal}gates: { risk: { skill: judge } }\nrepos: { acme/api: { gates: { risk: { skill: our-judge } } } }`,
+      `${unlisted}gates: { risk: { skill: judge } }\nrepos: { acme/api: { gates: { risk: { skill: our-judge } } } }`,
     )
     expect(await unknownSkills(cfg, '/none')).toEqual([
       'repos.acme/api.gates.risk.skill: unknown skill "our-judge" (not built in, not in /none; a judge never comes from the repo)',
@@ -770,7 +773,8 @@ describe('extends', () => {
 windows: [{ start: '01:00', end: '07:00' }, { start: '12:00', end: '13:00' }]
 limits: { units: 4, unit_minutes: 30 }
 providers: [claude]
-sources: { github: { repos: [acme/api] } }
+repos: { acme/api: {} }
+sources: { github: {} }
 `
 
   /** Writes each file under a fresh folder; returns the folder. */
@@ -810,7 +814,7 @@ sources: { github: { every: 15m } }
     const dir = await files({
       'team/base.yml': `providers: [claude: { settings: claude.json }]
 sources:
-  github: { repos: [acme/api] }
+  github: {}
   tracker: { command: node items.mjs }
 instructions: notes/team.md
 repos: { acme/api: { instructions: notes/api.md } }

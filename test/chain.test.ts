@@ -29,6 +29,7 @@ import { formatReport, type RunReport, runHeadline, runLine } from '../src/core/
 import { builtinSkills } from '../src/core/skills.js'
 import type { Forge, Item, Login, Provider, Source } from '../src/core/types.js'
 import { runUnits } from '../src/worker/units.js'
+import { withRepos } from './fakes/acme.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -197,9 +198,7 @@ async function run(
   for (const branch of opts.taken ?? []) env.forge.branches.add(`acme/api:${branch}`)
   if (opts.pendingReview) env.forge.pendingReview = opts.pendingReview
   const logged: string[] = []
-  const config = parseConfig(
-    `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
-  )
+  const config = parseConfig(`providers: [claude: {}]\nsources: { github: {} }\n${withRepos(yaml)}`)
   const plan = planRun({
     config,
     items,

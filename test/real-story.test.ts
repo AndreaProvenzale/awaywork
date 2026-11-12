@@ -147,7 +147,8 @@ ${otherToken ? '  - { id: notes, title: Release notes }\n' : ''}`
       config,
       `providers: [claude]
 windows: []
-sources: { github: { repos: [${repo}] } }
+repos: { ${repo}: {} }
+sources: { github: {} }
 gates: { schema: { changed: ["**/migrations/**"] } }
 queue:
   - skill: plan

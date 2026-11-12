@@ -48,7 +48,8 @@ it('runs, publishes and reports a run', async () => {
 
   const config = parseConfig(`
 providers: [claude: { model: opus }]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: fix, where: { checks: failing } }
   - { skill: review, where: { review_requested: true }, model: { claude: sonnet } }
@@ -222,7 +223,7 @@ it('prepares workspaces without running a worker or context command on a dry run
   }
   const fetched = join(root, 'fetched')
   const config = parseConfig(
-    `providers: [claude: {}]\nsources: { github: { repos: [acme/*], context: { command: 'echo > ${fetched}' } } }\nqueue: [{ skill: fix }]`,
+    `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: { context: { command: 'echo > ${fetched}' } } }\nqueue: [{ skill: fix }]`,
   )
   const plan = planRun({
     config,
@@ -262,7 +263,7 @@ it('prepares workspaces without running a worker or context command on a dry run
 
 it('names a unit by its exact id, key, source:key or ref only, and refuses a name for two', async () => {
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+    'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix }]',
   )
   const labs = {
     ...githubPr(1),
@@ -303,7 +304,7 @@ it('prepares every step of a chain named by one of its steps, in one clone, on a
     },
   }
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix, then: review }]',
+    'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix, then: review }]',
   )
   const plan = planRun({
     config,
@@ -346,7 +347,7 @@ it('stops a unit still running at the window end and publishes what it left', as
     },
   }
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+    'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix }]',
   )
   const plan = planRun({
     config,
@@ -414,7 +415,7 @@ it('ends the run before a unit when the machine is short, launching no worker an
     },
   }
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+    'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix }]',
   )
   const plan = planRun({
     config,
@@ -477,7 +478,8 @@ it('runs a chain in one clone, each step on what the one before left, and ends i
   }
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue: [{ skill: implement, where: { type: issue }, then: review }]
 `)
   const issue = (n: number) =>
@@ -591,7 +593,7 @@ it('runs context and setup before the worker, setup with only its own secrets, n
   const config = parseConfig(`
 providers: [claude: {}]
 sources:
-  github: { repos: [acme/*], context: { command: 'echo "$AWAYWORK_ITEM_KEY" > "$AWAYWORK_CONTEXT_DIR/ctx.md"' } }
+  github: { context: { command: 'echo "$AWAYWORK_ITEM_KEY" > "$AWAYWORK_CONTEXT_DIR/ctx.md"' } }
 queue: [{ skill: review }]
 repos:
   acme/api:
@@ -676,7 +678,8 @@ it("gives a worker its step's MCP servers, else its rule's, whose secrets are se
   const config = parseConfig(`
 providers: [claude: {}]
 budget: { fallback: { units: 8, turns: 60 } }
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 mcp:
   db: { command: db-mcp, secrets: [DB_URL] }
   jira: { command: jira-mcp, secrets: [JIRA_TOKEN] }
@@ -765,7 +768,7 @@ it('stops a unit at unit_minutes', async () => {
     },
   }
   const config = parseConfig(
-    'limits: { unit_minutes: 5 }\nproviders: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+    'limits: { unit_minutes: 5 }\nproviders: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix }]',
   )
   const plan = planRun({
     config,

@@ -46,7 +46,7 @@ export interface Contract {
 export interface PlanLimits {
   maxTasks: number
   repo?: string
-  /** The repos a task may name besides the card's: the forge source's globs and the config's `repos`. */
+  /** The repos a task may name besides the card's: the config's `repos` keys, globs among them. */
   repos?: string[]
   skills?: string[]
   /** Skills whose `planned` rule reports instead of opening a PR: a task of theirs is done by its result on the card. */

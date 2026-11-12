@@ -119,7 +119,7 @@ describe('doctor', () => {
   it('warns about a skill it can find nowhere, since it may be in the repo', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
     const path = join(dir, 'config.yml')
-    const config = 'providers: [codex]\nsources: { github: { repos: [a/b] } }\n'
+    const config = 'providers: [codex]\nrepos: { a/b: {} }\nsources: { github: {} }\n'
     vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
     await writeFile(path, config)
     expect(await runChecks(path, () => {})).toContainEqual({ status: 'ok', what: path, detail: '' })
@@ -139,7 +139,7 @@ describe('doctor', () => {
     const path = join(dir, 'config.yml')
     await writeFile(
       path,
-      'providers: [codex]\nsources: { github: { repos: [a/b], user: octocat } }\n',
+      'providers: [codex]\nforge: { github: { user: octocat } }\nrepos: { a/b: {} }\nsources: { github: {} }\n',
     )
     vi.stubEnv('GH_TOKEN', '')
     vi.stubEnv('GITHUB_TOKEN', '')
@@ -158,7 +158,7 @@ describe('doctor', () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
     const path = join(dir, 'config.yml')
     const config = (keys: string) =>
-      `providers: [codex]\nsources: { github: { repos: [a/b], host: github.acme.com${keys} } }\n`
+      `providers: [codex]\nforge: { github: { host: github.acme.com${keys} } }\nrepos: { a/b: {} }\nsources: { github: {} }\n`
     const calls: string[] = []
     gh.run = async (_, args, env) => {
       calls.push(`${args.join(' ')} ${env?.GH_HOST ?? ''}`.trim())
@@ -182,11 +182,11 @@ describe('doctor', () => {
     expect(await login(config(', user: octo-ghe'))).toEqual({
       status: 'ok',
       what: 'gh login',
-      detail: 'octo-ghe, pinned by sources.github.user',
+      detail: 'octo-ghe, pinned by forge.github.user',
     })
     expect(calls).toContain('api user --jq .login github.acme.com')
     expect((await login(config('')))?.detail).toBe("octo-ghe, gh's active account")
-    expect(await login(config('').replace(', host: github.acme.com', ''))).toEqual({
+    expect(await login(config('').replace('host: github.acme.com', ''))).toEqual({
       status: 'ok',
       what: 'gh login',
       detail: '',
@@ -200,7 +200,7 @@ describe('doctor', () => {
     const path = join(dir, 'config.yml')
     await writeFile(
       path,
-      'providers: [codex]\nsources: { github: { repos: [a/b], host: github.acme.com, user: octo-ghe } }\n',
+      'providers: [codex]\nforge: { github: { host: github.acme.com, user: octo-ghe } }\nrepos: { a/b: {} }\nsources: { github: {} }\n',
     )
     gh.run = async (_, args) => {
       if (args[0] === 'auth' && args[1] === 'token') return 'revoked'
@@ -228,7 +228,7 @@ describe('doctor', () => {
   it('fails Cursor without CURSOR_API_KEY, even with your login', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
     const path = join(dir, 'config.yml')
-    await writeFile(path, 'providers: [cursor]\nsources: { github: { repos: [a/b] } }\n')
+    await writeFile(path, 'providers: [cursor]\nrepos: { a/b: {} }\nsources: { github: {} }\n')
     await symlink(join(import.meta.dirname, 'fakes', 'cursor.mjs'), join(dir, 'agent'))
     vi.stubEnv('PATH', `${dir}:${process.env.PATH}`)
     vi.stubEnv('CURSOR_API_KEY', '')
@@ -258,8 +258,9 @@ describe('doctor', () => {
     await writeFile(
       path,
       `providers: [codex]
+repos: { a/b: {} }
 sources:
-  github: { repos: [a/b] }
+  github: {}
   tracker: { command: 'echo []', fields: [column] }
   notes: { command: 'echo []' }
   board: { command: 'echo []', fields: [column], write: 'true' }
@@ -292,7 +293,6 @@ sources: { tracker: { command: 'echo []', fields: [column] }, jira: { site: a.at
     expect(canMatch(sources, 'tracker', {})).toBe(true)
     expect(canMatch(sources, 'tracker', { any: [{ status: 'QA' }, { column: 'QA' }] })).toBe(true)
     expect(canMatch(sources, 'jira', { column: 'QA' })).toBe(false)
-    expect(canMatch({ bitbucket: { repos: ['a/b'] } }, 'bitbucket', { type: 'pr' })).toBe(false)
   })
 })
 
@@ -300,7 +300,9 @@ describe('doctor on Bitbucket', () => {
   const twgFixture = (name: string) =>
     readFile(join(import.meta.dirname, 'fixtures', 'twg', name), 'utf8')
   const config = (repos: string) =>
-    parseConfig(`providers: [codex]\nsources: { bitbucket: { repos: ${repos} } }\n`)
+    parseConfig(
+      `providers: [codex]\nforge: bitbucket\nrepos: { ${repos} }\nsources: { tracker: { command: 'echo []' } }\n`,
+    )
   beforeEach(() => {
     vi.stubEnv('GIT_SSH_COMMAND', '')
     vi.stubEnv('GIT_SSH', '')
@@ -310,7 +312,10 @@ describe('doctor on Bitbucket', () => {
   it('checks twg instead of gh', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
     const path = join(dir, 'config.yml')
-    await writeFile(path, 'providers: [codex]\nsources: { bitbucket: { repos: [acme/api] } }\n')
+    await writeFile(
+      path,
+      "providers: [codex]\nforge: bitbucket\nrepos: { acme/api: {} }\nsources: { tracker: { command: 'echo []' } }\n",
+    )
     const checks = await runChecks(path, () => {})
     const what = checks.map((c) => c.what)
     expect(what).toEqual(expect.arrayContaining(['twg', 'twg acme']))
@@ -325,7 +330,7 @@ describe('doctor on Bitbucket', () => {
       [/^git ls-remote/, '44a1dfd4d436528bb6b67192292d83276c2b7962\tHEAD'],
       [/auth storage status/, storage],
     ])
-    const checks = await bitbucketChecks(config('[andrea89/awaywork-sandbox]'), run)
+    const checks = await bitbucketChecks(config('andrea89/awaywork-sandbox:'), run)
     expect(checks).toEqual([
       { status: 'ok', what: 'twg andrea89', detail: '' },
       { status: 'ok', what: 'git over ssh', detail: 'andrea89/awaywork-sandbox' },
@@ -357,7 +362,7 @@ describe('doctor on Bitbucket', () => {
       if (args.includes('storage')) return twgFixture('auth-storage.json')
       throw Object.assign(new Error('Command failed with exit code 77'), { stdout: authInvalid })
     }
-    expect(await bitbucketChecks(config('[acme/*]'), run)).toEqual([
+    expect(await bitbucketChecks(config('acme/*:'), run)).toEqual([
       {
         status: 'FAIL',
         what: 'twg acme',
@@ -381,10 +386,10 @@ describe('doctor on Bitbucket', () => {
       if (args[0] === 'config') return 'ssh -i ~/.ssh/bitbucket\n'
       return args.includes('storage') ? twgFixture('auth-storage.json') : '{}'
     }
-    await bitbucketChecks(config('[acme/web]'), run)
+    await bitbucketChecks(config('acme/web:'), run)
     expect(envs).toContainEqual({ GIT_SSH_COMMAND: 'ssh -i ~/.ssh/bitbucket -o BatchMode=yes' })
     vi.stubEnv('GIT_SSH_COMMAND', 'ssh -i ~/.ssh/env')
-    await bitbucketChecks(config('[acme/web]'), run)
+    await bitbucketChecks(config('acme/web:'), run)
     expect(envs).toContainEqual({ GIT_SSH_COMMAND: 'ssh -i ~/.ssh/env -o BatchMode=yes' })
   })
 
@@ -396,7 +401,7 @@ describe('doctor on Bitbucket', () => {
       if (args[0] === 'config') return ''
       return args.includes('storage') ? twgFixture('auth-storage.json') : '{}'
     }
-    await bitbucketChecks(config('[acme/web]'), run)
+    await bitbucketChecks(config('acme/web:'), run)
     expect(calls).toContainEqual([
       ['ls-remote', 'git@bitbucket.org:acme/web.git', 'HEAD'],
       undefined,
@@ -419,7 +424,7 @@ describe('doctor on isolation', () => {
   it('fails container where docker doesn’t answer', async () => {
     vi.stubEnv('DOCKER_HOST', 'unix:///nonexistent/docker.sock')
     const config = parseConfig(
-      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+      'isolation: container\nproviders: [claude]\nsources: { github: {} }\nrepos: { acme/api: { image: acme/api:dev } }',
     )
     const checks = await containerChecks(config, process.env)
     vi.unstubAllEnvs()
@@ -433,7 +438,7 @@ describe('doctor on isolation', () => {
     await writeFile(join(fakes, 'docker'), '#!/bin/sh\nexec sleep 600\n', { mode: 0o755 })
     vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
     const config = parseConfig(
-      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+      'isolation: container\nproviders: [claude]\nsources: { github: {} }\nrepos: { acme/api: { image: acme/api:dev } }',
     )
     const started = Date.now()
     const checks = await containerChecks(config, process.env, 500)
@@ -455,7 +460,7 @@ describe('doctor on isolation', () => {
     await writeFile(join(fakes, 'docker'), `${docker.join('\n')}\n`, { mode: 0o755 })
     vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
     const config = parseConfig(
-      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+      'isolation: container\nproviders: [claude]\nsources: { github: {} }\nrepos: { acme/api: { image: acme/api:dev } }',
     )
     const checks = await containerChecks(config, process.env)
     vi.unstubAllEnvs()
@@ -479,7 +484,7 @@ describe('doctor on isolation', () => {
     await writeFile(join(fakes, 'docker'), `${docker.join('\n')}\n`, { mode: 0o755 })
     vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
     const config = parseConfig(
-      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+      'isolation: container\nproviders: [claude]\nsources: { github: {} }\nrepos: { acme/api: { image: acme/api:dev } }',
     )
     await containerChecks(config, process.env)
     vi.unstubAllEnvs()
@@ -502,7 +507,7 @@ describe('doctor on isolation', () => {
     await writeFile(join(fakes, 'docker'), `${docker.join('\n')}\n`, { mode: 0o755 })
     vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
     const config = parseConfig(
-      'isolation: container\nproviders: [cursor]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+      'isolation: container\nproviders: [cursor]\nsources: { github: {} }\nrepos: { acme/api: { image: acme/api:dev } }',
     )
     const checks = await containerChecks(config, process.env)
     vi.unstubAllEnvs()

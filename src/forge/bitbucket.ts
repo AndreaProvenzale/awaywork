@@ -83,9 +83,9 @@ async function pages<T>(run: Exec, args: string[]): Promise<T[]> {
   }
 }
 
-/** The workspaces `sources.bitbucket.repos` names, each once. */
+/** The workspaces `repos` names on Bitbucket, each once. */
 export const bitbucketWorkspaces = (config: Config): string[] => {
-  const repos = (config.sources.bitbucket as { repos?: string[] } | undefined)?.repos ?? []
+  const repos = config.forge.id === 'bitbucket' ? Object.keys(config.repos) : []
   return [...new Set(repos.map((repo) => repo.split('/')[0] ?? ''))]
 }
 

@@ -53,9 +53,10 @@ sourceContract(
       ...githubRoutes(),
     ]),
   ) as Source<unknown>,
-  { repos: ['acme/*'] },
+  {},
   {},
   'qa',
+  { repos: ['acme/*'] },
 )
 sourceContract(
   asanaSource(

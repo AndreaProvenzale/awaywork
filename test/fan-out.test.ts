@@ -41,6 +41,7 @@ import { linksItem, prText } from '../src/forge/pr.js'
 import { writeItem } from '../src/sources/index.js'
 import { freeBranch } from '../src/worker/slices.js'
 import { runUnits } from '../src/worker/units.js'
+import { withRepos } from './fakes/acme.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -55,8 +56,8 @@ const git = (dir: string, ...args: string[]) =>
 const configOf = (queue: string, extra = '') =>
   parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
-${extra}queue:
+sources: { github: {} }
+${withRepos(extra)}queue:
 ${queue}
 `)
 const queue = `  - { skill: plan, deliver: plan }
@@ -291,7 +292,8 @@ describe('plan checks for tasks', () => {
     ).toEqual([])
     expect(() =>
       parseConfig(`providers: [claude: {}]
-sources: { github: { repos: [acme/*] }, jira: { site: a.atlassian.net, email: d@a.test } }
+repos: { acme/*: {} }
+sources: { github: {}, jira: { site: a.atlassian.net, email: d@a.test } }
 queue:
   - { skill: plan, deliver: plan }
   - { skill: implement, source: github, where: { planned: true } }
@@ -517,7 +519,9 @@ describe('tasks as items', () => {
     ])
     const bitbucket = parseConfig(`
 providers: [claude: {}]
-sources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []', write: 'cat' } }
+forge: bitbucket
+repos: { acme/api: {} }
+sources: { tracker: { command: 'echo []', write: 'cat' } }
 queue:
 ${queue}`)
     const tracked = { ...approved(), source: 'tracker' }

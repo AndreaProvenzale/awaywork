@@ -6,8 +6,10 @@ budget: # every provider; override one with - <id>: { budget: … }
   session_max: 90% # stop a worker past this share of the short window
   # per_run: 15%                # at most this share of the long window per run
 providers: [claude] # codex is out of credits; add it back with its reviewer below
+repos:
+  AndreaProvenzale/awaywork:
 sources:
-  github: { repos: [AndreaProvenzale/awaywork] }
+  github: {}
 queue: # first matching rule wins; top = highest priority
   - skill: fix
     source: github

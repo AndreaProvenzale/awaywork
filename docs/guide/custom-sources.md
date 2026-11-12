@@ -9,8 +9,10 @@ Your tracker isn't built in, an internal board say? Write a command, in any lang
 ## Config
 
 ```yaml
+repos:
+  acme/*:                               # an item in any other repo is skipped
 sources:
-  github: { repos: [acme/*] }
+  github: {}
   board:                                # any name; rules use it as `source: board`
     command: python3 sources/board.py   # runs in the config file's folder
     fields: [column, board]             # what `where` may match on; `any` is reserved

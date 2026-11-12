@@ -69,7 +69,7 @@ Details:
 - Any later comment the agent sees ends it, yours or a teammate's: on GitHub an owner's, member's or collaborator's; on a tracker, any comment on an item assigned to you.
 - Bots don't (GitHub's bots, Jira's and Linear's apps, Linear's integrations): they show in `item.md` but the unit keeps waiting. Asana and custom sources don't mark bots, so there an integration's comment ends it.
 - A comment is awaywork's only when its `— awaywork` line comes from your account, so a pasted one doesn't hold your item ([Safety](./safety.md#what-awaywork-publishes)).
-- On an item that isn't yours, a source that can't write (Bitbucket, a custom source without `write`) on a rule without a [thread](#threads), or a failed post, the questions stay in the morning report with the reason; the unit is still done.
+- On an item that isn't yours, a source that can't write (a custom source without `write`) on a rule without a [thread](#threads), or a failed post, the questions stay in the morning report with the reason; the unit is still done.
 - A step that committed and asks opens a draft (`draft: asked questions`) headed `Status: ask, questions on <item>`, `status=ask` in the footer, as for [`continue`](#continue); under `push` the commits go onto your PR. Once answered, the next run goes on with that draft, `run: soon` included.
 - With no status file awaywork guesses as before: a step that committed went on, so `questions.md` stays in `out/`, unposted. A word other than `done`, `ask` or `continue`, or `ask` without `questions.md`, reads as no file, with a line in the run's log.
 - A chain that asked doesn't run its rule's `on_done`.
@@ -501,7 +501,7 @@ When the task before opens no PR (it failed, asked or committed nothing), those 
 
 ### Across repos
 
-A task's `repo` can be any repo the forge source's `repos` globs cover (`sources.github.repos`), or one under [`repos`](./configuration.md#repos-and-instructions); unset, it's the card's. A card with no repo needs one on every task. The plan step can also write a contract, the interface the tasks agree on, and a task lists in `ships` the files its PR will hold that other repos' tasks need, like the spec a client is generated from:
+A task's `repo` can be any repo [`repos`](./configuration.md#repos-and-instructions) lists, by name or by glob; unset, it's the card's. A card with no repo needs one on every task. The plan step can also write a contract, the interface the tasks agree on, and a task lists in `ships` the files its PR will hold that other repos' tasks need, like the spec a client is generated from:
 
 ```yaml
 contract: .away/out/openapi.yaml

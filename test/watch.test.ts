@@ -217,6 +217,7 @@ describe('awaywork watch', () => {
       path,
       `providers: [claude]
 windows: []
+repos: { acme/api: {} }
 sources: { chores: { command: cat items.json }, broken: { command: exit 1 } }
 queue: [{ skill: plan, run: soon }]
 notify: { command: 'echo $AWAYWORK_EVENT >> ${join(dir, 'events.txt')}' }
@@ -247,7 +248,7 @@ notify: { command: 'echo $AWAYWORK_EVENT >> ${join(dir, 'events.txt')}' }
     await writeFile(join(dirname(path), 'items.json'), JSON.stringify([item]))
     await writeFile(
       path,
-      `providers: [claude]\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan, run: soon }]\n`,
+      `providers: [claude]\nwindows: []\nrepos: { acme/api: {} }\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan, run: soon }]\n`,
     )
     await writeFile(runLockPath, `${process.pid} 20261025-010000`)
     try {
@@ -280,6 +281,7 @@ notify: { command: 'echo $AWAYWORK_EVENT >> ${join(dir, 'events.txt')}' }
       path,
       `providers: [claude]
 windows: [{ start: "${hhmm(-60)}", end: "${hhmm(60)}" }]
+repos: { acme/api: {} }
 sources: { chores: { command: cat items.json, fields: [kind] } }
 queue:
   - { skill: plan, source: chores, where: { kind: soon }, run: soon }
@@ -322,7 +324,7 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
     await writeFile(join(dirname(path), 'items.json'), JSON.stringify([item(1), item(2)]))
     await writeFile(
       path,
-      `providers: [claude]\nwindows: []\nlimits: { units: 1 }\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
+      `providers: [claude]\nwindows: []\nlimits: { units: 1 }\nrepos: { acme/api: {} }\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
     )
     const stop = new AbortController()
     const done = watch(path, stop.signal, { token: 'a'.repeat(32) })

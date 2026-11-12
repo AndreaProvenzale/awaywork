@@ -58,7 +58,7 @@ describe('workspace', () => {
     await writeFile(join(root, 'api.md'), 'REPO NOTE')
     const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 instructions: me.md
 repos: { acme/api: { setup: pnpm install, instructions: api.md } }
 `)
@@ -158,7 +158,9 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         },
         dir: join(root, `clone-${skill}`),
         plugin: join(root, `plugin-${skill}`),
-        config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
+        config: parseConfig(
+          'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }',
+        ),
         configDir: root,
         forge: {
           ...fakeForge(),
@@ -207,7 +209,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         dir,
         plugin,
         config: parseConfig(
-          `providers: [${provider.id}: {}]\nsources: { github: { repos: [acme/*] } }`,
+          `providers: [${provider.id}: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }`,
         ),
         configDir: root,
         forge: {
@@ -277,7 +279,9 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         },
         dir,
         plugin: join(root, 'plugin'),
-        config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
+        config: parseConfig(
+          'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }',
+        ),
         configDir: root,
         forge: {
           ...fakeForge(),
@@ -371,7 +375,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         dir,
         plugin,
         config: parseConfig(
-          `providers: [${provider.id}: {}]\nsources: { github: { repos: [acme/*] } }`,
+          `providers: [${provider.id}: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }`,
         ),
         configDir: root,
         forge: {
@@ -518,7 +522,9 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         },
         dir,
         plugin,
-        config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
+        config: parseConfig(
+          'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }',
+        ),
         configDir: root,
         forge,
         sources: { fake: fakeSource() as Source },
@@ -677,7 +683,9 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         },
         dir,
         plugin: join(root, 'plugin'),
-        config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
+        config: parseConfig(
+          'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }',
+        ),
         configDir: root,
         forge,
         sources: { fake: fakeSource() as Source },

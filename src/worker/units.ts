@@ -59,6 +59,7 @@ import {
   summaryOf,
   type UnitResult,
 } from '../core/report.js'
+import { settingsFor } from '../core/repos.js'
 import type {
   Ctx,
   Deliver,
@@ -676,7 +677,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       if (!id || !provider || !a)
         return `no provider left: ${passed.join('; ') || 'none configured'}`
       if (!ranSlice.has(id)) routed[id] = (routed[id] ?? 0) + 1
-      const image = input.config.repos[unit.repo]?.image
+      const image = settingsFor(input.config.repos, unit.repo).image
       const entry = input.config.providers.find((c) => c.id === id)
       const model = modelFor(unit.rule.model, id, 0) ?? entry?.model
       const name = `judge-${gate}-${slug(skill)}`
@@ -788,8 +789,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       result: UnitResult,
       log: (line: string) => void,
     ) => {
-      const settings = input.config.repos[unit.repo]
-      if (merge.kind === 'merged' && unit.verify && settings?.setup && !unit.untrusted) {
+      const settings = settingsFor(input.config.repos, unit.repo)
+      if (merge.kind === 'merged' && unit.verify && settings.setup && !unit.untrusted) {
         const own = unit.foreign || pickedUp ? [] : settings.secrets
         const env = setupEnv(input.ctx.env, dir, secrets, own)
         const options = { secrets: own, signal: input.signal, until: input.until }
@@ -835,7 +836,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const step = `1-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
       const plugin = join(root, 'plugins', unit.id)
-      const image = input.config.repos[unit.repo]?.image
+      const image = settingsFor(input.config.repos, unit.repo).image
       if (contained() && image) contain(dir, { image, plugin, secrets })
       await mkdir(unitDir, { recursive: true })
       const logFile = createWriteStream(join(unitDir, 'worker.log'))
@@ -969,7 +970,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         end(short)
         continue
       }
-      const image = input.config.repos[p.unit.repo]?.image
+      const image = settingsFor(input.config.repos, p.unit.repo).image
       if (contained() && !image) {
         end(`no image for ${p.unit.repo}: isolation: container needs one in its repos entry`)
         continue
@@ -1081,8 +1082,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         }
         if (!reuse)
           await fetchContexts(unit.items, dir, { ...input, env: input.ctx.env, secrets, log })
-        const settings = input.config.repos[unit.repo]
-        if (!reuse && settings?.setup && !unit.untrusted) {
+        const settings = settingsFor(input.config.repos, unit.repo)
+        if (!reuse && settings.setup && !unit.untrusted) {
           // A PR someone else opened, or an awaywork PR's branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
           const own = unit.foreign || pickedUp ? [] : settings.secrets
           const failed = await runSetup(

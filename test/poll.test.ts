@@ -23,7 +23,8 @@ const HOUR = 60 * MINUTE
 
 const config = parseConfig(`
 providers: [claude]
-sources: { github: { repos: [acme/*] }, chores: { command: ./chores.sh, every: 15m } }
+repos: { acme/*: {} }
+sources: { github: {}, chores: { command: ./chores.sh, every: 15m } }
 queue:
   - skill: fix
     where: { type: pr }
@@ -108,6 +109,7 @@ describe('due units', () => {
   it('starts a routine once it comes due, not again once attempted, and at its next occurrence', async () => {
     const routineConfig = parseConfig(`
 providers: [claude]
+repos: { acme/api: {} }
 sources:
   routines:
     standup: { at: ["09:00", "14:00"], repo: acme/api, title: Write the standup notes }
@@ -187,14 +189,20 @@ describe('polling', () => {
     const any = parseConfig(`
 providers: [claude]
 watch: { every: 10m }
-sources: { github: { repos: [acme/*], every: 1m }, chores: { command: ./chores.sh, every: 1h } }
+repos: { acme/*: {} }
+sources: { github: { every: 1m }, chores: { command: ./chores.sh, every: 1h } }
 queue: [{ skill: fix, run: soon }]
 `)
     expect(soonSources(any)).toEqual({ github: 10 * MINUTE, chores: 60 * MINUTE })
     expect(
-      soonSources(parseConfig('providers: [claude]\nsources: { github: { repos: [acme/*] } }')),
+      soonSources(
+        parseConfig('providers: [claude]\nrepos: { acme/*: {} }\nsources: { github: {} }'),
+      ),
     ).toEqual({})
-    for (const zero of ['watch: { every: 0m }', 'sources: { github: { repos: [a/*], every: 0h } }'])
+    for (const zero of [
+      'watch: { every: 0m }',
+      'repos: { a/*: {} }\nsources: { github: { every: 0h } }',
+    ])
       expect(() => parseConfig(`providers: [claude]\n${zero}`)).toThrow(/a span of 1m or more/)
   })
 

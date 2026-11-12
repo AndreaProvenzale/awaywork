@@ -19,6 +19,7 @@ import {
   taskPrUrls,
 } from './plan.js'
 import { isLoop, ruleFor } from './queue.js'
+import { settingsFor } from './repos.js'
 import { resolveSkill, type SkillCatalog } from './skills.js'
 import type { Skip } from './skips.js'
 import type { BranchPr, Item, Rule, TaskPr, ThenStep } from './types.js'
@@ -26,14 +27,6 @@ import type { BranchPr, Item, Rule, TaskPr, ThenStep } from './types.js'
 /** A card's repo: its first linked PR's, else its `repo` field. */
 export const cardRepo = (item: Item): string | undefined =>
   item.linkedPrs[0]?.repo ?? (typeof item.fields.repo === 'string' ? item.fields.repo : undefined)
-
-/** The repos the forge source reads, as its globs, and those the config's `repos` names: a task may name any of them. */
-const configRepos = (config: Config): string[] => {
-  const forge = (config.sources.bitbucket ?? config.sources.github) as
-    | { repos?: string[] }
-    | undefined
-  return [...(forge?.repos ?? []), ...Object.keys(config.repos)]
-}
 
 /** What a plan on the card is checked against: every id whose PR closed unmerged is retired. */
 export const planLimits = (
@@ -44,7 +37,7 @@ export const planLimits = (
 ): PlanLimits => ({
   maxTasks: config.limits.plan_tasks,
   repo: cardRepo(card),
-  repos: configRepos(config),
+  repos: Object.keys(config.repos),
   ...taskSkills(queue, card.source, catalog),
   retired: taskPrUrls(card, (pr) => pr.state === 'closed'),
 })
@@ -87,7 +80,7 @@ export function branchName(
   step: ThenStep | undefined,
   skills: SkillCatalog,
 ): string {
-  const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
+  const template = rule.branch ?? settingsFor(config.repos, repo).branch ?? config.branch
   const type = (step && resolveSkill(step.skill, skills)?.meta.type) || defaultType
   return renderBranch(template, item, type)
 }

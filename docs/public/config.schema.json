@@ -479,30 +479,52 @@
       },
       "description": "Providers to use, a name or a map to override; order = routing preference"
     },
+    "forge": {
+      "description": "Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } }",
+      "default": "github",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "github",
+            "bitbucket"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "github": {
+              "type": "object",
+              "properties": {
+                "host": {
+                  "description": "GitHub Enterprise host, e.g. github.acme.com; github.com by default",
+                  "type": "string",
+                  "pattern": "^[^/\\s]+$"
+                },
+                "user": {
+                  "description": "The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins",
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9-]+$"
+                }
+              },
+              "additionalProperties": false,
+              "description": "GitHub, through gh"
+            }
+          },
+          "required": [
+            "github"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
     "sources": {
+      "description": "Where work comes from: built-in sources or your own commands; at least one",
       "type": "object",
       "properties": {
         "github": {
           "type": "object",
           "properties": {
-            "repos": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Repos to read, owner/name; * globs, e.g. acme/*"
-            },
-            "host": {
-              "description": "GitHub Enterprise host, e.g. github.acme.com; github.com by default",
-              "type": "string",
-              "pattern": "^[^/\\s]+$"
-            },
-            "user": {
-              "description": "The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins",
-              "type": "string",
-              "pattern": "^[A-Za-z0-9-]+$"
-            },
             "search": {
               "description": "Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested",
               "type": "array",
@@ -541,59 +563,8 @@
               "pattern": "^[1-9]\\d*[mhdw]$"
             }
           },
-          "required": [
-            "repos"
-          ],
           "additionalProperties": false,
-          "description": "My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge"
-        },
-        "bitbucket": {
-          "type": "object",
-          "properties": {
-            "repos": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string",
-                "pattern": "^[^/*?\\s]+\\/[^/\\s]+$"
-              },
-              "description": "Bitbucket Cloud repos, workspace/name; * globs the name, e.g. acme/*"
-            },
-            "context": {
-              "type": "object",
-              "properties": {
-                "command": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder"
-                },
-                "secrets": {
-                  "default": [],
-                  "description": "Env vars the command needs; withheld from workers, listed in Actions",
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[A-Z_][A-Z0-9_]*$"
-                  }
-                }
-              },
-              "required": [
-                "command"
-              ],
-              "additionalProperties": false,
-              "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
-            },
-            "every": {
-              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
-              "type": "string",
-              "pattern": "^[1-9]\\d*[mhdw]$"
-            }
-          },
-          "required": [
-            "repos"
-          ],
-          "additionalProperties": false,
-          "description": "The forge for Bitbucket Cloud repos, through twg; no items of its own yet, so pair it with a source such as jira"
+          "description": "My PRs, PRs awaiting my review and issues assigned to me, in the repos the top-level repos lists, plus any extra searches"
         },
         "asana": {
           "type": "object",
@@ -948,8 +919,7 @@
         ],
         "additionalProperties": false,
         "description": "A custom source: any command that prints your open items as JSON"
-      },
-      "description": "Where work comes from: built-in sources or your own commands; at least one"
+      }
     },
     "branch": {
       "default": "away/{key}",
@@ -957,7 +927,7 @@
       "type": "string"
     },
     "repos": {
-      "description": "Per-repo settings, keyed by owner/name",
+      "description": "The repos awaywork works in: each key an owner/name or a * glob such as acme/*, with its settings or nothing. A repo takes the settings of every key naming it, globs in the order written and its own key last, a later one winning; an item in a repo no key names is skipped",
       "default": {},
       "type": "object",
       "propertyNames": {
@@ -965,97 +935,104 @@
         "pattern": "^[^/\\s]+\\/[^/\\s]+$"
       },
       "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "branch": {
-            "description": "Branch name template for this repo",
-            "type": "string"
-          },
-          "setup": {
-            "description": "Setup command, run in the clone before the worker; a failure skips the unit",
-            "type": "string"
-          },
-          "secrets": {
-            "default": [],
-            "description": "Env vars setup needs; withheld from workers, listed in Actions",
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "verify": {
-            "description": "Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published",
-            "type": "string"
-          },
-          "gates": {
-            "description": "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill",
-            "default": {},
+        "anyOf": [
+          {
             "type": "object",
-            "propertyNames": {
-              "type": "string",
-              "pattern": "^[\\w-]+$"
-            },
-            "additionalProperties": {
-              "type": "object",
-              "properties": {
-                "changed": {
-                  "description": "Git globs from the repo root; fires when the chain's commits change a matching path",
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  ]
-                },
-                "command": {
-                  "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+            "properties": {
+              "branch": {
+                "description": "Branch name template for this repo",
+                "type": "string"
+              },
+              "setup": {
+                "description": "Setup command, run in the clone before the worker; a failure skips the unit",
+                "type": "string"
+              },
+              "secrets": {
+                "default": [],
+                "description": "Env vars setup needs; withheld from workers, listed in Actions",
+                "type": "array",
+                "items": {
                   "type": "string",
                   "minLength": 1
-                },
-                "skill": {
-                  "description": "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
-                  "type": "string",
-                  "minLength": 1
-                },
-                "instructions": {
-                  "description": "Instruction files a skill gate's judge reads, relative to the config file; never the repo's, and never the rule's",
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  ]
                 }
               },
-              "additionalProperties": false
-            }
+              "verify": {
+                "description": "Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published",
+                "type": "string"
+              },
+              "gates": {
+                "description": "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill",
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[\\w-]+$"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "changed": {
+                      "description": "Git globs from the repo root; fires when the chain's commits change a matching path",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    },
+                    "command": {
+                      "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "skill": {
+                      "description": "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "instructions": {
+                      "description": "Instruction files a skill gate's judge reads, relative to the config file; never the repo's, and never the rule's",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "test": {
+                "description": "Targeted test command, given to the worker in its prompt",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "Instruction file for units in this repo",
+                "type": "string"
+              },
+              "image": {
+                "description": "Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain",
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
           },
-          "test": {
-            "description": "Targeted test command, given to the worker in its prompt",
-            "type": "string"
-          },
-          "instructions": {
-            "description": "Instruction file for units in this repo",
-            "type": "string"
-          },
-          "image": {
-            "description": "Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain",
-            "type": "string",
-            "minLength": 1
+          {
+            "type": "null"
           }
-        },
-        "additionalProperties": false
+        ]
       }
     },
     "gates": {

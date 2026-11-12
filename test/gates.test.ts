@@ -50,12 +50,13 @@ const answering = (results: Record<string, Check>) =>
 it("unions a repo's gates with the top-level ones, and adds the repo's own", () => {
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: {} }
 gates:
   schema: { changed: ["**/migrations/**"] }
   routes: { command: scripts/route-diff.sh }
   risk: { skill: judge }
 repos:
+  acme/web:
   acme/api:
     gates:
       schema: { changed: "src/db/schema/**" }
@@ -100,7 +101,7 @@ it('takes one of changed, command or skill per gate, each with something in it',
   const problems = (gates: string) => {
     try {
       parseConfig(
-        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\ngates: ${gates}\n`,
+        `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\ngates: ${gates}\n`,
       )
       return []
     } catch (e) {

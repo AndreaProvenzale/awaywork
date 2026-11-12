@@ -4,7 +4,6 @@ import { parseConfig } from '../src/config/load.js'
 import { envFile } from '../src/config/paths.js'
 import type { Ctx } from '../src/core/types.js'
 import { asanaSource } from '../src/sources/asana.js'
-import { bitbucket } from '../src/sources/bitbucket.js'
 import { githubSource } from '../src/sources/github.js'
 import { jiraSource } from '../src/sources/jira.js'
 import { linearSource } from '../src/sources/linear.js'
@@ -30,7 +29,6 @@ function registry() {
     jiraHttp,
     sources: {
       github: githubSource(gh),
-      bitbucket,
       asana: asanaSource(asanaHttp),
       linear: linearSource(linearFetch()),
       jira: jiraSource(jiraHttp),
@@ -52,7 +50,9 @@ describe('awaywork sources', () => {
 
   it("lists the gh login and its orgs, on the config's host", async () => {
     const r = registry()
-    const configured = { github: { repos: ['acme/*'], host: 'github.acme.com' } }
+    const configured = parseConfig(
+      'providers: [claude]\nforge: { github: { host: github.acme.com } }\nrepos: { acme/*: }\nsources: { github: {} }',
+    ).sources
     const { found } = await discoverSources('github', configured, ctx, r.sources)
     expect(found).toEqual([
       { id: 'github', discovery: { login: 'octo', orgs: ['acme', 'widgets'] } },
@@ -168,7 +168,6 @@ describe('awaywork sources', () => {
     const { sources } = parseConfig(`providers: [claude]
 sources:
   linear: { every: 1h, link: 'Fixes {key}' }
-  bitbucket: { repos: [acme/api] }
   jira: { site: acme.atlassian.net, email: dev@acme.test, context: { command: 'echo {}' } }
   chores: { command: 'echo []' }
 `)
@@ -197,7 +196,7 @@ sources:
   })
 
   it("says so of a source with nothing to discover, or one that doesn't exist", async () => {
-    await expect(discover('bitbucket', {})).rejects.toThrow('bitbucket has nothing to discover')
+    await expect(discover('routines', {})).rejects.toThrow('routines has nothing to discover')
     await expect(discover('trello', {})).rejects.toThrow('no source "trello"')
   })
 

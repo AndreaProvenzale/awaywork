@@ -18,6 +18,7 @@ import { taskMarkdown } from '../core/fanout.js'
 import { type LoopRound, slug } from '../core/foreman.js'
 import { gitUnrestored, markGitRestored } from '../core/isolation.js'
 import { assemblePrompt } from '../core/prompt.js'
+import { settingsFor } from '../core/repos.js'
 import type { Ctx, Forge, Item, Provider, Source, Unit } from '../core/types.js'
 import { gitConfigFile, gitEntries, writeConfigFile } from './env.js'
 import type { Judged } from './gates.js'
@@ -182,7 +183,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   else if (w.previous && !w.replay) await cp(w.previous.out, previous, { recursive: true })
 
   const read = (path: string) => readFile(resolve(w.configDir, path), 'utf8')
-  const repo: Partial<Config['repos'][string]> = w.config.repos[unit.repo] ?? {}
+  const repo = settingsFor(w.config.repos, unit.repo)
   const skillFile = join(sources.get(unit.skill) as string, 'SKILL.md')
   const skill = skillFile.startsWith(`${dir}${sep}`)
     ? await readOutput(skillFile)

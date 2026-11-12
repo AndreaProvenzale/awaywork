@@ -17,6 +17,7 @@ const quota: Quota = {
 
 const yaml = JSON.stringify({
   providers: [{ claude: {} }],
+  repos: { 'acme/*': null },
   sources: {
     chores: { command: 'node chores.mjs', fields: ['chore'] },
   },

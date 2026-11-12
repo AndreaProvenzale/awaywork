@@ -359,7 +359,8 @@ async function resumed(
   }
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+repos: { acme/*: {} }
+sources: { github: {} }
 queue:
   - { skill: implement, deliver: pr }
 `)

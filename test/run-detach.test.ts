@@ -36,7 +36,7 @@ async function home(provider = 'probe: ./quota.sh', extra = '', queue = '[{ skil
   )
   await writeFile(
     join(dir, 'config.yml'),
-    `providers:\n  - mine:\n      command: echo worked\n      ${provider}\nlimits: { unit_minutes: 5, units: 1 }\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: ${queue}\n${extra}`,
+    `providers:\n  - mine:\n      command: echo worked\n      ${provider}\nlimits: { unit_minutes: 5, units: 1 }\nwindows: []\nrepos: { no-such-owner-awaywork/none: {} }\nsources: { chores: { command: cat items.json } }\nqueue: ${queue}\n${extra}`,
   )
   return dir
 }
