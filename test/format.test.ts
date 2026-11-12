@@ -111,7 +111,7 @@ describe('listedUnits', () => {
 })
 
 describe('formatPlan', () => {
-  it('says why a quota when fails on its when line', () => {
+  it('says why a quota fails on its quota line', () => {
     const config = parseConfig(`
 providers: [claude: {}]
 repos: { acme/api: {} }
@@ -137,7 +137,7 @@ queue:
       skills: { builtin: builtinSkills },
     })
     expect(formatPlan(plan)).toContain(
-      "     when the window resets within 1 run (doesn't hold on the probe)",
+      "     quota: the window resets within 1 run (doesn't hold on the probe)",
     )
   })
 })

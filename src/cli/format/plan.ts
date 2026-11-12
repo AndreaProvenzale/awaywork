@@ -119,7 +119,7 @@ export function planUnitTable(
   const blocks = units.map((p, i) => {
     const out = [lines[i + 1] ?? '']
     const unmet = p.quotaUnmet ? ` (${p.quotaUnmet})` : ''
-    if (p.unit.rule.quota) out.push(`   when ${describeCondition(p.unit.rule.quota)}${unmet}`)
+    if (p.unit.rule.quota) out.push(`   quota: ${describeCondition(p.unit.rule.quota)}${unmet}`)
     p.unit.items.slice(1).forEach((item, j) => {
       const rule = p.itemRules[j + 1] ?? p.rule
       out.push(`   + ${shortRef(item)}: same feature, matched #${rule + 1}`)

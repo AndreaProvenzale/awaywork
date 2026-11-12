@@ -378,16 +378,16 @@ queue:
   })
   const [review, implemented] = report.results
   expect(review?.status).toBe('skipped')
-  expect(review?.reason).toMatch(/^when the window resets within 1 run didn't hold/)
+  expect(review?.reason).toMatch(/^quota: the window resets within 1 run didn't hold/)
   expect(implemented?.status).toBe('done')
   expect(logged).toEqual([
-    "acme-api-1: skipped, when the window resets within 1 run didn't hold",
+    "acme-api-1: skipped, quota: the window resets within 1 run didn't hold",
     'acme-api-2: implement on claude',
     'acme-api-2: done',
   ])
 })
 
-it('records no attempt for a rule whose quota when does not hold', async () => {
+it('records no attempt for a rule whose quota does not hold', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-when-quota-'))
   const { forge } = await originForge(root)
   const config = parseConfig(`
