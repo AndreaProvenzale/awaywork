@@ -52,11 +52,9 @@ async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[
 providerContract(commandProvider('x', cfg()), job, ['emptyConfig'])
 
 describe('command provider config', () => {
-  it('takes a name of your own with a command and budget', () => {
+  it('takes a name of your own with a command', () => {
     const parsed = parseConfig(
-      config(
-        'opencode: { command: opencode run, secrets: [OPENCODE_API_KEY], budget: { reserve: 5% } }',
-      ),
+      config('opencode: { command: opencode run, secrets: [OPENCODE_API_KEY] }'),
     )
     expect(parsed.providers.map((p) => p.id)).toEqual(['claude', 'opencode'])
     const opencode = parsed.providers[1]
@@ -78,16 +76,15 @@ describe('command provider config', () => {
   })
 
   it('names the path of a nested problem', () => {
-    expect(problems(config('opencode: { command: x, budget: { reserve: 5 } }'))).toEqual([
-      expect.stringMatching(/^providers\[1\]: opencode\.budget\.reserve: /),
+    expect(problems(config('opencode: { command: x, secrets: [1] }'))).toEqual([
+      expect.stringMatching(/^providers\[1\]: opencode\.secrets\.0: /),
     ])
   })
 
-  it('takes a fallback without turns', () => {
-    const parsed = parseConfig(
-      config('opencode: { command: x, budget: { fallback: { units: 2 } } }'),
-    )
-    expect(parsed.providers[1]?.budget.fallback).toEqual({ units: 2, turns: 60 })
+  it('refuses a budget of its own, which was removed', () => {
+    expect(problems(config('opencode: { command: x, budget: { reserve: 5% } }'))).toEqual([
+      'providers[1].opencode: budget was removed: the top-level budget applies to every provider; a different budget takes a second config',
+    ])
   })
 
   it('describes its fallback without turns', () => {

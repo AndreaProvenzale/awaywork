@@ -534,7 +534,7 @@ export function planRun(input: {
         deliver: review ? 'pending_review' : planned ? 'plan' : reports(step) ? 'report' : deliver,
         ...(planned && { planLimits: limits(items[0] as Item) }),
       }
-      const unmet = provider && written === rule && quotaUnmet(rule.when, allowances[provider])
+      const unmet = provider && written === rule && quotaUnmet(rule.quota, allowances[provider])
       units.push({
         unit,
         rule: ruleIndex,
@@ -683,10 +683,10 @@ function ruleGates(rule: Rule): Record<string, Gate> | undefined {
   return gates.length ? Object.fromEntries(gates) : undefined
 }
 
-function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {
-  if (!when || !a) return undefined
+function quotaUnmet(quota: Condition | undefined, a: Allowance | undefined): string | undefined {
+  if (!quota || !a) return undefined
   if (a.kind === 'fallback') return 'no quota reading'
-  return holds(when, quotaFacts(a)) ? undefined : "doesn't hold on the probe"
+  return holds(quota, quotaFacts(a)) ? undefined : "doesn't hold on the probe"
 }
 
 /** The model a rule sets for a provider on this attempt: the list's entry for it. */

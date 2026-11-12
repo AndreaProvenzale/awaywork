@@ -110,7 +110,7 @@ Details:
 - Outside a window a soon run is present: workers stop at `present_session_max` and providers without a quota reading sit out. Inside one it's away and ends with the window.
 - A poll reads no quota and runs no model. A GitHub poll is 3 searches (your PRs, review requests, assigned issues), one per `search` entry and two more for [finished items](./configuration.md#finished-items): about 36 an hour at 5 minutes. A tracker poll is its list call plus a PR search per open task without a link. Give a slow or rate-limited tracker its own `every`.
 - A failed poll backs off as long as `Retry-After` says (Jira and Asana, on a 429), else doubling per failure up to an hour, logging each backoff and recovery. GitHub, Linear and custom sources give no reset time, so they double.
-- `notify` gets a soon run's `unit` events, not the run's end. A unit that sat out or was passed over by `when` fires none, so hourly retries stay quiet; a failed `setup` or a timed-out `when` still fires.
+- `notify` gets a soon run's `unit` events, not the run's end. A unit that sat out or was passed over by `when` or `quota` fires none, so hourly retries stay quiet; a failed `setup` or a timed-out `when` still fires.
 - Runs overlap, never on one item, and one worker runs at a time: a soon unit waits for the window run's current chain, not the whole run, routing on the quota it read when planning. A unit another run holds is skipped as `running in run 20261025-010000`. The daemon holds the run lock, and keeps the machine awake, while any run is in progress.
 - An `isolation` edit applies to the next run that starts with none in progress, logged once while it waits. Restart `watch` or rerun `schedule install` to apply it now.
 
@@ -127,7 +127,7 @@ A sleeping machine runs nothing. While a run is in progress the daemon keeps the
 - macOS: `pmset` keeps one repeating wake, so every window must start at the same time, and it replaces your other repeating power events, scheduled sleeps and shutdowns too: the question lists them and defaults to No unless all it replaces is a wake. Keep a laptop on the charger; lid closed on battery, it may not wake fully.
 - Linux: a root timer, `/etc/systemd/system/awaywork-wake.timer` with `WakeSystem=true`. A background job can block idle but not sleep, so turn off a desktop's own suspend timer on AC power.
 - sudo needs a password, so without a terminal install only says how. `schedule remove` leaves the wake and prints how to remove it.
-- Moving the windows' start needs `schedule install` again to move the wake; `config edit` and `doctor` warn until then.
+- Moving the windows' start needs `schedule install` again to move the wake; `doctor` warns until then.
 
 ## In GitHub Actions
 

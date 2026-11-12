@@ -124,7 +124,7 @@ export interface Choice<T extends string = string> {
   hint?: string
 }
 
-/** Questions `schedule install` and `config edit` ask in the terminal; tests answer them from a script. */
+/** Questions `schedule install` asks in the terminal; tests answer them from a script. */
 export interface Ask {
   select<T extends string>(message: string, choices: Choice<T>[], initial?: T): Promise<T>
   confirm(message: string, initial?: boolean): Promise<boolean>
@@ -374,6 +374,8 @@ export interface Step {
   with?: Record<string, Scalar>
   /** A `then` or loop step runs only when this holds, checked in its clone before the worker. */
   when?: Condition
+  /** The rule's own unit runs only when this holds on its provider's quota. */
+  quota?: Pick<Condition, 'runs_until_reset' | 'headroom'>
 }
 
 /** A `then` or loop step as written: the settings it leaves unset are the rule's. */
@@ -388,9 +390,9 @@ export interface Condition {
   command?: string
   /** `when` only: globs, holding when the chain's commits change a matching path, against where the chain started. */
   changed?: string[]
-  /** A rule's `when` only: holds when the long window resets within this many runs. */
+  /** A rule's `quota` only: holds when the long window resets within this many runs. */
   runs_until_reset?: number
-  /** A rule's `when` only: holds when at least this share of the long window is left under this run's ceiling. */
+  /** A rule's `quota` only: holds when at least this share of the long window is left under this run's ceiling. */
   headroom?: number
 }
 
@@ -409,6 +411,8 @@ export interface Rule extends Step {
   where: Where
   order?: Order
   units?: number
+  /** A `deliver: plan` rule's: at most this many tasks in its plan; unset, 8. */
+  plan_tasks?: number
   /** Steps run in turn after the rule's unit, in its clone; the chain publishes once, when it ends. */
   then?: (ThenStep | Loop)[]
   /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted: its result as a comment, then the move. */

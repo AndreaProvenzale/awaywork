@@ -64,7 +64,7 @@ describe('plan.yml', () => {
     )
     expect(problem(`tasks:\n${task('api')}notes: hi`)).toBe('Unrecognized key: "notes"')
     expect(problem(`tasks:\n${task('a')}${task('b')}${task('c')}${task('d')}`)).toBe(
-      '4 tasks, over limits.plan_tasks (3)',
+      '4 tasks, over plan_tasks (3)',
     )
     expect(problem(`tasks:\n${task('Api')}`)).toBe(
       `task id "Api" isn't lowercase letters, digits and dashes`,

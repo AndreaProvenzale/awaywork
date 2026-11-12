@@ -328,7 +328,7 @@ it('posts no refused plan, keeps the reason in the report and fires no on_done',
     ],
     [planner(''), 'plan.yml: missing or empty'],
     [planner('tasks: ['), 'plan.yml: not YAML: '],
-    [planner(many), 'plan.yml: 9 tasks, over limits.plan_tasks (8)'],
+    [planner(many), 'plan.yml: 9 tasks, over plan_tasks (8)'],
     [planner(tasks, 'x'.repeat(30_001)), 'the plan comment is over 30000 bytes'],
     // Valid YAML, but its line-start fence ends the comment's yaml block early.
     [

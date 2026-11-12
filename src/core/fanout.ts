@@ -10,6 +10,7 @@ import {
   holdingTask,
   isCheck,
   openedChain,
+  PLAN_TASKS,
   type PlanLimits,
   planState,
   planThread,
@@ -35,7 +36,7 @@ export const planLimits = (
   card: Item,
   catalog: SkillCatalog,
 ): PlanLimits => ({
-  maxTasks: config.limits.plan_tasks,
+  maxTasks: queue[ruleFor(queue, card)]?.plan_tasks ?? PLAN_TASKS,
   repo: cardRepo(card),
   repos: Object.keys(config.repos),
   ...taskSkills(queue, card.source, catalog),

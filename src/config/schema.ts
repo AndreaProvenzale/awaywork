@@ -51,6 +51,12 @@ export const removedKeys: Record<string, string> = {
     'user was removed: it goes on the forge, forge: { github: { user: octocat } }',
   'sources.bitbucket':
     'the bitbucket source was removed: write forge: bitbucket at the top level and list each repo as a key of repos',
+  'queue.when':
+    "when was renamed on a rule: write quota, e.g. quota: { headroom: 20% }; a step's when stays",
+  'limits.plan_tasks':
+    'plan_tasks was removed: it goes on the deliver: plan rule, e.g. { skill: plan, deliver: plan, plan_tasks: 8 }',
+  'providers.budget':
+    'budget was removed: the top-level budget applies to every provider; a different budget takes a second config',
 }
 
 /** A built-in skill whose merge awaywork makes itself, like `sync`. */
@@ -83,17 +89,7 @@ const budget = z
       .describe(caps)
       .default({ units: 4, turns: 60 }),
   })
-  .describe('Quota shares; any provider can override them')
-const budgetOverride = z
-  .strictObject({
-    reserve: percent.describe(reserve),
-    per_run: percent.describe(perRun),
-    session_max: percent.describe(sessionMax),
-    present_session_max: percent.describe(presentSessionMax),
-    fallback,
-  })
-  .partial()
-  .describe('Overrides the top-level budget for this provider')
+  .describe('Quota shares, for every provider')
 
 const model = z
   .string()
@@ -106,7 +102,6 @@ const models = z
 
 type ProviderConfig = {
   model?: string
-  budget?: z.output<typeof budgetOverride>
   config_dir?: string
 } & Record<string, unknown>
 
@@ -133,7 +128,6 @@ const providerOverride = z
         p.configSchema
           .extend({
             model: model.optional(),
-            budget: budgetOverride.optional(),
             ...(p.loginDir && { config_dir: loginFolder(p, p.loginDir).optional() }),
           })
           .optional()
@@ -141,7 +135,7 @@ const providerOverride = z
       ]),
     ),
   )
-  .catchall(commandProviderConfig.extend({ budget: budgetOverride.optional() }))
+  .catchall(commandProviderConfig)
   .refine((entry) => Object.keys(entry).length === 1, {
     message: 'each entry names exactly one provider',
     when: (payload) => payload.issues.length === 0,
@@ -363,7 +357,7 @@ const when = z
     {
       error: (issue) =>
         issue.code === 'unrecognized_keys' && issue.keys.some((key) => key in quotaKeys)
-          ? `${issue.keys.filter((key) => key in quotaKeys).join(', ')}: a quota check goes on the rule's when, which gates the whole chain`
+          ? `${issue.keys.filter((key) => key in quotaKeys).join(', ')}: a quota check goes on the rule's quota, which gates the whole chain`
           : undefined,
     },
   )
@@ -371,7 +365,7 @@ const when = z
     message: 'expected verdict, command or changed',
     when: (payload) => payload.issues.length === 0,
   })
-const ruleWhen = z.strictObject(quotaKeys).refine((c) => Object.keys(c).length > 0, {
+const ruleQuota = z.strictObject(quotaKeys).refine((c) => Object.keys(c).length > 0, {
   message: 'expected runs_until_reset or headroom',
   when: (payload) => payload.issues.length === 0,
 })
@@ -514,9 +508,14 @@ const rule: z.ZodType<Rule, unknown> = z
       .enum(['oldest', 'newest', 'updated'])
       .optional()
       .describe('Which item goes first: oldest, newest or last updated; default the source order'),
-    when: ruleWhen
+    quota: ruleQuota
       .optional()
       .describe("Run this rule's unit only when the quota holds; otherwise skip it"),
+    plan_tasks: z
+      .int()
+      .positive()
+      .optional()
+      .describe('deliver: plan: at most this many tasks in its plan; default 8'),
     units: units
       .optional()
       .describe('At most this many units per run from this rule; a chain counts once'),
@@ -712,11 +711,6 @@ export const configSchema = z
           .positive()
           .optional()
           .describe('Stop a worker after this many minutes'),
-        plan_tasks: z
-          .int()
-          .positive()
-          .default(8)
-          .describe('At most this many tasks in a deliver: plan plan'),
       })
       .prefault({})
       .describe('Unit counts and time per run, for every provider'),
@@ -950,11 +944,17 @@ export const configSchema = z
           path: [...at, 'then'],
           message: `${r.skill} is awaywork's own merge, not a model's step: it takes no then`,
         })
-      if (merges(r.skill) && r.when)
+      if (merges(r.skill) && r.quota)
         ctx.addIssue({
           code: 'custom',
-          path: [...at, 'when'],
-          message: `${r.skill} is awaywork's own merge, which only spends quota on a conflict: drop when`,
+          path: [...at, 'quota'],
+          message: `${r.skill} is awaywork's own merge, which only spends quota on a conflict: drop quota`,
+        })
+      if (r.plan_tasks !== undefined && r.deliver !== 'plan')
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'plan_tasks'],
+          message: 'plan_tasks needs deliver: plan: it caps the tasks of the plan the rule writes',
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
@@ -1291,17 +1291,7 @@ export const configSchema = z
     sources: withScope(cfg.sources, { repos: Object.keys(cfg.repos), host: cfg.forge.host }),
     providers: entries.flatMap((entry) =>
       Object.entries(entry as Record<string, ProviderConfig>).map(
-        ([id, { model, budget: override, config_dir, ...config }]) => ({
-          id,
-          config,
-          model,
-          config_dir,
-          budget: {
-            ...cfg.budget,
-            ...override,
-            fallback: { ...cfg.budget.fallback, ...override?.fallback },
-          },
-        }),
+        ([id, { model, config_dir, ...config }]) => ({ id, config, model, config_dir }),
       ),
     ),
   }))
@@ -1349,4 +1339,4 @@ function unknownKey(configured: Sources, scope: string[], key: string): string {
   const items = Object.keys(itemFields).join(', ')
   return `unknown key "${key}"; use ${items} or a source field (${known.join('; ')})`
 }
-export type Budget = Config['providers'][number]['budget']
+export type Budget = Config['budget']

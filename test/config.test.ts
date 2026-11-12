@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { configCommand, editUntilValid } from '../src/cli/config.js'
+import { configCommand } from '../src/cli/config.js'
 import { ConfigError, configPath, loadConfig, parseConfig } from '../src/config/load.js'
 import { unknownSkills } from '../src/config/skills.js'
 import type { Step } from '../src/core/types.js'
@@ -51,16 +51,19 @@ describe('config', () => {
     ).toThrow()
   })
 
-  it('applies budget defaults and per-provider overrides', () => {
-    const [claude, codex] = parseConfig(example).providers
-    expect(claude?.budget).toEqual({
+  it('applies budget defaults, and refuses a provider budget, which was removed', () => {
+    expect(parseConfig(example).budget).toEqual({
       reserve: 0.1,
       per_run: 0.15,
       session_max: 0.9,
       present_session_max: 0.4,
       fallback: { units: 4, turns: 60 },
     })
-    expect(codex?.budget.per_run).toBe(0.05)
+    expect(
+      problems(minimal.replace('[claude: {}]', '[claude, codex: { budget: { per_run: 5% } }]')),
+    ).toEqual([
+      'providers[1].codex: budget was removed: the top-level budget applies to every provider; a different budget takes a second config',
+    ])
     expect(parseConfig(minimal).budget).toEqual({
       reserve: 0.1,
       session_max: 0.9,
@@ -69,27 +72,11 @@ describe('config', () => {
     })
   })
 
-  it('defaults fallback turns, inheriting top-level caps an override leaves out', () => {
-    const fallbacks = (budget: string, override: string) =>
-      parseConfig(
-        `providers: [claude: { budget: { fallback: ${override} } }, codex]\nrepos: { acme/api: {} }\nsources: { github: {} }\nbudget: { fallback: ${budget} }\n`,
-      ).providers.map((p) => p.budget.fallback)
-    expect(fallbacks('{ units: 2 }', '{ units: 1 }')).toEqual([
-      { units: 1, turns: 60 },
-      { units: 2, turns: 60 },
-    ])
-    expect(fallbacks('{ units: 2, turns: 30 }', '{ units: 1 }')).toEqual([
-      { units: 1, turns: 30 },
-      { units: 2, turns: 30 },
-    ])
-    expect(fallbacks('{ units: 2, turns: 30 }', '{ units: 1, turns: 10 }')).toEqual([
-      { units: 1, turns: 10 },
-      { units: 2, turns: 30 },
-    ])
-    expect(fallbacks('{ units: 2, turns: 30 }', '{ turns: 10 }')).toEqual([
-      { units: 2, turns: 10 },
-      { units: 2, turns: 30 },
-    ])
+  it('defaults fallback turns', () => {
+    const fallback = (budget: string) =>
+      parseConfig(`${minimal}budget: { fallback: ${budget} }\n`).budget.fallback
+    expect(fallback('{ units: 2 }')).toEqual({ units: 2, turns: 60 })
+    expect(fallback('{ units: 2, turns: 30 }')).toEqual({ units: 2, turns: 30 })
   })
 
   it('takes state and closed on every source, and points a Linear state at status', () => {
@@ -371,11 +358,11 @@ describe('config', () => {
     ])
     expect(
       problems(
-        `${minimal}queue: [{ skill: sync, deliver: push, then: fix, when: { headroom: "20%" } }]`,
+        `${minimal}queue: [{ skill: sync, deliver: push, then: fix, quota: { headroom: "20%" } }]`,
       ),
     ).toEqual([
       "queue[0].then: sync is awaywork's own merge, not a model's step: it takes no then",
-      "queue[0].when: sync is awaywork's own merge, which only spends quota on a conflict: drop when",
+      "queue[0].quota: sync is awaywork's own merge, which only spends quota on a conflict: drop quota",
     ])
     expect(problems(`${minimal}queue: [{ skill: fix, deliver: push, then: sync }]`)).toEqual([
       "queue[0].then[0].skill: sync is awaywork's own merge, a rule of its own: not a then step",
@@ -431,7 +418,7 @@ describe('config', () => {
     expect(
       problems(`${minimal}queue:
   - skill: implement
-    when: { headroom: 20% }
+    quota: { headroom: 20% }
     then:
       - { skill: review, when: { verdict: approve } }
       - { loop: [fix], until: { verdict: approve }, max: 2 }
@@ -440,25 +427,28 @@ describe('config', () => {
     ).toEqual([])
   })
 
-  it('takes a quota when on a rule, not on a step', () => {
-    const cfg = parseConfig(`${minimal}queue:
-  - skill: implement
-    when: { runs_until_reset: 1, headroom: 20% }
-`)
-    expect(cfg.queue?.[0]).toMatchObject({ when: { runs_until_reset: 1, headroom: 0.2 } })
+  it('takes quota on a rule with either key or both, not on a step', () => {
+    const quota = (keys: string) =>
+      parseConfig(`${minimal}queue: [{ skill: implement, quota: ${keys} }]`).queue?.[0]?.quota
+    expect(quota('{ runs_until_reset: 1 }')).toEqual({ runs_until_reset: 1 })
+    expect(quota('{ headroom: 20% }')).toEqual({ headroom: 0.2 })
+    expect(quota('{ runs_until_reset: 1, headroom: 20% }')).toEqual({
+      runs_until_reset: 1,
+      headroom: 0.2,
+    })
     expect(
       problems(
         `${minimal}queue: [{ skill: implement, then: { skill: review, when: { headroom: 50% } } }]`,
       ),
     ).toEqual([
-      "queue[0].then.when: headroom: a quota check goes on the rule's when, which gates the whole chain",
+      "queue[0].then.when: headroom: a quota check goes on the rule's quota, which gates the whole chain",
     ])
     expect(
       problems(
         `${minimal}queue: [{ skill: implement, then: { skill: review, when: { headroom: 50%, nope: 1 } } }]`,
       ),
     ).toEqual([
-      "queue[0].then.when: headroom: a quota check goes on the rule's when, which gates the whole chain",
+      "queue[0].then.when: headroom: a quota check goes on the rule's quota, which gates the whole chain",
     ])
   })
 
@@ -480,11 +470,14 @@ describe('config', () => {
       ],
       until: { verdict: 'approve', command: 'pnpm test' },
     })
-    expect(problems(`${minimal}queue: [{ skill: implement, when: { verdict: approve } }]`)).toEqual(
-      ['queue[0].when: Unrecognized key: "verdict"'],
-    )
-    expect(problems(`${minimal}queue: [{ skill: implement, when: {} }]`)).toEqual([
-      'queue[0].when: expected runs_until_reset or headroom',
+    expect(
+      problems(`${minimal}queue: [{ skill: implement, quota: { verdict: approve } }]`),
+    ).toEqual(['queue[0].quota: Unrecognized key: "verdict"'])
+    expect(problems(`${minimal}queue: [{ skill: implement, quota: {} }]`)).toEqual([
+      'queue[0].quota: expected runs_until_reset or headroom',
+    ])
+    expect(problems(`${minimal}queue: [{ skill: implement, when: { headroom: 20% } }]`)).toEqual([
+      "queue[0]: when was renamed on a rule: write quota, e.g. quota: { headroom: 20% }; a step's when stays",
     ])
     expect(
       problems(`${minimal}queue: [{ skill: implement, then: { skill: review, when: {} } }]`),
@@ -661,13 +654,11 @@ describe('config', () => {
     ])
   })
 
-  it('takes bare provider names next to overrides', () => {
-    const cfg = parseConfig(
-      minimal.replace('[claude: {}]', '[claude, codex: { budget: { per_run: 5% } }]'),
-    )
-    expect(cfg.providers.map((p) => [p.id, p.budget.per_run])).toEqual([
+  it('takes bare provider names next to maps', () => {
+    const cfg = parseConfig(minimal.replace('[claude: {}]', '[claude, codex: { model: gpt-5 }]'))
+    expect(cfg.providers.map((p) => [p.id, p.model])).toEqual([
       ['claude', undefined],
-      ['codex', 0.05],
+      ['codex', 'gpt-5'],
     ])
   })
 
@@ -688,18 +679,27 @@ describe('config', () => {
 
   it('takes limits for every provider, not per provider', () => {
     const cfg = parseConfig(`${minimal}limits: { units: 6, units_per_repo: 2, unit_minutes: 90 }`)
-    expect(cfg.limits).toEqual({ units: 6, units_per_repo: 2, unit_minutes: 90, plan_tasks: 8 })
-    expect(parseConfig(minimal).limits).toEqual({ plan_tasks: 8 })
-    expect(parseConfig(`${minimal}limits: { plan_tasks: 3 }`).limits.plan_tasks).toBe(3)
-    expect(problems(`${minimal}limits: { plan_tasks: 0 }`)).toEqual([
-      expect.stringMatching(/^limits\.plan_tasks: /),
+    expect(cfg.limits).toEqual({ units: 6, units_per_repo: 2, unit_minutes: 90 })
+    expect(parseConfig(minimal).limits).toEqual({})
+    expect(problems(`${minimal}limits: { plan_tasks: 3 }`)).toEqual([
+      'limits: plan_tasks was removed: it goes on the deliver: plan rule, e.g. { skill: plan, deliver: plan, plan_tasks: 8 }',
     ])
     expect(problems(`${minimal}limits: { unit_minutes: 0 }`)).toEqual([
       expect.stringMatching(/^limits\.unit_minutes: /),
     ])
-    expect(
-      problems(minimal.replace('[claude: {}]', '[claude: { budget: { unit_minutes: 30 } }]')),
-    ).toEqual([expect.stringContaining('Unrecognized key: "unit_minutes"')])
+  })
+
+  it('takes plan_tasks on a deliver: plan rule only', () => {
+    const takes = '{ skill: implement, where: { planned: true } }'
+    const queue = (rule: string) => `${minimal}queue: [{ skill: plan, ${rule} }, ${takes}]`
+    expect(parseConfig(queue('deliver: plan, plan_tasks: 3')).queue?.[0]?.plan_tasks).toBe(3)
+    expect(parseConfig(queue('deliver: plan')).queue?.[0]?.plan_tasks).toBeUndefined()
+    expect(problems(queue('deliver: report, plan_tasks: 3'))).toEqual([
+      'queue[0].plan_tasks: plan_tasks needs deliver: plan: it caps the tasks of the plan the rule writes',
+    ])
+    expect(problems(queue('deliver: plan, plan_tasks: 0'))).toEqual([
+      expect.stringMatching(/^queue\[0\]\.plan_tasks: /),
+    ])
   })
 
   it('takes deliver: plan only where it can post and wait for your reply', () => {
@@ -944,29 +944,6 @@ repos: { acme/web: { instructions: mine.md } }
         'limits: Unrecognized key: "unitz"',
       ].toSorted(),
     ])
-  })
-
-  it('validates a draft of the role file merged with its base', async () => {
-    const dir = await files({ 'base.yml': base, 'dev.yml': 'extends: base.yml\n' })
-    const path = join(dir, 'dev.yml')
-    const draft = join(dir, 'dev.draft.yml')
-    const edits = [
-      'extends: base.yml\nlimits: { units: x }\n',
-      'extends: base.yml\nlimits: { units: 2 }\n',
-    ]
-    const seen: string[] = []
-    const outcome = await editUntilValid({
-      path,
-      original: 'extends: base.yml\n',
-      draft,
-      edit: () => writeFile(draft, edits.shift() ?? ''),
-      retry: async (e) => {
-        seen.push(e.path)
-        return true
-      },
-    })
-    expect([outcome, seen]).toEqual(['saved', [path]])
-    expect((await loadConfig(path)).limits).toMatchObject({ units: 2, unit_minutes: 30 })
   })
 })
 

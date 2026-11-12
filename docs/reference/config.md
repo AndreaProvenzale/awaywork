@@ -28,7 +28,7 @@ with:
 | `watch` | object | `{}` | awaywork watch, the daemon schedule install keeps running |
 | `limits` | object | `{}` | Unit counts and time per run, for every provider |
 | `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image |
-| `budget` | object | `{}` | Quota shares; any provider can override them |
+| `budget` | object | `{}` | Quota shares, for every provider |
 | `providers` (required) | ("claude" \| "codex" \| "cursor" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `forge` | "github" \| "bitbucket" \| object | `"github"` | Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } } |
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
@@ -69,11 +69,10 @@ Unit counts and time per run, for every provider.
 | `units` | integer |  | At most this many units per run |
 | `units_per_repo` | integer |  | At most this many units per run in one repo |
 | `unit_minutes` | integer |  | Stop a worker after this many minutes |
-| `plan_tasks` | integer | `8` | At most this many tasks in a deliver: plan plan |
 
 ## `budget`
 
-Quota shares; any provider can override them.
+Quota shares, for every provider.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -108,29 +107,7 @@ claude settings.
 |---|---|---|---|
 | `settings` | string |  | Settings file for every worker, relative to the config file; passed as --settings |
 | `model` | string |  | Model passed to the provider's binary; default the binary's |
-| `budget` | object |  | Overrides the top-level budget for this provider |
 | `config_dir` | string |  | Folder of the login it runs on, passed as CLAUDE_CONFIG_DIR, e.g. ~/.claude-work; default the environment's; CLAUDE_CODE_OAUTH_TOKEN wins when set; not with isolation: user or container |
-
-## `providers[].claude.budget`
-
-Overrides the top-level budget for this provider.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `reserve` | percent |  | Never go past 1 - reserve of any window |
-| `per_run` | percent |  | At most this share of the long window per run |
-| `session_max` | percent |  | Stop a worker past this share of the short window |
-| `present_session_max` | percent |  | Stop a worker past this share of the short window in a run started outside every window |
-| `fallback` | object |  | Caps when the provider's quota can't be read |
-
-## `providers[].claude.budget.fallback`
-
-Caps when the provider's quota can't be read.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `units` | integer |  | Units per run |
-| `turns` | integer |  | Turns per unit |
 
 ## `providers[].codex`
 
@@ -140,16 +117,7 @@ codex settings.
 |---|---|---|---|
 | `config` | map |  | Config values for every worker, e.g. { model_reasoning_effort: high }; passed as -c |
 | `model` | string |  | Model passed to the provider's binary; default the binary's |
-| `budget` | object |  | Overrides the top-level budget for this provider |
 | `config_dir` | string |  | Folder of the login it runs on, passed as CODEX_HOME, e.g. ~/.codex-work; default the environment's |
-
-## `providers[].codex.budget`
-
-Same keys as `providers[].claude.budget`.
-
-## `providers[].codex.budget.fallback`
-
-Same keys as `providers[].claude.budget.fallback`.
 
 ## `providers[].cursor`
 
@@ -158,17 +126,10 @@ cursor settings.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `model` | string |  | Model passed to the provider's binary; default the binary's |
-| `budget` | object |  | Overrides the top-level budget for this provider |
-
-## `providers[].cursor.budget`
-
-Same keys as `providers[].claude.budget`.
-
-## `providers[].cursor.budget.fallback`
-
-Same keys as `providers[].claude.budget.fallback`.
 
 ## `providers[].<key>`
+
+A custom provider: any agent CLI, run by a command.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -176,15 +137,6 @@ Same keys as `providers[].claude.budget.fallback`.
 | `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt, minutes? }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply |
 | `secrets` | string[] | `[]` | Env vars the command reads; withheld from other workers, listed in Actions |
 | `skills_dir` | string | `".agents/skills"` | Where the CLI finds skills in the clone |
-| `budget` | object |  | Overrides the top-level budget for this provider |
-
-## `providers[].<key>.budget`
-
-Same keys as `providers[].claude.budget`.
-
-## `providers[].<key>.budget.fallback`
-
-Same keys as `providers[].claude.budget.fallback`.
 
 ## `forge`
 
@@ -386,7 +338,8 @@ First matching rule wins; top = highest priority.
 | `thread` | string |  | Where its posts go and their replies are read: item (default), the item itself; github, an issue awaywork opens as the item's thread in its repo, assigned to you; or a custom source with thread: true, whose write opens one; for a tracker that can't take them; from then on all of the item's posts go there, its plan's tasks' too, and it closes once its source says the item is done |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
-| `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
+| `quota` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
+| `plan_tasks` | integer |  | deliver: plan: at most this many tasks in its plan; default 8 |
 | `units` | integer |  | At most this many units per run from this rule; a chain counts once |
 | `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; the chain publishes once, when it ends; a {loop} repeats its steps |
 | `on_done` | object |  | Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported |
@@ -440,7 +393,7 @@ Matches items whose text field contains a match, e.g. `{ matches: '^\[bug\]' }`.
 
 Same keys as `repos.<key>.gates.<key>`.
 
-## `queue[].when`
+## `queue[].quota`
 
 Run this rule's unit only when the quota holds; otherwise skip it.
 

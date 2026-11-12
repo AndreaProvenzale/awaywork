@@ -123,18 +123,20 @@ queue:
 - Every key must hold. `plan` shows each `when`; the report says which failed.
 - A passed-over step doesn't end a loop, unless its command didn't run (it wouldn't later either). A round with every step passed over ends it.
 
-A rule's `when` checks quota instead, and skips the whole chain:
+## `quota`
+
+A rule's `quota` checks quota, and skips the whole chain when it doesn't hold:
 
 ```yaml
 queue:
   - skill: implement
     where: { type: issue, label: awaywork }
-    when: { headroom: 20% }     # only on spare quota
+    quota: { headroom: 20% }    # only on spare quota
     then:
       - { loop: [review, fix], until: { verdict: approve }, max: 5 }
 ```
 
-`runs_until_reset` holds when at most that many window openings are left before the long window resets (`1` is the last window, or a manual run with one left); `headroom` when at least that share is left under this run's ceiling. Both read the quota the run last saw and fail without a reading; `plan` notes it. They're rule keys only, and a rule takes no `verdict`, `command` or `changed`.
+`runs_until_reset` holds when at most that many window openings are left before the long window resets (`1` is the last window, or a manual run with one left); `headroom` when at least that share is left under this run's ceiling. Both read the quota the run last saw and fail without a reading; `plan` notes it. They're rule keys only: a step's `when` takes neither, and a rule takes no `when`.
 
 ## `push`
 
@@ -188,7 +190,7 @@ Details:
 - Only that merge is pushed. If `setup` or `verify` amend it, commit on top or move the branch, nothing is, and the report says the head isn't awaywork's merge.
 - An up-to-date branch pushes nothing (`already up to date with <base>`), a finished attempt: the PR is unchanged until it or its base moves, and awaywork remembers the base head it tried, since a base push doesn't touch the PR's `updated`.
 - No review hold after a clean merge, so the next `sync` or a `fix` on the CI it started can take the PR at once.
-- A rule of its own: `deliver: push` required; a `then` or `when` on it, or `sync` as another rule's step, is a config error. Everything `push` checks holds, GitHub only.
+- A rule of its own: `deliver: push` required; a `then` or `quota` on it, or `sync` as another rule's step, is a config error. Everything `push` checks holds, GitHub only.
 
 ### Conflicts
 

@@ -258,6 +258,17 @@ describe('plan checks for tasks', () => {
     )
   })
 
+  it("caps a plan's tasks at its rule's plan_tasks, 8 when unset", () => {
+    const capped = configOf(queue.replace('deliver: plan', 'deliver: plan, plan_tasks: 1'))
+    const limitsOf = (cfg: typeof config) => plan([card([])], cfg).units[0]?.unit.planLimits
+    expect(limitsOf(config)?.maxTasks).toBe(8)
+    expect(limitsOf(capped)?.maxTasks).toBe(1)
+    expect(checkPlan(yaml, limitsOf(capped) ?? limits)).toEqual({
+      problem: '2 tasks, over plan_tasks (1)',
+    })
+    expect(checkPlan(yaml, limitsOf(config) ?? limits)).toHaveProperty('plan')
+  })
+
   it("puts the card's limits on its plan unit, every id whose PR closed unmerged retired", () => {
     const closed = card([], { api: pr('api', 'merged'), web: pr('web', 'closed', at(3)) })
     const [unit] = plan([closed]).units.map((u) => u.unit)

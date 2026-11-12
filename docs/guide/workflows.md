@@ -264,7 +264,7 @@ The second rule takes the [tasks](#tasks) once you approve. The plan rule's step
 
 ### `plan.yml`
 
-`tasks:` holds up to `limits.plan_tasks` tasks (8 by default), each with:
+`tasks:` holds up to the plan rule's `plan_tasks` tasks (8 by default), each with:
 
 - `id`: lowercase letters, digits and dashes;
 - `title`, and optionally a `description`;

@@ -43,6 +43,7 @@ import {
   contractText,
   elsewhere,
   latestResult,
+  PLAN_TASKS,
   planYaml,
 } from '../core/plan.js'
 import { readBackPosts } from '../core/posts.js'
@@ -514,7 +515,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     summary: string | undefined,
     notes: string[],
   ): Promise<PlanPost> => {
-    const limits = p.unit.planLimits ?? { maxTasks: input.config.limits.plan_tasks }
+    const limits = p.unit.planLimits ?? { maxTasks: PLAN_TASKS }
     const yaml = await readOutput(join(out, 'plan.yml'))
     const file = checkPlan(yaml, limits)
     if ('problem' in file) return { unposted: `plan.yml: ${file.problem}` }
@@ -1007,8 +1008,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const entry = input.config.providers.find((c) => c.id === id)
       const model = modelFor(unit.rule.model, id, retryOf ? 1 : 0) ?? entry?.model
       const starts = `${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`
-      // A unit its `when` may pass over says it starts only once that held.
-      const gated = !!unit.rule.when && !retryOf && !input.dryRun
+      // A unit its `when` or `quota` may pass over says it starts only once that held.
+      const gated = !!(unit.rule.when ?? unit.rule.quota) && !retryOf && !input.dryRun
       if (!gated) event(starts)
 
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
@@ -1107,7 +1108,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           await restoreGit(dir)
         }
         if (!reuse) await baseline(dir)
-        const { when } = unit.rule
+        const when = unit.rule.when ?? unit.rule.quota
         if (when && !retryOf) {
           const met = await factsFor(when, unit, dir, since, verdict, log, whenLog, { from })
           Object.assign(met.facts, quotaFacts(a))
@@ -1127,7 +1128,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             Object.assign(result, { status: 'skipped', reason, passedOver: true })
             event(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
-            // A rule's own `when` gates its whole chain.
+            // A rule's own `quota` gates its whole chain.
             if (p === first) ended = { reason, passedOver: true, when: true }
             // A refused check is refused every round: the loop would repeat without its step.
             else if (loop && p.loop && met.check?.refused) loop.ended = reason

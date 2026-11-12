@@ -83,7 +83,7 @@ Machine-readable docs:
 | `schedule install` | Installs a scheduled job, or writes a workflow with `--with github-actions`, or a container's files with `--with docker`. Ask first |
 | `init --yes` | Writes the config from detected defaults; `--force` replaces one |
 | `secret <NAME>` | Writes the env file from a hidden prompt or a pipe; prints no value. The user runs it, not you |
-| `init`, `config edit` | Interactive; need a terminal. `init` opens Claude Code on `/away` |
+| `init` | Interactive; needs a terminal. It opens Claude Code on `/away` |
 
 `awaywork <command> --help` and the [CLI reference](../reference/cli.md) list every option.
 

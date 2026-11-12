@@ -2,7 +2,6 @@ import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { editUntilValid } from '../src/cli/config.js'
 import { formatRules, rulesJson } from '../src/cli/format/rules.js'
 import { ejectSkill, listSkills, skillsJson } from '../src/cli/skills.js'
 import { loadConfig, parseConfig } from '../src/config/load.js'
@@ -111,55 +110,14 @@ describe('skills', () => {
   })
 })
 
-describe('config edit', () => {
-  it('saves only a valid draft, asking to edit again after a mistake', async () => {
-    const dir = await tmp()
-    const path = join(dir, 'config.yml')
-    const draft = join(dir, 'draft.yml')
-    const original = 'providers: [claude]\nrepos: { a/b: {} }\nsources: { github: {} }\n'
-    await writeFile(path, original)
-    const edits = [original.replace('claude', 'gemini'), original.replace('a/b: {}', 'c/d: {}')]
-    const problems: string[][] = []
-    const outcome = await editUntilValid({
-      path,
-      original,
-      draft,
-      edit: () => writeFile(draft, edits.shift() ?? ''),
-      retry: async (e) => {
-        problems.push(e.problems)
-        expect(await readFile(path, 'utf8')).toBe(original)
-        return true
-      },
-    })
-    expect(outcome).toBe('saved')
-    expect(problems).toEqual([['providers[0]: unknown provider "gemini"']])
-    expect(await readFile(path, 'utf8')).toContain('c/d: {}')
-  })
-
-  it('reports an untouched draft, and a discarded one leaves the config alone', async () => {
-    const dir = await tmp()
-    const path = join(dir, 'config.yml')
-    const original = 'providers: [claude]\nrepos: { a/b: {} }\nsources: { github: {} }\n'
-    await writeFile(path, original)
-    const run = (edit: () => Promise<void>) =>
-      editUntilValid({ path, original, draft: join(dir, 'd.yml'), edit, retry: async () => false })
-    expect(await run(async () => {})).toBe('unchanged')
-    expect(await run(() => writeFile(join(dir, 'd.yml'), 'providers: [gemini]'))).toBe('discarded')
-    expect(await readFile(path, 'utf8')).toBe(original)
-  })
-
-  it('saves a skill only the repo may have, and warns about it', async () => {
+describe('unknown skills', () => {
+  it('warns about a skill only the repo may have', async () => {
     const dir = await tmp()
     const path = join(dir, 'config.yml')
     const original = 'providers: [claude]\nrepos: { a/b: {} }\nsources: { github: {} }\n'
     await mkdir(join(dir, 'skills', 'mine'), { recursive: true })
     await writeFile(join(dir, 'skills', 'mine', 'SKILL.md'), '---\nname: mine\n---\n')
-    await writeFile(path, original)
-    const draft = join(dir, 'd.yml')
-    const edit = () => writeFile(draft, `${original}queue: [{ skill: mine, skills: [ours] }]\n`)
-    expect(await editUntilValid({ path, original, draft, edit, retry: async () => false })).toBe(
-      'saved',
-    )
+    await writeFile(path, `${original}queue: [{ skill: mine, skills: [ours] }]\n`)
     expect(await unknownSkillsWarning(await loadConfig(path), join(dir, 'skills'))).toBe(
       `queue[0]: unknown skill "ours" (not built in, not in ${join(dir, 'skills')}); fine only if every repo it runs in has it in .awaywork/skills, or as an extra in .claude/skills, .agents/skills or .cursor/skills; a run fails wherever it is missing`,
     )

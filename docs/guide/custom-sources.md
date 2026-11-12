@@ -283,7 +283,7 @@ queue:
   - skill: implement
     source: chores
     where: { chore: tests }
-    when: { headroom: 20% }   # only on spare quota
+    quota: { headroom: 20% }  # only on spare quota
 ```
 
 ```js
@@ -307,7 +307,7 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
 - **Attempts** skip a unit whose items haven't changed since a worker finished it ([how it works](./how-it-works.md)). `updated` is the week's Monday, so a chore runs at most weekly, and not while its last draft is open; print the day's date for daily.
 - **Weekdays** are the script's: print nothing on days off.
 - **A fixed time**, Mondays at 09:00, needs no script: that's a [routine](./configuration.md#routines), each occurrence a new item and branch, so every week opens its own PR.
-- **`when`** is rechecked at unit start: `plan` shows the gate and notes missing headroom, and the run skips the chore without it.
+- **`quota`** is rechecked at unit start: `plan` shows the gate and notes missing headroom, and the run skips the chore without it.
 - **No `link`**: a chore has no tracker page, so its drafts carry no link line.
 
 ## Recipe: Sentry errors

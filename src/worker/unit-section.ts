@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describeCondition } from '../core/condition.js'
 import type { LoopRound } from '../core/foreman.js'
 import { MAX_ATTEMPTS } from '../core/max-attempts.js'
-import { planContract, taskPrUrls } from '../core/plan.js'
+import { PLAN_TASKS, planContract, taskPrUrls } from '../core/plan.js'
 import type { Item, Unit } from '../core/types.js'
 import { outputFile, reportsOnly, WORK_DIR } from './work-dir.js'
 import type { Previous, WorkspaceInput } from './workspace.js'
@@ -28,7 +28,7 @@ export function unitSection(unit: Unit, items: string[], dir: string, w: Workspa
       : `commits pushed onto ${base}, the developer's own pull request. ${commit}, a summary for the developer.`,
     pending_review: `a review of ${base}. Write \`${output}\`, the review's body, and any line comments in \`${WORK_DIR}/out/review.json\`, and commit nothing: awaywork leaves them on the pull request as the developer's pending review, which only they see until they submit it.`,
     plan: `a plan. Write \`${output}\` and \`${WORK_DIR}/out/plan.yml\`, and commit nothing. ${planContract(
-      unit.planLimits ?? { maxTasks: w.config.limits.plan_tasks },
+      unit.planLimits ?? { maxTasks: PLAN_TASKS },
       taskPrUrls(card, (pr) => pr.state !== 'closed'),
     )}`,
   }[unit.deliver]

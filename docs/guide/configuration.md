@@ -8,7 +8,7 @@ One YAML file, `~/.config/awaywork/config.yml` by default; `--config <path>` or 
 
 Where to find what:
 
-- [Editing safely](#editing-safely): edit, validate, preview.
+- [Editing safely](#editing-safely): validate, preview.
 - [Stability](#stability): what stays valid across releases.
 - [A full example](#a-full-example): most keys in one file.
 - [A base config](#a-base-config): share settings with `extends`.
@@ -29,7 +29,6 @@ Gates, plans, threads and the store are in [Workflows](./workflows.md); multi-st
 ## Editing safely
 
 ```sh
-awaywork config edit    # opens $VISUAL/$EDITOR on a copy; saved only once valid
 awaywork doctor         # validate, including skill names
 awaywork plan           # see what the change does to the next run
 ```
@@ -57,10 +56,9 @@ limits:                         # per run, every provider; unset by default
   units: 8
   units_per_repo: 3
   unit_minutes: 90              # stop a worker after this many minutes
-  plan_tasks: 8                 # tasks in a deliver: plan plan; 8 by default
 keep_runs: 30d                  # default; older run dirs go when run or watch starts
 watch: { every: 5m, debug: false }  # defaults; how often run: soon rules poll, and true logs every run line in watch.log
-budget:                         # defaults; any provider can override
+budget:                         # defaults; for every provider
   reserve: 10%                  # never go past 1 - reserve of any window
   per_run: 15%                  # at most this share of the long window per run
   session_max: 90%              # stop a worker past this share of the short window
@@ -68,7 +66,7 @@ budget:                         # defaults; any provider can override
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
   - claude: { model: opus, settings: claude-worker.json }   # default: the binary's own model
-  - codex: { budget: { per_run: 5% }, config: { model_reasoning_effort: high } }
+  - codex: { config: { model_reasoning_effort: high } }
 repos:                          # the only repos awaywork works in
   acme/*:                       # a bare key lists them, no settings
   acme/api:
@@ -178,13 +176,14 @@ Details:
 - `windows: []` means none: the daemon idles, and the Actions workflow runs only when dispatched. Windows shouldn't overlap.
 - A run started outside every window stops workers at `present_session_max` (40%) instead of `session_max`, and skips providers whose quota it can't read.
 - `per_run` caps each run, and `runs_until_reset` counts window openings.
+- `budget` applies to every provider; a different budget takes a second config.
 - A [`then`](./chains.md#then) chain is one unit. Each of a plan's tasks is one, in its own [repo](./workflows.md#across-repos), so a cap can cut a card's [block](./workflows.md#the-feature-block); the next run carries on.
 - Only units whose first step got a provider count. Caps apply per `awaywork run`, like `fallback.units`, which every step draws on. A unit named with `--unit` goes past them.
-- A rule's own `units` caps that rule; `plan_tasks` (8) caps a [plan](./workflows.md#plans)'s tasks.
+- A rule's own `units` caps that rule; a `deliver: plan` rule's `plan_tasks` (8) caps its [plan](./workflows.md#plans)'s tasks.
 
 ## Providers
 
-A list, in routing order. A bare name uses the defaults; a map sets `model` (passed as is: `claude --model`, `codex exec -m`, `agent --model`) or overrides the budget:
+A list, in routing order. A bare name uses the defaults; a map sets `model` (passed as is: `claude --model`, `codex exec -m`, `agent --model`) and its own settings:
 
 ```yaml
 providers:
@@ -549,7 +548,8 @@ queue:
 | `skills`, `mcp`, `instructions`, `with` | Extra skills, [MCP servers](#mcp-servers), instruction files, [parameters](./skills.md#write-your-own) |
 | `deliver` | `draft_pr` (default), `pr`, [`push`](./chains.md#push), `report`, `pending_review` or [`plan`](./workflows.md#plans); see [Delivery](./how-it-works.md#delivery) |
 | `branch`, `order`, `units` | [Branch template](#branch-names), [item order](#order), units per run |
-| `then`, `when` | [More steps](./chains.md#then), [quota checks](./chains.md#when) |
+| `then`, `quota` | [More steps](./chains.md#then), [quota checks](./chains.md#quota) |
+| `plan_tasks` | On a `deliver: plan` rule, the most tasks its [plan](./workflows.md#plans) holds; 8 by default |
 | `on_done` | [Comment and move](#on-done) your items |
 | `wait`, `gates`, `post`, `thread` | Plan and report posts: [waiting](./workflows.md#posts-that-wait), [own gates](./workflows.md#gates-of-a-rule-s-own), [lean or full](./workflows.md#files-that-come-back), [where they go](./workflows.md#threads) |
 | `run` | `window` (default) or [`soon`](#run-soon) |
@@ -673,7 +673,7 @@ Units run in the source's order, newest first for GitHub, so with little quota t
 
 A step that fails on `sonnet` (a failed turn or the turn cap) runs once more, right away, on `opus`: in a one-step rule and in each step of a [chain](./chains.md#then), where a step can bring its own pair. Details:
 
-- The retry starts from the clone as the failed step found it, its commits, edits and `.away/out/` changes dropped (gitignored files stay), on the same provider, without rechecking [`when`](./chains.md#when).
+- The retry starts from the clone as the failed step found it, its commits, edits and `.away/out/` changes dropped (gitignored files stay), on the same provider, without rechecking [`when`](./chains.md#when) or [`quota`](./chains.md#quota).
 - Only a failure retries: not a quota stop, the time limit or Ctrl-C. No budget left, and the failure stands.
 - Both attempts show in the report and cost budget. For [giving up](./how-it-works.md#units) on an item the retry counts, unless a quota, session or window stop cut it short. `notify` hears only the retry.
 

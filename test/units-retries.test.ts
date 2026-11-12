@@ -279,7 +279,7 @@ it("retries a step without checking its rule's when again", async () => {
   // The failed attempt leaves 4.5% under the ceiling: the when wouldn't hold again.
   const { tried, report } = await retried(
     (_, model) => (model === 'sonnet' ? 'burn' : 'ok'),
-    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] }, when: { headroom: 10% } }',
+    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] }, quota: { headroom: 10% } }',
   )
   expect(tried).toEqual(['fix sonnet', 'fix opus'])
   expect(report.results.map((u) => u.status)).toEqual(['failed', 'done'])

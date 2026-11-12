@@ -119,7 +119,7 @@ sources: { github: {} }
 queue:
   - skill: fix
     where: { checks: failing }
-    when: { runs_until_reset: 1 }
+    quota: { runs_until_reset: 1 }
 `)
     const now = Date.UTC(2026, 0, 1, 1)
     const quota = {
@@ -128,7 +128,7 @@ queue:
       ],
     }
     const allowances = Object.fromEntries(
-      config.providers.map((p) => [p.id, allowance(p.budget, quota, now, config.windows)]),
+      config.providers.map((p) => [p.id, allowance(config.budget, quota, now, config.windows)]),
     )
     const plan = planRun({
       config,
