@@ -44,9 +44,9 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
   return out.join('\n')
 }
 
-/** A note when there is no queue, then each provider's window, ceiling and session. */
+/** A note when no queue leaves nothing to run, then each provider's window, ceiling and session. */
 export function providerLines(plan: RunPlan, style: Style = (_, text) => text): string[] {
-  const out = plan.queue.length === 0 ? [NO_QUEUE, ''] : []
+  const out = plan.queue.length === 0 && plan.units.length === 0 ? [NO_QUEUE, ''] : []
   out.push(style('bold', 'Providers'))
   if (plan.present !== undefined) out.push(style('dim', `  ${presenceLine(plan.present)}`))
   const allowances = Object.entries(plan.allowances)

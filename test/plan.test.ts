@@ -193,6 +193,12 @@ queue:
     expect(formatPlan(result).split('\n').slice(0, 3)).toEqual([line, '', 'Providers'])
     expect(why(result, 'acme/api#1')).toContain(line)
     expect(formatQueue(result.queue, items)).toEqual([line])
+    const oneOff = plan(yaml, items, { claude: week(0.1) }, {}, {}, now, {
+      named: 'acme/api#1',
+      skill: 'review',
+    })
+    expect(oneOff.units).toHaveLength(1)
+    expect(formatPlan(oneOff)).not.toContain(line)
   })
 
   it('names the failing comparison of the closest rule', () => {

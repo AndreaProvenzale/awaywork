@@ -75,7 +75,7 @@ Queue
   #4  fix        column=QA
 ```
 
-A planned item shows its unit, rule, skill, provider and branch instead. With no `queue` in your config, `plan` opens with `Nothing will run: the config has no queue; /away or awaywork init writes one`.
+A planned item shows its unit, rule, skill, provider and branch instead. With no `queue` in your config, `plan` says `Nothing will run: the config has no queue; /away or awaywork init writes one`.
 
 `awaywork plan --rules` shows what each rule takes now, without probing quota:
 
