@@ -358,7 +358,7 @@ it('posts no refused plan, keeps the reason in the report and fires no on_done',
 
 it('posts a plan whose task shows an indented yaml example', async () => {
   const example =
-    'tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      ```yaml\n      limits: { plan_tasks: 8 }\n      ```\n'
+    'tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      ```yaml\n      budget: { per_run: 8% }\n      ```\n'
   const { report, writes } = await finishedRun(planRule, [yours(1)], planner(example))
   expect(report.results[0]?.plan).toMatchObject({ tasks: ['cfg'], url: 'https://example.com/1' })
   expect(writes[0]).toEqual([

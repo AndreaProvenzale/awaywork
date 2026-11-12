@@ -1071,6 +1071,26 @@ describe('a card carrying a plan', () => {
     expect(ruleFor(q, moved(card([planned()])))).toBe(0)
   })
 
+  it("keeps an approved plan's tasks when the card moves to a plan rule with a lower plan_tasks", () => {
+    const caps =
+      configOf(`  - { skill: plan, deliver: plan, where: { label: small }, plan_tasks: 2 }
+  - { skill: plan, deliver: plan, where: { label: big }, plan_tasks: 5 }
+  - { skill: implement, where: { planned: true } }
+`)
+    const three = `${yaml}  - { id: docs, title: Document the export }\n`
+    const labelled = (label: string, taskPrs: Record<string, TaskPr> = {}): Item => {
+      const item = card([planned(three), yours(approveReply(''))], taskPrs)
+      return { ...item, fields: { ...item.fields, label: [label] } }
+    }
+    const ran = ['acme-api-1-api', 'acme-api-1-docs']
+    expect(units(plan([labelled('big')], caps)).map(([id]) => id)).toEqual(ran)
+    const moved = plan([labelled('building')], caps)
+    expect(skips(moved)).not.toContainEqual(expect.arrayContaining(['invalid_plan']))
+    expect(units(moved).map(([id]) => id)).toEqual(ran)
+    const replan = plan([labelled('building', { api: pr('api', 'closed', at(3)) })], caps)
+    expect(replan.units[0]?.unit.planLimits?.maxTasks).toBe(2)
+  })
+
   it('shows under plan --rules by the plan rule, marked when its where no longer holds it', () => {
     const cards = [moved(card([planned()])), card([])]
     expect(JSON.parse(rulesJson(sticky.queue ?? [], cards, false)).rules[0].taken).toEqual([
