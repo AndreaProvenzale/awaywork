@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa, execaSync } from 'execa'
@@ -8,15 +8,14 @@ const script = join(import.meta.dirname, '../plugin/skills/away/scripts/evidence
 
 const present = (shell: string) =>
   !execaSync('sh', ['-c', `command -v ${shell}`], { reject: false }).failed
-const shells = [['sh'], ['dash'], ['bash', '--posix'], ['ksh']].filter(([bin]) =>
-  present(bin as string),
-)
+const others = [['dash'], ['bash', '--posix'], ['ksh']].filter(([bin]) => present(bin as string))
 
 const left = {
   'a.png': 'png',
   'b.csv': 'a,b\n',
   'empty.png': '',
   'shots/c.png': 'png',
+  'shots/pr.md': 'body',
   'report.md': 'r',
 }
 
@@ -34,6 +33,8 @@ async function outDir(out: string, manifest: string | undefined) {
 const one = (lines: string) => `criteria:\n  - criterion: A\n${lines}\n`
 const line = (n: number, why: string) => `evidence.yml line ${n}: ${why}`
 const unread = 'not a criterion, files or gap line'
+const block = "a block of text isn't read: put the text on this line"
+const own = (name: string) => `criterion 1: ${name} is the step's own file, not proof`
 const notPlain = (name: string) => `criterion 1: ${name} isn't a plain path in .away/out/`
 
 const clear: Record<string, string> = {
@@ -45,6 +46,9 @@ const clear: Record<string, string> = {
   'entries at the margin':
     'criteria:\n- criterion: A\n  files: [a.png]\n- criterion: B\n  files: [b.csv]\n',
   'a criterion with a colon, a quote and a dollar': `criteria:\n  - criterion: It's "done": $(rm -rf .) \`id\` $HOME *\n    files: [a.png]\n`,
+  'text that starts with a block sign':
+    'criteria:\n  - criterion: >10 rows paginate\n    files: [a.png]\n    gap: |x| is not shown\n',
+  "a step file's name in a folder": one('    files: [shots/pr.md]'),
 }
 
 const fires: Record<string, [manifest: string | undefined, stdout: string]> = {
@@ -63,12 +67,20 @@ const fires: Record<string, [manifest: string | undefined, stdout: string]> = {
   'an empty block list': [one('    files:'), 'no file for criterion 1'],
   'files in a literal gap': [
     one('    files: []\n    gap: |\n      files: [a.png]'),
-    line(4, unread),
+    line(4, block),
   ],
-  'files in a folded gap': [one('    gap: >\n      files: [a.png]'), line(3, unread)],
+  'files in a folded gap': [one('    gap: >\n      files: [a.png]'), line(3, block)],
   'a criterion as a block': [
     'criteria:\n  - criterion: |\n      A\n    files: [a.png]\n',
-    line(2, unread),
+    line(2, block),
+  ],
+  'a block sign with a chomp, an indent and a comment': [
+    one('    files: [a.png]\n    gap: >-2 # folded'),
+    line(4, block),
+  ],
+  'a NUL byte': [
+    'criteria:\n  - criterion: A\n    files: [a.png]\n\0  - criterion: B\n\0    gap: not proven\n',
+    'evidence.yml holds a NUL byte',
   ],
   'a criterion on two lines': [
     `criteria:\n  - criterion: A\n      and B\n    files: [a.png]\n`,
@@ -131,13 +143,30 @@ const fires: Record<string, [manifest: string | undefined, stdout: string]> = {
     one('    files: [d/hosts]'),
     'criterion 1: d/hosts is a link, or in a linked folder',
   ],
-  'the manifest as proof': [
-    one('    files: [evidence.yml]'),
-    "criterion 1: evidence.yml is the step's own file, not proof",
-  ],
+  'the manifest as proof': [one('    files: [evidence.yml]'), own('evidence.yml')],
   'the report as proof, in capitals': [
     one('    files:\n      - Report.md\n      - summary.md'),
-    "criterion 1: Report.md is the step's own file, not proof\ncriterion 1: summary.md is the step's own file, not proof",
+    `${own('Report.md')}\n${own('summary.md')}`,
+  ],
+  'the PR body, the plan and what awaywork reads as proof': [
+    one(
+      '    files: [pr.md, plan.yml, Questions.md, status, verdict, review.json, push.md, diff.patch, check.log, verify.log, judge-shown.log]',
+    ),
+    [
+      'pr.md',
+      'plan.yml',
+      'Questions.md',
+      'status',
+      'verdict',
+      'review.json',
+      'push.md',
+      'diff.patch',
+      'check.log',
+      'verify.log',
+      'judge-shown.log',
+    ]
+      .map(own)
+      .join('\n'),
   ],
   'the report by a dotted path': [one('    files: [./report.md]'), notPlain('./report.md')],
   'the report by a doubled slash': [one('    files: [shots//c.png]'), notPlain('shots//c.png')],
@@ -175,19 +204,44 @@ const cases = [
   })),
 ].map((c, i) => ({ ...c, i }))
 
-// One process per shell runs every case, each leaving its output and exit code beside its out dir.
+// One process runs every case, each leaving its output and exit code beside its out dir.
 const all =
   'dir=$1; shift; for out in "$dir"/*/; do AWAYWORK_OUT_DIR=${out%/} "$@" >"${out%/}.txt" 2>&1; echo $? >>"${out%/}.txt"; done'
 
-describe.each(shells)('evidence-gate.sh under %s', (...shell) => {
-  let dir = ''
+async function run(shell: string[]): Promise<Record<string, string>> {
+  const dir = await mkdtemp(join(tmpdir(), 'awaywork-evidence-'))
+  for (const { i, manifest } of cases) await outDir(join(dir, String(i)), manifest)
+  await execa('sh', ['-c', all, 'sh', dir, ...shell, script])
+  const said = await Promise.all(cases.map(({ i }) => readFile(join(dir, `${i}.txt`), 'utf8')))
+  return Object.fromEntries(cases.map(({ name, i }) => [name, said[i] ?? '']))
+}
+
+describe('evidence-gate.sh', () => {
+  let said: Record<string, string> = {}
   beforeAll(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'awaywork-evidence-'))
-    for (const { i, manifest } of cases) await outDir(join(dir, String(i)), manifest)
-    await execa('sh', ['-c', all, 'sh', dir, ...(shell as string[]), script])
+    said = await run(['sh'])
   })
 
-  it.each(cases)('$name', async ({ i, result }) => {
-    expect(await readFile(join(dir, `${i}.txt`), 'utf8')).toBe(result)
+  it.each(cases)('$name', ({ name, result }) => {
+    expect(said[name]).toBe(result)
+  })
+
+  it.each(others)('says the same under %s', async (...shell) => {
+    expect(await run(shell as string[])).toEqual(
+      Object.fromEntries(cases.map(({ name, result }) => [name, result])),
+    )
+  })
+
+  it('fires when awk stops before the end', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-evidence-'))
+    await outDir(join(dir, 'out'), one('    files: [a.png]'))
+    await mkdir(join(dir, 'bin'))
+    await writeFile(join(dir, 'bin/awk'), "#!/bin/sh\nprintf 'F\\t1\\ta.png\\n'\nexit 2\n")
+    await chmod(join(dir, 'bin/awk'), 0o755)
+    const { stdout, exitCode } = await execa('sh', [script], {
+      env: { AWAYWORK_OUT_DIR: join(dir, 'out'), PATH: `${join(dir, 'bin')}:${process.env.PATH}` },
+      reject: false,
+    })
+    expect([stdout, exitCode]).toEqual(["evidence.yml wasn't read to its end", 1])
   })
 })

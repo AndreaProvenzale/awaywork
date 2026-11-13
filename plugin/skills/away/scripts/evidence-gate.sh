@@ -5,8 +5,13 @@ out=${AWAYWORK_OUT_DIR:?not run as a gate}
 manifest=$out/evidence.yml
 [ -f "$manifest" ] && [ ! -L "$manifest" ] || { echo "no evidence.yml"; exit 1; }
 
-# "F<tab><n><tab><file>" per file to look for, "P<tab><problem>" per problem; it stops at the first line it can't read.
+# Some awks end a line at a NUL and would skip what follows it.
+[ $(wc -c <"$manifest") -eq $(LC_ALL=C tr -d '\000' <"$manifest" | wc -c) ] ||
+  { echo "evidence.yml holds a NUL byte"; exit 1; }
+
+# "F<tab><n><tab><file>" per file to look for, "P<tab><problem>" per problem, "E" at its end; it stops at the first line it can't read.
 found=$(LC_ALL=C awk '
+  BEGIN { own = " evidence.yml report.md plan.yml status verdict questions.md summary.md pr.md push.md review.json diff.patch check.log verify.log " }
   function bad(why) { print "P\tevidence.yml line " NR ": " why; failed = 1; exit }
   function unquote(s) {
     gsub(/^[ \t]+|[ \t]+$/, "", s)
@@ -19,13 +24,17 @@ found=$(LC_ALL=C awk '
     for (i = 1; i <= count; i++) if (parts[i] == ".") return 0
     return 1
   }
+  function text(s) {
+    sub(/^ +/, "", s)
+    if (s ~ /^[|>][-+0-9]*([ \t]+#.*)?[ \t]*$/) bad("a block of text isn\047t read: put the text on this line")
+  }
   function file(s,   low) {
     s = unquote(s)
     if (s == "") bad("an empty name in files")
     files++
     low = tolower(s)
     if (!plain(s)) print "P\tcriterion " n ": " s " isn\047t a plain path in .away/out/"
-    else if (low == "evidence.yml" || low == "report.md" || low == "summary.md")
+    else if (index(own, " " low " ") || low ~ /^judge-.*\.log$/)
       print "P\tcriterion " n ": " s " is the step\047s own file, not proof"
     else print "F\t" n "\t" s
   }
@@ -34,10 +43,11 @@ found=$(LC_ALL=C awk '
   !started { if ($0 !~ /^criteria:[ \t]*$/) bad("expected \"criteria:\""); started = 1; next }
   {
     match($0, /^ */); indent = RLENGTH; rest = substr($0, indent + 1)
-    if (rest ~ /^- criterion: +[^ |>]/ && (!n || indent == depth)) {
-      close_criterion(); depth = indent; n++; files = has_files = has_gap = block = 0; next
+    if (rest ~ /^- criterion: +[^ ]/ && (!n || indent == depth)) {
+      text(substr(rest, 14)); close_criterion(); depth = indent; n++; files = has_files = has_gap = block = 0; next
     }
-    if (n && indent == depth + 2 && rest ~ /^gap: +[^ |>]/) {
+    if (n && indent == depth + 2 && rest ~ /^gap: +[^ ]/) {
+      text(substr(rest, 6))
       if (has_gap++) bad("criterion " n " already has a gap")
       block = 0; next
     }
@@ -55,9 +65,11 @@ found=$(LC_ALL=C awk '
     if (block && indent >= depth + 2 && rest ~ /^- +[^ ]/) { sub(/^- +/, "", rest); file(rest); next }
     bad("not a criterion, files or gap line")
   }
-  END { if (!failed) close_criterion() }
+  END { if (!failed) close_criterion(); print "E" }
 ' "$manifest")
-[ -n "$found" ] || { echo "evidence.yml lists no criterion"; exit 1; }
+case $found in (E | *"
+E") ;; (*) echo "evidence.yml wasn't read to its end"; exit 1 ;; esac
+[ "$found" != E ] || { echo "evidence.yml lists no criterion"; exit 1; }
 
 # A link at $1 under the out dir, or a linked folder above it.
 linked() {
@@ -70,7 +82,7 @@ linked() {
 
 tab=$(printf '\t')
 problems=$(printf '%s\n' "$found" | while IFS=$tab read -r kind rest; do
-  [ "$kind" = F ] || { printf '%s\n' "$rest"; continue; }
+  case $kind in (E) continue ;; (P) printf '%s\n' "$rest"; continue ;; esac
   n=${rest%%"$tab"*} file=${rest#*"$tab"}
   if linked "$file"; then printf '%s\n' "criterion $n: $file is a link, or in a linked folder"
   elif [ ! -f "$out/$file" ] || [ ! -s "$out/$file" ]; then printf '%s\n' "criterion $n: $file is missing or empty"

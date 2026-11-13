@@ -919,7 +919,16 @@ The unit proves work another step did. The card is in its context: its acceptanc
 1. List the criteria, one line each, in the card's words.
 2. The change runs at `https://<branch>.preview.acme.dev`, `<branch>` being the branch yours was cut from, each `/` a `-`. Open no other host.
 3. For each criterion, run `pnpm smoke <url> <flow>` with the flow in `smoke/` that covers it, and copy the screenshots that show it from `smoke/out/` to `.away/out/`.
-4. Write `.away/out/evidence.yml`, one entry per criterion, in these lines and no others: `- criterion: <text>` on one line, then `files: [<name>, <name>]` on one line, the names plain paths under `.away/out/` (letters, digits, `.`, `_`, `-`, `/`), never `report.md` or the manifest.
+4. Write `.away/out/evidence.yml`: `criteria:` alone on the first line, then one entry per criterion, in these lines and no others, each text on its one line:
+
+       criteria:
+         - criterion: A month with no invoices shows "Nothing to export"
+           files: [empty-month.png]
+         - criterion: The CSV's total matches the invoice list's
+           files: []
+           gap: the preview has no seeded invoices
+
+   The names are plain paths under `.away/out/` (ASCII letters, digits, `.`, `_`, `-`, `/`), never the step's own files, `report.md` and the manifest among them.
 5. In `report.md`, per criterion: the command you ran, what it showed, and the file. A criterion you couldn't prove gets `files: []`, a one-line `gap`, and why.
 
 Change no code. A criterion that fails is a finding: report it, with the file that shows it failing.
@@ -969,7 +978,8 @@ The script gate is [`evidence-gate.sh`](https://github.com/AndreaProvenzale/away
 - It fires unless every criterion names at least one file that is in `.away/out/`, not empty, not a link nor in a linked folder. A `gap` line excuses nothing.
 - It sees that the files exist, not what they show, and runs nothing the manifest says.
 - It reads the manifest as plain lines, not as YAML: `criteria:`, then per entry `- criterion: <text>`, `files` as a list on one line or a name per line, and `gap: <text>`, each on one line. Any other line fires it with the line's number, a `|` block, a list carried onto the next line or a quoted key included, so nothing it can't read passes.
-- A name is a path of letters, digits, `.`, `_` and `-`, with `/` between folders. `evidence.yml`, `report.md` and `summary.md` aren't proof.
+- A name is a path of ASCII letters, digits, `.`, `_` and `-`, with `/` between folders.
+- The step's own files aren't proof: `evidence.yml`, `report.md`, `summary.md`, `pr.md`, `push.md`, `questions.md`, `plan.yml`, `review.json`, `status`, `verdict`, `diff.patch`, `check.log`, `verify.log` and any `judge-*.log`, at the top of `.away/out/`.
 
 On the manifest above, with the first two criteria's files in place:
 
@@ -983,7 +993,7 @@ And with its `gap` written as a block:
 
 ```text
 $ AWAYWORK_OUT_DIR=out sh scripts/evidence-gate.sh; echo $?
-evidence.yml line 8: not a criterion, files or gap line
+evidence.yml line 8: a block of text isn't read: put the text on this line
 1
 ```
 
