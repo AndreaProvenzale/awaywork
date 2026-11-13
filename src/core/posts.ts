@@ -9,6 +9,7 @@ import {
   postState,
   resultOf,
   resultSkill,
+  resultStatus,
 } from './comments.js'
 import { footerPins, type Pin } from './footer.js'
 import { planThread } from './plan.js'
@@ -50,6 +51,25 @@ export const postAnswer = ({ post, state, answer }: Post): 'waiting' | 'feedback
         ? 'approved'
         : 'feedback'
 
+/**
+ * Where each task's newest `done` result on the card stands since its plan's approval, a re-plan's leaving older results behind:
+ * `approved` is done, a plain result too; one a gate fired on is `waiting` for your answer, or runs again on your `feedback`.
+ */
+export function taskResults(
+  item: Pick<Item, 'comments'>,
+): Record<string, ReturnType<typeof postAnswer> | undefined> {
+  const answer = planThread(item)?.answer
+  const from = answer ? item.comments.indexOf(answer) + 1 : item.comments.length
+  const results: ReturnType<typeof taskResults> = {}
+  item.comments.forEach((c, at) => {
+    const task = at >= from && commentKind(c) === 'result' ? commentTask(c) : undefined
+    if (!task) return
+    const post = postAt(item, at)
+    results[task] = resultStatus(c) !== 'done' ? undefined : post ? postAnswer(post) : 'approved'
+  })
+  return results
+}
+
 /** The skill of the newest result awaywork posted on the item that you approved or that went ahead: the item's `approved`. */
 export function approvedSkill(item: Pick<Item, 'comments'>): string | undefined {
   for (let at = item.comments.length - 1; at >= 0; at--) {
@@ -79,17 +99,21 @@ export function heldMove(item: Pick<Item, 'comments' | 'status' | 'labels'>): st
   return move && item.status === saw && !item.labels.includes(move) ? move : undefined
 }
 
-/** Awaywork's newest post on the item that waits or waited for your decision: a plan, or a result that says so. */
+/** Awaywork's newest post on the item that waits or waited for your decision: a plan, or a result that says so; with `task`, that task's result on its card. */
 export function decisionPost(
   item: Pick<Item, 'comments'>,
+  task?: string,
 ): { what: string; post: Comment; answer?: Comment; went?: true } | undefined {
-  const plan = planThread(item)
-  const at = item.comments.findLastIndex((c) => !!resultSkill(c) && !!postState(c))
+  const plan = task ? undefined : planThread(item)
+  const at = item.comments.findLastIndex(
+    (c) => commentKind(c) === 'result' && !!postState(c) && (!task || commentTask(c) === task),
+  )
   const report = postAt(item, at)
   const planAt = plan ? item.comments.indexOf(plan.plan) : -1
   if (plan && planAt > at) return { what: 'plan', ...plan, post: plan.plan }
   if (!report) return undefined
-  const what = `${resultSkill(report.post)}'s result`
+  const of = commentTask(report.post)
+  const what = of ? `task ${of}'s result` : `${resultSkill(report.post)}'s result`
   return { what, ...report, ...('went' in report.state && { went: true as const }) }
 }
 

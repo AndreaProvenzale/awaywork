@@ -127,4 +127,27 @@ describe('approve', () => {
     ).rejects.toThrow('the plan on github:acme/api#5 has no task nope')
     expect(writes).toEqual([])
   })
+
+  it("replies approve on the card for a task's result that waits on a fired gate, by the card's key or the task's", async () => {
+    const at = (n: number) => `2026-01-0${n}T00:00:00Z`
+    const yes = { author: 'me', body: 'approve', at: at(2), mine: true as const }
+    const waits = {
+      author: 'me',
+      body: markComment(resultComment('Two shots.', 'done', 'qa', 'api', 0, true), { waits: true }),
+      at: at(3),
+      mine: true as const,
+    }
+    for (const key of ['github:acme/api#5', 'github:acme/api#5/api']) {
+      const { sources, writes } = github([card(yes, waits)])
+      expect(await approveItem(key, config, '', { sources, ctx })).toBe(
+        "task api's result approved: replied approve on https://example.com/1#issuecomment-1",
+      )
+      expect(writes).toEqual([['acme/api#5', { op: 'comment', body: 'approve\n\n— awaywork' }]])
+    }
+    const answered = github([card(yes, waits, { ...yes, body: 'Shoot the third too.', at: at(4) })])
+    await expect(
+      approveItem('github:acme/api#5/api', config, '', { sources: answered.sources, ctx }),
+    ).rejects.toThrow(/^task api's result on https:\/\/example.com\/1 was already answered by me/)
+    expect(answered.writes).toEqual([])
+  })
 })

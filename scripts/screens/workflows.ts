@@ -351,6 +351,12 @@ const postWaits = () =>
     { waits: true, move: 'Ready for design', saw: 'Inbox' },
   )
 
+function taskGate(): string {
+  const card = gatesSection(['proof'], [{ name: 'proof', line: 'no file for criterion 3' }])
+  const text = `${card}\n\nTwo of three criteria recorded against the preview.`
+  return markComment(resultComment(text, 'done', 'qa-evidence', 'qa', 0, true), { waits: true })
+}
+
 function thread(): string {
   const named = {
     source: 'tracker',
@@ -420,6 +426,7 @@ export default {
   'workflows-stacked': stacked(),
   'workflows-across-repos': acrossRepos(),
   'workflows-check-wait': waitingOnCheck(),
+  'workflows-task-gate': taskGate(),
   'workflows-post-waits': postWaits(),
   'workflows-thread': thread(),
   'workflows-lean-post': leanPost(),

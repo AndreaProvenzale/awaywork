@@ -61,14 +61,17 @@ export async function approveItem(
   const task = card && key.slice(`${id}:${card.key}/`.length)
   if (card && !cardTasks(card).some((t) => t.id === task))
     throw new Error(`the plan on ${id}:${card.key} has no task ${task}`)
-  if (card)
+  // A task's result waits only when a gate of its rule fired, on its card.
+  const gated = card && task ? decisionPost(card, task) : undefined
+  if (card && !gated)
     throw new Error(
       `${key} is a task of the plan on ${id}:${card.key}: a task takes no approval of its own, approving the plan on the card covers it`,
     )
-  const post = item && decisionPost(item)
-  if (!item || !post) throw new Error(`nothing on ${key} waits for your approval`)
+  const target = item ?? (card || undefined)
+  const post = gated ?? (target && decisionPost(target))
+  if (!target || !post) throw new Error(`nothing on ${key} waits for your approval`)
   const what = post.what === 'plan' ? 'the plan' : post.what
-  const on = item.thread?.url ?? item.url
+  const on = target.thread?.url ?? target.url
   if (post.went) throw new Error(`${what} on ${on} went ahead: nothing waits for your approval`)
   if (post.answer)
     throw new Error(
@@ -76,6 +79,6 @@ export async function approveItem(
     )
   const write = { op: 'comment', body: approveReply(notes) } as const
   const threads = { forge, sources: config.sources }
-  const { url = item.url } = await writeItem(source, cfg, item, write, ctx, undefined, threads)
+  const { url = target.url } = await writeItem(source, cfg, target, write, ctx, undefined, threads)
   return `${post.what} approved: replied approve${notes.trim() ? ', with your notes,' : ''} on ${url}`
 }

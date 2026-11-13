@@ -109,7 +109,7 @@ A skipped entry is `{ item, kind, reason }`, plus `url` when it waits on an away
 | `unlisted_repo` | no | the item's repo is not in `repos` |
 | `approved` | no | a report rule is done with the item: you approved its result, or it went ahead |
 | `fanned_out` | no | a card whose plan became tasks |
-| `waiting_for_task` | no | a task waiting for another's PR to merge, or to open, or for a check on it to pass |
+| `waiting_for_task` | no | a task waiting for another's PR to merge, or to open, for a check on it to pass, or for your approval of another task's result |
 | `task_merged`, `task_done` | no | a task whose PR merged, or that reports and whose `done` result is on its card |
 | `continues_later` | no | a `continue` a soon run leaves to the next window run |
 | `running` | no | another of the daemon's runs is working on it |

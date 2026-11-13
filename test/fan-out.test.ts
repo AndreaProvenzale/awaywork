@@ -17,6 +17,7 @@ import {
   commentKind,
   commentMarkdown,
   markComment,
+  type PostState,
   planComment,
   questionsComment,
   resultComment,
@@ -26,14 +27,8 @@ import { NOT_YOURS } from '../src/core/continue.js'
 import { taskItem, taskMarkdown, taskPr } from '../src/core/fanout.js'
 import { footer } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
-import {
-  checkPlan,
-  doneTasks,
-  planContract,
-  planState,
-  planThread,
-  taskPrUrls,
-} from '../src/core/plan.js'
+import { checkPlan, planContract, planState, planThread, taskPrUrls } from '../src/core/plan.js'
+import { heldMove, taskResults } from '../src/core/posts.js'
 import { rank, ruleFor } from '../src/core/queue.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, TaskPr, Unit, Write } from '../src/core/types.js'
@@ -354,7 +349,7 @@ describe('a plan that went ahead', () => {
     expect(units(plan([went()], wentQueue))).toEqual([['acme-api-1-api', 'away/acme-api-1-api']])
     expect(planThread(went())?.went).toBe(true)
     const done = { ...posted(resultComment('Done.', 'done', 'implement', 'api'), 3) }
-    expect(doneTasks({ comments: [...went().comments, done] })).toEqual(['api'])
+    expect(taskResults({ comments: [...went().comments, done] })).toEqual({ api: 'approved' })
   })
 
   it('plans again once a task PR closed, though the card is unchanged, and the re-plan waits', () => {
@@ -499,6 +494,63 @@ describe('tasks as items', () => {
       'fanned_out',
       'fanned out: api PR open, web waits for api',
     ])
+  })
+
+  it("holds every task while a gate fired on a report task's result, until your first reply: approve makes it done, anything else runs it again", () => {
+    const gates = "gates: { proof: { command: 'scripts/proof.sh' } }"
+    const qaRule = configOf(
+      `${queue}  - { skill: qa, where: { planned: true }, deliver: report, ${gates} }\n`,
+    )
+    const qaPlan = `tasks:\n  - { id: api, title: A }\n  - { id: qa, title: Q, skill: qa }\n`
+    const result = (n: number, post?: PostState) => ({
+      ...posted('', n),
+      body: markComment(
+        resultComment('Two shots.', 'done', 'qa', 'qa', 0, !!post && 'waits' in post),
+        post,
+      ),
+    })
+    const fanned = (...more: Item['comments']) =>
+      card([planned(qaPlan), yours(approveReply('')), ...more], { api: pr('api', 'open') })
+    const fresh = plan([fanned()], qaRule).units.find((u) => u.unit.id === 'acme-api-1-qa')
+    expect(fresh?.unit).toMatchObject({ deliver: 'report', waits: false })
+    expect(Object.keys(fresh?.unit.gates ?? {})).toEqual(['proof'])
+    const waits = result(3, { waits: true })
+    const held = plan([fanned(waits, theirs('Looks thin.', 4))], qaRule)
+    expect(held.units).toEqual([])
+    expect(skips(held)).toEqual([
+      ['acme/api#1', 'fanned_out', 'fanned out: api waits for qa, qa waits for your approval'],
+      [
+        'acme/api#1/api',
+        'waiting_for_task',
+        "waiting for your approval of task qa's result on https://example.com/1",
+      ],
+      [
+        'acme/api#1/qa',
+        'waiting_for_approval',
+        "waiting for your approval of task qa's result on https://example.com/1",
+      ],
+    ])
+    expect(needsYou.waiting_for_approval).toBe(true)
+    const moves = result(3, { waits: true, move: 'QA', saw: 'open' })
+    expect(heldMove(fanned(moves, yours('approve', 4)))).toBe('QA')
+    expect(heldMove(fanned(moves, yours('Not yet.', 4)))).toBeUndefined()
+    const accepted = plan([fanned(waits, yours('approve\nThe third screen is gone.', 4))], qaRule)
+    expect(skips(accepted)).toContainEqual([
+      'acme/api#1/qa',
+      'task_done',
+      'done: its result is on https://example.com/1',
+    ])
+    expect(skips(accepted)[0]?.[2]).toBe('fanned out: api PR open, qa done')
+    const again = plan([fanned(waits, yours('Shoot the third screen too.', 4))], qaRule)
+    expect(again.units.map((u) => u.unit.id)).toContain('acme-api-1-qa')
+    expect(skips(again)[0]?.[2]).toBe('fanned out: api PR open, qa no result yet')
+    const feedback = [waits, yours('Shoot the third screen too.', 4)]
+    expect(taskResults(fanned(...feedback, result(5, { went: true, gates: ['proof'] })))).toEqual({
+      qa: 'approved',
+    })
+    expect(taskResults(fanned(...feedback, result(5, { waits: true })))).toEqual({ qa: 'waiting' })
+    const goesOn = posted(resultComment('Half.', 'continue', 'qa', 'qa', 1), 5)
+    expect(taskResults(fanned(...feedback, goesOn))).toEqual({ qa: undefined })
   })
 
   it('runs nothing for a card no longer yours or whose task PRs went unread, and fans out on Bitbucket', () => {
@@ -1236,4 +1288,72 @@ it("posts a task's questions on its card, headed with the task, and holds the fe
     ['acme/api#1/api', 'waiting_for_answer'],
     ['acme/api#1/web', 'waiting_for_answer'],
   ])
+})
+
+it("runs a report task's own gates on what it left: one that fires posts its result on the card to wait, one that holds posts it done", async () => {
+  const gated = (exit: number) =>
+    configOf(
+      `${queue}  - { skill: review, where: { planned: true }, deliver: report, gates: { proof: { command: 'echo no shot of step 3; exit ${exit}' } } }\n`,
+    )
+  const qaPlan = 'tasks:\n  - { id: qa, title: QA evidence, skill: review }\n'
+  const fanned = card([planned(qaPlan), yours(approveReply(''))])
+  const reporter: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      await writeFile(join(job.dir, '.away/out/report.md'), 'Two shots.')
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const run = async (cfg: ReturnType<typeof configOf>) => {
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-fanout-'))
+    const { forge } = await originForge(root)
+    const writes: [string, Write][] = []
+    const source = {
+      ...fakeSource(),
+      write: async (_cfg: unknown, item: Item, w: Write) => {
+        writes.push([item.key, w])
+        return {}
+      },
+    } as Source
+    const report = await runUnits({
+      config: cfg,
+      configDir: root,
+      plan: plan([fanned], cfg),
+      runId: 'r1',
+      runDir: join(root, 'run'),
+      dryRun: false,
+      providers: { claude: reporter },
+      sources: { github: source },
+      forge,
+      ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+      watch: () => ({ stop: async () => {} }),
+      shortage: async () => undefined,
+      skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+    })
+    return { report, writes }
+  }
+  const fired = await run(gated(1))
+  const text = 'Two shots.'
+  const decision = `## Needs a decision\n\n### Gates (from scripts)\n\n- proof: no shot of step 3\n\n---\n\n${text}`
+  const waits = markComment(resultComment(decision, 'done', 'review', 'qa', 0, true), {
+    waits: true,
+  })
+  expect(fired.writes).toEqual([['acme/api#1', { op: 'comment', body: waits }]])
+  expect(fired.report.results[0]?.result?.[0]?.post).toEqual({ waits: true })
+  expect(waits).toMatch(
+    /^Result of task qa\n\n## Needs a decision[\s\S]*Status: done\n\nTo approve, reply/,
+  )
+  const held = card([...fanned.comments, { author: 'me', body: waits, at: at(3), mine: true }])
+  expect(skips(plan([held], gated(1))).map(([key, kind]) => [key, kind])).toEqual([
+    ['acme/api#1', 'fanned_out'],
+    ['acme/api#1/qa', 'waiting_for_approval'],
+  ])
+  const clear = await run(gated(0))
+  const went = markComment(
+    resultComment(`Gates: none fired (proof)\n\n---\n\n${text}`, 'done', 'review', 'qa'),
+    { went: true, gates: ['proof'] },
+  )
+  expect(clear.writes).toEqual([['acme/api#1', { op: 'comment', body: went }]])
+  const done = card([...fanned.comments, { author: 'me', body: went, at: at(3), mine: true }])
+  expect(skips(plan([done], gated(0)))[0]?.[1]).toBe('all_tasks_done')
 })

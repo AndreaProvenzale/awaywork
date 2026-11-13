@@ -515,9 +515,7 @@ describe('config', () => {
       rules(
         '  - { skill: qa, deliver: report, where: { planned: true }, gates: { x: { command: x } } }',
       ),
-    ).toEqual([
-      "queue[0].gates: a task's report takes no gates for now: its approval is the plan's; a task that opens a PR takes them",
-    ])
+    ).toEqual([])
     expect(
       rules('  - { skill: review, deliver: pending_review, gates: { x: { command: x } } }'),
     ).toEqual([

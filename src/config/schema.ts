@@ -491,7 +491,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .record(z.string().regex(/^[\w-]+$/, 'expected a name like schema'), gate)
       .optional()
       .describe(
-        "Gates of the rule's own, under names no top-level or repo gate has. On a rule that opens a PR or pushes they run with those, and one that fires does what theirs does; on deliver: plan or report, where those never run, they run on what the step left, without changed, and one that fires puts its line on the post and makes it wait; not on pending_review, nor on a planned rule that reports",
+        "Gates of the rule's own, under names no top-level or repo gate has. On a rule that opens a PR or pushes they run with those, and one that fires does what theirs does; on deliver: plan or report, where those never run, they run on what the step left, without changed, and one that fires puts its line on the post and makes it wait, a planned rule's task holding its card's other tasks until you answer; not on pending_review",
       ),
     post: z
       .enum(['summary', 'full'])
@@ -1073,7 +1073,7 @@ export const configSchema = z
           path: [...at, 'thread'],
           message: "thread goes on the plan's rule: its tasks post where the plan did",
         })
-      // A post waits only as a plan's or a report's, never a task's, and the PR rules' PR is already the decision.
+      // A post waits by `wait` only as a plan's or a report's, a task's only when a gate fires, and the PR rules' PR is already the decision.
       const posts = (r.deliver === 'plan' || r.deliver === 'report') && !('planned' in r.where)
       if (r.wait !== undefined && !posts)
         ctx.addIssue({
@@ -1085,13 +1085,6 @@ export const configSchema = z
               : 'wait needs deliver: plan or report: a PR is already the decision',
         })
       const noDiff = r.deliver === 'plan' || r.deliver === 'report'
-      if (r.gates && noDiff && !posts)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'gates'],
-          message:
-            "a task's report takes no gates for now: its approval is the plan's; a task that opens a PR takes them",
-        })
       if (r.gates && r.deliver === 'pending_review')
         ctx.addIssue({
           code: 'custom',
@@ -1125,7 +1118,8 @@ export const configSchema = z
           path: [...at, 'post'],
           message: 'post: summary pins files in a store: add a top-level store, or drop post',
         })
-      if (r.deliver === 'report' && (r.wait || r.gates) && silent)
+      // A task posts where its plan did.
+      if (posts && r.deliver === 'report' && (r.wait || r.gates) && silent)
         ctx.addIssue({
           code: 'custom',
           path: [...at, r.wait ? 'wait' : 'gates'],
