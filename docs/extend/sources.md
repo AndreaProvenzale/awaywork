@@ -47,7 +47,7 @@ interface Source {
 - **`discover`** returns, read only, the names a config and `where` need: workspaces, projects, teams, statuses, as plain data (strings, lists of them, lists of records like it).
   - `awaywork sources <id>` prints it, and calls it for an unconfigured source too, with only the schema's defaults in `cfg`: throw saying what to configure when the source can't do without it.
   - `awaywork init --yes` reads it only for the built-in sources (the gh login, Asana's workspace and sections, Linear's states); yours gets `{}` there, so its config is written by hand or by `/away`.
-  - Throw `unsetSecret(name)` from `core/poll.ts` for a missing token, so the command can say where to put it.
+  - Throw `unsetSecret(name)` from `plan/poll.ts` for a missing token, so the command can say where to put it.
 
 [`asana.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/sources/asana.ts) is the example to copy.
 
