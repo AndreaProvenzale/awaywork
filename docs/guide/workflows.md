@@ -373,7 +373,7 @@ Until you answer, the card is skipped as **waiting for your approval**, under Ne
 
 - The plan is awaywork's newest plan comment, read off the card every run. GitHub reads the whole thread, past its last 50 comments.
 - Edit the plan comment to fix a task, and the next run checks your edit; one that breaks it skips the card as **plan refused** with the reason, under Needs you. A plan comment someone else edited isn't awaywork's anymore ([Safety](./safety.md#what-awaywork-publishes)), so the card gets a new plan.
-- A plan isn't posted when it fails its checks (in the file, or read back from the comment), `plan.yml` or the contract is missing, or the comment with the contract passes 30 KB (a [lean](#files-that-come-back) plan pins them). The reason stays in the morning report (`plan not posted: plan.yml: task id "api" is used twice`) and `on_done` doesn't fire. Nor on an item that isn't yours, a source that can't write on a rule without a [thread](#threads), or a failed post. A step that asks [questions](#questions) posts those instead.
+- A plan isn't posted when it fails its checks (in the file, or read back from the comment), `plan.yml` or the contract is missing, or the comment with the contract passes 30 KB (a [lean](#files-that-come-back) plan pins them, and isn't posted when the [store](#store) fails to put either or skips it: `plan.yml isn't in the store`). The reason stays in the morning report (`plan not posted: plan.yml: task id "api" is used twice`) and `on_done` doesn't fire. Nor on an item that isn't yours, a source that can't write on a rule without a [thread](#threads), or a failed post. A step that asks [questions](#questions) posts those instead.
 - A `deliver: plan` rule that matches only merged or closed items, names a `source` that can't write without [`thread: github`](#threads), or has no `planned` rule for its tasks is a config error.
 
 ### Tasks
@@ -814,6 +814,9 @@ if (op.op === 'put') {
 It gets one JSON op on stdin per call, with your environment, like a [custom source](./custom-sources.md):
 
 - `{"op": "put", "item": "ENG-2101", "unit": "eng-2101", "path": "/…/units/eng-2101/out/plan.yml", "kind": "plan"}` prints `{"url": "…"}`. `path` is awaywork's copy out of the clone, readable during the put. `kind` is `plan`, `contract`, `report`, or the file's name under `.away/out/`, so one script can send recordings to a bucket and plans to Notion.
+  - It may print `{"skip": true}` instead, to keep a file out of the store (a 200 MB trace): the file stays in the run dir, the post goes out without a link to it, and nothing is reported. Any other output is a failed put.
+  - A skip decides what goes to the store, never what is posted. A lean report or plan whose `report.md` is skipped still posts the step's `summary.md`, or with none the report's first five lines, with no link to the report. So a skip keeps no secret off the item.
+  - A lean plan can't be approved or fanned out without its `plan.yml` and contract. Skip either and the plan isn't posted: `plan not posted: plan.yml isn't in the store`.
 - `{"op": "get", "url": "…"}` prints the bytes exactly as put. A put-only store sets `get: false`, and awaywork reads back with a plain HTTP GET, within the command's 10 minutes.
 
 After each put awaywork gets the file back and compares its sha256, which the pin carries. A store that returns other bytes (a CMS adding a newline, Notion round-tripping markdown) would make every post look edited, so that file isn't pinned: `report.md not stored: the store gave back different bytes than awaywork put`. Keep such a page for people, the bytes somewhere that keeps them.
@@ -821,7 +824,7 @@ After each put awaywork gets the file back and compares its sha256, which the pi
 The script's job, not awaywork's:
 
 - **A URL that lasts.** It's read back days later. An S3 presigned link expires within a week: re-sign in `get` from a key in the URL, or pick a host whose links don't expire.
-- **Secrets in what leaves.** A log or recording can hold a token the agent saw: redact before it leaves, or keep those kinds out.
+- **Secrets in what leaves.** A log or recording can hold a token the agent saw: redact it before the script stores the file. A skip doesn't keep it off the item, and what `summary.md` says is the skill's job.
 - **Only its own URLs.** awaywork reads pins only off its own posts and the PRs it opened for you, and on GitHub and Jira skips any someone else edited last. Asana, Linear and custom sources don't say who edited a comment, so a teammate who can edit yours can edit a pin line; a `get` that refuses URLs it didn't print, as above, stops the store fetching what they name.
   - With `get: false` nothing refuses. A file changed in the store no longer matches its pin and is left out of the step, but a rewritten pin line (a new URL with its own hash) passes, and awaywork fetches it at every `plan`. On those sources it trusts whoever can edit the post.
   - A file edited after its pin never reaches a step: the edit reruns the step without it.
