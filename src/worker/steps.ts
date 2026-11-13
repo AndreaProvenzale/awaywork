@@ -1,12 +1,12 @@
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { bin } from '../config/paths.js'
-import { git } from './checks.js'
-import { commandEnv } from './env.js'
-import { readOutput, refuseSymlinks } from './safe-files.js'
-import { WORK_DIR } from './work-dir.js'
-import { inClone } from './workspace.js'
+import { bin } from '#config/paths'
+import { git } from './checks'
+import { commandEnv } from './env'
+import { readOutput, refuseSymlinks } from './safe-files'
+import { WORK_DIR } from './work-dir'
+import { inClone } from './workspace'
 
 export function isLast(loop: {
   round: number

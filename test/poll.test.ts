@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { parseConfig } from '../src/config/load.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Rule } from '../src/core/types.js'
-import { formatPlan } from '../src/format/plan.js'
-import { describeRule } from '../src/format/rules.js'
-import type { Attempts } from '../src/plan/attempts.js'
-import { planRun } from '../src/plan/foreman.js'
+import { parseConfig } from '#config/load'
+import { builtinSkills } from '#core/skills'
+import type { Item, Rule } from '#core/types'
+import { formatPlan } from '#format/plan'
+import { describeRule } from '#format/rules'
+import type { Attempts } from '#plan/attempts'
+import { planRun } from '#plan/foreman'
 import {
   claimUnits,
   dueUnits,
@@ -14,9 +14,9 @@ import {
   releaseUnits,
   type Seen,
   soonSources,
-} from '../src/plan/poll.js'
-import { type RoutinesConfig, routines } from '../src/sources/routines.js'
-import { fakeItem } from './fakes/items.js'
+} from '#plan/poll'
+import { type RoutinesConfig, routines } from '#sources/routines'
+import { fakeItem } from './fakes/items'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE

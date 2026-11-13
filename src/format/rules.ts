@@ -1,9 +1,9 @@
-import type { Item, Rule, Where, WhereValue } from '../core/types.js'
-import { noRuleReason, type RunPlan } from '../plan/foreman.js'
-import { isLoop, matches as matchesRule, ruleMatches } from '../plan/queue.js'
-import { bounds, comparisons, isAge, isMatch, spans } from '../plan/where.js'
-import { itemRef } from './json.js'
-import { indent, table } from './terminal.js'
+import type { Item, Rule, Where, WhereValue } from '#core/types'
+import { noRuleReason, type RunPlan } from '#plan/foreman'
+import { isLoop, matches as matchesRule, ruleMatches } from '#plan/queue'
+import { bounds, comparisons, isAge, isMatch, spans } from '#plan/where'
+import { itemRef } from './json'
+import { indent, table } from './terminal'
 
 export const NO_QUEUE =
   'Nothing will run: the config has no queue; /away or awaywork init writes one'

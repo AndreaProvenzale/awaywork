@@ -1,6 +1,6 @@
-import { type Loading, loading, loadingView, progress, tick } from '../../src/cli/tui/triage.js'
-import { brandHeader } from '../../src/format/terminal.js'
-import type { Step } from '../../src/plan/probe.js'
+import { type Loading, loading, loadingView, progress, tick } from '#cli/tui/triage'
+import { brandHeader } from '#format/terminal'
+import type { Step } from '#plan/probe'
 
 function planLoading(): string {
   const steps: Step[] = [

@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { bin } from '../src/config/paths.js'
-import type { PrRef, Unit } from '../src/core/types.js'
-import { publish } from '../src/worker/publish.js'
-import { fakeForge } from './fakes/forge.js'
-import { fakeItem } from './fakes/items.js'
+import { bin } from '#config/paths'
+import type { PrRef, Unit } from '#core/types'
+import { publish } from '#worker/publish'
+import { fakeForge } from './fakes/forge'
+import { fakeItem } from './fakes/items'
 
 const git = async (dir: string, ...args: string[]) =>
   (await execa(bin('git'), ['-C', dir, ...args])).stdout

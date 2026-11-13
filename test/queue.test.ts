@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import type { Order, Rule } from '../src/core/types.js'
-import { closestRule, defaultRules, matches, rank, ruleMatches } from '../src/plan/queue.js'
-import { failedIn, lookback } from '../src/plan/where.js'
+import type { Order, Rule } from '#core/types'
+import { closestRule, defaultRules, matches, rank, ruleMatches } from '#plan/queue'
+import { failedIn, lookback } from '#plan/where'
 
-import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
+import { asanaTask, fakeItem, githubPr } from './fakes/items'
 
 const rule = (where: Rule['where'], source?: string): Rule => ({
   skill: 'fix',

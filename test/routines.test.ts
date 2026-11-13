@@ -1,10 +1,10 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
-import { ConfigError, parseConfig } from '../src/config/load.js'
-import { builtinSkills } from '../src/core/skills.js'
-import { formatWhy } from '../src/format/why.js'
-import type { Attempts } from '../src/plan/attempts.js'
-import { planRun } from '../src/plan/foreman.js'
-import { collectItems } from '../src/plan/probe.js'
+import { ConfigError, parseConfig } from '#config/load'
+import { builtinSkills } from '#core/skills'
+import { formatWhy } from '#format/why'
+import type { Attempts } from '#plan/attempts'
+import { planRun } from '#plan/foreman'
+import { collectItems } from '#plan/probe'
 import {
   lastOccurrence,
   nextOccurrence,
@@ -13,7 +13,7 @@ import {
   type RoutinesConfig,
   routines,
   routinesOf,
-} from '../src/sources/routines.js'
+} from '#sources/routines'
 
 // Rome leaves summer time on 2026-10-25 at 03:00, back to 02:00.
 const zone = process.env.TZ

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import type { CheckState, Item } from '../core/types.js'
-import { footer, footerItems, type Left, type Pin } from '../posts/footer.js'
+import type { CheckState, Item } from '#core/types'
+import { footer, footerItems, type Left, type Pin } from '#posts/footer'
 
 /**
  * Whether one of my PRs is for the item: one whose footer names items by those items, whatever its

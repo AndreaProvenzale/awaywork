@@ -26,6 +26,9 @@
   "bin": {
     "awaywork": "dist/index.js"
   },
+  "imports": {
+    "#*": "./src/*.ts"
+  },
   "files": [
     "dist",
     "docker",

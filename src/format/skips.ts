@@ -1,6 +1,6 @@
-import type { Item } from '../core/types.js'
-import { type SkipKind, shortRef } from '../plan/foreman.js'
-import { byKind, needsYouOn, type ReportedSkip } from '../posts/report.js'
+import type { Item } from '#core/types'
+import { type SkipKind, shortRef } from '#plan/foreman'
+import { byKind, needsYouOn, type ReportedSkip } from '#posts/report'
 import {
   brief,
   byGroup,
@@ -12,7 +12,7 @@ import {
   TITLE,
   table,
   width,
-} from './terminal.js'
+} from './terminal'
 
 /** The skipped items you can act on, under their groups: a row each ending on its action, and what its reason adds under the title. */
 export function needsYouLines(skipped: ReportedSkip[], style: Style = (_, text) => text): string[] {

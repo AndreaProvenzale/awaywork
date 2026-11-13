@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import type { Ctx, Item, Source } from '../../src/core/types.js'
-import { itemFields, sourceField } from '../../src/sources/index.js'
+import type { Ctx, Item, Source } from '#core/types'
+import { itemFields, sourceField } from '#sources/index'
 
 /**
  * Every source adapter must pass this suite; `rawConfig` is its config as a

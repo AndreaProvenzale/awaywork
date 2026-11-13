@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterEach, expect, it } from 'vitest'
-import { bin } from '../src/config/paths.js'
-import { discard, handOff, snapshot } from '../src/worker/steps.js'
+import { bin } from '#config/paths'
+import { discard, handOff, snapshot } from '#worker/steps'
 
 let root = ''
 const before = process.env.GIT_CONFIG_GLOBAL

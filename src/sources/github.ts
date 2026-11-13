@@ -1,14 +1,14 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import type { Item, Thread as ItemThread, PrRef, Source, ThreadHost } from '../core/types.js'
-import { type Check, checkContexts, checkResult } from '../forge/checks.js'
-import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
-import { EDITED, type Edited, notYours } from '../forge/github.js'
-import { repoListed } from '../plan/repos.js'
-import { commentMarkdown } from '../posts/comments.js'
-import { isOurs, leftIn, threadBody, threadOf } from '../posts/footer.js'
-import { globToRegExp } from '../util/glob.js'
+import type { Item, Thread as ItemThread, PrRef, Source, ThreadHost } from '#core/types'
+import { type Check, checkContexts, checkResult } from '#forge/checks'
+import { type Exec, exec, graphql, onHost } from '#forge/gh'
+import { EDITED, type Edited, notYours } from '#forge/github'
+import { repoListed } from '#plan/repos'
+import { commentMarkdown } from '#posts/comments'
+import { isOurs, leftIn, threadBody, threadOf } from '#posts/footer'
+import { globToRegExp } from '#util/glob'
 
 const config = z
   .strictObject({

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { readJson } from '../util/json.js'
+import { readJson } from '#util/json'
 
 export interface Skip {
   /** A local date, `YYYY-MM-DD`; the skip ends when that day starts. */

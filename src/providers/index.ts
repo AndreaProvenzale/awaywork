@@ -1,9 +1,9 @@
-import type { Config } from '../config/schema.js'
-import type { Provider } from '../core/types.js'
-import { claude } from './claude.js'
-import { codex } from './codex.js'
-import { commandProvider, isCommandProvider } from './command.js'
-import { cursor } from './cursor.js'
+import type { Config } from '#config/schema'
+import type { Provider } from '#core/types'
+import { claude } from './claude'
+import { codex } from './codex'
+import { commandProvider, isCommandProvider } from './command'
+import { cursor } from './cursor'
 
 export const providers: Record<string, Provider> = { claude, codex, cursor }
 

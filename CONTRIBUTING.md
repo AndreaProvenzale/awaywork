@@ -24,6 +24,8 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 | `plugin/` | The Claude Code plugin: the `away` skill, and the `/away` pane in `hooks/register.tsx` |
 | `test/contracts/`, `test/fakes/` | Shared contract suites and the fakes they run against |
 
+Imports carry no extension: `./x` for a file in the same folder or below it, the `#folder/file` alias (`#plan/foreman`) for any other file in `src/`, from tests and scripts too.
+
 The `Provider` and `Source` contracts are spelled out in [docs/extend/providers.md](docs/extend/providers.md) and [sources.md](docs/extend/sources.md): a change to them updates those pages in the same PR.
 
 ## Setup

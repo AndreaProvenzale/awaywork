@@ -1,17 +1,17 @@
-import { listedRun } from '../../src/cli/commands/run.js'
-import { jobLines, wontRun } from '../../src/cli/commands/schedule.js'
-import { configPath, parseConfig } from '../../src/config/load.js'
-import { stateDir } from '../../src/config/paths.js'
-import { builtinSkills } from '../../src/core/skills.js'
-import type { Item } from '../../src/core/types.js'
-import { findChains, formatUnit } from '../../src/format/report.js'
-import { planRun } from '../../src/plan/foreman.js'
-import { nextPoll } from '../../src/plan/poll.js'
-import { sourceFailure, sourceWarning } from '../../src/plan/probe.js'
-import { describeSkip } from '../../src/plan/skips.js'
-import { formatReport, type RunReport, type UnitResult } from '../../src/posts/report.js'
-import { providerFor } from '../../src/providers/index.js'
-import { allowance } from '../../src/quota/budget.js'
+import { listedRun } from '#cli/commands/run'
+import { jobLines, wontRun } from '#cli/commands/schedule'
+import { configPath, parseConfig } from '#config/load'
+import { stateDir } from '#config/paths'
+import { builtinSkills } from '#core/skills'
+import type { Item } from '#core/types'
+import { findChains, formatUnit } from '#format/report'
+import { planRun } from '#plan/foreman'
+import { nextPoll } from '#plan/poll'
+import { sourceFailure, sourceWarning } from '#plan/probe'
+import { describeSkip } from '#plan/skips'
+import { formatReport, type RunReport, type UnitResult } from '#posts/report'
+import { providerFor } from '#providers/index'
+import { allowance } from '#quota/budget'
 import {
   daemonLines,
   failedPoll,
@@ -20,10 +20,10 @@ import {
   runStarted,
   stamped,
   watchStarted,
-} from '../../src/run/daemon.js'
-import { warningLine } from '../../src/run/execute.js'
-import { noBoxToken, sshFailure, tokenRefused } from '../../src/run/remote.js'
-import type { Outcome } from '../../src/worker/publish.js'
+} from '#run/daemon'
+import { warningLine } from '#run/execute'
+import { noBoxToken, sshFailure, tokenRefused } from '#run/remote'
+import type { Outcome } from '#worker/publish'
 
 const command = (line: string, text: string) => `$ ${line}\n${text}`
 const MINUTE = 60_000

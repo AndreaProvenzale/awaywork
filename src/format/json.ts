@@ -1,6 +1,6 @@
-import type { Item } from '../core/types.js'
-import type { PlannedUnit, RunPlan } from '../plan/foreman.js'
-import { needsYouOn, type ReportedSkip, type RunReport } from '../posts/report.js'
+import type { Item } from '#core/types'
+import type { PlannedUnit, RunPlan } from '#plan/foreman'
+import { needsYouOn, type ReportedSkip, type RunReport } from '#posts/report'
 
 export const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
 const skippedRef = (item: Item) => ({ ...itemRef(item), type: item.type, mine: item.mine })

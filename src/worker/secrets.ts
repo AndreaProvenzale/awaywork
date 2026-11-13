@@ -1,6 +1,6 @@
-import type { Config } from '../config/schema.js'
-import type { Provider, Source } from '../core/types.js'
-import { contextSecrets } from './context.js'
+import type { Config } from '#config/schema'
+import type { Provider, Source } from '#core/types'
+import { contextSecrets } from './context'
 
 /** Every secret the config names, for `workerEnv` to withhold. */
 export function configSecrets(

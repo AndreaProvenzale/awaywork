@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
-import { bin } from '../src/config/paths.js'
-import type { Provider } from '../src/core/types.js'
-import { recordAttempts } from '../src/plan/attempts.js'
-import { formatReport, runLine } from '../src/posts/report.js'
-import { fakeItem, githubPr, issue } from './fakes/items.js'
-import { looper, loopRun } from './fakes/units.js'
+import { bin } from '#config/paths'
+import type { Provider } from '#core/types'
+import { recordAttempts } from '#plan/attempts'
+import { formatReport, runLine } from '#posts/report'
+import { fakeItem, githubPr, issue } from './fakes/items'
+import { looper, loopRun } from './fakes/units'
 
 it("doesn't run a check on an untrusted author's PR, or end a loop while the clone has uncommitted changes", async () => {
   const provider = looper({})

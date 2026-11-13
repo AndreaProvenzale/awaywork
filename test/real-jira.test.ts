@@ -2,9 +2,9 @@ import { mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { Discovery, Item } from '../src/core/types.js'
-import { itemFields, sourceField } from '../src/sources/index.js'
-import { jira } from '../src/sources/jira.js'
+import type { Discovery, Item } from '#core/types'
+import { itemFields, sourceField } from '#sources/index'
+import { jira } from '#sources/jira'
 
 const {
   JIRA_API_TOKEN,

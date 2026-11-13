@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { parseConfig } from '../src/config/load.js'
-import { builtinSkills } from '../src/core/skills.js'
-import { planRun } from '../src/plan/foreman.js'
-import { repoListed, settingsFor } from '../src/plan/repos.js'
-import { githubSource, githubThreads } from '../src/sources/github.js'
-import { planLimits } from '../src/tasks/fanout.js'
-import { checkPlan } from '../src/tasks/plan-file.js'
-import { githubRoutes, recorded } from './fakes/gh.js'
-import { fakeItem, githubPr } from './fakes/items.js'
+import { parseConfig } from '#config/load'
+import { builtinSkills } from '#core/skills'
+import { planRun } from '#plan/foreman'
+import { repoListed, settingsFor } from '#plan/repos'
+import { githubSource, githubThreads } from '#sources/github'
+import { planLimits } from '#tasks/fanout'
+import { checkPlan } from '#tasks/plan-file'
+import { githubRoutes, recorded } from './fakes/gh'
+import { fakeItem, githubPr } from './fakes/items'
 
 const config = (top: string, sources = '{ github: {} }') =>
   `providers: [claude]\n${top}\nsources: ${sources}\n`

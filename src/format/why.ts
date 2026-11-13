@@ -1,8 +1,8 @@
-import type { Item } from '../core/types.js'
-import { isNamed, type PlannedUnit, type RunPlan } from '../plan/foreman.js'
-import type { RunReport } from '../posts/report.js'
-import { describeOccurrence, routines } from '../sources/routines.js'
-import { isCheck } from '../tasks/plan-file.js'
+import type { Item } from '#core/types'
+import { isNamed, type PlannedUnit, type RunPlan } from '#plan/foreman'
+import type { RunReport } from '#posts/report'
+import { describeOccurrence, routines } from '#sources/routines'
+import { isCheck } from '#tasks/plan-file'
 import {
   checkLines,
   deliverOf,
@@ -12,10 +12,10 @@ import {
   stackLine,
   taskRepo,
   waitLine,
-} from './plan.js'
-import { describeRule, queueLines } from './rules.js'
-import { reasonOf } from './skips.js'
-import { clip, indent, TITLE, table } from './terminal.js'
+} from './plan'
+import { describeRule, queueLines } from './rules'
+import { reasonOf } from './skips'
+import { clip, indent, TITLE, table } from './terminal'
 
 const itemId = (item: Item) => `${item.source}:${item.key}`
 

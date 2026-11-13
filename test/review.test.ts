@@ -2,10 +2,10 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Unit } from '../src/core/types.js'
-import { leaveReview, parseComments } from '../src/worker/review.js'
-import { fakeForge } from './fakes/forge.js'
-import { githubPr } from './fakes/items.js'
+import type { Unit } from '#core/types'
+import { leaveReview, parseComments } from '#worker/review'
+import { fakeForge } from './fakes/forge'
+import { githubPr } from './fakes/items'
 
 describe('parseComments', () => {
   it('takes path, line and body, and says why it left a file out; a missing one has none', () => {

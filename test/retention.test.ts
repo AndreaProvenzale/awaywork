@@ -2,15 +2,15 @@ import { existsSync } from 'node:fs'
 import { chmod, mkdir, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { attemptsPath, runsDir } from '../src/config/paths.js'
-import { pruneRuns } from '../src/run/retention.js'
+import { attemptsPath, runsDir } from '#config/paths'
+import { pruneRuns } from '#run/retention'
 
-vi.mock('../src/config/paths.js', async (original) => {
+vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
   return {
-    ...(await original<typeof import('../src/config/paths.js')>()),
+    ...(await original<typeof import('#config/paths')>()),
     runsDir: `${state}/runs`,
     attemptsPath: `${state}/attempts.json`,
   }

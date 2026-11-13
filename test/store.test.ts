@@ -8,12 +8,12 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
-import { approveItem } from '../src/cli/commands/approve.js'
-import { parseConfig } from '../src/config/load.js'
-import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Provider, Source, Write } from '../src/core/types.js'
-import { planRun } from '../src/plan/foreman.js'
+import { approveItem } from '#cli/commands/approve'
+import { parseConfig } from '#config/load'
+import { bin, builtinSkillsDir } from '#config/paths'
+import { builtinSkills } from '#core/skills'
+import type { Item, Provider, Source, Write } from '#core/types'
+import { planRun } from '#plan/foreman'
 import {
   commentKind,
   leanPlanComment,
@@ -23,27 +23,21 @@ import {
   planComment,
   resultComment,
   resultOf,
-} from '../src/posts/comments.js'
-import { footer, footerPins, type Pin, pinBlock } from '../src/posts/footer.js'
-import {
-  postAnswer,
-  readBackPosts,
-  reportPost,
-  taskResults,
-  withApproved,
-} from '../src/posts/posts.js'
-import { formatReport } from '../src/posts/report.js'
-import { allowance } from '../src/quota/budget.js'
-import { TIMEOUT_MS } from '../src/sources/command.js'
-import { githubSource } from '../src/sources/github.js'
-import { cardTasks, planState } from '../src/tasks/plan-file.js'
-import { checkPins, putFiles, readBack, type Store } from '../src/worker/store.js'
-import { runUnits } from '../src/worker/units.js'
-import { fakeForge } from './fakes/forge.js'
-import { fixture, githubRoutes, recorded } from './fakes/gh.js'
-import { fakeItem, githubPr } from './fakes/items.js'
-import { fakeProvider } from './fakes/provider.js'
-import { fakeSource } from './fakes/source.js'
+} from '#posts/comments'
+import { footer, footerPins, type Pin, pinBlock } from '#posts/footer'
+import { postAnswer, readBackPosts, reportPost, taskResults, withApproved } from '#posts/posts'
+import { formatReport } from '#posts/report'
+import { allowance } from '#quota/budget'
+import { TIMEOUT_MS } from '#sources/command'
+import { githubSource } from '#sources/github'
+import { cardTasks, planState } from '#tasks/plan-file'
+import { checkPins, putFiles, readBack, type Store } from '#worker/store'
+import { runUnits } from '#worker/units'
+import { fakeForge } from './fakes/forge'
+import { fixture, githubRoutes, recorded } from './fakes/gh'
+import { fakeItem, githubPr } from './fakes/items'
+import { fakeProvider } from './fakes/provider'
+import { fakeSource } from './fakes/source'
 
 process.env.GIT_COMMITTER_NAME ??= 't'
 process.env.GIT_COMMITTER_EMAIL ??= 't@t'

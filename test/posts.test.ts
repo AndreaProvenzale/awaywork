@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { parseConfig } from '../src/config/load.js'
-import type { Item } from '../src/core/types.js'
-import { planRun } from '../src/plan/foreman.js'
+import { parseConfig } from '#config/load'
+import type { Item } from '#core/types'
+import { planRun } from '#plan/foreman'
 import {
   commentKind,
   isAwayworkComment,
@@ -11,10 +11,10 @@ import {
   postState,
   resultComment,
   resultOf,
-} from '../src/posts/comments.js'
-import { approvedSkill, heldMove, postAnswer, reportPost } from '../src/posts/posts.js'
-import { allowance } from '../src/quota/budget.js'
-import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
+} from '#posts/comments'
+import { approvedSkill, heldMove, postAnswer, reportPost } from '#posts/posts'
+import { allowance } from '#quota/budget'
+import { asanaTask, fakeItem, githubPr } from './fakes/items'
 
 const at = (n: number) => `2026-11-0${n}T00:00:00Z`
 const post = (skill: string, state: PostState | undefined, n = 1) => ({

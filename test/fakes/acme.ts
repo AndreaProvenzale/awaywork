@@ -1,9 +1,9 @@
-import { parseConfig } from '../../src/config/load.js'
-import { builtinSkills } from '../../src/core/skills.js'
-import { type PlannedUnit, planRun, type Skipped } from '../../src/plan/foreman.js'
-import type { RunReport } from '../../src/posts/report.js'
-import { allowance } from '../../src/quota/budget.js'
-import { asanaTask, githubPr } from './items.js'
+import { parseConfig } from '#config/load'
+import { builtinSkills } from '#core/skills'
+import { type PlannedUnit, planRun, type Skipped } from '#plan/foreman'
+import type { RunReport } from '#posts/report'
+import { allowance } from '#quota/budget'
+import { asanaTask, githubPr } from './items'
 
 /** The config text, listing every acme repo unless it has a `repos` of its own. */
 export const withRepos = (yaml: string) =>

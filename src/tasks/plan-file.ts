@@ -1,6 +1,6 @@
 import { parse } from 'yaml'
 import { z } from 'zod'
-import type { Item, TaskPr } from '../core/types.js'
+import type { Item, TaskPr } from '#core/types'
 import {
   answerTo,
   commentKind,
@@ -11,8 +11,8 @@ import {
   pinsOf,
   postState,
   resultOf,
-} from '../posts/comments.js'
-import { globToRegExp } from '../util/glob.js'
+} from '#posts/comments'
+import { globToRegExp } from '#util/glob'
 
 const task = z.strictObject({
   id: z.string(),

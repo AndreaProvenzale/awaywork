@@ -1,12 +1,12 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Item, Unit } from '../core/types.js'
-import { MAX_ATTEMPTS } from '../plan/attempts.js'
-import { describeCondition } from '../plan/condition.js'
-import type { LoopRound } from '../plan/foreman.js'
-import { PLAN_TASKS, planContract, taskPrUrls } from '../tasks/plan-file.js'
-import { outputFile, reportsOnly, WORK_DIR } from './work-dir.js'
-import type { Previous, WorkspaceInput } from './workspace.js'
+import type { Item, Unit } from '#core/types'
+import { MAX_ATTEMPTS } from '#plan/attempts'
+import { describeCondition } from '#plan/condition'
+import type { LoopRound } from '#plan/foreman'
+import { PLAN_TASKS, planContract, taskPrUrls } from '#tasks/plan-file'
+import { outputFile, reportsOnly, WORK_DIR } from './work-dir'
+import type { Previous, WorkspaceInput } from './workspace'
 
 export function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput): string {
   const base = unit.fork

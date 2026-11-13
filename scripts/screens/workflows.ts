@@ -1,29 +1,29 @@
 import { styleText } from 'node:util'
 import { z } from 'zod'
-import { approveItem } from '../../src/cli/commands/approve.js'
-import { parseConfig } from '../../src/config/load.js'
-import type { Config } from '../../src/config/schema.js'
-import { builtinSkills } from '../../src/core/skills.js'
-import type { Item, PrRef, Source, TaskPr } from '../../src/core/types.js'
-import { listedUnits, planUnitLines } from '../../src/format/plan.js'
-import { reportUnitTable } from '../../src/format/report.js'
-import { formatSkipped, needsYouLines, skippedLines } from '../../src/format/skips.js'
-import { heading, type Style } from '../../src/format/terminal.js'
-import { planRun, type RunPlan } from '../../src/plan/foreman.js'
+import { approveItem } from '#cli/commands/approve'
+import { parseConfig } from '#config/load'
+import type { Config } from '#config/schema'
+import { builtinSkills } from '#core/skills'
+import type { Item, PrRef, Source, TaskPr } from '#core/types'
+import { listedUnits, planUnitLines } from '#format/plan'
+import { reportUnitTable } from '#format/report'
+import { formatSkipped, needsYouLines, skippedLines } from '#format/skips'
+import { heading, type Style } from '#format/terminal'
+import { planRun, type RunPlan } from '#plan/foreman'
 import {
   approveReply,
   markComment,
   planComment,
   questionsComment,
   resultComment,
-} from '../../src/posts/comments.js'
-import { footer, type Pin, pinBlock, threadBody } from '../../src/posts/footer.js'
-import type { RunReport, UnitResult } from '../../src/posts/report.js'
-import { allowance } from '../../src/quota/budget.js'
-import { threadTitle } from '../../src/sources/github.js'
-import { taskMarkdown } from '../../src/tasks/fanout.js'
-import { gatesSection } from '../../src/worker/gates.js'
-import { continueLine } from '../../src/worker/slices.js'
+} from '#posts/comments'
+import { footer, type Pin, pinBlock, threadBody } from '#posts/footer'
+import type { RunReport, UnitResult } from '#posts/report'
+import { allowance } from '#quota/budget'
+import { threadTitle } from '#sources/github'
+import { taskMarkdown } from '#tasks/fanout'
+import { gatesSection } from '#worker/gates'
+import { continueLine } from '#worker/slices'
 
 const style: Style = (format, text) => styleText(format, text)
 const now = Date.parse('2026-10-27T00:00:00Z')

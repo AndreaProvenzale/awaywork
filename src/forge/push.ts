@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Exec } from './gh.js'
+import type { Exec } from './gh'
 
 /** Git in the push repo runs no hooks and sees history as it is, not as replace refs say. */
 const pushSafely = ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null']

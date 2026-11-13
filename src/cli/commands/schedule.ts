@@ -4,8 +4,9 @@ import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
-import { ConfigError, configPath, loadConfig } from '../../config/load.js'
-import { pinned } from '../../config/logins.js'
+import { Cancelled, printBrand, reportConfigError, terminalAsk } from '#cli/tui/ask'
+import { ConfigError, configPath, loadConfig } from '#config/load'
+import { pinned } from '#config/logins'
 import {
   bin,
   packageVersion,
@@ -13,17 +14,17 @@ import {
   stateDir,
   watchLockPath,
   watchLogPath,
-} from '../../config/paths.js'
-import type { Config } from '../../config/schema.js'
-import { hasSkills } from '../../config/skills.js'
-import type { Ask, Provider } from '../../core/types.js'
-import { type Exec, exec, gitRoot } from '../../forge/gh.js'
-import { providerFor } from '../../providers/index.js'
-import { describeWindow, startsOf, type Window } from '../../quota/window.js'
-import { stopWatch, watchStatus } from '../../run/daemon.js'
-import { lockHolder } from '../../run/run-lock.js'
-import { dockerFiles, imageVersion, removeDocker } from '../../scheduler/docker.js'
-import { SchedulerError } from '../../scheduler/error.js'
+} from '#config/paths'
+import type { Config } from '#config/schema'
+import { hasSkills } from '#config/skills'
+import type { Ask, Provider } from '#core/types'
+import { type Exec, exec, gitRoot } from '#forge/gh'
+import { providerFor } from '#providers/index'
+import { describeWindow, startsOf, type Window } from '#quota/window'
+import { stopWatch, watchStatus } from '#run/daemon'
+import { lockHolder } from '#run/run-lock'
+import { dockerFiles, imageVersion, removeDocker } from '#scheduler/docker'
+import { SchedulerError } from '#scheduler/error'
 import {
   isPlainSelfHosted,
   isSelfHosted,
@@ -32,7 +33,7 @@ import {
   runsOnOf,
   WORKFLOW,
   workflow,
-} from '../../scheduler/github-actions.js'
+} from '#scheduler/github-actions'
 import {
   defaultScheduler,
   olderJob,
@@ -40,13 +41,12 @@ import {
   type Scheduler,
   type Start,
   schedulers,
-} from '../../scheduler/index.js'
-import { staleWake, wakeFor, wakeUndo } from '../../scheduler/wake.js'
-import { isCommand } from '../../sources/command.js'
-import { sourceFor } from '../../sources/index.js'
-import { errorText } from '../../util/text.js'
-import { contextSecrets } from '../../worker/context.js'
-import { Cancelled, printBrand, reportConfigError, terminalAsk } from '../tui/ask.js'
+} from '#scheduler/index'
+import { staleWake, wakeFor, wakeUndo } from '#scheduler/wake'
+import { isCommand } from '#sources/command'
+import { sourceFor } from '#sources/index'
+import { errorText } from '#util/text'
+import { contextSecrets } from '#worker/context'
 
 const GITHUB_ACTIONS = 'github-actions'
 const DOCKER = 'docker'

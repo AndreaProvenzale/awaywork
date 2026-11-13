@@ -1,5 +1,5 @@
 import { styleText } from 'node:util'
-import { isNamed, shortRef } from '../plan/foreman.js'
+import { isNamed, shortRef } from '#plan/foreman'
 import {
   type Chain,
   chainCells,
@@ -14,9 +14,9 @@ import {
   type UnitResult,
   unitNotes,
   unposted,
-} from '../posts/report.js'
-import { unitRef } from './plan.js'
-import { needsYouLines, skippedLines } from './skips.js'
+} from '#posts/report'
+import { unitRef } from './plan'
+import { needsYouLines, skippedLines } from './skips'
 import {
   brief,
   clip,
@@ -28,7 +28,7 @@ import {
   TITLE,
   table,
   warningLines,
-} from './terminal.js'
+} from './terminal'
 
 /** A unit's result: its PR, `nothing`, or a report, and its verdict; `why` shapes a skip's or error's reason. */
 function unitResult(u: UnitResult, why = (reason: string) => reason): string {

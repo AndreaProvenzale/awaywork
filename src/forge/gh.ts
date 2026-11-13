@@ -1,5 +1,5 @@
 import { execa } from 'execa'
-import { bin } from '../config/paths.js'
+import { bin } from '#config/paths'
 
 /** Runs a command and returns its stdout; injected so tests replay recorded output. */
 export type Exec = (cmd: string, args: string[], env?: Record<string, string>) => Promise<string>

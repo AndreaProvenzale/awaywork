@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Provider, Quota, WorkerEvent } from '../../src/core/types.js'
+import type { Provider, Quota, WorkerEvent } from '#core/types'
 
 const quota: Quota = {
   windows: [

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
-import { lockHolder, takeRunLock } from '../src/run/run-lock.js'
+import { lockHolder, takeRunLock } from '#run/run-lock'
 
 const file = join(await mkdtemp(join(tmpdir(), 'awaywork-runlock-')), 'run.lock')
 

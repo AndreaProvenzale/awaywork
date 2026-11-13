@@ -3,10 +3,10 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { configCommand } from '../src/cli/commands/config.js'
-import { ConfigError, configPath, loadConfig, parseConfig } from '../src/config/load.js'
-import { unknownSkills } from '../src/config/skills.js'
-import type { Step } from '../src/core/types.js'
+import { configCommand } from '#cli/commands/config'
+import { ConfigError, configPath, loadConfig, parseConfig } from '#config/load'
+import { unknownSkills } from '#config/skills'
+import type { Step } from '#core/types'
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')
 

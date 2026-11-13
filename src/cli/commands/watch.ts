@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
-import { configPath } from '../../config/load.js'
-import { watch } from '../../run/daemon.js'
-import type { Remote } from '../../run/remote.js'
+import { configPath } from '#config/load'
+import { watch } from '#run/daemon'
+import type { Remote } from '#run/remote'
 
 export function watchCommand(program: Command, remote: Remote): void {
   program

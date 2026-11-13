@@ -1,4 +1,4 @@
-import type { Item } from './types.js'
+import type { Item } from './types'
 
 export const defaultBranch = 'away/{key}'
 

@@ -3,18 +3,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
-import { approveItem } from '../src/cli/commands/approve.js'
-import { parseConfig } from '../src/config/load.js'
-import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Provider, Source, TaskPr, Unit, Write } from '../src/core/types.js'
-import { linksItem, prText } from '../src/forge/pr.js'
-import { planJson } from '../src/format/json.js'
-import { formatRules, rulesJson } from '../src/format/rules.js'
-import { formatWhy } from '../src/format/why.js'
-import { type Attempts, NOT_YOURS, recordAttempts } from '../src/plan/attempts.js'
-import { needsYou, planRun } from '../src/plan/foreman.js'
-import { rank, ruleFor } from '../src/plan/queue.js'
+import { approveItem } from '#cli/commands/approve'
+import { parseConfig } from '#config/load'
+import { bin, builtinSkillsDir } from '#config/paths'
+import { builtinSkills } from '#core/skills'
+import type { Item, Provider, Source, TaskPr, Unit, Write } from '#core/types'
+import { linksItem, prText } from '#forge/pr'
+import { planJson } from '#format/json'
+import { formatRules, rulesJson } from '#format/rules'
+import { formatWhy } from '#format/why'
+import { type Attempts, NOT_YOURS, recordAttempts } from '#plan/attempts'
+import { needsYou, planRun } from '#plan/foreman'
+import { rank, ruleFor } from '#plan/queue'
 import {
   approveReply,
   commentKind,
@@ -25,27 +25,21 @@ import {
   questionsComment,
   resultComment,
   waitingTasks,
-} from '../src/posts/comments.js'
-import { footer } from '../src/posts/footer.js'
-import { heldMove, taskResults } from '../src/posts/posts.js'
-import { linkPlanTasks } from '../src/posts/threads.js'
-import { allowance } from '../src/quota/budget.js'
-import { writeItem } from '../src/sources/index.js'
-import { taskItem, taskMarkdown, taskPr } from '../src/tasks/fanout.js'
-import {
-  checkPlan,
-  planContract,
-  planState,
-  planThread,
-  taskPrUrls,
-} from '../src/tasks/plan-file.js'
-import { freeBranch } from '../src/worker/slices.js'
-import { runUnits } from '../src/worker/units.js'
-import { withRepos } from './fakes/acme.js'
-import { fakeForge } from './fakes/forge.js'
-import { fakeItem } from './fakes/items.js'
-import { fakeProvider } from './fakes/provider.js'
-import { fakeSource } from './fakes/source.js'
+} from '#posts/comments'
+import { footer } from '#posts/footer'
+import { heldMove, taskResults } from '#posts/posts'
+import { linkPlanTasks } from '#posts/threads'
+import { allowance } from '#quota/budget'
+import { writeItem } from '#sources/index'
+import { taskItem, taskMarkdown, taskPr } from '#tasks/fanout'
+import { checkPlan, planContract, planState, planThread, taskPrUrls } from '#tasks/plan-file'
+import { freeBranch } from '#worker/slices'
+import { runUnits } from '#worker/units'
+import { withRepos } from './fakes/acme'
+import { fakeForge } from './fakes/forge'
+import { fakeItem } from './fakes/items'
+import { fakeProvider } from './fakes/provider'
+import { fakeSource } from './fakes/source'
 
 process.env.GIT_COMMITTER_NAME ??= 't'
 process.env.GIT_COMMITTER_EMAIL ??= 't@t'

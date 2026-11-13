@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Exec } from '../forge/gh.js'
-import { errorText } from '../util/text.js'
-import { SchedulerError } from './error.js'
-import type { Schedule, Scheduler } from './index.js'
+import type { Exec } from '#forge/gh'
+import { errorText } from '#util/text'
+import { SchedulerError } from './error'
+import type { Schedule, Scheduler } from './index'
 
 /** A user service started at login and restarted when it crashes. */
 export function systemd(home: string, run: Exec): Scheduler {

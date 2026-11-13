@@ -1,14 +1,14 @@
-import type { Config } from '../config/schema.js'
-import { defaultType, renderBranch } from '../core/branch.js'
-import { resolveSkill, type SkillCatalog } from '../core/skills.js'
-import type { BranchPr, Item, Rule, TaskPr, ThenStep } from '../core/types.js'
-import type { SkipKind, Skipped } from '../plan/foreman.js'
-import { isLoop, ruleFor } from '../plan/queue.js'
-import { settingsFor } from '../plan/repos.js'
-import type { Skip } from '../plan/skips.js'
-import { commentKind, commentMarkdown, waitingTasks } from '../posts/comments.js'
-import { footerItems } from '../posts/footer.js'
-import { taskResults, unreadTaskResult } from '../posts/posts.js'
+import type { Config } from '#config/schema'
+import { defaultType, renderBranch } from '#core/branch'
+import { resolveSkill, type SkillCatalog } from '#core/skills'
+import type { BranchPr, Item, Rule, TaskPr, ThenStep } from '#core/types'
+import type { SkipKind, Skipped } from '#plan/foreman'
+import { isLoop, ruleFor } from '#plan/queue'
+import { settingsFor } from '#plan/repos'
+import type { Skip } from '#plan/skips'
+import { commentKind, commentMarkdown, waitingTasks } from '#posts/comments'
+import { footerItems } from '#posts/footer'
+import { taskResults, unreadTaskResult } from '#posts/posts'
 import {
   type Contract,
   cardTasks,
@@ -23,7 +23,7 @@ import {
   TASK_SKILL,
   type Task,
   taskPrUrls,
-} from './plan-file.js'
+} from './plan-file'
 
 /** A card's repo: its first linked PR's, else its `repo` field. */
 export const cardRepo = (item: Item): string | undefined =>

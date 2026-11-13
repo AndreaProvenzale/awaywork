@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Ctx, Job, Provider, WorkerEvent } from '../../src/core/types.js'
+import type { Ctx, Job, Provider, WorkerEvent } from '#core/types'
 
 const ctx: Ctx = { env: {}, log: () => {} }
 

@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { Provider } from '../core/types.js'
-import { type Exec, exec } from '../forge/gh.js'
-import { providers } from '../providers/index.js'
-import type { Config } from './schema.js'
+import type { Provider } from '#core/types'
+import { type Exec, exec } from '#forge/gh'
+import { providers } from '#providers/index'
+import type { Config } from './schema'
 
 /** A login the config pins: the env var it sets to `value`, or unsets, unless the environment's own login wins (`by`) or it can't (`problem`, with the fix). */
 export interface Pin {

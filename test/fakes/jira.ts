@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { recordedFetch } from './asana.js'
+import { recordedFetch } from './asana'
 
 export const jiraFixture = (name: string) =>
   readFileSync(new URL(`../fixtures/jira/${name}`, import.meta.url), 'utf8')

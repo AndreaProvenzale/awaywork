@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { notifyRun, notifyUnit } from '../src/worker/notify.js'
+import { notifyRun, notifyUnit } from '#worker/notify'
 
 it('runs the command in a shell with the run event, report path and run id in its env', async () => {
   const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-')), 'out.txt')

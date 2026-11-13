@@ -1,4 +1,4 @@
-import type { BranchPr, CheckState, Forge, Item, PrRef, Review } from '../../src/core/types.js'
+import type { BranchPr, CheckState, Forge, Item, PrRef, Review } from '#core/types'
 
 export function fakeForge(prs: PrRef[] = []): Forge & {
   branches: Set<string>

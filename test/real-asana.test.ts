@@ -2,9 +2,9 @@ import { mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { Discovery } from '../src/core/types.js'
-import { API, asana } from '../src/sources/asana.js'
-import { itemFields, sourceField } from '../src/sources/index.js'
+import type { Discovery } from '#core/types'
+import { API, asana } from '#sources/asana'
+import { itemFields, sourceField } from '#sources/index'
 
 const token = process.env.ASANA_TOKEN
 const workspace = process.env.AWAYWORK_ASANA_WORKSPACE ?? ''

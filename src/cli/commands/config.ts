@@ -2,12 +2,12 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { Command } from 'commander'
 import { z } from 'zod'
-import { configPath } from '../../config/load.js'
-import { skillsDirOf } from '../../config/paths.js'
-import { configSchema } from '../../config/schema.js'
-import { loadSkills } from '../../config/skills.js'
-import { builtinSkills } from '../../core/skills.js'
-import { explainConfig } from './explain.js'
+import { configPath } from '#config/load'
+import { skillsDirOf } from '#config/paths'
+import { configSchema } from '#config/schema'
+import { loadSkills } from '#config/skills'
+import { builtinSkills } from '#core/skills'
+import { explainConfig } from './explain'
 
 export function configCommand(program: Command): void {
   const config = program

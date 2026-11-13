@@ -1,4 +1,4 @@
-import type { Ask } from '../../src/core/types.js'
+import type { Ask } from '#core/types'
 
 /** Stands for "take the prompt's initial value". */
 export const initial = Symbol('initial')

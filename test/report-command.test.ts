@@ -2,18 +2,18 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { printReport } from '../src/cli/commands/run.js'
-import { remoteDir, runsDir } from '../src/config/paths.js'
-import { reportJson } from '../src/format/json.js'
-import type { RunReport, StepFiles } from '../src/posts/report.js'
-import { githubPr } from './fakes/items.js'
+import { printReport } from '#cli/commands/run'
+import { remoteDir, runsDir } from '#config/paths'
+import { reportJson } from '#format/json'
+import type { RunReport, StepFiles } from '#posts/report'
+import { githubPr } from './fakes/items'
 
-vi.mock('../src/config/paths.js', async (original) => {
+vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
   return {
-    ...(await original<typeof import('../src/config/paths.js')>()),
+    ...(await original<typeof import('#config/paths')>()),
     runsDir: `${state}/runs`,
     remoteDir: `${state}/remote`,
   }

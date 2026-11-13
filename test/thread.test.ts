@@ -2,25 +2,25 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { approveItem } from '../src/cli/commands/approve.js'
-import { parseConfig } from '../src/config/load.js'
-import type { Forge, Item, Thread, ThreadHost } from '../src/core/types.js'
-import { finishedSince, probeAndPlan } from '../src/plan/probe.js'
-import { markComment, planComment } from '../src/posts/comments.js'
-import { threadBody, threadMarker, threadOf } from '../src/posts/footer.js'
-import { linkThreads } from '../src/posts/threads.js'
-import { githubSource, githubThreads } from '../src/sources/github.js'
-import { sourceFor, writeItem } from '../src/sources/index.js'
-import { fakeForge } from './fakes/forge.js'
-import { fixture, recorded } from './fakes/gh.js'
-import { fakeItem } from './fakes/items.js'
+import { approveItem } from '#cli/commands/approve'
+import { parseConfig } from '#config/load'
+import type { Forge, Item, Thread, ThreadHost } from '#core/types'
+import { finishedSince, probeAndPlan } from '#plan/probe'
+import { markComment, planComment } from '#posts/comments'
+import { threadBody, threadMarker, threadOf } from '#posts/footer'
+import { linkThreads } from '#posts/threads'
+import { githubSource, githubThreads } from '#sources/github'
+import { sourceFor, writeItem } from '#sources/index'
+import { fakeForge } from './fakes/forge'
+import { fixture, recorded } from './fakes/gh'
+import { fakeItem } from './fakes/items'
 
-vi.mock('../src/config/paths.js', async (original) => {
+vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
   return {
-    ...(await original<typeof import('../src/config/paths.js')>()),
+    ...(await original<typeof import('#config/paths')>()),
     attemptsPath: `${state}/attempts.json`,
     skipsPath: `${state}/skips.json`,
   }

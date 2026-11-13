@@ -1,7 +1,7 @@
-import { asWorker } from '../core/isolation.js'
-import type { Job, Provider, Quota } from '../core/types.js'
-import { type Allowance, pct } from '../quota/budget.js'
-import { startWatchdog, type Watchdog } from './watchdog.js'
+import { asWorker } from '#core/isolation'
+import type { Job, Provider, Quota } from '#core/types'
+import { type Allowance, pct } from '#quota/budget'
+import { startWatchdog, type Watchdog } from './watchdog'
 
 export type WorkerStatus =
   | 'done'

@@ -19,7 +19,7 @@
               "options": {
                 "patterns": [
                   {
-                    "group": ["**/cli/**"],
+                    "group": ["**/cli/**", "#cli/**"],
                     "message": "Only src/cli imports the CLI."
                   }
                 ]
@@ -39,7 +39,7 @@
               "options": {
                 "patterns": [
                   {
-                    "group": ["../**"],
+                    "group": ["../**", "#*/**"],
                     "message": "src/util imports only node: and npm packages."
                   }
                 ]

@@ -2,12 +2,12 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseConfig } from '../src/config/load.js'
-import type { Ctx } from '../src/core/types.js'
-import { linearSource } from '../src/sources/linear.js'
-import { recordedFetch } from './fakes/asana.js'
-import { linearFetch, linearFixture } from './fakes/linear.js'
-import { expectPlanBack, roundTripComment } from './fakes/plan.js'
+import { parseConfig } from '#config/load'
+import type { Ctx } from '#core/types'
+import { linearSource } from '#sources/linear'
+import { recordedFetch } from './fakes/asana'
+import { linearFetch, linearFixture } from './fakes/linear'
+import { expectPlanBack, roundTripComment } from './fakes/plan'
 
 const ctx: Ctx = { env: { LINEAR_API_KEY: 'lin_api_key' }, log: () => {} }
 const cfg = { token_env: 'LINEAR_API_KEY' }

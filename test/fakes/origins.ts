@@ -1,10 +1,10 @@
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { bin } from '../../src/config/paths.js'
-import type { Item } from '../../src/core/types.js'
-import { prText } from '../../src/forge/pr.js'
-import { type Left, leftIn } from '../../src/posts/footer.js'
-import { fakeForge } from './forge.js'
+import { bin } from '#config/paths'
+import type { Item } from '#core/types'
+import { prText } from '#forge/pr'
+import { type Left, leftIn } from '#posts/footer'
+import { fakeForge } from './forge'
 
 const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])

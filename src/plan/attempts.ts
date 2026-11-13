@@ -1,9 +1,9 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { Item, PrRef } from '../core/types.js'
-import type { RunReport, UnitResult } from '../posts/report.js'
-import { readJson } from '../util/json.js'
-import { itemState } from './where.js'
+import type { Item, PrRef } from '#core/types'
+import type { RunReport, UnitResult } from '#posts/report'
+import { readJson } from '#util/json'
+import { itemState } from './where'
 
 export const MAX_ATTEMPTS = 3
 // Hours short of a week, so next week's run at the same time isn't a day late, in a DST week too.

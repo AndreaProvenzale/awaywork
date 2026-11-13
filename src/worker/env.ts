@@ -1,9 +1,9 @@
 import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { bin } from '../config/paths.js'
-import { refuseSymlinks } from './safe-files.js'
-import { WORK_DIR } from './work-dir.js'
+import { bin } from '#config/paths'
+import { refuseSymlinks } from './safe-files'
+import { WORK_DIR } from './work-dir'
 
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 /** Credentials that aren't tokens: askpass helpers, the ssh agent and git config set through the env. */

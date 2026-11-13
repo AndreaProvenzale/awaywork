@@ -1,7 +1,7 @@
-import type { Budget } from '../config/schema.js'
-import type { Quota } from '../core/types.js'
-import { counted } from '../util/text.js'
-import { nextOpening, runsLeft, type Window } from './window.js'
+import type { Budget } from '#config/schema'
+import type { Quota } from '#core/types'
+import { counted } from '#util/text'
+import { nextOpening, runsLeft, type Window } from './window'
 
 export const MAX_TURNS = 200
 

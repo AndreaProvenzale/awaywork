@@ -5,16 +5,16 @@ import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { execa } from 'execa'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { approveItem } from '../src/cli/commands/approve.js'
-import { loadConfig } from '../src/config/load.js'
-import { bin, runsDir, watchLogPath } from '../src/config/paths.js'
-import type { Forge, Item, Job, Provider, Write } from '../src/core/types.js'
-import { commentKind } from '../src/posts/comments.js'
-import { watch } from '../src/run/daemon.js'
-import { executeRun, newRunId } from '../src/run/execute.js'
-import { github } from '../src/sources/github.js'
-import { originsForge } from './fakes/origins.js'
-import { fakeProvider } from './fakes/provider.js'
+import { approveItem } from '#cli/commands/approve'
+import { loadConfig } from '#config/load'
+import { bin, runsDir, watchLogPath } from '#config/paths'
+import type { Forge, Item, Job, Provider, Write } from '#core/types'
+import { commentKind } from '#posts/comments'
+import { watch } from '#run/daemon'
+import { executeRun, newRunId } from '#run/execute'
+import { github } from '#sources/github'
+import { originsForge } from './fakes/origins'
+import { fakeProvider } from './fakes/provider'
 
 /** What the mocked registries hand out: the story's forge and agent. */
 const the = vi.hoisted(() => ({
@@ -22,8 +22,8 @@ const the = vi.hoisted(() => ({
   agent: undefined as unknown as Provider,
 }))
 
-vi.mock('../src/providers/index.js', async () => {
-  const { fakeProvider } = await import('./fakes/provider.js')
+vi.mock('#providers/index', async () => {
+  const { fakeProvider } = await import('./fakes/provider')
   const claude: Provider = {
     ...fakeProvider('claude'),
     run: (job: Job, signal: AbortSignal) => the.agent.run(job, signal),
@@ -31,17 +31,17 @@ vi.mock('../src/providers/index.js', async () => {
   const providers: Record<string, Provider> = { claude }
   return { providers, providerFor: (id: string) => providers[id], providersOf: () => providers }
 })
-vi.mock('../src/forge/index.js', () => ({ forgeFor: () => the.forge }))
-vi.mock('../src/scheduler/wake.js', async (original) => ({
-  ...(await original<typeof import('../src/scheduler/wake.js')>()),
+vi.mock('#forge/index', () => ({ forgeFor: () => the.forge }))
+vi.mock('#scheduler/wake', async (original) => ({
+  ...(await original<typeof import('#scheduler/wake')>()),
   holdAwake: async () => () => {},
 }))
-vi.mock('../src/config/paths.js', async (original) => {
+vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
   return {
-    ...(await original<typeof import('../src/config/paths.js')>()),
+    ...(await original<typeof import('#config/paths')>()),
     stateDir: state,
     runsDir: `${state}/runs`,
     remoteDir: `${state}/remote`,

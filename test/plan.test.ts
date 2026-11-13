@@ -2,39 +2,39 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { ruleNumber } from '../src/cli/commands/plan.js'
-import { parseConfig } from '../src/config/load.js'
-import { renderBranch, templateProblem } from '../src/core/branch.js'
-import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
-import type { Item, PrRef, Quota, Rule } from '../src/core/types.js'
-import { describeAllowance } from '../src/format/allowances.js'
-import { planJson } from '../src/format/json.js'
-import { formatPlan, listedUnits } from '../src/format/plan.js'
-import { formatQueue, queueLines } from '../src/format/rules.js'
-import { formatWhy, namedItems } from '../src/format/why.js'
+import { ruleNumber } from '#cli/commands/plan'
+import { parseConfig } from '#config/load'
+import { renderBranch, templateProblem } from '#core/branch'
+import { builtinSkills, type SkillCatalog } from '#core/skills'
+import type { Item, PrRef, Quota, Rule } from '#core/types'
+import { describeAllowance } from '#format/allowances'
+import { planJson } from '#format/json'
+import { formatPlan, listedUnits } from '#format/plan'
+import { formatQueue, queueLines } from '#format/rules'
+import { formatWhy, namedItems } from '#format/why'
 import {
   type Attempts,
   loadAttempts,
   recordAttempts,
   saveAttempts,
   unchangedSince,
-} from '../src/plan/attempts.js'
-import { needsYou, planRun } from '../src/plan/foreman.js'
-import type { Step } from '../src/plan/probe.js'
-import { finishedSince, probeAndPlan } from '../src/plan/probe.js'
-import type { Skip } from '../src/plan/skips.js'
-import { approveReply, markComment, planComment, resultComment } from '../src/posts/comments.js'
-import type { RunReport } from '../src/posts/report.js'
-import { type Allowance, allowance } from '../src/quota/budget.js'
-import { oneOffRefusal } from '../src/run/execute.js'
-import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
+} from '#plan/attempts'
+import { needsYou, planRun } from '#plan/foreman'
+import type { Step } from '#plan/probe'
+import { finishedSince, probeAndPlan } from '#plan/probe'
+import type { Skip } from '#plan/skips'
+import { approveReply, markComment, planComment, resultComment } from '#posts/comments'
+import type { RunReport } from '#posts/report'
+import { type Allowance, allowance } from '#quota/budget'
+import { oneOffRefusal } from '#run/execute'
+import { asanaTask, fakeItem, githubPr } from './fakes/items'
 
-vi.mock('../src/config/paths.js', async (original) => {
+vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
   return {
-    ...(await original<typeof import('../src/config/paths.js')>()),
+    ...(await original<typeof import('#config/paths')>()),
     attemptsPath: `${state}/attempts.json`,
     skipsPath: `${state}/skips.json`,
   }

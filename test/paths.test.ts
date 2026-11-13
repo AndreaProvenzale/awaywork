@@ -2,13 +2,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import {
-  bin,
-  configDir,
-  defaultConfigPath,
-  packageVersion,
-  skillsDirOf,
-} from '../src/config/paths.js'
+import { bin, configDir, defaultConfigPath, packageVersion, skillsDirOf } from '#config/paths'
 
 describe('paths', () => {
   it('reads the version from package.json', async () => {

@@ -1,14 +1,14 @@
-import type { Item } from '../core/types.js'
-import { MAX_ATTEMPTS } from '../plan/attempts.js'
-import { describeCondition } from '../plan/condition.js'
-import { type PlannedUnit, type RunPlan, shortRef } from '../plan/foreman.js'
-import { presenceLine } from '../quota/budget.js'
-import { describeOccurrence } from '../sources/routines.js'
-import { cardRepo, unpassed } from '../tasks/fanout.js'
-import { isCheck, openedChain } from '../tasks/plan-file.js'
-import { allowanceNote, allowanceRow } from './allowances.js'
-import { NO_QUEUE } from './rules.js'
-import { needsYouLines, refIn, skippedLines } from './skips.js'
+import type { Item } from '#core/types'
+import { MAX_ATTEMPTS } from '#plan/attempts'
+import { describeCondition } from '#plan/condition'
+import { type PlannedUnit, type RunPlan, shortRef } from '#plan/foreman'
+import { presenceLine } from '#quota/budget'
+import { describeOccurrence } from '#sources/routines'
+import { cardRepo, unpassed } from '#tasks/fanout'
+import { isCheck, openedChain } from '#tasks/plan-file'
+import { allowanceNote, allowanceRow } from './allowances'
+import { NO_QUEUE } from './rules'
+import { needsYouLines, refIn, skippedLines } from './skips'
 import {
   clip,
   heading,
@@ -19,7 +19,7 @@ import {
   TITLE,
   table,
   warningLines,
-} from './terminal.js'
+} from './terminal'
 
 /** One per chain: its first step stands for it. */
 export function listedUnits(plan: Pick<RunPlan, 'units'>) {

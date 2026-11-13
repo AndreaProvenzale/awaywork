@@ -1,14 +1,7 @@
 import type { Command } from 'commander'
-import { configPath, loadConfig } from '../../config/load.js'
-import { skipsPath } from '../../config/paths.js'
-import {
-  activeSkips,
-  describeSkip,
-  loadSkips,
-  type Skip,
-  saveSkips,
-  untilTime,
-} from '../../plan/skips.js'
+import { configPath, loadConfig } from '#config/load'
+import { skipsPath } from '#config/paths'
+import { activeSkips, describeSkip, loadSkips, type Skip, saveSkips, untilTime } from '#plan/skips'
 
 export function skipCommand(program: Command): void {
   program

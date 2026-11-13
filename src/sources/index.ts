@@ -1,13 +1,13 @@
 import { z } from 'zod'
-import type { Ctx, Forge, Item, Source, ThreadHost, Write } from '../core/types.js'
-import { itemStates } from '../plan/where.js'
-import { markComment, type PostState } from '../posts/comments.js'
-import { asana } from './asana.js'
-import { commandSource, commandThreads, isCommand } from './command.js'
-import { github } from './github.js'
-import { jira } from './jira.js'
-import { linear } from './linear.js'
-import { routines } from './routines.js'
+import type { Ctx, Forge, Item, Source, ThreadHost, Write } from '#core/types'
+import { itemStates } from '#plan/where'
+import { markComment, type PostState } from '#posts/comments'
+import { asana } from './asana'
+import { commandSource, commandThreads, isCommand } from './command'
+import { github } from './github'
+import { jira } from './jira'
+import { linear } from './linear'
+import { routines } from './routines'
 
 // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config
 export const sources: Record<string, Source<any>> = {

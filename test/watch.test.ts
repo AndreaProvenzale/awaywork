@@ -4,19 +4,13 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { printStatus } from '../src/cli/commands/schedule.js'
-import {
-  runLockPath,
-  runsDir,
-  watchLockPath,
-  watchLogPath,
-  watchStatePath,
-} from '../src/config/paths.js'
-import type { Config } from '../src/config/schema.js'
-import { contained, isolateFor } from '../src/core/isolation.js'
-import type { Job } from '../src/core/types.js'
-import { appendLog, isolation, stopWatch, watch } from '../src/run/daemon.js'
-import type { Schedule, Scheduler } from '../src/scheduler/index.js'
+import { printStatus } from '#cli/commands/schedule'
+import { runLockPath, runsDir, watchLockPath, watchLogPath, watchStatePath } from '#config/paths'
+import type { Config } from '#config/schema'
+import { contained, isolateFor } from '#core/isolation'
+import type { Job } from '#core/types'
+import { appendLog, isolation, stopWatch, watch } from '#run/daemon'
+import type { Schedule, Scheduler } from '#scheduler/index'
 
 /** The units the fake worker ran, the most at a time, how long each takes, what the next probe waits for, and the repo each clone is of. */
 const workers = vi.hoisted(() => ({
@@ -29,8 +23,8 @@ const workers = vi.hoisted(() => ({
   origin: '',
 }))
 
-vi.mock('../src/providers/index.js', async () => {
-  const { fakeProvider } = await import('./fakes/provider.js')
+vi.mock('#providers/index', async () => {
+  const { fakeProvider } = await import('./fakes/provider')
   const { setTimeout } = await import('node:timers/promises')
   const fake = fakeProvider('claude')
   const providers = {
@@ -62,8 +56,8 @@ vi.mock('../src/providers/index.js', async () => {
     providersOf: () => providers,
   }
 })
-vi.mock('../src/forge/index.js', async () => {
-  const { fakeForge } = await import('./fakes/forge.js')
+vi.mock('#forge/index', async () => {
+  const { fakeForge } = await import('./fakes/forge')
   const { execa } = await import('execa')
   const clone = async (_repo: string, _branch: string, dir: string) =>
     void (await execa('git', ['clone', '-q', workers.origin, dir]))
@@ -71,8 +65,8 @@ vi.mock('../src/forge/index.js', async () => {
 })
 /** How long releasing the run lock takes. */
 const lock = vi.hoisted(() => ({ releaseMs: 0 }))
-vi.mock('../src/run/run-lock.js', async (original) => {
-  const real = await original<typeof import('../src/run/run-lock.js')>()
+vi.mock('#run/run-lock', async (original) => {
+  const real = await original<typeof import('#run/run-lock')>()
   const { setTimeout } = await import('node:timers/promises')
   return {
     ...real,
@@ -94,24 +88,24 @@ vi.mock('node:timers/promises', async (original) => {
   }
 })
 // The daemon's remote server, on a free port.
-vi.mock('../src/run/remote.js', async (original) => {
-  const real = await original<typeof import('../src/run/remote.js')>()
+vi.mock('#run/remote', async (original) => {
+  const real = await original<typeof import('#run/remote')>()
   return {
     ...real,
     serveRemote: (...[env, s]: Parameters<typeof real.serveRemote>) =>
       real.serveRemote(env, { ...s, port: 0 }),
   }
 })
-vi.mock('../src/scheduler/wake.js', async (original) => ({
-  ...(await original<typeof import('../src/scheduler/wake.js')>()),
+vi.mock('#scheduler/wake', async (original) => ({
+  ...(await original<typeof import('#scheduler/wake')>()),
   holdAwake: async () => () => {},
 }))
-vi.mock('../src/config/paths.js', async (original) => {
+vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
   return {
-    ...(await original<typeof import('../src/config/paths.js')>()),
+    ...(await original<typeof import('#config/paths')>()),
     runsDir: `${state}/runs`,
     attemptsPath: `${state}/attempts.json`,
     runLockPath: `${state}/run.lock`,

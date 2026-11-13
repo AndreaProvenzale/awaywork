@@ -3,17 +3,17 @@ import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseConfig } from '../src/config/load.js'
-import { canMatch } from '../src/config/schema.js'
-import type { Provider } from '../src/core/types.js'
-import type { Exec } from '../src/forge/gh.js'
-import { workflow } from '../src/scheduler/github-actions.js'
-import { recorded } from './fakes/gh.js'
+import { parseConfig } from '#config/load'
+import { canMatch } from '#config/schema'
+import type { Provider } from '#core/types'
+import type { Exec } from '#forge/gh'
+import { workflow } from '#scheduler/github-actions'
+import { recorded } from './fakes/gh'
 
 // A test answers gh through `gh.run`; without one, gh isn't installed.
 const gh = vi.hoisted(() => ({ run: undefined as Exec | undefined }))
-vi.mock('../src/forge/gh.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../src/forge/gh.js')>()
+vi.mock('#forge/gh', async (importOriginal) => {
+  const original = await importOriginal<typeof import('#forge/gh')>()
   const exec = async (cmd: string, args: string[], env?: Record<string, string>) => {
     if (cmd === 'git') return 'git version 2.50.0\nextra'
     if (cmd === 'gh' && gh.run) return gh.run(cmd, args, env)
@@ -28,8 +28,8 @@ const agents = vi.hoisted(() => ({
   found: {} as Record<string, { installed: boolean; version?: string }>,
   probe: vi.fn(),
 }))
-vi.mock('../src/providers/index.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../src/providers/index.js')>()
+vi.mock('#providers/index', async (importOriginal) => {
+  const original = await importOriginal<typeof import('#providers/index')>()
   const stub = (p: Provider): Provider => ({
     ...p,
     detect: async () => agents.found[p.id] ?? { installed: false },
@@ -39,12 +39,12 @@ vi.mock('../src/providers/index.js', async (importOriginal) => {
   return { ...original, providers: Object.fromEntries(providers) }
 })
 
-vi.mock('../src/config/paths.js', async (importOriginal) => {
+vi.mock('#config/paths', async (importOriginal) => {
   const { mkdtempSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
   const configDir = mkdtempSync(join(tmpdir(), 'awaywork-config-'))
-  const original = await importOriginal<typeof import('../src/config/paths.js')>()
+  const original = await importOriginal<typeof import('#config/paths')>()
   // bin looks a name up once per process, so a test's fake docker comes in through the env.
   const bin = (name: string) => (name === 'docker' && process.env.FAKE_DOCKER) || original.bin(name)
   const runsDir = mkdtempSync(join(tmpdir(), 'awaywork-runs-'))
@@ -53,8 +53,8 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
 })
 
 const { bitbucketChecks, containerChecks, isolationChecks, runChecks, workflowSecretChecks } =
-  await import('../src/cli/commands/doctor.js')
-const { configDir, runsDir } = await import('../src/config/paths.js')
+  await import('#cli/commands/doctor')
+const { configDir, runsDir } = await import('#config/paths')
 
 describe('doctor', () => {
   it('reports each check as { status, what, detail } and fails a missing config', async () => {

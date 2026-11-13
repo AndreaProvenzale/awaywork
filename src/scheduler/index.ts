@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
-import type { Exec } from '../forge/gh.js'
-import { cron } from './cron.js'
-import { launchd } from './launchd.js'
-import { systemd } from './systemd.js'
+import type { Exec } from '#forge/gh'
+import { cron } from './cron'
+import { launchd } from './launchd'
+import { systemd } from './systemd'
 
 /** A time of day (local) a window opens, on the given weekdays (0 is Sunday) or every day. */
 export interface Start {

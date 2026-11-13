@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { type Handoff, handOff, initCommand, withoutEnvFile } from '../src/cli/commands/init.js'
-import { printBrand } from '../src/cli/tui/ask.js'
-import { pluginDir } from '../src/config/paths.js'
+import { type Handoff, handOff, initCommand, withoutEnvFile } from '#cli/commands/init'
+import { printBrand } from '#cli/tui/ask'
+import { pluginDir } from '#config/paths'
 
-vi.mock('../src/providers/index.js', async () => {
-  const { fakeProvider } = await import('./fakes/provider.js')
+vi.mock('#providers/index', async () => {
+  const { fakeProvider } = await import('./fakes/provider')
   const providers = { claude: fakeProvider('claude') }
   return {
     providers,
@@ -16,8 +16,8 @@ vi.mock('../src/providers/index.js', async () => {
     providersOf: () => providers,
   }
 })
-vi.mock('../src/forge/gh.js', async (original) => ({
-  ...(await original<typeof import('../src/forge/gh.js')>()),
+vi.mock('#forge/gh', async (original) => ({
+  ...(await original<typeof import('#forge/gh')>()),
   exec: async () => {
     throw new Error('gh: not logged in')
   },

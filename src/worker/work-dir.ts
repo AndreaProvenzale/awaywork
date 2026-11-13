@@ -1,4 +1,4 @@
-import type { Deliver } from '../core/types.js'
+import type { Deliver } from '#core/types'
 
 /** Context, output and prompt live here inside the clone; git ignores it. */
 export const WORK_DIR = '.away'
