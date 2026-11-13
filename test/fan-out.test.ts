@@ -534,9 +534,6 @@ describe('tasks as items', () => {
     const moves = result(3, { waits: true, move: 'QA', saw: 'open' })
     expect(heldMove(fanned(moves, yours('approve', 4)))).toBe('QA')
     expect(heldMove(fanned(moves, yours('Not yet.', 4)))).toBeUndefined()
-    // A plain post of awaywork's after it doesn't lose the move.
-    const plain = posted(resultComment('Done.', 'done', 'implement', 'api'), 5)
-    expect(heldMove(fanned(moves, yours('approve', 4), plain))).toBe('QA')
     const accepted = plan([fanned(waits, yours('approve\nThe third screen is gone.', 4))], qaRule)
     expect(skips(accepted)).toContainEqual([
       'acme/api#1/qa',
@@ -554,35 +551,6 @@ describe('tasks as items', () => {
     expect(taskResults(fanned(...feedback, result(5, { waits: true })))).toEqual({ qa: 'waiting' })
     const goesOn = posted(resultComment('Half.', 'continue', 'qa', 'qa', 1), 5)
     expect(taskResults(fanned(...feedback, goesOn))).toEqual({ qa: undefined })
-  })
-
-  it('takes your reply as the answer to the newest result waiting above it only: an older one keeps waiting', () => {
-    const gates = "gates: { proof: { command: 'scripts/proof.sh' } }"
-    const qaRule = configOf(
-      `${queue}  - { skill: qa, where: { planned: true }, deliver: report, ${gates} }\n`,
-    )
-    const qaPlan = `tasks:\n  - { id: qa, title: Q, skill: qa }\n  - { id: qa2, title: R, skill: qa }\n`
-    const waits = (task: string, n: number) => ({
-      ...posted('', n),
-      body: markComment(resultComment('Two shots.', 'done', 'qa', task, 0, true), { waits: true }),
-    })
-    const both = card([
-      planned(qaPlan),
-      yours(approveReply('')),
-      waits('qa', 3),
-      waits('qa2', 4),
-      yours('approve', 5),
-    ])
-    expect(taskResults(both)).toEqual({ qa: 'waiting', qa2: 'approved' })
-    expect(skips(plan([both], qaRule))).toEqual([
-      ['acme/api#1', 'fanned_out', 'fanned out: qa waits for your approval, qa2 done'],
-      [
-        'acme/api#1/qa',
-        'waiting_for_approval',
-        "waiting for your approval of task qa's result on https://example.com/1",
-      ],
-      ['acme/api#1/qa2', 'task_done', 'done: its result is on https://example.com/1'],
-    ])
   })
 
   it('runs nothing for a card no longer yours or whose task PRs went unread, and fans out on Bitbucket', () => {

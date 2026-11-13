@@ -511,7 +511,6 @@ To approve, reply with approve as the first line. Any other reply is feedback: a
 - **One post of a card waits at a time.** The run that posts it stops the card's [block](#the-feature-block): no task of the card runs after it that run, skipped as `qa's result waits for your approval`. Results the tasks before it posted stay as they are.
 - **Your first reply after it decides**, from your own account; a teammate's comment is context. First line `approve`: you accept the gap, and the task is done. `awaywork approve tracker:ENG-2101/qa`, the card's key or `a` posts it. Anything else is feedback: the card reads `qa runs again on your feedback`, the task runs again with the thread in `item.md`, and its gates run on the new result. A [pinned file](#files-that-come-back) of the post edited in the store is feedback too, whatever you replied.
 - **None fired:** `Gates: none fired (proof)` tops the result, marked `— awaywork · went ahead · gates=proof`, and the task is done as without gates.
-- Should two results wait on a card all the same (a run by hand, an older card), your reply answers the newest above it, and the older one keeps waiting, as `plan` says. `awaywork approve <card>` replies to the one that waits.
 - A newer plan leaves the result behind: `approve tracker:ENG-2101/qa` is refused as `older than the plan`, and while that plan waits your reply answers the plan.
 - A `planned` rule's `on_done: { move }` is held with the post, as on [any that waits](#posts-that-wait).
 - All of it is read off the card or its thread every run.
@@ -712,7 +711,7 @@ To approve, reply with approve as the first line. Any other reply is feedback: a
 
 Details:
 
-- A held move happens only while the card is in the status the post saw (on GitHub, the label not on yet) and no newer post that waits is on the item. A dry run only says it would; the report lists the move, or why it failed, under Held moves. Moving or reassigning the card yourself releases the post.
+- A held move happens only while the card is in the status the post saw (on GitHub, the label not on yet) and no newer awaywork post is on the item. A dry run only says it would; the report lists the move, or why it failed, under Held moves. Moving or reassigning the card yourself releases the post.
 - A report rule that waits, or has gates of its own, needs a source that can write, or a [thread](#threads): naming one that can't is a config error, and `doctor` warns about any it may match.
 - `wait` on a `pr`, `draft_pr`, `push` or `pending_review` rule is a config error: the PR is the decision. So is `wait` on a `planned` rule: a report task's result waits only when a [gate of its rule fires](#a-gate-on-a-report-task), and it sets no `approved`.
 
@@ -831,7 +830,7 @@ When the store fails:
 
 - A failed put leaves the file in the run dir, pins nothing and adds a morning report line (`fail.bin not stored: Command failed with exit code 1: …`, or `printed 11 characters that aren't JSON, not {"url": "…"}`, never quoting the output); post and PR still go out.
 - A lean report whose own `report.md` failed posts the whole report in place of the summary, other pins kept, and says so; over 30 KB it fails like any result.
-- A failed get on a post the unit depends on (the one an approval covers, its own when it runs again, a PR's footer) skips the unit as `fix store`, with why, counting no attempt.
+- A failed get on a post the unit depends on (the one an approval covers, its own when it runs again, a PR's footer) skips the unit as `fix store`, with why, counting no attempt. One on a task's result that waits or went ahead skips every task of its card the same way.
 - On any other post (an older plan, a newer report) it costs only that post's files and a morning report line, so an expired `plan.yml` on an old plan stops nothing.
 
 ## Files that come back

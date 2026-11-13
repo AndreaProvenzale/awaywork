@@ -149,16 +149,6 @@ describe('approve', () => {
       approveItem('github:acme/api#5/api', config, '', { sources: answered.sources, ctx }),
     ).rejects.toThrow(/^task api's result on https:\/\/example.com\/1 was already answered by me/)
     expect(answered.writes).toEqual([])
-    // Another task's result that went ahead after it doesn't hide the one that waits.
-    const went = {
-      ...waits,
-      body: markComment(resultComment('Fine.', 'done', 'qa', 'web'), { went: true, gates: ['p'] }),
-      at: at(4),
-    }
-    const later = github([card(yes, waits, went)])
-    expect(
-      await approveItem('github:acme/api#5', config, '', { sources: later.sources, ctx }),
-    ).toBe("task api's result approved: replied approve on https://example.com/1#issuecomment-1")
   })
 
   it("refuses a task's result a newer plan left behind, naming the plan that waits, which the card's key approves", async () => {

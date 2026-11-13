@@ -18,7 +18,7 @@ import {
   type Task,
   taskPrUrls,
 } from './plan.js'
-import { taskResults } from './posts.js'
+import { taskResults, unreadTaskResult } from './posts.js'
 import { isLoop, ruleFor } from './queue.js'
 import { settingsFor } from './repos.js'
 import { resolveSkill, type SkillCatalog } from './skills.js'
@@ -252,6 +252,8 @@ export function expandPlans(
     // A gate that fired on a task's result holds the card's tasks like its questions, until you answer the post.
     const gated = tasks.filter((t) => reportsOnly(t) && results[t.id] === 'waiting')
     const posts = card.thread?.url ?? card.url
+    // A task's result awaywork couldn't read back decides nothing yet: nothing of the card counts as done or runs.
+    const unread = unreadTaskResult(card)
     const states: string[] = []
     // The card's own skip goes first, its tasks' under it.
     const at = skipped.length
@@ -272,6 +274,9 @@ export function expandPlans(
       if (pr?.state === 'merged') {
         states.push(`${t.id} merged`)
         skip(item, 'task_merged', `merged in ${pr.url}`, pr.url)
+      } else if (unread) {
+        states.push(`${t.id} waits for the store`)
+        skip(item, 'store_failed', unread)
       } else if (reported(t)) {
         states.push(`${t.id} done`)
         skip(item, 'task_done', `done: its result is on ${card.url}`, card.url)
@@ -323,7 +328,7 @@ export function expandPlans(
         out.push(item)
       }
     }
-    const done = tasks.every((t) => merged(t.id) || reported(t))
+    const done = !unread && tasks.every((t) => merged(t.id) || reported(t))
     skipped.splice(at, 0, {
       item: card,
       ...(done

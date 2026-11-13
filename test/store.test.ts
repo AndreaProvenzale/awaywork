@@ -15,6 +15,7 @@ import {
   commentKind,
   leanPlanComment,
   markComment,
+  type PostState,
   pinsOf,
   planComment,
   resultComment,
@@ -962,6 +963,42 @@ describe('stale posts', () => {
     expect(await read(await pinned('report.md', 'edited', sha('as posted')))).toEqual({
       qa: 'feedback',
     })
+  })
+
+  it("skips a card's tasks as store_failed while a task's result, approved or gone ahead, can't be read back", async () => {
+    const queue =
+      '  - { skill: plan, deliver: plan }\n  - { skill: review, where: { planned: true }, deliver: report }'
+    const config = parseConfig(
+      `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${shared.config}\nqueue:\n${queue}\n`,
+    )
+    const tasks =
+      'tasks:\n  - { id: qa, title: Q, skill: review }\n  - { id: qa2, title: R, skill: review }\n'
+    const gone = { name: 'report.md', url: 'file:///nowhere/report.md', sha256: sha('x') }
+    const skipped = async (state: PostState, ...more: Item['comments']) => {
+      const text = resultComment('Two shots.', 'done', 'review', 'qa', 0, 'waits' in state)
+      const card = yours(1, [
+        post(markComment(planComment('N.', tasks))),
+        post('approve', '2026-10-24T02:00:00Z'),
+        post(markComment(`${text}${pinBlock([gone])}`, state), '2026-10-24T03:00:00Z'),
+        ...more,
+      ])
+      await checkPins([card], config.store as Store, process.env)
+      const plan = planRun({
+        config,
+        items: [card],
+        allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+        skills: { builtin: builtinSkills },
+      })
+      expect(plan.units).toEqual([])
+      return plan.skipped.map((s) => [s.item.key, s.kind, s.reason.split(':')[0]])
+    }
+    const unread = [
+      ['acme/api#1', 'fanned_out', 'fanned out'],
+      ['acme/api#1/qa', 'store_failed', "couldn't read report.md from the store"],
+      ['acme/api#1/qa2', 'store_failed', "couldn't read report.md from the store"],
+    ]
+    expect(await skipped({ waits: true }, post('approve', '2026-10-24T04:00:00Z'))).toEqual(unread)
+    expect(await skipped({ went: true, gates: ['proof'] })).toEqual(unread)
   })
 
   it('plans an unanswered post whose file was edited as feedback, on the card and its PR, and while its pins match holds the card alone', async () => {

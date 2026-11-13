@@ -3,6 +3,7 @@ import {
   commentKind,
   commentTask,
   isApprove,
+  isAwayworkComment,
   type PostState,
   pinsOf,
   postState,
@@ -50,24 +51,22 @@ export const postAnswer = ({ post, state, answer }: Post): 'waiting' | 'feedback
         ? 'approved'
         : 'feedback'
 
-/**
- * Each task's results on the card since its plan's approval, oldest first, a re-plan's leaving older ones behind.
- * Your reply answers only the newest result waiting above it: an older one keeps waiting.
- */
-function taskPosts(item: Pick<Item, 'comments'>): { task: string; at: number; post?: Post }[] {
+/** Where the results of a plan's tasks start on the card: after its approval, a re-plan's leaving older ones behind. */
+function tasksFrom(item: Pick<Item, 'comments'>): number {
   const answer = planThread(item)?.answer
-  const from = answer ? item.comments.indexOf(answer) + 1 : item.comments.length
-  const found = item.comments.flatMap((c, at) => {
+  return answer ? item.comments.indexOf(answer) + 1 : item.comments.length
+}
+
+/** Each task's newest result on the card since its plan's approval, and its post when it says it waits or went ahead. */
+function taskPosts(item: Pick<Item, 'comments'>): Map<string, { result: Comment; post?: Post }> {
+  const from = tasksFrom(item)
+  const newest = new Map<string, { result: Comment; post?: Post }>()
+  item.comments.forEach((c, at) => {
     const task = at >= from && commentKind(c) === 'result' ? commentTask(c) : undefined
-    return task ? [{ task, at, post: postAt(item, at) }] : []
+    const post = postAt(item, at)
+    if (task) newest.set(task, { result: c, ...(post && { post }) })
   })
-  return found.map((r, i) => {
-    const { post } = r
-    const next = found.slice(i + 1).find((n) => n.post && 'waits' in n.post.state)
-    const passed =
-      post?.answer && 'waits' in post.state && next && next.at < item.comments.indexOf(post.answer)
-    return passed ? { ...r, post: { post: post.post, state: post.state } } : r
-  })
+  return newest
 }
 
 /**
@@ -78,12 +77,16 @@ export function taskResults(
   item: Pick<Item, 'comments'>,
 ): Record<string, ReturnType<typeof postAnswer> | undefined> {
   const results: ReturnType<typeof taskResults> = {}
-  for (const { task, at, post } of taskPosts(item)) {
-    const done = resultStatus(item.comments[at] as Comment) === 'done'
+  for (const [task, { result, post }] of taskPosts(item)) {
+    const done = resultStatus(result) === 'done'
     results[task] = !done ? undefined : post ? postAnswer(post) : 'approved'
   }
   return results
 }
+
+/** Why a task's result on the card decides nothing yet: awaywork couldn't read its pinned files back. */
+export const unreadTaskResult = (item: Pick<Item, 'comments'>): string | undefined =>
+  decisionPosts(item).find((c) => commentTask(c) && c.pinned?.failed)?.pinned?.failed
 
 /** The skill of the newest result awaywork posted on the item that you approved or that went ahead: the item's `approved`. */
 export function approvedSkill(item: Pick<Item, 'comments'>): string | undefined {
@@ -101,35 +104,36 @@ export const withApproved = (item: Item): Item => {
 }
 
 /**
- * The move on_done held on awaywork's newest post on the item that waits, once you approved it: only while the card is
+ * The move on_done held on awaywork's newest post on the item, once you approved it: only while the card is
  * still in the status the post saw and the move isn't applied yet, as a GitHub label shows it.
  */
 export function heldMove(item: Pick<Item, 'comments' | 'status' | 'labels'>): string | undefined {
-  const at = item.comments.findLastIndex((c) => 'waits' in (postState(c) ?? {}))
+  const at = item.comments.findLastIndex(
+    (c) => isAwayworkComment(c) && commentKind(c) !== 'approve',
+  )
   const post = postAt(item, at)
   if (!post || !('waits' in post.state) || postAnswer(post) !== 'approved') return undefined
   const { move, saw } = post.state
   return move && item.status === saw && !item.labels.includes(move) ? move : undefined
 }
 
-/**
- * Awaywork's post on the item that waits or waited for your decision: a plan, or a result that says so, one that still
- * waits before a newer one that doesn't; with `task`, that task's result on its card since the plan's approval.
- */
+/** Awaywork's newest post on the item that waits or waited for your decision: a plan, or a result that says so; with `task`, that task's result on its card since the plan's approval. */
 export function decisionPost(
   item: Pick<Item, 'comments'>,
   task?: string,
 ): { what: string; post: Comment; answer?: Comment; went?: true } | undefined {
   const plan = task ? undefined : planThread(item)
-  const at = (c: Comment) => item.comments.indexOf(c)
-  const reports = task ? [] : item.comments.filter((c) => resultSkill(c))
-  const posts = [
-    ...reports.flatMap((c) => postAt(item, at(c)) ?? []),
-    ...taskPosts(item).flatMap((r) => ((!task || r.task === task) && r.post) || []),
-  ].sort((a, b) => at(a.post) - at(b.post))
-  const report = posts.findLast((p) => 'waits' in p.state && !p.answer) ?? posts.at(-1)
-  if (plan && (!report || at(plan.plan) > at(report.post)))
-    return { what: 'plan', ...plan, post: plan.plan }
+  const from = task ? tasksFrom(item) : 0
+  const at = item.comments.findLastIndex(
+    (c, i) =>
+      i >= from &&
+      commentKind(c) === 'result' &&
+      !!postState(c) &&
+      (!task || commentTask(c) === task),
+  )
+  const report = postAt(item, at)
+  const planAt = plan ? item.comments.indexOf(plan.plan) : -1
+  if (plan && planAt > at) return { what: 'plan', ...plan, post: plan.plan }
   if (!report) return undefined
   const of = commentTask(report.post)
   const what = of ? `task ${of}'s result` : `${resultSkill(report.post)}'s result`
@@ -141,8 +145,8 @@ export function decisionPosts(item: Pick<Item, 'comments'>): Comment[] {
   const plan = planThread(item)?.plan
   const skills = new Set(item.comments.flatMap((c) => resultSkill(c) ?? []))
   const reports = [...skills].flatMap((skill) => reportPost(item, skill)?.post ?? [])
-  const tasks = new Map(taskPosts(item).map((r) => [r.task, r.post?.post]))
-  return [...(plan ? [plan] : []), ...reports, ...[...tasks.values()].flatMap((c) => c ?? [])]
+  const tasks = [...taskPosts(item).values()].flatMap((r) => r.post?.post ?? [])
+  return [...(plan ? [plan] : []), ...reports, ...tasks]
 }
 
 /** A post whose pinned files a unit reads back: its folder's name under `files/`, what it is, its pins, whether a file edited since is your feedback, else left out, and whether the unit can't go without it. */

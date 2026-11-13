@@ -4,7 +4,7 @@ import type { Config } from '../config/schema.js'
 import { approveReply, commentTask, postState } from '../core/comments.js'
 import { cardTasks, planThread } from '../core/plan.js'
 import { decisionPost } from '../core/posts.js'
-import type { Ctx, Forge, Source } from '../core/types.js'
+import type { Ctx, Forge, Item, Source } from '../core/types.js'
 import { forgeFor } from '../forge/index.js'
 import { sourceFor, writeItem } from '../sources/index.js'
 import { checkKey, printOutcome } from './skip.js'
@@ -64,10 +64,10 @@ export async function approveItem(
   // A task's result waits only when a gate of its rule fired, on its card.
   const gated = card && task ? decisionPost(card, task) : undefined
   // A plan posted since left the task's result behind: your reply would answer the plan.
-  const left = card ? card.comments.some((c) => commentTask(c) === task && postState(c)) : false
-  if (card && !gated && left)
+  const left = (c: Item['comments'][number]) => commentTask(c) === task && !!postState(c)
+  if (card && !planThread(card)?.answer && card.comments.some(left))
     throw new Error(
-      `task ${task}'s result on ${card.thread?.url ?? card.url} is older than the plan on ${id}:${card.key}${planThread(card)?.answer ? ': nothing of it waits' : `, which waits for your approval: approve ${id}:${card.key}`}`,
+      `task ${task}'s result on ${card.thread?.url ?? card.url} is older than the plan on ${id}:${card.key}, which waits for your approval: approve ${id}:${card.key}`,
     )
   if (card && !gated)
     throw new Error(
