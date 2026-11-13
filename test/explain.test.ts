@@ -42,6 +42,10 @@ describe('explainConfig', () => {
     ['review', ', deliver: pending_review', undefined, 'pending review'],
     ['triage', '', { ...builtin, user: { triage: { deliver: 'report' } } }, 'report'],
     ['review', '', { ...builtin, user: { review: {} } }, 'draft PR'],
+    // The plan skips its every item: its gates could never run.
+    ['review', ', gates: { own: { command: x } }', undefined, 'nothing'],
+    ['review', ', deliver: pr, gates: { own: { command: x } }', undefined, 'nothing'],
+    ['review', ', deliver: report, gates: { own: { command: x } }', undefined, 'report'],
   ])('says %s%s leaves what the run would', (skill, extra, skills, leaves) => {
     expect(rule('{ type: pr }', extra, skill, skills)?.leaves).toBe(leaves)
   })
@@ -53,6 +57,7 @@ describe('explainConfig', () => {
     [', deliver: report, wait: false, gates: { product: { skill: judge } }', true],
     [', deliver: report, wait: true', true],
     [', deliver: report', false],
+    [', deliver: pr, gates: { proof: { command: x } }', false],
   ])('says whether a rule with%s can stop for you', (extra, waits) => {
     expect(rule('{ type: issue }', extra, 'plan')?.waits).toBe(waits)
   })

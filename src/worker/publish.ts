@@ -26,7 +26,7 @@ export type Outcome =
   | {
       kind: 'report'
       text: string
-      /** Why a `deliver: pending_review` report wasn't left as a review. */
+      /** Why a `deliver: pending_review` report wasn't left as a review, or `on_done` was held back: a gate of the rule's own fired on a chain without commits. */
       unposted?: string
       /** A plan's or report's own gates that ran on what its step left, and which fired: their card tops `text`. */
       gates?: { ran: string[]; fired?: string; card: string }

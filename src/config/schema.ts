@@ -423,21 +423,21 @@ const gate = z
       .refine((globs) => globs.length > 0, 'expected at least one glob')
       .optional()
       .describe(
-        "Git globs from the repo root; fires when the chain's commits change a matching path",
+        "Git globs from the repo root; fires when the chain's commits change a matching path; not on a plan or report rule's gate, which has no commits",
       ),
     command: z
       .string()
       .min(1)
       .optional()
       .describe(
-        "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+        "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, unset on a plan or report, and reads AWAYWORK_OUT_DIR, a read-only copy of what the steps left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
       ),
     skill: z
       .string()
       .min(1)
       .optional()
       .describe(
-        "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+        "A skill, yours or built in, that a model runs on the chain's commits and a read-only copy of what the steps left in .away/out, a plan's or report's out files alone, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
       ),
     instructions: oneOrMany
       .optional()
@@ -491,7 +491,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .record(z.string().regex(/^[\w-]+$/, 'expected a name like schema'), gate)
       .optional()
       .describe(
-        "deliver: plan or report: gates of the rule's own, on top of the top-level ones, run on what the step left: a command reads AWAYWORK_OUT_DIR, a skill a read-only copy of .away/out; one that fires puts its line on the post and makes it wait",
+        "Gates of the rule's own, under names no top-level or repo gate has. On a rule that opens a PR or pushes they run with those, and one that fires does what theirs does; on deliver: plan or report, where those never run, they run on what the step left, without changed, and one that fires puts its line on the post and makes it wait; not on pending_review, nor on a planned rule that reports",
       ),
     post: z
       .enum(['summary', 'full'])
@@ -1075,16 +1075,30 @@ export const configSchema = z
         })
       // A post waits only as a plan's or a report's, never a task's, and the PR rules' PR is already the decision.
       const posts = (r.deliver === 'plan' || r.deliver === 'report') && !('planned' in r.where)
-      for (const key of ['wait', 'gates'] as const)
-        if (r[key] !== undefined && !posts)
-          ctx.addIssue({
-            code: 'custom',
-            path: [...at, key],
-            message:
-              'planned' in r.where
-                ? `${key} goes on the plan's rule: a task's approval is the plan's`
-                : `${key} needs deliver: plan or report; a PR is already the decision, and commits take top-level or repo gates`,
-          })
+      if (r.wait !== undefined && !posts)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'wait'],
+          message:
+            'planned' in r.where
+              ? "wait goes on the plan's rule: a task's approval is the plan's"
+              : 'wait needs deliver: plan or report: a PR is already the decision',
+        })
+      const noDiff = r.deliver === 'plan' || r.deliver === 'report'
+      if (r.gates && noDiff && !posts)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'gates'],
+          message:
+            "a task's report takes no gates for now: its approval is the plan's; a task that opens a PR takes them",
+        })
+      if (r.gates && r.deliver === 'pending_review')
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'gates'],
+          message:
+            'gates check commits or a post, and pending_review leaves neither: the review stays yours to submit',
+        })
       if (r.post !== undefined && !posts)
         ctx.addIssue({
           code: 'custom',
@@ -1119,11 +1133,11 @@ export const configSchema = z
         })
       const shared = [cfg.gates, ...Object.values(cfg.repos).map((p) => p.gates)]
       for (const [name, g] of Object.entries(r.gates ?? {})) {
-        if (g.changed)
+        if (g.changed && noDiff)
           ctx.addIssue({
             code: 'custom',
             path: [...at, 'gates', name, 'changed'],
-            message: `a ${r.deliver} has no diff: changed needs commits, in a top-level or repo gate`,
+            message: `a ${r.deliver} has no diff: changed needs commits, on a rule that opens a PR or pushes, or in a top-level or repo gate`,
           })
         if (shared.some((gates) => Object.hasOwn(gates, name)))
           ctx.addIssue({

@@ -421,7 +421,7 @@ export interface Rule extends Step {
   wait?: boolean
   /** A plan or report rule's post: `summary`, its summary and pinned files, or `full`, the report inline; default summary with a store. */
   post?: 'summary' | 'full'
-  /** A plan or report rule's own gates, on what its step left; one that fires holds the post. */
+  /** The rule's own gates, on top of the top-level and repo ones: one that fires drafts a PR like theirs, or holds a plan's or report's post, where only they run. */
   gates?: Record<
     string,
     { changed?: string[]; command?: string; skill?: string; instructions?: string[] }
@@ -451,7 +451,7 @@ export interface Unit {
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** Checks run before publishing commits, the top-level ones merged with the repo's: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own, on what its step left. */
+  /** Checks run before publishing commits, the top-level ones merged with the repo's and the rule's own: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own alone, on what its step left. */
   gates?: Record<string, Gate>
   /** A plan's or report's post: it waits for your approve, or goes ahead unless one of its gates fires; unset, a report posts as a plain result. */
   waits?: boolean

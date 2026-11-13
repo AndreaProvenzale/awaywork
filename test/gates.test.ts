@@ -47,6 +47,8 @@ const unit = (gates: Record<string, Partial<Gate>>) =>
 const answering = (results: Record<string, Check>) =>
   vi.fn(async (command: string) => results[command] ?? { output: '', stdout: '' })
 
+const out = '.away/context/out'
+
 it("unions a repo's gates with the top-level ones, and adds the repo's own", () => {
   const config = parseConfig(`
 providers: [claude: {}]
@@ -344,19 +346,19 @@ it("fires a gate on its judge's verdict, with the report's lines, and runs every
       return undefined
     },
   )
-  expect(await runJudges(judge, gates, dir, { from })).toEqual([
+  expect(await runJudges(judge, gates, dir, { from, out })).toEqual([
     { name: 'risk', line: 'VAT rounding moved to each line → totals change', judged: true },
     { name: 'risk', line: '&lt;!-- the rest', judged: true },
   ])
   expect(judge.mock.calls.map((c) => [c[0], c[1], c[4]])).toEqual([
-    ['risk', 'judge', { from }],
-    ['risk', 'our-judge', { from }],
-    ['ok', 'judge', { from }],
+    ['risk', 'judge', { from, out }],
+    ['risk', 'our-judge', { from, out }],
+    ['ok', 'judge', { from, out }],
   ])
   const quiet = judging('fires')
-  expect(await runJudges(quiet, unit({ risk: { skills: ['judge'] } }), dir, { from })).toEqual([
-    { name: 'risk', line: 'fired, with no report', judged: true },
-  ])
+  expect(await runJudges(quiet, unit({ risk: { skills: ['judge'] } }), dir, { from, out })).toEqual(
+    [{ name: 'risk', line: 'fired, with no report', judged: true }],
+  )
 })
 
 it('drops what a judge changed in the clone, and fires its gate whatever it says', async () => {
@@ -386,7 +388,9 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
     const { dir, from } = await slice()
     const tip = await git(dir, 'rev-parse', 'HEAD')
     const judge = judging('clear', '', act)
-    expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from })).toEqual([
+    expect(
+      await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from, out }),
+    ).toEqual([
       {
         name: 'risk',
         line: 'the judge changed the clone; awaywork dropped its changes',
@@ -404,14 +408,16 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
 it('clears a judge that also wrote its status', async () => {
   const { dir, from } = await slice()
   const judge = judging('clear', '', (dir) => writeFile(join(dir, '.away/out/status'), 'done\n'))
-  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from })).toEqual([])
+  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from, out })).toEqual(
+    [],
+  )
   expect((await readdir(join(dir, '.away/out'))).sort()).toEqual(['diff.patch', 'pr.md'])
 })
 
 it("fails closed: a judge that didn't run or finish fires, whatever it wrote", async () => {
   const { dir, from } = await slice()
   const judge = judging('clear', '', async () => {}, 'reached the window end')
-  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from })).toEqual([
-    { name: 'risk', line: "judge didn't run: reached the window end", judged: true },
-  ])
+  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from, out })).toEqual(
+    [{ name: 'risk', line: "judge didn't run: reached the window end", judged: true }],
+  )
 })

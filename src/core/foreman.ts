@@ -6,7 +6,14 @@ import { awaitsAnswer } from './comments.js'
 import { holds } from './condition.js'
 import { byHand } from './continue.js'
 import { dedupe } from './dedupe.js'
-import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
+import {
+  branchName,
+  committingStep,
+  expandPlans,
+  gatesNeverRun,
+  planLimits,
+  stepReports,
+} from './fanout.js'
 import { globToRegExp } from './glob.js'
 import { MAX_ATTEMPTS } from './max-attempts.js'
 import { elsewhere, latestResult, planState, planThread } from './plan.js'
@@ -410,6 +417,12 @@ export function planRun(input: {
       skip('refused_delivery', 'deliver pending_review: no pull request to review')
       continue
     }
+    // A declared gate never stays off unsaid: one on a chain that only reports runs under deliver: report alone.
+    const ungated = gatesNeverRun(rule, input.skills)
+    if (ungated) {
+      skip('refused_delivery', ungated)
+      continue
+    }
     const template = rule.branch ?? settingsFor(config.repos, repo).branch ?? config.branch
     // A chain's name takes the type of its first committing step; the list's words keep it a valid ref.
     const branch = branchName(config, rule, repo, items[0] as Item, committing, input.skills)
@@ -509,12 +522,12 @@ export function planRun(input: {
         ...at,
         id: unitId,
         verify: settings.verify,
-        // Gates check what a model wrote, and a merge with no model has nothing of its; a plan's or report's are its rule's own, on what it left.
+        // Gates check what a model wrote, and a merge with no model has nothing of its; the top-level and repo ones need commits, so a plan or report takes its rule's own only.
         gates: decides
-          ? ruleGates(rule)
+          ? gatesOf(rule.gates)
           : at.merge && !provider
             ? undefined
-            : gatesFor(config, repo),
+            : gatesOf(config.gates, settings.gates, rule.gates),
         ...(waits !== undefined && { waits }),
         ...(lean && { lean }),
         ...(oneOff && { oneOff }),
@@ -650,13 +663,10 @@ function inBlocks(groups: Ranked[][], order: Item[]): Ranked[][] {
   return out
 }
 
-/** The top-level gates with the repo's: a repo adds gates, and on a shared name its globs, command and skill join the top-level ones. */
-function gatesFor(config: Config, repo: string): Record<string, Gate> | undefined {
+/** The top-level gates with the repo's and the rule's own, or a plan or report rule's alone: each level adds gates, and on a shared name a repo's globs, command and skill join the top-level ones. */
+function gatesOf(...levels: (Rule['gates'] | undefined)[]): Record<string, Gate> | undefined {
   const gates = new Map<string, Gate>()
-  for (const [name, g] of [
-    ...Object.entries(config.gates),
-    ...Object.entries(settingsFor(config.repos, repo).gates),
-  ]) {
+  for (const [name, g] of levels.flatMap((level) => Object.entries(level ?? {}))) {
     const gate = gates.get(name) ?? { changed: [], commands: [], skills: [], instructions: [] }
     gate.changed.push(...(g.changed ?? []))
     if (g.command) gate.commands.push(g.command)
@@ -665,20 +675,6 @@ function gatesFor(config: Config, repo: string): Record<string, Gate> | undefine
     gates.set(name, gate)
   }
   return gates.size ? Object.fromEntries(gates) : undefined
-}
-
-/** A plan or report rule's own gates, which run on what its step left. */
-function ruleGates(rule: Rule): Record<string, Gate> | undefined {
-  const gates = Object.entries(rule.gates ?? {}).map(([name, g]) => [
-    name,
-    {
-      changed: [],
-      commands: g.command ? [g.command] : [],
-      skills: g.skill ? [g.skill] : [],
-      instructions: g.instructions ?? [],
-    },
-  ])
-  return gates.length ? Object.fromEntries(gates) : undefined
 }
 
 function quotaUnmet(quota: Condition | undefined, a: Allowance | undefined): string | undefined {

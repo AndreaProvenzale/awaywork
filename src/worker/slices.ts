@@ -11,7 +11,7 @@ import {
   commitsSince,
   type RanCheck,
 } from './checks.js'
-import { describeFired, gateOut, gatesSection, type Judged, runGates, runJudges } from './gates.js'
+import { describeFired, gateOut, gatesSection, type Judged } from './gates.js'
 import { type Outcome, publish } from './publish.js'
 import { leaveReview } from './review.js'
 import { readOutput, refuseSymlinks, writeOutput } from './safe-files.js'
@@ -81,7 +81,7 @@ export interface Publisher {
     log: (line: string) => void,
     options?: CheckOptions,
   ) => Promise<Check>
-  /** Runs gate `gate`'s judge `skill`, reading the gate's `instructions`, on the chain's commits since a commit in the clone, or on what a step left, as a step runs; why it didn't run or finish, if so. */
+  /** Runs gate `gate`'s judge `skill`, reading the gate's `instructions`, on what the steps left and the chain's commits since a commit in the clone, if any, as a step runs; why it didn't run or finish, if so. */
   judge: (
     gate: string,
     skill: string,
@@ -100,6 +100,7 @@ export interface Publisher {
  * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), a step's status file said `ask` or `continue` (`held`, whose status line then tops the body unless `failedStep` leaves it to you), its `verify` failed, one of its loops ended before its `until` held or one of its gates fired.
  * On a unit that resumes awaywork's own draft, verify and gates read all of the draft's commits, and it publishes without new ones too.
  * With gates, the PR body, or a push's summary, which goes only in the report, opens with their section: the decision card with each fired gate's line, else the gates that ran.
+ * `beforeOnDone` is the rule's own gates when its `on_done` would write for a chain that left no commits: they run on what the steps left, and one that fires keeps `on_done` back.
  * `start` is the commit gates check their scripts against: the clone's before the chain's setup and workers, or where an awaywork PR it took up left the default branch.
  */
 export async function publishSlice(
@@ -113,6 +114,7 @@ export async function publishSlice(
   closes = false,
   failedStep?: string,
   held?: Held,
+  beforeOnDone?: Unit['gates'],
 ): Promise<Outcome> {
   const { deliver } = unit
   const out = join(dir, WORK_DIR, 'out')
@@ -120,12 +122,15 @@ export async function publishSlice(
     const joined = reports.length === 1 ? (reports[0]?.text ?? '') : joinReports(reports)
     if (!joined)
       return { kind: 'none', reason: reportsOnly(deliver) ? 'no report written' : 'nothing' }
-    // A plan's or report's own gates judge what its step left, their card atop the post.
-    const ran = unit.waits !== undefined && unit.gates && Object.keys(unit.gates)
-    const fired = ran ? await gateOut(deps, unit, dir, start, joined) : []
+    // A plan's or report's own gates judge what its step left, their card atop the post; a PR rule's own, before on_done writes.
+    const posts = unit.waits !== undefined
+    const gates = posts ? unit.gates : beforeOnDone
+    const ran = gates && Object.keys(gates)
+    const fired = ran ? await gateOut(deps, { ...unit, gates }, dir, undefined, start, joined) : []
     if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
-    const card = ran ? gatesSection(ran, fired) : ''
-    const text = ran ? `${card}\n\n${joined}` : joined
+    const gated = describeFired(fired)
+    const card = ran && (posts || gated) ? gatesSection(ran, fired) : ''
+    const text = card ? `${card}\n\n${joined}` : joined
     await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile.report}`])
     await writeOutput(join(out, outputFile.report), `${text}\n`)
     const last = reports.at(-1)
@@ -133,7 +138,8 @@ export async function publishSlice(
       return failedStep
         ? { kind: 'report', text, unposted: failedStep }
         : leaveReview(deps.forge, unit, from, text, last)
-    const gated = describeFired(fired)
+    if (!posts)
+      return { kind: 'report', text, ...(gated && { unposted: `${gated}, on_done held back` }) }
     return {
       kind: 'report',
       text,
@@ -146,8 +152,7 @@ export async function publishSlice(
   const failed = await verify(deps, unit, dir, checked)
   // A resolved merge's gates read only what the worker wrote on top of git's automatic merge.
   const gatesFrom = unit.automatic ?? checked
-  const fired = await runGates(deps.check, unit, dir, gatesFrom, unit.automatic ?? start)
-  fired.push(...(await runJudges(deps.judge, unit, dir, { from: gatesFrom })))
+  const fired = await gateOut(deps, unit, dir, gatesFrom, unit.automatic ?? start)
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   if (unit.gates) {

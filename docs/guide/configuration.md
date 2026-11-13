@@ -523,9 +523,9 @@ Every config command that touches a clone. All run in a shell outside the model,
 | `repos.<repo>.verify` | Once per chain that ends with commits, before publishing; not for `report` | None | Its tail in the PR body or push summary; a `pr` PR opens as a draft; still published |
 | `when.command` | Before a step's agent; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain, which publishes |
 | `until.command` | After every loop step; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain; a loop ending on a failure puts the tail in the PR body |
-| `gates.<name>.command` | Once per chain with commits, after `verify`; not for `report` or `pending_review`, nor a dry run. A plan or report rule's own gate after its step, with `$AWAYWORK_OUT_DIR` | None | The gate fires: stdout in the decision card, a `pr` PR opens as a draft, a plan or report waits. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted PR ([Gates](./workflows.md#gates)) |
+| `gates.<name>.command` | Once per chain with commits, after `verify`; not for `report` or `pending_review`, nor a dry run. A plan or report rule's own gate after its step. Each with `$AWAYWORK_OUT_DIR` | None | The gate fires: stdout in the decision card, a `pr` PR opens as a draft, a plan or report waits. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted PR ([Gates](./workflows.md#gates)) |
 
-`verify`, `when` and `until` share results: one command on one commit runs once; a gate always runs afresh. All four get the chain's start commit as `$AWAYWORK_FROM`, and their git ignores replace refs. Only a gate's git reads attributes from the start commit; the others keep the worktree's, so an eol or LFS rule the chain adds doesn't trip your `verify`. More in [Loops](./chains.md#loops).
+`verify`, `when` and `until` share results: one command on one commit runs once; a gate always runs afresh. All four get the chain's start commit as `$AWAYWORK_FROM`, and their git ignores replace refs; a gate also gets `$AWAYWORK_OUT_DIR`, a read-only copy of the steps' `.away/out/`. Only a gate's git reads attributes from the start commit; the others keep the worktree's, so an eol or LFS rule the chain adds doesn't trip your `verify`. More in [Loops](./chains.md#loops).
 
 ## Queue rules
 
@@ -551,7 +551,8 @@ queue:
 | `then`, `quota` | [More steps](./chains.md#then), [quota checks](./chains.md#quota) |
 | `plan_tasks` | On a `deliver: plan` rule, the most tasks its [plan](./workflows.md#plans) holds; 8 by default |
 | `on_done` | [Comment and move](#on-done) your items |
-| `wait`, `gates`, `post`, `thread` | Plan and report posts: [waiting](./workflows.md#posts-that-wait), [own gates](./workflows.md#gates-of-a-rule-s-own), [lean or full](./workflows.md#files-that-come-back), [where they go](./workflows.md#threads) |
+| `gates` | The rule's [own gates](./workflows.md#gates-of-a-rule-s-own), on top of the top-level and repo ones |
+| `wait`, `post`, `thread` | Plan and report posts: [waiting](./workflows.md#posts-that-wait), [lean or full](./workflows.md#files-that-come-back), [where they go](./workflows.md#threads) |
 | `run` | `window` (default) or [`soon`](#run-soon) |
 
 Types, defaults and full meanings are in the [reference](../reference/config.md#queue).

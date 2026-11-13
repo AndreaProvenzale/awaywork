@@ -136,7 +136,15 @@ The whys: `awaywork goes on with its own draft on GitHub only`, `someone else op
 
 ## Gates
 
-A gate spots a change that wants a human first, puts a decision card on top of the PR, and holds a `deliver: pr` PR as a draft. Each gate has a name and one of:
+A gate checks what a unit leaves, its commits and the files its steps wrote, and fires when a human should look first. Where it fires decides what happens:
+
+| The unit leaves | A fired gate |
+| --- | --- |
+| A PR (`draft_pr`, `pr`) | Puts a [decision card](#the-decision-card) on top of the PR; a `deliver: pr` PR stays a draft |
+| A `push` onto your PR | Still pushes, the card atop the push's summary in the report |
+| A plan or report | Makes the [post wait](#posts-that-wait) for your approve, the card on top |
+
+Gates go at three levels: top-level and per repo, which run on every chain that publishes commits, and on [a rule](#gates-of-a-rule-s-own). Each gate has a name and one of:
 
 - `changed`: git globs from the repo root, firing when the chain's commits touch a match;
 - `command`: a script, firing when it exits non-zero, its stdout the gate's line;
@@ -157,7 +165,7 @@ repos:
 
 Top-level gates apply to every repo; a repo's `gates` only add. A gate both define fires on either's globs, and if both have a `command` or `skill`, both run and either fires it. A repo can't turn off or loosen a top-level gate.
 
-A command diffs from `$AWAYWORK_FROM`: the chain's start commit, or git's automatic merge on a [`sync`](./chains.md#conflicts) a model resolved. Never from a branch like `origin/main`: the clone's refs are the agent's to move.
+A command diffs from `$AWAYWORK_FROM`: the chain's start commit, or git's automatic merge on a [`sync`](./chains.md#conflicts) a model resolved. Never from a branch like `origin/main`: the clone's refs are the agent's to move. It also gets `$AWAYWORK_OUT_DIR`, a read-only copy of what the steps left in `.away/out/`: the PR body, a screenshot a step saved, any other file.
 
 ```sh
 #!/bin/sh
@@ -194,7 +202,7 @@ By `deliver`:
 - `pr` opens as a draft, the report saying `draft: gate schema fired` with the card's lines under the unit.
 - `draft_pr` was a draft anyway: only the card is new.
 - `push` still pushes. Your PR's body is yours, so the card tops the push's summary in the morning report: `1 commit pushed onto feat/vat-export, gate schema fired, report below`.
-- `report`, `plan` and `pending_review` commit nothing, so these gates don't run; such a rule takes [gates of its own](#gates-of-a-rule-s-own).
+- `report`, `plan` and `pending_review` commit nothing, so these gates don't run; a plan or report rule takes [gates of its own](#gates-of-a-rule-s-own).
 
 ### Gates fail closed
 
@@ -209,11 +217,12 @@ Details:
 - The command must name its script by repo-root path, as a word of its own: `bash ./scripts/route-diff.sh` or `(scripts/route-diff.sh) && echo ok` count, `cd scripts && sh route-diff.sh` doesn't.
 - A named file missing at the chain's start always fires it, so don't name one the command writes.
 - Only named files are compared, and the command runs repo code the agent may have changed: a sourced helper, code it calls, a module loaded from beside it. `python3 scripts/gate.py` imports an agent-committed `scripts/json.py` before the real `json`, so run Python with `-I`; Node looks for `node_modules` up from the script the same way.
+- A gate can't change `.away/out/`: once the gates ran, awaywork puts back what the steps left, as plain files, so a link or an executable bit in it is dropped.
 - What can't blank the diff: replace refs (the command's git ignores them); attributes like `* -diff`, which make it `Binary files … differ` (awaywork deletes `.git/info/attributes` first, and git reads `.gitattributes` files, committed or not, from the start commit, not the worktree; older git ignores that, hence `--text`); the steps' git config, like `diff.external` or a textconv driver (the command's git reads a fresh global config awaywork writes, with your identity and git-lfs's filter, no attributes file).
 
 ### Judges
 
-A `skill` gate is a judge: a model that reads the chain's commits and fires when it finds something a human must decide. After the scripts, awaywork runs that skill in the chain's clone as one more model run, routed on the rule's providers and models like a step, told which commit to diff from and to change nothing. Writing `fires` to `.away/out/verdict` fires the gate, the first ten lines of its `report.md` going into the card's Judge part.
+A `skill` gate is a judge: a model that reads the chain's commits and fires when it finds something a human must decide. After the scripts, awaywork runs that skill in the chain's clone as one more model run, routed on the rule's providers and models like a step, told which commit to diff from, where the read-only copy of the steps' `.away/out/` is, and to change nothing. Writing `fires` to `.away/out/verdict` fires the gate, the first ten lines of its `report.md` going into the card's Judge part.
 
 The built-in `judge` looks for schema and data changes, public routes and API contracts, money and rounding, auth, infra, performance-sensitive paths, dependency changes, anything irreversible. Name your own skill to judge by your rules: yours or a built-in, never the repo's. A gate's `instructions`, files relative to the config, reach its judge's prompt (`risk: { skill: judge, instructions: [judges/money.md] }`); the rule's and repo's don't, being written for the agent it judges.
 
@@ -227,7 +236,23 @@ Details:
 
 ### Gates of a rule's own
 
-A `deliver: plan` or `report` rule takes `gates` of its own (top-level ones never run there: no diff). They run on what the step left, and one that fires makes the [post wait](#posts-that-wait) for your approve, the card on top:
+A rule takes `gates` of its own, for a check only its units need. On a rule that opens a PR or pushes, a `planned` one included, they run with the top-level and repo gates, on top of them, and one that fires does what theirs does:
+
+```yaml
+queue:
+  - skill: implement
+    where: { labels: ui }
+    deliver: pr
+    gates:
+      proof: { command: scripts/has-screenshot.sh } # reads $AWAYWORK_OUT_DIR/screenshot.png
+      copy: { changed: ["src/locales/**"] }
+```
+
+Like the others, they run only when the chain has commits: one that left none reports, ungated. The exception is a chain that left no commits and has `on_done` to write, say a `review` that approves, so the `fix` after it is passed over: the rule's own gates run first, on `$AWAYWORK_OUT_DIR` alone (no `$AWAYWORK_FROM`, and `changed` matches nothing), and one that fires holds `on_done`'s comment and move back, its line in the unit's report. The unit is still handled: nothing retries it and `awaywork approve` has nothing to approve, so the comment and the move are yours to make, or change the item to run it again. Top-level and repo gates don't run there.
+
+A rule whose skills all report, as `review` does, could never run them, so its items are skipped with `set deliver: report (review commits nothing, so its gates would never run)`, and `awaywork doctor` warns about the rule.
+
+A `deliver: plan` or `report` rule's own gates are the only ones it has (top-level and repo ones never run there: no diff). They run on what the step left, and one that fires makes the [post wait](#posts-that-wait) for your approve, the card on top:
 
 ```yaml
 queue:
@@ -239,11 +264,11 @@ queue:
       size: { command: scripts/plan-size.sh } # reads $AWAYWORK_OUT_DIR/plan.yml
 ```
 
-- A command gets `$AWAYWORK_OUT_DIR`, a read-only copy of the step's `.away/out/`: `report.md`, the post's text, a plan's `plan.yml`, any other file it wrote.
+- A command gets `$AWAYWORK_OUT_DIR`, a read-only copy of the step's `.away/out/`: `report.md`, the post's text, a plan's `plan.yml`, any other file it wrote. No `$AWAYWORK_FROM`: nothing was committed.
 - A judge gets the same copy, told to judge those files against the item, not a diff. The built-in `judge` looks for product calls: acceptance criteria that can go two ways, UX or copy, scope the card doesn't settle, data kept or shown to someone new, a contract another team owns.
 - The post is what the step left: awaywork restores `.away/out/` before posting, and a judge that changed it fires.
 - None fired: `Gates: none fired (product, size)` tops the post, which under `wait: false` goes ahead, its mark line naming the gates that ran clear.
-- A rule gate takes `command` or `skill`, never `changed`, and no name a top-level or repo gate has. On any other `deliver`, gates are a config error for now.
+- A rule gate takes no name a top-level or repo gate has, and on a plan or report rule no `changed`: there's no diff. A `pending_review` rule takes no gates, and a `planned` rule that reports takes none for now.
 
 ## Plans
 
@@ -411,7 +436,7 @@ Once awaywork's plan comment is on an open card of yours, the card goes to the `
 - **A task's branch is its name for good.** When something else holds `away/ENG-2101-api`, the task is skipped with `delete it to run this task`, never moved to `-2`, which its PR lookup wouldn't find.
 - A [`branch`](./configuration.md#branch-names) template renders from the task's key alone, so a re-plan that retitles a task keeps its PR: `{title}` or `{type}` in a `planned` rule's template, own or inherited, is a config error. A re-plan may hand a task another skill, and so another `planned` rule, so all `planned` rules for a source set the same `branch`, or none does.
 - A task branch whose PR failed to open still reads `no PR yet` (the PR is the task's state), and each morning report says `away/ENG-2101-api exists on acme/api without a PR; delete it to run again`.
-- A task takes no approval of its own, the plan's covers it: no `approved`, `awaywork approve tracker:ENG-2101/api` is refused, and a `planned` rule takes no `wait` or gates.
+- A task takes no approval of its own, the plan's covers it: no `approved`, `awaywork approve tracker:ENG-2101/api` is refused, and a `planned` rule takes no `wait`, and gates of its own only when it opens a PR.
 - On [Bitbucket](./configuration.md#bitbucket-and-jira) it works the same, through twg. A declined or superseded PR counts as closed unmerged, when last updated; a stacked task's PR goes into the branch of the one below (no stacks there); a task whose draft says `continue`, or asks, holds its dependents back, but it's yours to [finish](#continue).
 
 ### Report tasks
@@ -642,7 +667,7 @@ Details:
 
 - A held move happens only while the card is in the status the post saw (on GitHub, the label not on yet) and no newer awaywork post is on the item. A dry run only says it would; the report lists the move, or why it failed, under Held moves. Moving or reassigning the card yourself releases the post.
 - A report rule that waits, or has gates of its own, needs a source that can write, or a [thread](#threads): naming one that can't is a config error, and `doctor` warns about any it may match.
-- `wait` and rule gates on a `pr`, `draft_pr`, `push` or `pending_review` rule are a config error for now: the PR is the decision.
+- `wait` on a `pr`, `draft_pr`, `push` or `pending_review` rule is a config error: the PR is the decision.
 
 The simplest two-stage queue plans the sprint's tasks as reports and implements those you approve:
 

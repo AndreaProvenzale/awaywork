@@ -341,7 +341,7 @@ To [continue](./workflows.md#continue) its work, the next run fast-forwards away
 
 Gates fail closed. A `command` gate fires when it can't run, times out, is stopped or isn't run on an untrusted author's PR, and, without running, when a file it names differs from the chain's start.
 
-It runs afresh with `$AWAYWORK_FROM`, ignoring replace refs, reading attributes from the start and a fresh global config the steps can't edit, unlike `verify`, `when` and `until`. It still runs repo code the agent may have changed, and a process that outlived the watchdog could swap the script after the comparison, so `changed` gates are the trustworthy kind ([Gates](./workflows.md#gates)).
+It runs afresh with `$AWAYWORK_FROM` and a read-only copy of the steps' `.away/out/`, ignoring replace refs, reading attributes from the start and a fresh global config the steps can't edit, unlike `verify`, `when` and `until`. It still runs repo code the agent may have changed, and a process that outlived the watchdog could swap the script after the comparison, so `changed` gates are the trustworthy kind ([Gates](./workflows.md#gates)).
 
 A `skill` gate's judge is a model and can be fooled, which only makes it fail to fire: it adds lines to the card, never clears a script's gate.
 
@@ -360,7 +360,7 @@ Only these:
 - A step's [questions](./workflows.md#questions), as one comment on the first of the unit's items from the rule's source that is **yours**; a `deliver: plan` rule's [plan](./workflows.md#plans) the same way, once `plan.yml` passed its checks.
 - Your `approve` reply, when you run `awaywork approve` on an item whose plan or result waits, through the same check.
 - A [waiting](./workflows.md#posts-that-wait) report's result, posted as `on_done` does; the move it holds happens only after your own approving reply, while the card is still where the post saw it. A teammate's comment never answers a post.
-- What [`on_done`](./configuration.md#on-done) asks: once the chain published, the unit's result on each of its items that is yours, from the rule's source, then a move to the status, state, section or label the config names.
+- What [`on_done`](./configuration.md#on-done) asks: once the chain published, the unit's result on each of its items that is yours, from the rule's source, then a move to the status, state, section or label the config names. A chain that left no commits writes neither when one of the [rule's own gates](./workflows.md#gates-of-a-rule-s-own) fired.
 - A plan's [task](./workflows.md#tasks) isn't a tracker item: its questions, a [report task](./workflows.md#report-tasks)'s result and its rule's `on_done` go to its card, whose ownership is reread every run.
 
 The item's description can steer that text, mentions included (on GitHub it isn't filtered by author like comments), the same exposure as a PR body.

@@ -72,6 +72,15 @@ export function committingStep(rule: Rule, skills: SkillCatalog): ThenStep | und
   return steps.find((s) => !stepReports(rule, skills)(s))
 }
 
+/** Why a rule's own gates could never run, the fix first: no step of its commits and it posts no plan or report. */
+export function gatesNeverRun(rule: Rule, skills: SkillCatalog): string | undefined {
+  const posts = rule.deliver === 'plan' || rule.deliver === 'report'
+  if (!rule.gates || posts || committingStep(rule, skills)) return undefined
+  return 'planned' in rule.where
+    ? "drop its gates: a task's report takes none for now"
+    : `set deliver: report (${rule.skill} commits nothing, so its gates would never run)`
+}
+
 /** The branch a rule's slice on the item publishes on: the template with the item and the type of the step it starts with. */
 export function branchName(
   config: Config,

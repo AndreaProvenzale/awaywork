@@ -9,7 +9,7 @@ metadata:
 
 The unit is what another agent left, which awaywork is about to publish or post: a slice of commits, or the out files of a plan or report step. The prompt says which, and where they are. You decide one thing: does it hold something a human must decide on before it goes on? You change nothing.
 
-- Read what you judge: the slice's diff (`git diff <from> HEAD`) and the code around it, or the step's out files and the item they answer.
+- Read what you judge: the slice's diff (`git diff <from> HEAD`), the code around it and the files its steps left, or the step's out files and the item they answer.
 - Look for what a human must decide, by what you judge:
   - **A diff:** schema or data changes and migrations, public routes and API contracts, money and rounding, auth and permissions, infra and deploy config, performance-sensitive paths, dependency changes, and anything irreversible, such as deleting data.
   - **Out files**, a plan or a report: product calls. Acceptance criteria that can go two ways, UX or copy, scope the card doesn't settle, data kept or shown to someone new, a contract another team owns.

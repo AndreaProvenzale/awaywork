@@ -15,8 +15,8 @@ const SHOWN_PATHS = 3
 const LINE_CHARS = 300
 const JUDGE_LINES = 10
 
-/** What a judge reads: the chain's commits since `from`, or what a plan's or report's step left, copied to `out` in the clone. */
-export type Judged = { from: string } | { out: string }
+/** What a judge reads: what the steps left, copied to `out` in the clone, and the chain's commits since `from` when it has any. */
+export type Judged = { from?: string; out: string }
 
 /** A gate that fired, and its line on the decision card: the scripts' part, or the Judge part when `judged`. */
 export interface Fired {
@@ -30,8 +30,8 @@ export interface Fired {
  * afresh, with `from` as `AWAYWORK_FROM` and git reading attributes from the chain's start.
  * A command fires when it exits non-zero, its stdout the line, and fails closed: also when it can't
  * run, times out or is stopped, and, without running, when a file it names by its path from the repo
- * root isn't the one the clone held at `start`, before the chain's setup and workers. On a plan or report, `outDir`
- * is what its step left, the command's `AWAYWORK_OUT_DIR`.
+ * root isn't the one the clone held at `start`, before the chain's setup and workers. `outDir` is the copy of what
+ * the steps left, the command's `AWAYWORK_OUT_DIR`; without commits there's no `from`, and no glob matches.
  */
 export async function runGates(
   check: Publisher['check'],
@@ -45,7 +45,8 @@ export async function runGates(
   const fired: Fired[] = []
   for (const [name, gate] of Object.entries(unit.gates)) {
     const lines: string[] = []
-    const matched = gate.changed.length ? await gatedPaths(dir, unit, from, gate.changed) : []
+    const matched =
+      from && gate.changed.length ? await gatedPaths(dir, unit, from, gate.changed) : []
     if (matched.length) lines.push(listed(matched))
     for (const command of gate.commands) {
       const swapped = await swappedFile(dir, start, command)
@@ -138,22 +139,26 @@ export async function runJudges(
 }
 
 /**
- * Runs a plan's or report's own gates on what its step left: `out/`, and its `report` as `report.md`. Each command gets a
- * read-only copy of them as `AWAYWORK_OUT_DIR`, each judge that copy, and `out/` goes back as the step left it, so the post is the step's.
+ * Runs the unit's gates on what its steps left: the commits since `from`, if any, and `out/`, a plan's or report's `report`
+ * as its `report.md`. Each command gets a read-only copy of `out/` as `AWAYWORK_OUT_DIR`, each judge that copy, and
+ * `out/` goes back as the steps left it, so what is published or posted is theirs.
  */
 export async function gateOut(
   deps: Pick<Publisher, 'check' | 'judge'>,
   unit: Unit,
   dir: string,
+  from: string | undefined,
   start: string,
-  report: string,
+  report?: string,
 ): Promise<Fired[]> {
+  if (!unit.gates) return []
   const out = join(dir, WORK_DIR, 'out')
   const copy = `${WORK_DIR}/context/out`
   await refuseSymlinks(dir, [`${WORK_DIR}/out`, copy])
   await mkdir(out, { recursive: true })
   const left = await filesIn(out)
-  const judged = new Map([...left, [outputFile.report, Buffer.from(`${report}\n`)]])
+  const judged = new Map(left)
+  if (report !== undefined) judged.set(outputFile.report, Buffer.from(`${report}\n`))
   await rm(join(dir, copy), { recursive: true, force: true })
   await putBack(join(dir, copy), judged)
   for (const [path, data] of judged)
@@ -163,8 +168,8 @@ export async function gateOut(
     Promise.all(dirs.map((d) => chmod(join(dir, copy, d), mode).catch(() => undefined)))
   await dirMode(0o555)
   try {
-    const fired = await runGates(deps.check, unit, dir, '', start, join(dir, copy))
-    fired.push(...(await runJudges(deps.judge, unit, dir, { out: copy })))
+    const fired = await runGates(deps.check, unit, dir, from ?? '', start, join(dir, copy))
+    fired.push(...(await runJudges(deps.judge, unit, dir, { from, out: copy })))
     return fired
   } finally {
     await dirMode(0o755)

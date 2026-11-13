@@ -229,7 +229,7 @@ describe('the launcher', () => {
     const envs = [
       commandEnv(base, dir, []),
       await gateEnv(base, dir, [], 'abc123', 'abc123'),
-      // A plan's or report's gate command gets the step's out files.
+      // A gate's command gets the steps' out files.
       { AWAYWORK_OUT_DIR: `${dir}/.away/context/out` },
       ...vi.mocked(launch).mock.calls.map(([, , o]) => o.env),
     ]
