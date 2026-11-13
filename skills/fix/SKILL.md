@@ -7,7 +7,7 @@ metadata:
 
 # Fix
 
-The unit is an item with problems listed in its context: failing checks in `checks.md`, unresolved review threads in `threads.md`, QA comments or an error event (a stack trace, say) in `item.md`, or, in a loop, the findings of the review in `previous/report.md`. Sort out every one.
+The unit is an item with problems listed in its context: failing checks in `checks.md` (which lists the others too, one line each), unresolved review threads in `threads.md`, QA comments or an error event (a stack trace, say) in `item.md`, or, in a loop, the findings of the review in `previous/report.md`. Sort out every one.
 
 - List every problem, one line each, before changing code. Fix failing checks first when there are any.
 - Checks: find the first real error, not the last line. Reproduce it with the narrowest command, fix the cause, rerun it. A red AI-review check can mean the bot ran out of turns: say so, change no code for it. A failure unrelated to the diff (a flaky test, an outage, a broken main) is reported, not fixed.

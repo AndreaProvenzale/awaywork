@@ -176,6 +176,27 @@
                         "state": "ERROR",
                         "targetUrl": "https://ci.example.com/1",
                         "description": "Build errored"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "status": "IN_PROGRESS",
+                        "name": "e2e",
+                        "conclusion": null,
+                        "detailsUrl": "https://github.com/acme/api/actions/runs/100/job/202"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "Vercel Preview",
+                        "state": "SUCCESS",
+                        "targetUrl": "https://api-git-rate-limits.vercel.app",
+                        "description": "Deployment has completed"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "ci/external",
+                        "state": "PENDING",
+                        "targetUrl": null,
+                        "description": null
                       }
                     ]
                   }

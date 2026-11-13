@@ -152,7 +152,7 @@ A rule's `provider` list, else the global `providers` order: the first under its
 
 Each unit runs in a fresh clone, on a new branch cut from its base: the linked PR's branch, else the default branch. `setup` runs once, before any agent; every step then works in that clone and branch.
 
-- `.away/context/` holds the prefetched item: PR view, diff, unresolved threads and failed-check logs, or the issue or task with its comments.
+- `.away/context/` holds the prefetched item: PR view, diff, unresolved threads and every check (a failed one with its log), or the issue or task with its comments.
 - Skills go where the agent looks: `.agents/skills/` for Codex, a plugin for Claude Code and Cursor.
 - The prompt: the fixed [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md), the skill, then your instructions (global, per repo, in-repo `.awaywork/instructions.md` unless someone else opened the PR, per rule).
 - No forge token, and no source's or other provider's secret ([Safety](./safety.md#what-the-agent-can-reach)); on a GitHub-hosted runner, a [user of its own](./safety.md#a-worker-user-on-github-hosted-runners).
