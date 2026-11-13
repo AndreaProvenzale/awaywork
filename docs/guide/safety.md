@@ -103,7 +103,7 @@ With `isolation: none`, the default on your machine and a self-hosted runner, al
 
 Also open:
 
-- **Prompt injection.** Strangers' GitHub comments are [hidden](#public-repos), but issue bodies, CI logs, other sources' text and trusted people's quotes may be anyone's. The harness calls them data; a model can still be talked into things, with the reach above.
+- **Prompt injection.** Strangers' GitHub comments are [hidden](#public-repos), but issue bodies, CI logs, check names and links, other sources' text and trusted people's quotes may be anyone's. The harness calls them data; a model can still be talked into things, with the reach above.
 - **Hooks across a loop's rounds:** on your repo, Claude Code loads the clone's `.claude/settings.json`, so a round can leave hooks the next runs.
 - **MCP secrets in Claude's Bash** and Cursor's shell, on your items ([MCP servers](#mcp-servers); fix in [#155](https://github.com/AndreaProvenzale/awaywork/issues/155)).
 - **Codex and Cursor read a PR author's `AGENTS.md`**, Cursor also `CLAUDE.md`, `.cursor/rules` and skills.
@@ -271,7 +271,7 @@ _Hidden: 2 comments from outside the repo's owners, members and collaborators._
 - A stranger's thread is hidden whole and doesn't count toward `unresolved_threads`, so it starts no `fix`. If GitHub won't say who started a PR's threads, all count, and the run sees only trusted ones. In a trusted thread, only strangers' replies go. Always on.
 - Membership comes from GitHub: without `read:org`, a teammate with private membership looks like an outsider. `gh auth login` and `schedule install` ask for it.
 
-It can't hide the item's own title and body (the default `review` rule skips strangers' PRs with `trusted: true`), an untrusted author's diff when a rule reviews it anyway, CI logs in `checks.md`, or what a trusted person or bot quotes. So the agent can still be steered, and without a worker user it can read your `GH_TOKEN` ([Not a sandbox](#not-a-sandbox)).
+It can't hide the item's own title and body (the default `review` rule skips strangers' PRs with `trusted: true`), an untrusted author's diff when a rule reviews it anyway, CI logs and check names and links in `checks.md`, or what a trusted person or bot quotes. So the agent can still be steered, and without a worker user it can read your `GH_TOKEN` ([Not a sandbox](#not-a-sandbox)).
 
 The classic token `schedule install` asks for reaches every repo you can; a dedicated account is your call. A fine-grained token reaches less but [can't call the Checks API](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations), which `checks` and `checks.md` read, so those likely break. Untried.
 
