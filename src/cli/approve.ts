@@ -3,7 +3,7 @@ import { configPath, loadConfig } from '../config/load.js'
 import type { Config } from '../config/schema.js'
 import { approveReply, commentTask, postState } from '../core/comments.js'
 import { cardTasks, planThread } from '../core/plan.js'
-import { decisionPost } from '../core/posts.js'
+import { decisionPost, taskResults } from '../core/posts.js'
 import type { Ctx, Forge, Item, Source } from '../core/types.js'
 import { forgeFor } from '../forge/index.js'
 import { sourceFor, writeItem } from '../sources/index.js'
@@ -78,7 +78,12 @@ export async function approveItem(
   if (!target || !post) throw new Error(`nothing on ${key} waits for your approval`)
   const what = post.what === 'plan' ? 'the plan' : post.what
   const on = target.thread?.url ?? target.url
-  if (post.went) throw new Error(`${what} on ${on} went ahead: nothing waits for your approval`)
+  // Another task's older result may still wait under the one that went ahead.
+  const [older] = Object.entries(taskResults(target)).find(([, at]) => at === 'waiting') ?? []
+  const waits = older
+    ? `task ${older}'s result above it waits, approve ${target.source}:${target.key}/${older}`
+    : 'nothing waits for your approval'
+  if (post.went) throw new Error(`${what} on ${on} went ahead: ${waits}`)
   if (post.answer)
     throw new Error(
       `${what} on ${on} was already answered by ${post.answer.author}, ${post.answer.at}`,

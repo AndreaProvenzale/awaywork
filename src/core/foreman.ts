@@ -17,7 +17,7 @@ import {
 import { globToRegExp } from './glob.js'
 import { MAX_ATTEMPTS } from './max-attempts.js'
 import { elsewhere, latestResult, planState, planThread } from './plan.js'
-import { postAnswer, reportPost } from './posts.js'
+import { postAnswer, reportPost, taskPost } from './posts.js'
 import {
   closestRule,
   doneWith,
@@ -599,9 +599,13 @@ function thenSteps(rule: Rule, id: string) {
   )
 }
 
-/** The rule's own post on the item: its plan, or its skill's newest result. */
+/** The rule's own post on the item: its plan, a task's newest result, or its skill's newest result. */
 const rulePost = (i: Item, rule: Rule) =>
-  rule.deliver === 'plan' ? planThread(i)?.plan : reportPost(i, rule.skill)?.post
+  i.task
+    ? taskPost(i, i.task.id)
+    : rule.deliver === 'plan'
+      ? planThread(i)?.plan
+      : reportPost(i, rule.skill)?.post
 
 /** The posts a unit of the rule on the item stands on: the rule's own, a task's plan on its card, and the result `approved` names. */
 const dependedPosts = (i: Item, rule: Rule) => [

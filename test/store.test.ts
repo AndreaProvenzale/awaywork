@@ -965,6 +965,63 @@ describe('stale posts', () => {
     })
   })
 
+  it("runs a task again on an edited file of its result, though its card is unchanged since its run, and holds the card's other tasks", async () => {
+    const queue =
+      '  - { skill: plan, deliver: plan }\n  - { skill: review, where: { planned: true }, deliver: report }'
+    const config = parseConfig(
+      `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${shared.config}\nqueue:\n${queue}\n`,
+    )
+    const tasks =
+      'tasks:\n  - { id: qa, title: Q, skill: review }\n  - { id: web, title: W, skill: review }\n'
+    const ran = { runId: 'r30', skill: 'review', updated: '2026-10-24T00:00:00Z' }
+    const planned = async (state?: PostState, pin?: Pin, ...more: Item['comments']) => {
+      const text = resultComment(
+        'Two shots.',
+        'done',
+        'review',
+        'qa',
+        0,
+        !!state && 'waits' in state,
+      )
+      const card = yours(1, [
+        post(markComment(planComment('N.', tasks))),
+        post('approve', '2026-10-24T02:00:00Z'),
+        ...(state && pin
+          ? [post(markComment(`${text}${pinBlock([pin])}`, state), '2026-10-24T03:00:00Z')]
+          : []),
+        ...more,
+      ])
+      await checkPins([card], config.store as Store, process.env)
+      const plan = planRun({
+        config,
+        items: [card],
+        allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+        skills: { builtin: builtinSkills },
+        attempts: { 'github:acme/api#1/qa': ran },
+      })
+      return {
+        units: plan.units.map((u) => u.unit.id),
+        skipped: plan.skipped.slice(1).map((s) => [s.item.key, s.kind, s.reason.split(' on ')[0]]),
+      }
+    }
+    // The attempt counts: without a post, the task is unchanged since it.
+    expect(await planned()).toEqual({
+      units: ['acme-api-1-web'],
+      skipped: [['acme/api#1/qa', 'unchanged', 'unchanged since run r30']],
+    })
+    const held = {
+      units: ['acme-api-1-qa'],
+      skipped: [['acme/api#1/web', 'waiting_for_task', 'waiting for task qa to run again']],
+    }
+    const edited = () => pinned('report.md', 'edited', sha('as posted'))
+    const approve = post('approve', '2026-10-24T04:00:00Z')
+    expect(await planned({ waits: true }, await edited(), approve)).toEqual(held)
+    expect(await planned({ went: true, gates: ['proof'] }, await edited())).toEqual(held)
+    expect(
+      (await planned({ waits: true }, await pinned('report.md', 'as posted'), approve)).units,
+    ).toEqual(['acme-api-1-web'])
+  })
+
   it("skips a card's tasks as store_failed while a task's result, approved or gone ahead, can't be read back", async () => {
     const queue =
       '  - { skill: plan, deliver: plan }\n  - { skill: review, where: { planned: true }, deliver: report }'
