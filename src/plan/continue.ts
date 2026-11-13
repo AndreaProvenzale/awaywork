@@ -1,4 +1,4 @@
-import { MAX_ATTEMPTS } from './max-attempts.js'
+import { MAX_ATTEMPTS } from './attempts.js'
 
 export const GITHUB_ONLY = 'awaywork goes on with its own draft on GitHub only'
 /** Someone else's edit could forge the footer. */

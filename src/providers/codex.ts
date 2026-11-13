@@ -8,7 +8,6 @@ import { z } from 'zod'
 import { stateDir } from '../config/paths.js'
 import { killGroupWhenDone } from '../core/group.js'
 import { launch } from '../core/launch.js'
-import { headerSecret } from '../core/mcp.js'
 import type { McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
 
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
@@ -219,6 +218,16 @@ export function codexProvider(
 }
 
 export const codex = codexProvider()
+
+/** The secret a header value names: `${NAME}`, or `Bearer ${NAME}` for Authorization; undefined for any other shape. */
+export function headerSecret(
+  header: string,
+  value: string,
+): { name: string; bearer: boolean } | undefined {
+  const [, bearer, name] = value.match(/^(Bearer )?\$\{(\w+)\}$/) ?? []
+  if (!name || (bearer && header.toLowerCase() !== 'authorization')) return
+  return { name, bearer: !!bearer }
+}
 
 /** `-c` overrides for the unit's MCP servers; their secrets reach them by name, kept out of the shell's env. */
 export function mcpOverrides(servers: Record<string, McpServer>): string[] {

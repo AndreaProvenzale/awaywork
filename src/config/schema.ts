@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
-import { headerSecret } from '../core/mcp.js'
 import { builtinSkills } from '../core/skills.js'
 import type { Provider, Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { ruleSteps, ruleThread } from '../plan/queue.js'
@@ -16,6 +15,7 @@ import {
   newerThan,
   spanPattern,
 } from '../plan/where.js'
+import { headerSecret } from '../providers/codex.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
 import { DAYS, time } from '../quota/window.js'

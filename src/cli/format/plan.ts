@@ -1,7 +1,7 @@
 import type { Item } from '../../core/types.js'
+import { MAX_ATTEMPTS } from '../../plan/attempts.js'
 import { describeCondition } from '../../plan/condition.js'
 import { type PlannedUnit, type RunPlan, shortRef } from '../../plan/foreman.js'
-import { MAX_ATTEMPTS } from '../../plan/max-attempts.js'
 import { presenceLine } from '../../quota/budget.js'
 import { describeOccurrence } from '../../sources/routines.js'
 import { cardRepo, unpassed } from '../../tasks/fanout.js'

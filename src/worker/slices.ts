@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Forge, Unit } from '../core/types.js'
-import { MAX_ATTEMPTS } from '../plan/max-attempts.js'
+import { MAX_ATTEMPTS } from '../plan/attempts.js'
 import { footerItems, hasTrailer, type Left, type Pin } from '../posts/footer.js'
 import {
   type Check,

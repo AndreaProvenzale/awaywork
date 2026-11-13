@@ -28,13 +28,12 @@ import {
   stepReports,
 } from '../tasks/fanout.js'
 import { elsewhere, latestResult, planState, planThread } from '../tasks/plan-file.js'
-import { type Attempts, gaveUpUntil, pushedOnto, unchangedSince } from './attempts.js'
+import { type Attempts, gaveUpUntil, MAX_ATTEMPTS, pushedOnto, unchangedSince } from './attempts.js'
 import { holds } from './condition.js'
 import { byHand } from './continue.js'
-import { dedupe } from './dedupe.js'
-import { MAX_ATTEMPTS } from './max-attempts.js'
 import {
   closestRule,
+  dedupe,
   doneWith,
   isAwayworkPr,
   isLoop,
