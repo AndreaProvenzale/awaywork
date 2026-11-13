@@ -474,7 +474,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
   /**
    * Puts the files of `out` a post of `p` pins in the store, if there's one, but those `inline` in the post unless it's lean;
-   * a put that fails gets a line in `notes`.
+   * a put that fails gets a line in `notes`, a file the store skips its name in `skipped`.
    */
   const pinOut = async (
     p: PlannedUnit,
@@ -482,6 +482,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     inline: string[],
     notes: string[],
     contract?: string,
+    skipped: string[] = [],
   ): Promise<Pin[]> => {
     if (!store || input.dryRun) return []
     const names = (await outFiles(out)).filter((name) => p.unit.lean || !inline.includes(name))
@@ -495,12 +496,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             : name
     const files = names.map((name) => ({ name, kind: kind(name) }))
     const item = (ownItems(p)[0] as Item).key
-    const { pins, failed } = await putFiles(store, input.ctx.env, out, files, {
-      item,
-      unit: p.unit.id,
-    })
-    notes.push(...failed.map((line) => maskSecrets(line, secrets, input.ctx.env)))
-    return pins
+    const put = await putFiles(store, input.ctx.env, out, files, { item, unit: p.unit.id })
+    skipped.push(...put.skipped)
+    notes.push(...put.failed.map((line) => maskSecrets(line, secrets, input.ctx.env)))
+    return put.pins
   }
 
   /**
@@ -1369,13 +1368,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 ...(holds(item) && { move: onDone?.move as string, saw: item.status }),
               }
           : undefined
+        const skipped: string[] = []
         const pins =
-          deliver === 'report' ? await pinOut(first, out, [outputFile.report], storeNotes) : []
-        // A lean post links its report: one the store didn't take goes in the post whole, the gates' card with it.
+          deliver === 'report'
+            ? await pinOut(first, out, [outputFile.report], storeNotes, undefined, skipped)
+            : []
+        // A lean post links its report: one whose put failed goes in the post whole, the gates' card with it; one the store skipped stays home.
         const whole =
           deliver === 'report' &&
           first.unit.lean &&
-          !pins.some((pin) => pin.name === outputFile.report)
+          ![...pins.map((pin) => pin.name), ...skipped].includes(outputFile.report)
         if (whole)
           storeNotes.push(`${outputFile.report} isn't in the store: the post shows all of it`)
         const text = (deliver === 'report' && !whole && (await summary())) || resultOf(outcome)

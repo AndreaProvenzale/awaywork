@@ -552,7 +552,7 @@ Where awaywork puts the files a post pins, plan.yml, reports and whatever else a
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `command` (required) | string |  | Shell command run like a custom source's, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or reads {"op":"get","url"} and prints the file's bytes |
+| `command` (required) | string |  | Shell command run like a custom source's, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or {"skip":true} to keep the file out of the store, or reads {"op":"get","url"} and prints the file's bytes |
 | `secrets` | string[] | `[]` | Env vars the command reads; withheld from workers, listed in Actions |
 | `get` | boolean | `true` | false: the command only puts, and awaywork reads a file back with a plain HTTP GET of its URL |
 | `read` | object | `{}` | What comes back into a unit's context when it reads its item's thread |

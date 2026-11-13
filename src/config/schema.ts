@@ -786,7 +786,7 @@ export const configSchema = z
           .string()
           .min(1)
           .describe(
-            'Shell command run like a custom source\'s, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or reads {"op":"get","url"} and prints the file\'s bytes',
+            'Shell command run like a custom source\'s, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or {"skip":true} to keep the file out of the store, or reads {"op":"get","url"} and prints the file\'s bytes',
           ),
         secrets: z
           .array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'expected an env var name'))
