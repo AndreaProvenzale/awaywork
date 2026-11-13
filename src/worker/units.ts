@@ -26,8 +26,7 @@ import type {
   Source,
   Unit,
 } from '../core/types.js'
-import type { Attempts } from '../plan/attempts.js'
-import { byHand } from '../plan/attempts.js'
+import { type Attempts, byHand } from '../plan/attempts.js'
 import { describeCondition, holds } from '../plan/condition.js'
 import {
   describeChain,
