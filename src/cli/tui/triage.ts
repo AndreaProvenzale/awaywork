@@ -1,0 +1,580 @@
+import { styleText } from 'node:util'
+import type { Item } from '../../core/types.js'
+import { listedUnits, planUnitTable, providerLines } from '../../format/plan.js'
+import { reportUnitTable, runHeader } from '../../format/report.js'
+import { type SkipRow, skippedHeading, skipRows } from '../../format/skips.js'
+import {
+  byGroup,
+  columns,
+  graphemes,
+  heading,
+  pad,
+  warningBlock,
+  width,
+} from '../../format/terminal.js'
+import { formatWhy } from '../../format/why.js'
+import type { RunPlan } from '../../plan/foreman.js'
+import type { Step } from '../../plan/probe.js'
+import {
+  chains,
+  needsYouOn,
+  quotaLines,
+  type ReportedSkip,
+  type RunReport,
+} from '../../posts/report.js'
+
+/** What a key does on a row. */
+export type Action = 'read' | 'open' | 'log' | 'diff' | 'skip' | 'approve'
+
+export interface Row {
+  id: string
+  text: string
+  /** Kept on screen at the row's end, in line with the other rows': an item's action. */
+  tail?: string
+  /** Lines under the row, shown unless it's folded: a unit's summary, a section's column header. */
+  more?: string[]
+  children?: Row[]
+  /** What each key acts on: the text to page, a URL, a file, or the item's source:key. */
+  act?: Partial<Record<Action, string>>
+  /** Why a key does nothing here. */
+  why?: Partial<Record<Action, string>>
+}
+
+export interface State {
+  /** The brand line, shown above the header when there's room. */
+  brand?: string
+  header: string[]
+  sections: Row[]
+  /** What this view's keys can do: a plan has no logs or diffs. */
+  actions: readonly Action[]
+  open: ReadonlySet<string>
+  selected: string
+  /** The first body line on screen. */
+  top: number
+  /** The terminal's height. */
+  rows: number
+  marks: Readonly<Record<string, readonly string[]>>
+  confirm?: { action: 'skip' | 'approve'; row: string; key: string }
+  status?: string
+  help?: boolean
+}
+
+export type Effect = { action: 'quit' } | { action: Action; target: string; row: string }
+
+type Format = Parameters<typeof styleText>[0]
+
+// Only a terminal ever sees this view.
+const style = (format: Format, text: string) => styleText(format, text, { validateStream: false })
+
+/** Every key, as `?` and the docs list them, with the action it needs. */
+const keys: [string, string, Action?][] = [
+  ['↑ ↓  j k', 'move'],
+  ['g G  Home End', 'first, last row'],
+  ['PgDn PgUp  ^D ^U', 'a screen down, up'],
+  ['→ ← Space', 'unfold, fold, as ⏎ on a heading; ← on a row goes to its section'],
+  ['⏎', 'read it in $PAGER: the unit in full, or why the item is planned or skipped'],
+  ['o', "open the unit's PR, else the item"],
+  ['l', "page the step's worker.log", 'log'],
+  ['d', 'page the diff', 'diff'],
+  ['s', 'skip the item in the coming runs, after y'],
+  ['a', 'approve the item, after y; there is no undo'],
+  ['?', 'this help'],
+  ['q Esc', 'quit'],
+]
+
+const footerKeys: [string, Action, string][] = [
+  ['⏎', 'read', 'read'],
+  ['o', 'open', 'open'],
+  ['l', 'log', 'log'],
+  ['d', 'diff', 'diff'],
+  ['s', 'skip', 'skip'],
+  ['a', 'approve', 'approve'],
+]
+
+const itemKey = (item: Item) => `${item.source}:${item.key}`
+
+const section = (id: string, title: string, n: number, children: Row[], more?: string[]): Row => ({
+  id,
+  text: heading(title, n, style),
+  children,
+  more,
+})
+
+/** A skip's row: its ref, padded to `refs`, its title and action, and the note under the title. */
+function skipRow(plan: RunReport['plan'], r: SkipRow, refs: number, id: string): Row {
+  const s = r.skipped
+  const key = itemKey(s.item)
+  return {
+    id,
+    text: `${pad(r.ref, refs)}  ${r.title}`,
+    tail: style(needsYouOn(s) ? 'yellow' : 'dim', r.action),
+    more: r.note ? [style('dim', `${' '.repeat(refs + 2)}${r.note}`)] : undefined,
+    act: {
+      read: formatWhy(plan, s.item),
+      open: s.url ?? s.item.url,
+      skip: s.kind === 'skipped_by_you' ? undefined : key,
+      approve: key,
+    },
+    why: {
+      log: 'a skipped item has no worker.log',
+      diff: 'a skipped item has no diff',
+      skip: `already skipped by you; awaywork unskip ${key} undoes it`,
+    },
+  }
+}
+
+function warningSection(warnings: string[]): Row[] {
+  if (warnings.length === 0) return []
+  const rows = warnings.map((w, i) => {
+    const [text = '', ...more] = warningBlock(w)
+    return { id: `warnings/${i}`, text, more }
+  })
+  return [section('warnings', 'Warnings', rows.length, rows)]
+}
+
+// The view clips each line to the terminal, not each cell.
+const whole = Infinity
+
+const nothing =
+  'Nothing to run and nothing skipped; awaywork sources lists what your sources can see'
+
+/** Skips under a heading per repo or project, by action, their titles in line within each group. */
+function skipGroups(plan: RunReport['plan'], skipped: ReportedSkip[], id: string): Row[] {
+  return skipRows(skipped, whole).map(([group, list], g) => {
+    const refs = Math.max(...list.map((r) => width(r.ref)))
+    return {
+      id: `${id}/${group}`,
+      text: `${group} ${list.length}`,
+      children: list.map((r, i) => skipRow(plan, r, refs, `${id}/${g}/${i}`)),
+    }
+  })
+}
+
+/** Warnings, what needs you, the units, then the other skipped items, folded: each under a heading per repo; a section only when it has rows. */
+function sectionsOf(
+  plan: RunReport['plan'],
+  warnings: string[],
+  units: Row[],
+  empty = nothing,
+): Row[] {
+  const waiting = plan.skipped.filter(needsYouOn)
+  const rest = plan.skipped.filter((s) => !needsYouOn(s))
+  const needs = skipGroups(plan, waiting, 'needs')
+  const skipped = skipGroups(plan, rest, 'skipped')
+  const items = [
+    ...(waiting.length ? [section('needs', 'Needs you', waiting.length, needs)] : []),
+    ...units,
+    ...(rest.length
+      ? [{ id: 'skipped', text: skippedHeading(rest, style), children: skipped }]
+      : []),
+  ]
+  return [
+    ...warningSection(warnings),
+    ...(items.length ? items : [{ id: 'nothing', text: style('dim', empty) }]),
+  ]
+}
+
+/** The units under a heading per repo, the table's header above them. */
+function unitSection(header: string, units: [repo: string, row: Row][]): Row[] {
+  if (units.length === 0) return []
+  const groups = byGroup(units, ([repo]) => repo).map(([repo, list]) => ({
+    id: `units/${repo}`,
+    text: `${repo} ${list.length}`,
+    children: list.map(([, row]) => row),
+  }))
+  return [section('units', 'Units', units.length, groups, [`  ${header}`])]
+}
+
+/** The first row under `row` that is no heading, and the headings to unfold to show it. */
+function firstLeaf(row: Row, path: string[] = []): { id: string; path: string[] } | undefined {
+  if (!row.children) return { id: row.id, path }
+  const [child] = row.children
+  return child && firstLeaf(child, [...path, row.id])
+}
+
+function triage(
+  header: string[],
+  sections: Row[],
+  rows: number,
+  actions: readonly Action[],
+): State {
+  // Every section after the warnings holds items, in the order to land on them.
+  const items = sections.find((s) => s.id !== 'warnings')
+  const first = items && firstLeaf(items)
+  const open = new Set([
+    ...sections
+      .filter((s) => s.id !== 'skipped')
+      .flatMap((s) => [s.id, ...(s.children ?? []).filter((c) => c.children).map((c) => c.id)]),
+    ...(first?.path ?? []),
+  ])
+  const selected = first?.id ?? ''
+  return follow({ header, sections, actions, open, selected, top: 0, rows, marks: {} })
+}
+
+/** The plan to browse: providers on top, then warnings, what needs you, the units and the skipped items, each under its repo. */
+export function planTriage(plan: RunPlan, warnings: string[], rows: number, empty?: string): State {
+  const { header, units } = planUnitTable(plan, style, whole, true)
+  const listed = listedUnits(plan)
+  const unitRows = units.map(([text = '', ...more], i): [string, Row] => {
+    const top = listed[i]?.unit.items[0]
+    const key = top && itemKey(top)
+    const row = {
+      id: `units/${i}`,
+      text,
+      more,
+      act: { read: top && formatWhy(plan, top), open: top?.url, skip: key, approve: key },
+    }
+    return [listed[i]?.unit.repo ?? '', row]
+  })
+  return triage(
+    providerLines(plan, style),
+    sectionsOf(plan, warnings, unitSection(header, unitRows), empty),
+    rows,
+    ['read', 'open', 'skip', 'approve'],
+  )
+}
+
+/** What `report` pages for a unit: its `--unit` text and the files it left that are still there. */
+export interface UnitFiles {
+  text: string
+  log?: string
+  diff?: string
+}
+
+/** A run to browse: its headline and quota on top, then warnings, what needs you, the units and the skipped items, each under its repo. */
+export function runTriage(
+  r: RunReport,
+  warnings: string[],
+  files: UnitFiles[],
+  rows: number,
+  remote = false,
+): State {
+  const { header, units } = reportUnitTable(r, true, whole, true)
+  const missing = (file: string) =>
+    remote ? 'a run fetched from GitHub keeps only its report' : `this unit left no ${file}`
+  const unitRows = chains(r).map(({ head }, i): [string, Row] => {
+    const top = head.planned.unit.items[0]
+    const key = top && itemKey(top)
+    const pr = head.outcome && 'url' in head.outcome ? head.outcome.url : undefined
+    const [text = '', ...more] = units[i] ?? []
+    const row = {
+      id: `units/${i}`,
+      text,
+      more,
+      act: {
+        read: files[i]?.text,
+        open: pr || top?.url,
+        log: files[i]?.log,
+        diff: files[i]?.diff,
+        skip: key,
+        approve: key,
+      },
+      why: { log: missing('worker.log'), diff: missing('diff') },
+    }
+    return [head.planned.unit.repo, row]
+  })
+  return triage(
+    [...runHeader(r, style), ...quotaLines(r)],
+    sectionsOf(r.plan, warnings, unitSection(header, unitRows)),
+    rows,
+    footerKeys.map(([, action]) => action),
+  )
+}
+
+interface Visible {
+  row: Row
+  depth: number
+  parent?: string
+}
+
+const isOpen = (s: State, row: Row) => !row.children || s.open.has(row.id)
+
+function visible(s: State): Visible[] {
+  const out: Visible[] = []
+  const walk = (rows: Row[], depth: number, parent?: string) => {
+    for (const row of rows) {
+      out.push({ row, depth, parent })
+      if (row.children && s.open.has(row.id)) walk(row.children, depth + 1, row.id)
+    }
+  }
+  walk(s.sections, 0)
+  return out
+}
+
+interface Line {
+  text: string
+  /** The visible row the line belongs to. */
+  at: number
+  lead?: true
+  /** Kept on screen after the text: a row's tail, then its marks. */
+  tail?: string
+  /** The heading whose rows' tails line up. */
+  group?: string
+}
+
+function layout(s: State): Line[] {
+  const lines: Line[] = []
+  visible(s).forEach(({ row, depth, parent }, at) => {
+    if (depth === 0 && at > 0) lines.push({ text: '', at })
+    const indent = '  '.repeat(depth)
+    const fold = row.children ? (isOpen(s, row) ? '▾ ' : '▸ ') : ''
+    const marks = s.marks[row.id] ?? []
+    const mark = marks.length ? style('yellow', marks.join(', ')) : ''
+    const text = `${indent}${fold}${row.text}`
+    if (row.tail)
+      lines.push({
+        text,
+        at,
+        lead: true,
+        tail: [row.tail, mark].filter(Boolean).join('  '),
+        group: parent,
+      })
+    else lines.push({ text: mark ? `${text}  ${mark}` : text, at, lead: true })
+    if (!isOpen(s, row)) return
+    const under = '  '.repeat(depth + (row.children ? 1 : 0))
+    for (const more of row.more ?? []) lines.push({ text: `${under}${more}`, at })
+  })
+  return lines
+}
+
+/** The lines above the body: the brand when it leaves a body line, then the header. */
+const headerLines = (s: State, rows: number) =>
+  s.brand && rows >= s.header.length + 6 ? [s.brand, '', ...s.header] : s.header
+
+const bodyHeight = (s: State, rows = s.rows) => Math.max(1, rows - headerLines(s, rows).length - 3)
+
+/** Scrolls so the selected row is on screen, and no further than the last line. */
+function follow(s: State): State {
+  const lines = layout(s)
+  const at = visible(s).findIndex((v) => v.row.id === s.selected)
+  const height = bodyHeight(s)
+  let top = s.top
+  const last = lines.findLastIndex((l) => l.at === at)
+  if (last >= top + height) top = last - height + 1
+  const first = lines.findIndex((l) => l.at === at && l.lead)
+  if (first < top) top = first
+  return { ...s, top: Math.max(0, Math.min(top, lines.length - height)) }
+}
+
+/** The terminal's new height. */
+export function resize(s: State, rows: number): State {
+  return follow({ ...s, rows })
+}
+
+const labelOf = (action: Action) => footerKeys.find(([, a]) => a === action)?.[2] ?? action
+
+function whyNot(row: Row, action: Action): string {
+  return row.why?.[action] ?? (row.children ? 'a heading: pick a unit or an item' : 'nothing here')
+}
+
+const actionKeys: Record<string, Action> = {
+  return: 'read',
+  o: 'open',
+  l: 'log',
+  d: 'diff',
+  s: 'skip',
+  a: 'approve',
+}
+
+/** The next state after a key, and what the shell should do: page, open, skip, approve or quit. */
+export function update(s: State, key: string): { state: State; effect?: Effect } {
+  const state = { ...s, status: undefined }
+  if (key === 'ctrl-c') return { state, effect: { action: 'quit' } }
+  if (s.help) return { state: { ...state, help: false } }
+  if (s.confirm) {
+    const { action, row, key: target } = s.confirm
+    const done = { ...state, confirm: undefined }
+    if (key === 'y') return { state: done, effect: { action, target, row } }
+    return { state: { ...done, status: `not ${action === 'skip' ? 'skipped' : 'approved'}` } }
+  }
+  const list = visible(s)
+  const i = list.findIndex((v) => v.row.id === s.selected)
+  const current = list[i]
+  if (!current) return { state }
+  const { row } = current
+  const select = (at: number) => {
+    const next = list[Math.max(0, Math.min(at, list.length - 1))]
+    return { state: follow({ ...state, selected: next?.row.id ?? s.selected }) }
+  }
+  const fold = (open: boolean) => {
+    const set = new Set(s.open)
+    if (open) set.add(row.id)
+    else set.delete(row.id)
+    return { state: follow({ ...state, open: set }) }
+  }
+  const page = (by: number) => {
+    const lines = layout(s)
+    const first = lines.findIndex((l) => l.at === i)
+    return select(lines[Math.max(0, Math.min(first + by, lines.length - 1))]?.at ?? i)
+  }
+  switch (key) {
+    case 'up':
+    case 'k':
+      return select(i - 1)
+    case 'down':
+    case 'j':
+      return select(i + 1)
+    case 'home':
+    case 'g':
+      return select(0)
+    case 'end':
+    case 'G':
+      return select(list.length - 1)
+    case 'pagedown':
+    case 'ctrl-d':
+      return page(bodyHeight(s))
+    case 'pageup':
+    case 'ctrl-u':
+      return page(-bodyHeight(s))
+    case 'right':
+      if (!row.children) return { state }
+      return s.open.has(row.id) ? select(i + 1) : fold(true)
+    case 'left':
+      if (row.children && s.open.has(row.id)) return fold(false)
+      if (!current.parent) return { state }
+      return select(list.findIndex((v) => v.row.id === current.parent))
+    case 'space':
+      return row.children ? fold(!s.open.has(row.id)) : { state }
+    case '?':
+      return { state: { ...state, help: true } }
+    case 'q':
+    case 'escape':
+      return { state, effect: { action: 'quit' } }
+  }
+  const action = actionKeys[key]
+  if (!action || !s.actions.includes(action)) return { state }
+  if (action === 'read' && row.children) return fold(!s.open.has(row.id))
+  const target = row.act?.[action]
+  if (!target) return { state: { ...state, status: `${labelOf(action)}: ${whyNot(row, action)}` } }
+  if (action === 'skip' || action === 'approve') {
+    const done = action === 'skip' ? 'skipped' : 'approved'
+    if (s.marks[row.id]?.includes(done)) return { state: { ...state, status: `already ${done}` } }
+    const prompt =
+      action === 'skip'
+        ? `y/n: skip ${target} in the coming runs? awaywork unskip undoes it`
+        : `y/n: approve ${target}? there is no undo`
+    return { state: { ...state, confirm: { action, row: row.id, key: target }, status: prompt } }
+  }
+  return { state, effect: { action, target, row: row.id } }
+}
+
+/** After the shell skipped or approved an item: the row's mark, or the error, in the status line. */
+export function settle(s: State, effect: Effect, outcome: { ok: boolean; message: string }): State {
+  if (effect.action !== 'skip' && effect.action !== 'approve')
+    return { ...s, status: outcome.message }
+  const mark = effect.action === 'skip' ? 'skipped' : 'approved'
+  const marks = outcome.ok
+    ? { ...s.marks, [effect.row]: [...(s.marks[effect.row] ?? []), mark] }
+    : s.marks
+  return { ...s, marks, status: outcome.message }
+}
+
+/** The screen: header, the rows that fit with the selected one in reverse video, the keys this row has, and the status line. */
+export function view(s: State, cols: number, rows: number): string[] {
+  const height = bodyHeight(s, rows)
+  const list = visible(s)
+  const lines = layout(s)
+  // Tails line up after the widest text of their group, and stay on screen when it's wider than the terminal.
+  const tailAt = new Map<string | undefined, number>()
+  for (const l of lines.filter((l) => l.tail))
+    tailAt.set(l.group, Math.max(tailAt.get(l.group) ?? 0, width(l.text) + 2))
+  const withTail = ({ text, tail, group }: Line) => {
+    if (!tail) return text
+    const at = Math.min(tailAt.get(group) ?? 0, cols - width(tail))
+    return `${pad(clipLine(text, at - 2), at)}${tail}`
+  }
+  const body = s.help
+    ? keyLines(s)
+    : lines.slice(s.top, s.top + height).map((line) => {
+        const selected = line.lead && list[line.at]?.row.id === s.selected
+        return selected
+          ? `\u001b[7m${pad(clipLine(withTail(line), cols), cols)}\u001b[27m`
+          : withTail(line)
+      })
+  const filler = Array<string>(Math.max(0, height - body.length)).fill('')
+  const status = s.help ? style('dim', 'any key closes the help') : (s.status ?? '')
+  return [...headerLines(s, rows), '', ...body.slice(0, height), ...filler, footer(s), status]
+    .slice(-rows)
+    .map((line) => clipLine(line, cols))
+}
+
+/** The screen before the view: the brand, what is loading and each step so far. */
+export interface Loading {
+  brand: string
+  title: string
+  steps: Step[]
+  frame: number
+}
+
+export const loading = (brand: string, title: string): Loading => ({
+  brand,
+  title,
+  steps: [],
+  frame: 0,
+})
+
+/** A step's news, in place of its earlier line, else after the others. */
+export function progress(l: Loading, step: Step): Loading {
+  const at = l.steps.findIndex((s) => s.name === step.name)
+  return { ...l, steps: at < 0 ? [...l.steps, step] : l.steps.with(at, step) }
+}
+
+export const tick = (l: Loading): Loading => ({ ...l, frame: l.frame + 1 })
+
+const spinner = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+/** The loader: the brand, a spinner on the title, a line per step, and q to quit. */
+export function loadingView(l: Loading, cols: number, rows: number): string[] {
+  const frame = spinner[l.frame % spinner.length] ?? ''
+  const marks = { running: frame, done: style('green', '✔'), failed: style('red', '✖') }
+  const width = Math.max(0, ...l.steps.map((s) => s.name.length))
+  const steps = l.steps.map(
+    (s) => `  ${marks[s.state]} ${s.detail ? `${s.name.padEnd(width)}  ${s.detail}` : s.name}`,
+  )
+  const brand = rows >= steps.length + 5 ? [l.brand, ''] : []
+  const room = rows - brand.length - 3
+  const body = [`${frame} ${l.title}`, ...(room > 0 ? steps.slice(-room) : [])]
+  const filler = Array<string>(Math.max(0, rows - brand.length - body.length - 2)).fill('')
+  return [...brand, ...body, ...filler, style('dim', 'q quit'), '']
+    .slice(-rows)
+    .map((line) => clipLine(line, cols))
+}
+
+/** The view, on the loader's screen under the same brand. */
+export const ready = (l: Loading, s: State): State => follow({ ...s, brand: l.brand })
+
+function keyLines(s: State): string[] {
+  const shown = keys.filter(([, , action]) => !action || s.actions.includes(action))
+  const width = Math.max(...shown.map(([k]) => k.length))
+  return [style('bold', 'Keys'), ...shown.map(([k, what]) => `  ${k.padEnd(width)}  ${what}`)]
+}
+
+function footer(s: State): string {
+  const row = visible(s).find((v) => v.row.id === s.selected)?.row
+  const listed = footerKeys.filter(([, action]) => s.actions.includes(action))
+  const shown = listed.map(([key, action, label]) => {
+    if (action === 'read' && row?.children) return `${key} ${isOpen(s, row) ? 'fold' : 'unfold'}`
+    return row?.act?.[action] ? `${key} ${label}` : style('dim', `${key} ${label}`)
+  })
+  return [...shown, '? help', 'q quit'].join('  ')
+}
+
+/** Cuts a line to `cols` columns with an ellipsis, keeping every escape code so styles still close. */
+export function clipLine(text: string, cols: number): string {
+  if (width(text) <= cols) return text
+  let out = ''
+  let room = cols - 1
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: it splits on SGR escape codes
+  for (const part of text.split(/(\u001b\[[\d;]*m)/)) {
+    if (part.startsWith('\u001b[')) {
+      out += part
+      continue
+    }
+    for (const g of graphemes(part)) {
+      if (room < 0) break
+      room -= columns(g)
+      out += room < 0 ? '…' : g
+    }
+  }
+  return out
+}

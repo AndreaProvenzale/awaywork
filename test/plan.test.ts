@@ -2,18 +2,16 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { describeAllowance } from '../src/cli/format/allowances.js'
-import { planJson } from '../src/cli/format/json.js'
-import { formatPlan, listedUnits } from '../src/cli/format/plan.js'
-import { formatQueue, queueLines } from '../src/cli/format/rules.js'
-import { formatWhy, namedItems } from '../src/cli/format/why.js'
-import { finishedSince, probeAndPlan, ruleNumber } from '../src/cli/plan.js'
-import { oneOffRefusal } from '../src/cli/run.js'
-import type { Step } from '../src/cli/triage.js'
+import { ruleNumber } from '../src/cli/commands/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota, Rule } from '../src/core/types.js'
+import { describeAllowance } from '../src/format/allowances.js'
+import { planJson } from '../src/format/json.js'
+import { formatPlan, listedUnits } from '../src/format/plan.js'
+import { formatQueue, queueLines } from '../src/format/rules.js'
+import { formatWhy, namedItems } from '../src/format/why.js'
 import {
   type Attempts,
   loadAttempts,
@@ -22,10 +20,13 @@ import {
   unchangedSince,
 } from '../src/plan/attempts.js'
 import { needsYou, planRun } from '../src/plan/foreman.js'
+import type { Step } from '../src/plan/probe.js'
+import { finishedSince, probeAndPlan } from '../src/plan/probe.js'
 import type { Skip } from '../src/plan/skips.js'
 import { approveReply, markComment, planComment, resultComment } from '../src/posts/comments.js'
 import type { RunReport } from '../src/posts/report.js'
 import { type Allowance, allowance } from '../src/quota/budget.js'
+import { oneOffRefusal } from '../src/run/execute.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 vi.mock('../src/config/paths.js', async (original) => {

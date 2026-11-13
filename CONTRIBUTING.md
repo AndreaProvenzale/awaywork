@@ -6,15 +6,19 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 
 | Path | What |
 | --- | --- |
-| `src/core/` | The contracts between modules (`types.ts`) and what they share: isolation and `launch`, branch names, skills, the run lock, retention, stats |
-| `src/plan/` | The foreman (`planRun`) and what it reads: the queue, `where`, conditions, repos, skips, attempts, polling |
+| `src/core/` | The contracts between modules (`types.ts`) and what they share: isolation and `launch`, branch names, skills |
+| `src/plan/` | The foreman (`planRun`) and what it reads: the queue, `where`, conditions, repos, skips, attempts, polling; `probe.ts` collects the items and probes the providers for `planRun` |
 | `src/tasks/` | The plan file and its tasks (`plan-file.ts`), and fanning them out |
-| `src/posts/` | What awaywork writes on items (comments, posts, the footer), and the run report that records them |
+| `src/posts/` | What awaywork writes on items (comments, posts, the footer, held moves, closed threads), the threads and task PRs it links back, and the run report that records them |
 | `src/quota/` | The budget, and the `windows` a scheduled run starts and stops in |
 | `src/sources/`, `src/providers/` | One adapter per file, plus the registry in `index.ts` |
 | `src/forge/` | GitHub through `gh`: clone, find PRs, push, draft PRs |
 | `src/worker/` | The workspace, the worker prompt, the worker run, the watchdog and publishing |
-| `src/config/`, `src/cli/`, `src/scheduler/` | Config schema and loading, one file per command, launchd/systemd/cron/Actions |
+| `src/run/` | A run (`execute.ts`), the `watch` daemon, the remote, and the run lock, retention and stats around them |
+| `src/format/` | What gets printed for people to read, in the terminal or in a run's files: plans, reports, skips, rules, JSON |
+| `src/cli/` | The CLI: `index.ts`, one file per command in `commands/`, prompts and the browsable views in `tui/`; nothing outside it imports it |
+| `src/config/` | Config schema and loading |
+| `src/scheduler/` | launchd, systemd, cron and Actions |
 | `harness.md`, `skills/` | The fixed worker prompt and the built-in skills |
 | `plugin/` | The Claude Code plugin: the `away` skill, and the `/away` pane in `hooks/register.tsx` |
 | `test/contracts/`, `test/fakes/` | Shared contract suites and the fakes they run against |

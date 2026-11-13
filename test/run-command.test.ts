@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { abortOnSignals, executeRun, type RunArgs, runCommand } from '../src/cli/run.js'
+import { runCommand } from '../src/cli/commands/run.js'
 import { loadConfig } from '../src/config/load.js'
 import {
   attemptsPath,
@@ -17,6 +17,7 @@ import type { PrRef } from '../src/core/types.js'
 import { saveAttempts } from '../src/plan/attempts.js'
 import { claimUnits } from '../src/plan/poll.js'
 import { saveSkips } from '../src/plan/skips.js'
+import { abortOnSignals, executeRun, type RunArgs } from '../src/run/execute.js'
 import { github } from '../src/sources/github.js'
 import { githubPr } from './fakes/items.js'
 

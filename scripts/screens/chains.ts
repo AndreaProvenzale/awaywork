@@ -1,14 +1,14 @@
 import { styleText } from 'node:util'
-import { listedUnits, planUnitLines } from '../../src/cli/format/plan.js'
-import { reportUnitTable } from '../../src/cli/format/report.js'
-import { heading, type Style } from '../../src/cli/format/terminal.js'
-import { detachedLine } from '../../src/cli/run.js'
 import { parseConfig } from '../../src/config/load.js'
 import { builtinSkills } from '../../src/core/skills.js'
 import type { Item } from '../../src/core/types.js'
+import { listedUnits, planUnitLines } from '../../src/format/plan.js'
+import { reportUnitTable } from '../../src/format/report.js'
+import { heading, type Style } from '../../src/format/terminal.js'
 import { type PlannedUnit, planRun } from '../../src/plan/foreman.js'
 import { type RunReport, summaryOf } from '../../src/posts/report.js'
 import { allowance } from '../../src/quota/budget.js'
+import { detachedLine } from '../../src/run/execute.js'
 import { describeFired, gatesSection } from '../../src/worker/gates.js'
 
 const style: Style = (format, text) => styleText(format, text)

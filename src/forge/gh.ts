@@ -6,6 +6,9 @@ export type Exec = (cmd: string, args: string[], env?: Record<string, string>) =
 
 export const exec: Exec = async (cmd, args, env) => (await execa(bin(cmd), args, { env })).stdout
 
+export const gitRoot = (run: Exec = exec) =>
+  run('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
+
 /** `run` with `gh` pointed at a GitHub Enterprise host; unchanged without one. */
 export const onHost = (run: Exec, host?: string): Exec =>
   host ? (cmd, args) => run(cmd, args, cmd === 'gh' ? { GH_HOST: host } : undefined) : run

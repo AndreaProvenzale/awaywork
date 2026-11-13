@@ -2,10 +2,10 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { formatStats, loadStats } from '../src/cli/stats.js'
-import { tally, type UnitStat, unitStats } from '../src/core/stats.js'
+import { formatStats, loadStats } from '../src/cli/commands/stats.js'
 import type { Quota } from '../src/core/types.js'
 import type { UnitResult } from '../src/posts/report.js'
+import { tally, type UnitStat, unitStats } from '../src/run/stats.js'
 
 const quota = (used: number): Quota => ({
   windows: [

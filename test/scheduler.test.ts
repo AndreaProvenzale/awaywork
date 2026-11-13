@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
-import { installWorkflow, offerSecrets, staleSchedules } from '../src/cli/schedule.js'
+import { installWorkflow, offerSecrets, staleSchedules } from '../src/cli/commands/schedule.js'
 import type { Exec } from '../src/forge/gh.js'
 import { cron, cronLines, parseCronLines } from '../src/scheduler/cron.js'
 import {

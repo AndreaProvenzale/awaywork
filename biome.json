@@ -8,6 +8,26 @@
     {
       "includes": ["test/**", "scripts/demo/**"],
       "linter": { "rules": { "suspicious": { "noTemplateCurlyInString": "off" } } }
+    },
+    {
+      "includes": ["src/**", "!src/cli/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/cli/**"],
+                    "message": "Only src/cli imports the CLI."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "javascript": { "formatter": { "quoteStyle": "single", "semicolons": "asNeeded" } },

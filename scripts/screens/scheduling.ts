@@ -1,8 +1,17 @@
-import { findChains, formatUnit } from '../../src/cli/format/report.js'
-import { sourceFailure, sourceWarning } from '../../src/cli/plan.js'
-import { noBoxToken, sshFailure, tokenRefused } from '../../src/cli/remote.js'
-import { listedRun, warningLine } from '../../src/cli/run.js'
-import { jobLines, wontRun } from '../../src/cli/schedule.js'
+import { listedRun } from '../../src/cli/commands/run.js'
+import { jobLines, wontRun } from '../../src/cli/commands/schedule.js'
+import { configPath, parseConfig } from '../../src/config/load.js'
+import { stateDir } from '../../src/config/paths.js'
+import { builtinSkills } from '../../src/core/skills.js'
+import type { Item } from '../../src/core/types.js'
+import { findChains, formatUnit } from '../../src/format/report.js'
+import { planRun } from '../../src/plan/foreman.js'
+import { nextPoll } from '../../src/plan/poll.js'
+import { sourceFailure, sourceWarning } from '../../src/plan/probe.js'
+import { describeSkip } from '../../src/plan/skips.js'
+import { formatReport, type RunReport, type UnitResult } from '../../src/posts/report.js'
+import { providerFor } from '../../src/providers/index.js'
+import { allowance } from '../../src/quota/budget.js'
 import {
   daemonLines,
   failedPoll,
@@ -11,17 +20,9 @@ import {
   runStarted,
   stamped,
   watchStarted,
-} from '../../src/cli/watch.js'
-import { configPath, parseConfig } from '../../src/config/load.js'
-import { stateDir } from '../../src/config/paths.js'
-import { builtinSkills } from '../../src/core/skills.js'
-import type { Item } from '../../src/core/types.js'
-import { planRun } from '../../src/plan/foreman.js'
-import { nextPoll } from '../../src/plan/poll.js'
-import { describeSkip } from '../../src/plan/skips.js'
-import { formatReport, type RunReport, type UnitResult } from '../../src/posts/report.js'
-import { providerFor } from '../../src/providers/index.js'
-import { allowance } from '../../src/quota/budget.js'
+} from '../../src/run/daemon.js'
+import { warningLine } from '../../src/run/execute.js'
+import { noBoxToken, sshFailure, tokenRefused } from '../../src/run/remote.js'
 import type { Outcome } from '../../src/worker/publish.js'
 
 const command = (line: string, text: string) => `$ ${line}\n${text}`

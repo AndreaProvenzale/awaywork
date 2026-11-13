@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { reportJson } from '../src/cli/format/json.js'
-import { formatPlan, listedUnits } from '../src/cli/format/plan.js'
-import { findChains, formatRun, formatUnit } from '../src/cli/format/report.js'
-import { describeRule } from '../src/cli/format/rules.js'
-import { formatSkipped, groupOf, type SkipRow, skipRows } from '../src/cli/format/skips.js'
+import { parseConfig } from '../src/config/load.js'
+import { builtinSkills } from '../src/core/skills.js'
+import type { Item, Rule } from '../src/core/types.js'
+import { reportJson } from '../src/format/json.js'
+import { formatPlan, listedUnits } from '../src/format/plan.js'
+import { findChains, formatRun, formatUnit } from '../src/format/report.js'
+import { describeRule } from '../src/format/rules.js'
+import { formatSkipped, groupOf, type SkipRow, skipRows } from '../src/format/skips.js'
 import {
   brandHeader,
   clip,
@@ -11,11 +14,8 @@ import {
   statusMarker,
   warningLines,
   width,
-} from '../src/cli/format/terminal.js'
-import { ambiguous, formatWhy, namedItems } from '../src/cli/format/why.js'
-import { parseConfig } from '../src/config/load.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Rule } from '../src/core/types.js'
+} from '../src/format/terminal.js'
+import { ambiguous, formatWhy, namedItems } from '../src/format/why.js'
 import { type PlannedUnit, planRun, type RunPlan } from '../src/plan/foreman.js'
 import { formatReport, type RunReport, summaryOf, type UnitResult } from '../src/posts/report.js'
 import { allowance } from '../src/quota/budget.js'
