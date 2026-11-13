@@ -2,9 +2,10 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { parseEnv } from 'node:util'
 import { confirm, isCancel, log, select } from '@clack/prompts'
-import { envFile } from '../config/paths.js'
-import type { Ask, Choice } from '../core/types.js'
-import { brandHeader } from './format/terminal.js'
+import { ConfigError } from '../../config/load.js'
+import { envFile } from '../../config/paths.js'
+import type { Ask, Choice } from '../../core/types.js'
+import { brandHeader } from './terminal.js'
 
 export class Cancelled extends Error {}
 
@@ -51,4 +52,10 @@ export async function saveSecret(name: string, value: string, file = envFile): P
     if (e.code !== 'ENOENT') throw e
   })
   await writeFile(file, `${kept}${separator}${entry}\n`, { mode: 0o600 })
+}
+
+export function reportConfigError(e: unknown): void {
+  if (!(e instanceof ConfigError)) throw e
+  console.error(e.message)
+  process.exitCode = 1
 }

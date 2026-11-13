@@ -1,15 +1,15 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { emitKeypressEvents, type Key } from 'node:readline'
-import type { Config } from '../config/schema.js'
-import { approveItem } from './approve.js'
-import { terminalBrand } from './ask.js'
-import { skipItem } from './skip.js'
+import type { Config } from '../../config/schema.js'
+import type { OnProgress } from '../../plan/probe.js'
+import { approveItem } from '../commands/approve.js'
+import { skipItem } from '../commands/skip.js'
+import { terminalBrand } from '../format/ask.js'
 import {
   type Effect,
   loading,
   loadingView,
-  type OnProgress,
   progress,
   ready,
   resize,

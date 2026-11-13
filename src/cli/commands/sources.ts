@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs'
 import type { Command } from 'commander'
 import { stringify } from 'yaml'
-import { configPath, loadConfig } from '../config/load.js'
-import { envFile } from '../config/paths.js'
-import type { Ctx, Discovery, Source } from '../core/types.js'
-import { sourceFor, sources } from '../sources/index.js'
+import { configPath, loadConfig } from '../../config/load.js'
+import { envFile } from '../../config/paths.js'
+import type { Ctx, Discovery, Source } from '../../core/types.js'
+import { sourceFor, sources } from '../../sources/index.js'
 import { printOutcome } from './skip.js'
 
 export interface Discoveries {

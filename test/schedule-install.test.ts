@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
-import { Cancelled } from '../src/cli/ask.js'
-import { type Io, installSchedule, removeSchedule } from '../src/cli/schedule.js'
+import { type Io, installSchedule, removeSchedule } from '../src/cli/commands/schedule.js'
+import { Cancelled } from '../src/cli/format/ask.js'
 import type { Ask } from '../src/core/types.js'
 import { SchedulerError } from '../src/scheduler/error.js'
 import { WORKFLOW } from '../src/scheduler/github-actions.js'
@@ -25,8 +25,8 @@ let wakeReason: string | undefined
 let wakeDefault = true
 let stuck: number | undefined
 
-vi.mock('../src/cli/watch.js', async (original) => ({
-  ...(await original<typeof import('../src/cli/watch.js')>()),
+vi.mock('../src/run/daemon.js', async (original) => ({
+  ...(await original<typeof import('../src/run/daemon.js')>()),
   stopWatch: async () => {
     stops.push(installed.length)
     return stuck

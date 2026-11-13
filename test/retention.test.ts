@@ -3,7 +3,7 @@ import { chmod, mkdir, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { attemptsPath, runsDir } from '../src/config/paths.js'
-import { pruneRuns } from '../src/core/retention.js'
+import { pruneRuns } from '../src/run/retention.js'
 
 vi.mock('../src/config/paths.js', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')

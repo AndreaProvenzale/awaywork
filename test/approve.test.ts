@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { approveItem } from '../src/cli/approve.js'
+import { approveItem } from '../src/cli/commands/approve.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Item, Source, Write } from '../src/core/types.js'
 import { markComment, type PostState, planComment, resultComment } from '../src/posts/comments.js'

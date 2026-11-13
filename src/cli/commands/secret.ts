@@ -2,8 +2,8 @@ import type { Readable } from 'node:stream'
 import { text } from 'node:stream/consumers'
 import { isCancel, password } from '@clack/prompts'
 import type { Command } from 'commander'
-import { envFile } from '../config/paths.js'
-import { saveSecret } from './ask.js'
+import { envFile } from '../../config/paths.js'
+import { saveSecret } from '../format/ask.js'
 
 export function secretCommand(program: Command, shell: NodeJS.ProcessEnv): void {
   program

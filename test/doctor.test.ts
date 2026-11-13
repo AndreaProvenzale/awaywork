@@ -12,14 +12,16 @@ import { recorded } from './fakes/gh.js'
 
 // A test answers gh through `gh.run`; without one, gh isn't installed.
 const gh = vi.hoisted(() => ({ run: undefined as Exec | undefined }))
-vi.mock('../src/forge/gh.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/forge/gh.js')>()),
-  exec: async (cmd: string, args: string[], env?: Record<string, string>) => {
+vi.mock('../src/forge/gh.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/forge/gh.js')>()
+  const exec = async (cmd: string, args: string[], env?: Record<string, string>) => {
     if (cmd === 'git') return 'git version 2.50.0\nextra'
     if (cmd === 'gh' && gh.run) return gh.run(cmd, args, env)
     throw new Error(`${cmd} ${args.join(' ')}: not found`)
-  },
-}))
+  }
+  // gitRoot's default exec is gh.ts's own, which the spread above doesn't replace.
+  return { ...original, exec, gitRoot: (run: Exec = exec) => original.gitRoot(run) }
+})
 
 // The built-ins doctor lists without a config find what `found` says, never a real agent CLI.
 const agents = vi.hoisted(() => ({
@@ -51,7 +53,7 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
 })
 
 const { bitbucketChecks, containerChecks, isolationChecks, runChecks, workflowSecretChecks } =
-  await import('../src/cli/doctor.js')
+  await import('../src/cli/commands/doctor.js')
 const { configDir, runsDir } = await import('../src/config/paths.js')
 
 describe('doctor', () => {

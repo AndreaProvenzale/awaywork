@@ -1,11 +1,9 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Command } from 'commander'
-import { runsDir } from '../config/paths.js'
-import { type StatsRow, tally, type UnitStat } from '../core/stats.js'
-import { pct } from '../quota/budget.js'
-
-export const unitsFile = 'units.json'
+import { runsDir } from '../../config/paths.js'
+import { pct } from '../../quota/budget.js'
+import { type StatsRow, tally, type UnitStat, unitsFile } from '../../run/stats.js'
 
 export function statsCommand(program: Command): void {
   program

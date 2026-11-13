@@ -61,3 +61,5 @@ export function tally(stats: UnitStat[], key: (s: UnitStat) => string): Record<s
   }
   return rows
 }
+
+export const unitsFile = 'units.json'

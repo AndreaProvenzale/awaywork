@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { printBrand } from '../src/cli/ask.js'
-import { type Handoff, handOff, initCommand, withoutEnvFile } from '../src/cli/init.js'
+import { type Handoff, handOff, initCommand, withoutEnvFile } from '../src/cli/commands/init.js'
+import { printBrand } from '../src/cli/format/ask.js'
 import { pluginDir } from '../src/config/paths.js'
 
 vi.mock('../src/providers/index.js', async () => {

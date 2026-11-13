@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { runsDir } from '../src/config/paths.js'
 import {
   checkArgs,
   forward,
@@ -15,8 +16,7 @@ import {
   servedRemotely,
   serveRemote,
   sshArgs,
-} from '../src/cli/remote.js'
-import { runsDir } from '../src/config/paths.js'
+} from '../src/run/remote.js'
 
 vi.mock('../src/config/paths.js', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')

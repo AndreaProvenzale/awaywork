@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { listSkips, skipItem, unskipItem } from '../src/cli/skip.js'
+import { listSkips, skipItem, unskipItem } from '../src/cli/commands/skip.js'
 import { activeSkips, untilTime } from '../src/plan/skips.js'
 
 const now = new Date('2026-10-01T12:00').getTime()

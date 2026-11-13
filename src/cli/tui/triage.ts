@@ -1,16 +1,17 @@
 import { styleText } from 'node:util'
-import type { Item } from '../core/types.js'
-import type { RunPlan } from '../plan/foreman.js'
+import type { Item } from '../../core/types.js'
+import type { RunPlan } from '../../plan/foreman.js'
+import type { Step } from '../../plan/probe.js'
 import {
   chains,
   needsYouOn,
   quotaLines,
   type ReportedSkip,
   type RunReport,
-} from '../posts/report.js'
-import { listedUnits, planUnitTable, providerLines } from './format/plan.js'
-import { reportUnitTable, runHeader } from './format/report.js'
-import { type SkipRow, skippedHeading, skipRows } from './format/skips.js'
+} from '../../posts/report.js'
+import { listedUnits, planUnitTable, providerLines } from '../format/plan.js'
+import { reportUnitTable, runHeader } from '../format/report.js'
+import { type SkipRow, skippedHeading, skipRows } from '../format/skips.js'
 import {
   byGroup,
   columns,
@@ -19,8 +20,8 @@ import {
   pad,
   warningBlock,
   width,
-} from './format/terminal.js'
-import { formatWhy } from './format/why.js'
+} from '../format/terminal.js'
+import { formatWhy } from '../format/why.js'
 
 /** What a key does on a row. */
 export type Action = 'read' | 'open' | 'log' | 'diff' | 'skip' | 'approve'
@@ -496,15 +497,6 @@ export function view(s: State, cols: number, rows: number): string[] {
     .slice(-rows)
     .map((line) => clipLine(line, cols))
 }
-
-/** A loading step as it happens: running with how far it got, done with its result, or failed with why. */
-export interface Step {
-  name: string
-  state: 'running' | 'done' | 'failed'
-  detail?: string
-}
-
-export type OnProgress = (step: Step) => void
 
 /** The screen before the view: the brand, what is loading and each step so far. */
 export interface Loading {

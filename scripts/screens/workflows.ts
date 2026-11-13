@@ -1,6 +1,6 @@
 import { styleText } from 'node:util'
 import { z } from 'zod'
-import { approveItem } from '../../src/cli/approve.js'
+import { approveItem } from '../../src/cli/commands/approve.js'
 import { listedUnits, planUnitLines } from '../../src/cli/format/plan.js'
 import { reportUnitTable } from '../../src/cli/format/report.js'
 import { formatSkipped, needsYouLines, skippedLines } from '../../src/cli/format/skips.js'

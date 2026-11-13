@@ -12,11 +12,11 @@ import {
   imageClis,
   providerLogin,
   workerFailure,
-} from '../../src/cli/doctor.js'
+} from '../../src/cli/commands/doctor.js'
+import { type Discoveries, formatDiscoveries } from '../../src/cli/commands/sources.js'
 import { formatRun } from '../../src/cli/format/report.js'
 import { formatQueue } from '../../src/cli/format/rules.js'
 import { formatWhy } from '../../src/cli/format/why.js'
-import { type Discoveries, formatDiscoveries } from '../../src/cli/sources.js'
 import { loadConfig, parseConfig } from '../../src/config/load.js'
 import { loginCommand, type Pin } from '../../src/config/logins.js'
 import { sudoersLines, WORKER } from '../../src/core/isolation.js'

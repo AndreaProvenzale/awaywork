@@ -2,10 +2,10 @@ import { existsSync } from 'node:fs'
 import { cp } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Command } from 'commander'
-import { configPath } from '../config/load.js'
-import { builtinSkillsDir, skillsDirOf } from '../config/paths.js'
-import { loadSkills } from '../config/skills.js'
-import { pickRefusal } from '../core/skills.js'
+import { configPath } from '../../config/load.js'
+import { builtinSkillsDir, skillsDirOf } from '../../config/paths.js'
+import { loadSkills } from '../../config/skills.js'
+import { pickRefusal } from '../../core/skills.js'
 
 export function skillsCommand(program: Command): void {
   const skills = program.command('skills').description('list skills and eject built-ins to tweak')

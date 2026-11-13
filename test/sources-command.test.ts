@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { discoverSources, formatDiscoveries } from '../src/cli/sources.js'
+import { discoverSources, formatDiscoveries } from '../src/cli/commands/sources.js'
 import { parseConfig } from '../src/config/load.js'
 import { envFile } from '../src/config/paths.js'
 import type { Ctx } from '../src/core/types.js'
