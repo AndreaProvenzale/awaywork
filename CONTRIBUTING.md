@@ -7,7 +7,7 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 | Path | What |
 | --- | --- |
 | `src/core/` | The contracts between modules (`types.ts`) and what they share: isolation and `launch`, branch names, skills |
-| `src/plan/` | The foreman (`planRun`) and what it reads: the queue, `where`, conditions, repos, skips, attempts, polling; `probe.ts` collects the items and probes the providers for it |
+| `src/plan/` | The foreman (`planRun`) and what it reads: the queue, `where`, conditions, repos, skips, attempts, polling; `probe.ts` collects the items and probes the providers for `planRun` |
 | `src/tasks/` | The plan file and its tasks (`plan-file.ts`), and fanning them out |
 | `src/posts/` | What awaywork writes on items (comments, posts, the footer, held moves, closed threads), the threads and task PRs it links back, and the run report that records them |
 | `src/quota/` | The budget, and the `windows` a scheduled run starts and stops in |
