@@ -7,6 +7,7 @@ import { decisionPost, taskResults } from '../core/posts.js'
 import type { Ctx, Forge, Item, Source } from '../core/types.js'
 import { forgeFor } from '../forge/index.js'
 import { sourceFor, writeItem } from '../sources/index.js'
+import { checkPins } from '../worker/store.js'
 import { checkKey, printOutcome } from './skip.js'
 import { linkThreads, threadHosts } from './threads.js'
 
@@ -26,7 +27,7 @@ export function approveCommand(program: Command): void {
 /** Replies `approve` on the item when awaywork's post on it waits, a plan or a result, through its source as any write; refuses once it was answered or went ahead, or when nothing waits. */
 export async function approveItem(
   key: string,
-  config: Pick<Config, 'sources' | 'queue'>,
+  config: Pick<Config, 'sources' | 'queue' | 'store'>,
   notes = '',
   {
     sources = {},
@@ -59,6 +60,8 @@ export async function approveItem(
   }
   const card = !item && items.find((i) => key.startsWith(`${id}:${i.key}/`) && planThread(i))
   const task = card && key.slice(`${id}:${card.key}/`.length)
+  // A lean plan names its tasks only in its plan.yml, in the store.
+  if (card && config.store) await checkPins([card], config.store, ctx.env)
   if (card && !cardTasks(card).some((t) => t.id === task))
     throw new Error(`the plan on ${id}:${card.key} has no task ${task}`)
   // A task's result waits only when a gate of its rule fired, on its card.
