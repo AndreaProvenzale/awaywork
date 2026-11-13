@@ -1362,7 +1362,7 @@ describe('one post of a card waits at a time', () => {
   const gated = configOf(
     `${queue}  - { skill: review, where: { planned: true }, deliver: report, gates: { proof: { command: 'echo no shot of step 3; exit 1' } } }\n`,
   )
-  const run = async (fanned: Item, worker: Provider) => {
+  const run = async (fanned: Item, worker: Provider, attempts?: Attempts) => {
     const root = await mkdtemp(join(tmpdir(), 'awaywork-fanout-'))
     const { forge } = await originForge(root)
     const writes: string[] = []
@@ -1376,7 +1376,7 @@ describe('one post of a card waits at a time', () => {
     const report = await runUnits({
       config: gated,
       configDir: root,
-      plan: plan([fanned], gated),
+      plan: plan([fanned], gated, attempts),
       runId: 'r1',
       runDir: join(root, 'run'),
       dryRun: false,
@@ -1451,6 +1451,11 @@ describe('one post of a card waits at a time', () => {
     expect(ids(rerun({ waits: true }))).toEqual([])
     expect(ids(rerun({ waits: true }), yours('approve', 7))).toEqual(['acme-api-1-qa2'])
     expect(ids(rerun({ went: true, gates: ['proof'] }))).toEqual(['acme-api-1-qa2'])
+    const fired = await run(replied(), leaves('report.md', 'Three shots.'), attempts)
+    expect(fired.results).toEqual([
+      ['acme-api-1-qa', 'done', undefined],
+      ['acme-api-1-qa2', 'skipped', "qa's result waits for your approval"],
+    ])
   })
 
   it('runs no later task of the card once a task asked', async () => {
