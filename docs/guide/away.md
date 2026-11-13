@@ -59,7 +59,7 @@ The next rounds:
 - **Your PRs:** fix red checks or review threads (awaywork's own drafts included), as draft PRs stacked on yours. Keeping them up to date with main is flagged as a widening: it pushes merges onto your PR, and a model resolves a conflict, which waits for your review.
 - **Review requests:** a report only you read, or your pending GitHub review, a widening.
 - **Tracker cards:** fix QA notes, implement in-progress cards, plan the sprint. A later round asks how to plan, in your tracker's names: plan then implement across repos, stopping only when a judge finds a product decision the card leaves open; wait on every plan; or plan reports only.
-- **Proof,** when a rule implements: how a change is proven in each repo, its options built from the repo's own scripts and checks, never a tool it doesn't use. On an answer the skill writes [your proving skill and its gates](./workflows.md#proving-a-change) with you; "not now" writes nothing.
+- **Proof,** once the rules are drafted, when one implements: how a change is proven in each repo, its options built from the repo's own scripts and checks, never a tool it doesn't use. On an answer the skill writes [your proving skill and its gates](./workflows.md#proving-a-change) with you; "not now" writes nothing.
 - **Learn from my sessions:** whether to [suggest](./suggest.md) more rules. The option says what it would read and where that goes, and a yes is also suggest's consent for this run.
 
 Without a question tool (Claude Code, which `init` opens, has one), each round is one numbered message, each question with its default, answered in your own words.

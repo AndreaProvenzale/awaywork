@@ -919,13 +919,13 @@ The unit proves work another step did. The card is in its context: its acceptanc
 1. List the criteria, one line each, in the card's words.
 2. The change runs at `https://<branch>.preview.acme.dev`, `<branch>` being the branch yours was cut from, each `/` a `-`. Open no other host.
 3. For each criterion, run `pnpm smoke <url> <flow>` with the flow in `smoke/` that covers it, and copy the screenshots that show it from `smoke/out/` to `.away/out/`.
-4. Write `.away/out/evidence.yml`, one entry per criterion: `criterion`, and `files`, the paths under `.away/out/` that show it, on one line.
-5. In `report.md`, per criterion: the command you ran, what it showed, and the file. A criterion you couldn't prove gets `files: []`, a `gap` line and why.
+4. Write `.away/out/evidence.yml`, one entry per criterion, in these lines and no others: `- criterion: <text>` on one line, then `files: [<name>, <name>]` on one line, the names plain paths under `.away/out/` (letters, digits, `.`, `_`, `-`, `/`), never `report.md` or the manifest.
+5. In `report.md`, per criterion: the command you ran, what it showed, and the file. A criterion you couldn't prove gets `files: []`, a one-line `gap`, and why.
 
 Change no code. A criterion that fails is a finding: report it, with the file that shows it failing.
 ```
 
-`evidence.yml` is a convention between your skill and your gates, so shape it as you like; awaywork never reads it:
+`evidence.yml` is a convention between your skill and your gates, so shape it as you like, the gate script along with it; awaywork never reads it:
 
 ```yaml
 criteria:
@@ -962,52 +962,28 @@ tasks:
   - { id: qa, title: Proof, skill: prove, after: { app: Vercel Preview } }
 ```
 
-A step of its own starts from the card, not from the code it just wrote, so it checks what was asked rather than what was built. Its clone is cut from `app`'s branch, and its context is the card and the plan.
+A step of its own starts from the card, not from code it wrote, so it checks what was asked rather than what was built. Its clone is cut from `app`'s branch, so it has the change but not the session that made it, and its context is the card and the plan.
 
-The script gate sees only that the files exist. It lives in the repo, named by its path from the root, so awaywork can tell the agent [didn't rewrite it](#gates-fail-closed):
+The script gate is [`evidence-gate.sh`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/scripts/evidence-gate.sh), POSIX sh, copied into the repo and named by its path from the root, so awaywork can tell the agent [didn't rewrite it](#gates-fail-closed). Its contract:
 
-```sh
-#!/bin/sh
-# Fires unless evidence.yml gives every criterion a file the steps left in .away/out/.
-out=${AWAYWORK_OUT_DIR:?not run as a gate}
-manifest=$out/evidence.yml
-[ -f "$manifest" ] && [ ! -L "$manifest" ] || { echo "no evidence.yml"; exit 1; }
-
-# One line per criterion and file, "<n><tab><file>", the file empty when a criterion names none.
-pairs=$(awk '
-  function clean(s) { gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", s); return s }
-  function file(s) { s = clean(s); if (s != "") { print n "\t" s; files++ } }
-  function close_criterion() { if (n && !files) print n "\t" }
-  /^ *- +criterion:/ { close_criterion(); n++; files = 0; block = 0; next }
-  /^ *files: *\[/ {
-    sub(/^ *files: *\[/, ""); sub(/\].*$/, "")
-    count = split($0, listed, ","); for (i = 1; i <= count; i++) file(listed[i])
-    block = 0; next
-  }
-  /^ *files: *$/ { block = 1; next }
-  block && /^ *- / { sub(/^ *- +/, ""); file($0); next }
-  { block = 0 }
-  END { close_criterion() }
-' "$manifest")
-[ -n "$pairs" ] || { echo "evidence.yml lists no criterion"; exit 1; }
-
-tab=$(printf '\t')
-problems=$(printf '%s\n' "$pairs" | while IFS=$tab read -r n file; do
-  case $file in
-    ('') echo "no file for criterion $n" ;;
-    (/* | *..*) echo "criterion $n: $file isn't a path in .away/out/" ;;
-    (*) [ -f "$out/$file" ] && [ ! -L "$out/$file" ] && [ -s "$out/$file" ] ||
-      echo "criterion $n: $file is missing or empty" ;;
-  esac
-done)
-[ -z "$problems" ] || { echo "$problems"; exit 1; }
-```
+- It fires unless every criterion names at least one file that is in `.away/out/`, not empty, not a link nor in a linked folder. A `gap` line excuses nothing.
+- It sees that the files exist, not what they show, and runs nothing the manifest says.
+- It reads the manifest as plain lines, not as YAML: `criteria:`, then per entry `- criterion: <text>`, `files` as a list on one line or a name per line, and `gap: <text>`, each on one line. Any other line fires it with the line's number, a `|` block, a list carried onto the next line or a quoted key included, so nothing it can't read passes.
+- A name is a path of letters, digits, `.`, `_` and `-`, with `/` between folders. `evidence.yml`, `report.md` and `summary.md` aren't proof.
 
 On the manifest above, with the first two criteria's files in place:
 
 ```text
 $ AWAYWORK_OUT_DIR=out sh scripts/evidence-gate.sh; echo $?
 no file for criterion 3
+1
+```
+
+And with its `gap` written as a block:
+
+```text
+$ AWAYWORK_OUT_DIR=out sh scripts/evidence-gate.sh; echo $?
+evidence.yml line 8: not a criterion, files or gap line
 1
 ```
 
@@ -1032,10 +1008,12 @@ if (op.op === 'put' && op.kind.endsWith('.zip')) {
 
 Other shapes:
 
-- **No plan:** a rule on awaywork's own PRs once their checks pass, the preview's among them. Its context has the PR's `checks.md`, whose `## Not failing` part lists each check with its link, so the skill reads the preview's URL there, and names the host it must be on. Clear gates post the result on the PR; one that fires makes it wait there.
+- **No plan:** a rule on awaywork's own PRs once their checks pass, the preview's among them. Its context has the PR's `checks.md`, whose `## Not failing` part lists each check with its link, so the skill reads the preview's URL there, and names the host it must be on. The issue is in the unit, for the step to read, only while a rule still takes it, as `implement` does here while it stays open and labelled. Clear gates then post the result on the PR and the issue; one that fires makes it wait on both. A card no rule takes any more (it moved column, lost the label) leaves the PR alone in the unit: the step proves against the PR's body, which the implementing agent wrote, and posts there only.
 
   ```yaml
   queue:
+    - skill: implement
+      where: { type: issue, label: awaywork }
     - skill: prove
       where: { type: pr, ours: true, checks: passing }
       deliver: report
@@ -1044,7 +1022,7 @@ Other shapes:
         shown: { skill: judge, instructions: [judges/evidence.md] }
   ```
 
-- **No preview:** the step that made the change proves it itself, with a command it can run in the clone. It's the fallback: the agent that wrote the change picks what counts as proof. The gates go on that rule, and one that fires puts its line on the PR's [decision card](#the-decision-card).
+- **No preview:** the step that made the change proves it itself, with a command that needs nothing started: a curl script against staging, a query, a run of the repo's CLI. It's the fallback: the agent that wrote the change picks what counts as proof. The gates go on that rule, and one that fires puts its line on the PR's [decision card](#the-decision-card).
 
   ```yaml
   queue:
@@ -1059,9 +1037,9 @@ Other shapes:
 
 Details:
 
-- The [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md) lets a worker run no dev server, build, `docker` or background command, and gives it no forge access: the skill proves against something deployed, or with a command that finishes in one call.
+- The [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md) lets a worker run no dev server, build, `docker` or background command, and gives it no forge access: the skill proves against something deployed, or with a command that needs nothing started. A script that boots the app is still a dev server: a repo whose proof needs the app running and has no preview can't be proven by a worker.
 - A plan's task gets the card, not the PR, so no `checks.md`: hence the address built from the branch. Without a stable one per branch, use the PR rule.
 - A check's name and link are whatever reported them, on a public repo anyone: the skill names the host it opens.
-- The gate fires unrun, `` `scripts/evidence-gate.sh` changed, not run ``, until the script is on the branch the clone starts from.
+- The gate fires until the script is on the default branch where the clone started: as cloned, or, on an awaywork PR or a task stacked on one, where that PR left it. In neither that commit nor the clone, the command runs and fails: `- proof: Command failed with exit code 127: 'sh scripts/evidence-gate.sh'`. Added or edited on the PR's own branch, it isn't run: ``- proof: `scripts/evidence-gate.sh` changed, not run``.
 - The gates go on every rule that uses the skill. A judge is one more model run per unit.
 - Without a store the files stay in the run dir, where only your [notify](./configuration.md#notify) hook reaches them.
