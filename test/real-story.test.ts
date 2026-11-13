@@ -54,7 +54,7 @@ describe.skipIf(!repo)('the pipeline story, live on the sandbox', () => {
   - { id: api, title: Export endpoint and its table }
   - { id: web, title: Export button, after: { api: opened } }
   - { id: fix, title: Export fix, after: { api: check } }
-  - { id: qa, title: QA evidence, skill: qa-evidence, after: { web: opened } }
+  - { id: qa, title: QA evidence, skill: prove, after: { web: opened } }
   - { id: docs, title: Export docs }
 ${otherToken ? '  - { id: notes, title: Release notes }\n' : ''}`
   const env: NodeJS.ProcessEnv = {}
@@ -158,15 +158,15 @@ queue:
   - skill: implement
     where: { planned: true }
     deliver: pr
-  - skill: qa-evidence
+  - skill: prove
     where: { planned: true }
     deliver: report
 `,
     )
-    await mkdir(join(home, 'skills/qa-evidence'), { recursive: true })
+    await mkdir(join(home, 'skills/prove'), { recursive: true })
     await writeFile(
-      join(home, 'skills/qa-evidence/SKILL.md'),
-      '---\nname: qa-evidence\ndescription: Collect QA evidence for a task. Use when a task needs checking by hand.\n---\n\nCheck the task and report the evidence.\n',
+      join(home, 'skills/prove/SKILL.md'),
+      '---\nname: prove\ndescription: Collect QA evidence for a task. Use when a task needs checking by hand.\n---\n\nCheck the task and report the evidence.\n',
     )
   }, 60_000)
 

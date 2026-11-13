@@ -139,7 +139,7 @@ queue:
     where: { type: pr, mine: true, checks: failing, label: flaky }
 ```
 
-Say what the output must state, as the built-ins do: what was checked, how, and what couldn't be. The context is in `.away/context/<item>/`: `item.md` always, `diff.patch`, `threads.md` and `checks.md` for a PR, and for a plan's task the contract in `contract/` and what other repos' tasks ship in `shipped/<task>/` ([Across repos](./workflows.md#across-repos)).
+Say what the output must state, as the built-ins do: what was checked, how, and what couldn't be. A skill that proves a change, with the gates that check what it left, is worked through in [Proving a change](./workflows.md#proving-a-change). The context is in `.away/context/<item>/`: `item.md` always, `diff.patch`, `threads.md` and `checks.md` for a PR, and for a plan's task the contract in `contract/` and what other repos' tasks ship in `shipped/<task>/` ([Across repos](./workflows.md#across-repos)).
 
 Frontmatter and rule keys:
 

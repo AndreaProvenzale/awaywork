@@ -1,5 +1,5 @@
 ---
-description: Where awaywork stops for you and how work goes on from your answer, covering questions on your item, drafts that continue, gates and decision cards, plans split into tasks across repos, posts that wait for your approve, threads, and the files a store keeps.
+description: Where awaywork stops for you and how work goes on from your answer, covering questions on your item, drafts that continue, gates and decision cards, plans split into tasks across repos, posts that wait for your approve, threads, the files a store keeps, and proving a change with a skill of your own.
 ---
 
 # Workflows
@@ -13,6 +13,7 @@ Where a run stops for a person, and how the work goes on from your answer:
 - [Posts that wait](#posts-that-wait): a report you read before the next stage starts.
 - [Threads](#threads): the card can't take awaywork's posts, so they go to a GitHub issue.
 - [Store](#store): big plans, contracts and screenshots live outside the post and [come back](#files-that-come-back) to the next step.
+- [Proving a change](#proving-a-change): a skill of your own shows the change does what the card asks, and gates check what it left.
 
 awaywork keeps none of this in its state dir: every wait is read off the item, its PR or its thread, so a fresh runner still waits and goes on.
 
@@ -442,7 +443,7 @@ Once awaywork's plan comment is on an open card of yours, the card goes to the `
 
 ### Report tasks
 
-For QA evidence, a write-up or a prototype link, give the skill a `planned` rule that reports, and the plan can hand it a task:
+For [proof of the change](#proving-a-change), a write-up or a prototype link, give the skill a `planned` rule that reports, and the plan can hand it a task:
 
 ```yaml
 queue:
@@ -452,7 +453,7 @@ queue:
   - skill: implement
     where: { planned: true }
     deliver: pr
-  - skill: qa-evidence
+  - skill: prove
     where: { planned: true }
     deliver: report
 ```
@@ -460,7 +461,7 @@ queue:
 ```yaml
 tasks:
   - { id: app, title: Export screen }
-  - { id: qa, title: QA evidence, skill: qa-evidence, after: { app: opened } }
+  - { id: qa, title: Proof, skill: prove, after: { app: opened } }
 ```
 
 Its result is its report, posted on the card when its chain finishes, as [`on_done: { comment: result }`](./configuration.md#on-done) would, unasked: `Result of task qa`, the report, `Status: done` (`awaywork's result of task qa` in `item.md`). Like any awaywork comment, it answers nobody's questions, a plan's included, and isn't a change to the card.
@@ -476,11 +477,11 @@ Give the rule [gates of its own](#gates-of-a-rule-s-own) to check what the task 
 
 ```yaml
 queue:
-  - skill: qa-evidence
+  - skill: prove
     where: { planned: true }
     deliver: report
     gates:
-      proof: { command: scripts/has-proof.sh } # reads $AWAYWORK_OUT_DIR
+      proof: { command: sh scripts/evidence-gate.sh } # reads $AWAYWORK_OUT_DIR
 ```
 
 One that fires posts the result as a [post that waits](#posts-that-wait), the gate's line on top:
@@ -894,3 +895,173 @@ Every `plan`, run and watch poll reads back, within the cap, the files of the po
 ```
 
 So edit the plan in Notion freely, then approve what comes back. A full post keeps the card's rule: your edit of the plan comment counts, someone else's voids it.
+
+## Proving a change
+
+How a change is proven differs per repo: an end-to-end run against the PR's preview, a flow on a simulator, a curl script, a seeded query (Playwright, Maestro and friends). So awaywork ships no skill for it and reads no proof format. You write your repo's skill, or [`/away`](./away.md#the-skill) writes it with you, and the pieces above carry it: a [report task](#report-tasks) that [waits on the preview](#waiting-on-a-check), [gates](#a-gate-on-a-report-task) on what it left, the [store](#store) for the files.
+
+The example: `acme/web` gets a preview per PR, at a stable address per branch, and its `pnpm smoke <url> <flow>` drives one flow there, saving a screenshot per step.
+
+The skill is yours, `skills/prove/SKILL.md` beside your config, never the repo's:
+
+```markdown
+---
+name: prove
+description: Prove a change against its card's acceptance criteria and leave the files that show it. Use on a task that proves other tasks' work.
+metadata:
+  deliver: report
+---
+
+# Prove
+
+The unit proves work another step did. The card is in its context: its acceptance criteria are what you prove, not what the code seems to do.
+
+1. List the criteria, one line each, in the card's words.
+2. The change runs at `https://<branch>.preview.acme.dev`, `<branch>` being the branch yours was cut from, each `/` a `-`. Open no other host.
+3. For each criterion, run `pnpm smoke <url> <flow>` with the flow in `smoke/` that covers it, and copy the screenshots that show it from `smoke/out/` to `.away/out/`.
+4. Write `.away/out/evidence.yml`, one entry per criterion: `criterion`, and `files`, the paths under `.away/out/` that show it, on one line.
+5. In `report.md`, per criterion: the command you ran, what it showed, and the file. A criterion you couldn't prove gets `files: []`, a `gap` line and why.
+
+Change no code. A criterion that fails is a finding: report it, with the file that shows it failing.
+```
+
+`evidence.yml` is a convention between your skill and your gates, so shape it as you like; awaywork never reads it:
+
+```yaml
+criteria:
+  - criterion: The Export button downloads the month's VAT report as CSV
+    files: [export-click.png, export.csv]
+  - criterion: A month with no invoices shows "Nothing to export"
+    files: [empty-month.png]
+  - criterion: The CSV's total matches the invoice list's
+    files: []
+    gap: the preview has no seeded invoices
+```
+
+The queue gives the skill a `planned` rule with two gates, and a plan hands it a task that waits for the preview:
+
+```yaml
+queue:
+  - skill: plan
+    where: { label: awaywork-feature }
+    deliver: plan
+    instructions: [notes/plan-proof.md] # "End a plan that changes what a user sees with a prove task, after the others' Vercel Preview."
+  - skill: implement
+    where: { planned: true }
+  - skill: prove
+    where: { planned: true }
+    deliver: report
+    gates:
+      proof: { command: sh scripts/evidence-gate.sh } # the files are there
+      shown: { skill: judge, instructions: [judges/evidence.md] } # and show what the card asks
+```
+
+```yaml
+tasks:
+  - { id: app, title: Export screen }
+  - { id: qa, title: Proof, skill: prove, after: { app: Vercel Preview } }
+```
+
+A step of its own starts from the card, not from the code it just wrote, so it checks what was asked rather than what was built. Its clone is cut from `app`'s branch, and its context is the card and the plan.
+
+The script gate sees only that the files exist. It lives in the repo, named by its path from the root, so awaywork can tell the agent [didn't rewrite it](#gates-fail-closed):
+
+```sh
+#!/bin/sh
+# Fires unless evidence.yml gives every criterion a file the steps left in .away/out/.
+out=${AWAYWORK_OUT_DIR:?not run as a gate}
+manifest=$out/evidence.yml
+[ -f "$manifest" ] && [ ! -L "$manifest" ] || { echo "no evidence.yml"; exit 1; }
+
+# One line per criterion and file, "<n><tab><file>", the file empty when a criterion names none.
+pairs=$(awk '
+  function clean(s) { gsub(/^[ \t"\047]+|[ \t"\047]+$/, "", s); return s }
+  function file(s) { s = clean(s); if (s != "") { print n "\t" s; files++ } }
+  function close_criterion() { if (n && !files) print n "\t" }
+  /^ *- +criterion:/ { close_criterion(); n++; files = 0; block = 0; next }
+  /^ *files: *\[/ {
+    sub(/^ *files: *\[/, ""); sub(/\].*$/, "")
+    count = split($0, listed, ","); for (i = 1; i <= count; i++) file(listed[i])
+    block = 0; next
+  }
+  /^ *files: *$/ { block = 1; next }
+  block && /^ *- / { sub(/^ *- +/, ""); file($0); next }
+  { block = 0 }
+  END { close_criterion() }
+' "$manifest")
+[ -n "$pairs" ] || { echo "evidence.yml lists no criterion"; exit 1; }
+
+tab=$(printf '\t')
+problems=$(printf '%s\n' "$pairs" | while IFS=$tab read -r n file; do
+  case $file in
+    ('') echo "no file for criterion $n" ;;
+    (/* | *..*) echo "criterion $n: $file isn't a path in .away/out/" ;;
+    (*) [ -f "$out/$file" ] && [ ! -L "$out/$file" ] && [ -s "$out/$file" ] ||
+      echo "criterion $n: $file is missing or empty" ;;
+  esac
+done)
+[ -z "$problems" ] || { echo "$problems"; exit 1; }
+```
+
+On the manifest above, with the first two criteria's files in place:
+
+```text
+$ AWAYWORK_OUT_DIR=out sh scripts/evidence-gate.sh; echo $?
+no file for criterion 3
+1
+```
+
+The judge beside it opens the files. Its instructions come from your config, `judges/evidence.md` here:
+
+```markdown
+You judge proof of a change. The step left `evidence.yml`: each of the card's acceptance criteria with the files that show it.
+
+Fire when a criterion of the card is missing from it or reworded into something easier, when a file doesn't show what its criterion says (open each one), or when the report says a criterion failed. One line per criterion you fire on, naming it.
+```
+
+With both clear the result is posted on the card and the task is done. One that fires [posts it to wait](#a-gate-on-a-report-task), `- proof: no file for criterion 3` on top: `approve` accepts the gap, anything else runs the task again.
+
+With a [store](#store), each file goes through its `put`, `kind` being the file's name under `.away/out/`, so the script decides where screenshots go and what stays behind:
+
+```js
+if (op.op === 'put' && op.kind.endsWith('.zip')) {
+  console.log(JSON.stringify({ skip: true })) // a trace stays in the run dir
+  process.exit(0)
+}
+```
+
+Other shapes:
+
+- **No plan:** a rule on awaywork's own PRs once their checks pass, the preview's among them. Its context has the PR's `checks.md`, whose `## Not failing` part lists each check with its link, so the skill reads the preview's URL there, and names the host it must be on. Clear gates post the result on the PR; one that fires makes it wait there.
+
+  ```yaml
+  queue:
+    - skill: prove
+      where: { type: pr, ours: true, checks: passing }
+      deliver: report
+      gates:
+        proof: { command: sh scripts/evidence-gate.sh }
+        shown: { skill: judge, instructions: [judges/evidence.md] }
+  ```
+
+- **No preview:** the step that made the change proves it itself, with a command it can run in the clone. It's the fallback: the agent that wrote the change picks what counts as proof. The gates go on that rule, and one that fires puts its line on the PR's [decision card](#the-decision-card).
+
+  ```yaml
+  queue:
+    - skill: implement
+      skills: [prove]
+      instructions: [notes/prove-first.md] # "Before you stop, prove the change with the prove skill."
+      where: { type: issue, label: awaywork }
+      gates:
+        proof: { command: sh scripts/evidence-gate.sh }
+        shown: { skill: judge, instructions: [judges/evidence.md] }
+  ```
+
+Details:
+
+- The [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md) lets a worker run no dev server, build, `docker` or background command, and gives it no forge access: the skill proves against something deployed, or with a command that finishes in one call.
+- A plan's task gets the card, not the PR, so no `checks.md`: hence the address built from the branch. Without a stable one per branch, use the PR rule.
+- A check's name and link are whatever reported them, on a public repo anyone: the skill names the host it opens.
+- The gate fires unrun, `` `scripts/evidence-gate.sh` changed, not run ``, until the script is on the branch the clone starts from.
+- The gates go on every rule that uses the skill. A judge is one more model run per unit.
+- Without a store the files stay in the run dir, where only your [notify](./configuration.md#notify) hook reaches them.

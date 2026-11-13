@@ -54,9 +54,12 @@ It joins sessions to forge events (a session half an hour after CI failed on tha
 | The same ask at the same time each week | A routine and a rule on `source: routines`, with its cost in units a week |
 | A correction every agent on the repo needs | A line in the repo's `AGENTS.md` (or `CLAUDE.md`), which helps your own sessions too |
 | A correction only awaywork's workers need | A line in your awaywork `instructions` |
+| An ask to show a change works, after an agent's edits | Your repo's own [proving skill](./workflows.md#proving-a-change) and its gates, written with you |
 | A correction already written down and still made | A command instead: a [`verify`](./configuration.md#repos-and-instructions) like `pnpm lint`, or a command [gate](./workflows.md#gates) |
 
 A saved memory can be a correction you already wrote down, which awaywork's Claude Code workers never see: they start with auto-memory off and none of your user-level config (Codex workers do read `~/.codex/AGENTS.md` under `isolation: none`). It reads the memory index, types and descriptions first, and opens only your feedback and notes stating a rule about the repo, not progress logs. One that holds for the repo becomes an `AGENTS.md` or `instructions` line; one about you doesn't.
+
+With a rule that implements and no proving skill on it, it proposes one whether or not it saw the pattern, and asks how a change is proven in that repo before writing a line: it names no tool.
 
 Anything your config or `AGENTS.md` already has shows as "already rule #1". A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts the rules and routines into a copy of your config and runs `awaywork plan --rules --json` and `doctor --json` on it, so each comes with the items it takes now, the near misses, and a routine's next occurrence.
 

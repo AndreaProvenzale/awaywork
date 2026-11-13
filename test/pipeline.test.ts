@@ -76,7 +76,7 @@ queue:
     deliver: pr
     run: soon
     then: [{ loop: [review, fix], until: { verdict: approve }, max: 2 }]
-  - skill: qa-evidence
+  - skill: prove
     where: { planned: true }
     deliver: report
     run: soon
@@ -100,7 +100,7 @@ tasks:
   - { id: api, title: VAT export endpoint, ships: [openapi.yaml] }
   - { id: web, title: Export button, after: { api: opened } }
   - { id: app, title: Export screen, repo: acme/web, after: { api: CI } }
-  - { id: qa, title: QA evidence, skill: qa-evidence, repo: acme/web, after: { app: opened } }
+  - { id: qa, title: QA evidence, skill: prove, repo: acme/web, after: { app: opened } }
 `
 const cardUrl = 'https://github.com/acme/api/issues/1'
 const apiPr = 'https://github.com/acme/api/pull/11'
@@ -217,7 +217,7 @@ the.agent = {
       reviewed.add(task)
       await out('verdict', changes ? 'changes\n' : 'approve\n')
       await out('report.md', changes ? 'Page the export.' : 'Looks good.')
-    } else if (skill === 'qa-evidence') {
+    } else if (skill === 'prove') {
       await out('report.md', 'Export screen: CSV downloads, 3 screenshots attached.')
       await out('status', 'done\n')
     } else if (skill === 'story' || skill === 'prototype')
@@ -299,7 +299,7 @@ beforeAll(async () => {
   path = join(root, 'config.yml')
   await writeFile(path, configYaml(eventsFile()))
   for (const [name, does] of [
-    ['qa-evidence', 'Collect QA evidence for a task'],
+    ['prove', 'Collect QA evidence for a task'],
     ['story', 'Write the user story for a card'],
     ['prototype', 'Sketch a prototype from an approved story'],
   ]) {
@@ -448,7 +448,7 @@ describe('a feature card through the whole pipeline', () => {
     expect(run.report).toEqual(
       expect.arrayContaining([
         `| 1 | [acme/api#1/app Export screen](${cardUrl}) | implement → loop(review ⇄ fix) | claude | done, 1 turn (loop: 0 rounds of review ⇄ fix; nothing ran) | ${appPr} (1 commit, draft: the agent will continue) |`,
-        `| 2 | [acme/api#1/qa QA evidence](${cardUrl}) | qa-evidence | - | skipped | app left a draft that says continue |`,
+        `| 2 | [acme/api#1/qa QA evidence](${cardUrl}) | prove | - | skipped | app left a draft that says continue |`,
       ]),
     )
     expect(run.events).toEqual([
@@ -466,7 +466,7 @@ describe('a feature card through the whole pipeline', () => {
       `     goes on with its draft ${appPr}, which said continue (1 of 3)\n`,
     )
     expect(run.plan).toContain('     after app, stacks on its PR\n')
-    expect(run.steps).toEqual(['app implement', 'app review', 'qa qa-evidence'])
+    expect(run.steps).toEqual(['app implement', 'app review', 'qa prove'])
     // The same branch and PR, from where the first run left it, with that run's draft body as its report.
     expect(context.app?.log).toBe('implement app\ninit')
     expect(context.app?.previous).toMatch(/^Status: continue \(1 of 3\)/)

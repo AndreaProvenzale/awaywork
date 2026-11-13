@@ -59,6 +59,7 @@ The next rounds:
 - **Your PRs:** fix red checks or review threads (awaywork's own drafts included), as draft PRs stacked on yours. Keeping them up to date with main is flagged as a widening: it pushes merges onto your PR, and a model resolves a conflict, which waits for your review.
 - **Review requests:** a report only you read, or your pending GitHub review, a widening.
 - **Tracker cards:** fix QA notes, implement in-progress cards, plan the sprint. A later round asks how to plan, in your tracker's names: plan then implement across repos, stopping only when a judge finds a product decision the card leaves open; wait on every plan; or plan reports only.
+- **Proof,** when a rule implements: how a change is proven in each repo, its options built from the repo's own scripts and checks, never a tool it doesn't use. On an answer the skill writes [your proving skill and its gates](./workflows.md#proving-a-change) with you; "not now" writes nothing.
 - **Learn from my sessions:** whether to [suggest](./suggest.md) more rules. The option says what it would read and where that goes, and a yes is also suggest's consent for this run.
 
 Without a question tool (Claude Code, which `init` opens, has one), each round is one numbered message, each question with its default, answered in your own words.
@@ -205,7 +206,8 @@ One row per rule: what it takes and what it does. `· 2` is how many items it ta
 - reads your config and real names from `awaywork sources --json`, so a section is spelled as Asana spells it;
 - drafts rules on a copy and runs `awaywork plan --rules --json` on it: what each rule takes, what another rule takes first, and near misses with the condition they failed;
 - on your yes writes them, keeping your comments and layout, and runs `awaywork doctor --json`;
-- starts a tweak from the item (`awaywork plan --why <key>`) and shows before and after.
+- starts a tweak from the item (`awaywork plan --why <key>`) and shows before and after;
+- writes your repo's proving skill with you (`/away show me it works before I review`), like a custom source: the skill in your config's `skills/`, a script gate for each repo that you commit, a judge's instructions, and your store's routing ([Proving a change](./workflows.md#proving-a-change)).
 
 It won't:
 

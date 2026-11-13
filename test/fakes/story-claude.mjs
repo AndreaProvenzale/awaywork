@@ -31,7 +31,7 @@ const commit = (file, text, message) => {
 if (skill === 'plan') {
   out('report.md', 'The story: an endpoint with its migration, then the rest around it.')
   out('plan.yml', process.env.FAKE_PLAN ?? '')
-} else if (skill === 'qa-evidence') {
+} else if (skill === 'prove') {
   out('report.md', 'Export screen: CSV downloads, 3 screenshots attached.')
   out('status', 'done\n')
 } else {

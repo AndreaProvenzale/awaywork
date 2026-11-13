@@ -146,7 +146,7 @@ describe('the plan comment', () => {
   })
 
   it("carries a result's status above the mark, and a task's result is headed with it", () => {
-    const result = posted(resultComment('Evidence: 3 screenshots.\n', 'done', 'qa-evidence', 'qa'))
+    const result = posted(resultComment('Evidence: 3 screenshots.\n', 'done', 'prove', 'qa'))
     expect(result.body).toBe(
       'Result of task qa\n\nEvidence: 3 screenshots.\n\nStatus: done\n\n— awaywork',
     )
@@ -179,7 +179,7 @@ describe('the plan comment', () => {
     expect(commentMarkdown(posted(resultComment('Done.', 'done', 'triage')))).toMatch(
       /^\n### awaywork's result \(me\), /,
     )
-    expect(commentMarkdown(posted(resultComment('Done.', 'done', 'qa-evidence', 'qa')))).toMatch(
+    expect(commentMarkdown(posted(resultComment('Done.', 'done', 'prove', 'qa')))).toMatch(
       /^\n### awaywork's result of task qa \(me\), /,
     )
     expect(commentMarkdown(posted(questionsComment('Which?', 'web')))).toMatch(
@@ -190,7 +190,7 @@ describe('the plan comment', () => {
 
 describe('a task done by its result', () => {
   const result = (task: string, n: number) =>
-    posted(resultComment('Done.', 'done', 'qa-evidence', task), n)
+    posted(resultComment('Done.', 'done', 'prove', task), n)
   it("counts a task's done result only after the plan's approval, so a re-plan's leaves older ones behind", () => {
     const approve = posted(approveReply(''), 2)
     expect(taskResults({ comments: [plan, result('qa', 2)] })).toEqual({})
