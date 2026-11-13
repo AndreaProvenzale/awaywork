@@ -354,7 +354,7 @@ const postWaits = () =>
 function taskGate(): string {
   const card = gatesSection(['proof'], [{ name: 'proof', line: 'no file for criterion 3' }])
   const text = `${card}\n\nTwo of three criteria recorded against the preview.`
-  return markComment(resultComment(text, 'done', 'qa-evidence', 'qa', 0, true), { waits: true })
+  return markComment(resultComment(text, 'done', 'prove', 'qa', 0, true), { waits: true })
 }
 
 function thread(): string {

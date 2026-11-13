@@ -77,8 +77,11 @@ Their own PRs with the reviews on them (trimmed: a review's body is someone else
 | A correction every agent on the repo needs | A line in the repo's `AGENTS.md`, or `CLAUDE.md` when that's what it has |
 | A correction only awaywork's workers need | A line in an awaywork `instructions` file, global or per repo |
 | A correction already written down, still made | A command instead of a second line: `repos.<repo>.verify` for a check every slice should pass, like `pnpm lint`, or a command gate when a human should look |
+| After an agent's change, the same ask to show it works | The repo's own proving skill, with its gates: [`prove.md`](prove.md) |
 
 Compare every candidate with what's there: the queue, the routines, the instructions files, the repo's `AGENTS.md` and `CLAUDE.md`. A match is shown as "already rule #2" or "already in AGENTS.md", not proposed again.
+
+With a rule that implements in the queue or among the candidates, and no proving skill on it yet, add one candidate to the Rules group: prove a change before they review it. Its evidence is a cluster of theirs where there is one (asking an agent to show a change works, right after its edits), else "not seen: asked because rule #5 implements". It names no tool and guesses nothing about theirs: picked, it goes through [`prove.md`](prove.md) from its step 1, which asks how a change is proven in that repo and writes the skill and its gates with them. From setup, setup asks instead: leave it out.
 
 A routine spends quota on every occurrence, work or not: show its units per week (days times times of day), and end its `description` with "stop with a one-line report when there's nothing new". A candidate that widens delivery or exposure, as `queue.md`'s Widening section lists, is flagged as such.
 
