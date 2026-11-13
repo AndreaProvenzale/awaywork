@@ -1,5 +1,6 @@
 import type { Budget } from '../config/schema.js'
 import type { Quota } from '../core/types.js'
+import { counted } from '../util/text.js'
 import { nextOpening, runsLeft, type Window } from './window.js'
 
 export const MAX_TURNS = 200
@@ -105,7 +106,7 @@ export function route(
     passed.push(
       a.kind === 'quota'
         ? `${id} at its ceiling (${pct(a.used)} of ${pct(a.ceiling)})`
-        : `${id} used its ${a.units} fallback unit${a.units === 1 ? '' : 's'}`,
+        : `${id} used its ${counted(a.units, 'fallback unit')}`,
     )
   }
   return { passed }

@@ -51,7 +51,6 @@ import { type Pin, pinBlock } from '../posts/footer.js'
 import { readBackPosts } from '../posts/posts.js'
 import {
   type Commented,
-  counted,
   type Moved,
   type PlanPost,
   type Posted,
@@ -72,6 +71,7 @@ import {
   PLAN_TASKS,
   planYaml,
 } from '../tasks/plan-file.js'
+import { counted } from '../util/text.js'
 import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { gateEnv, workerEnv } from './env.js'

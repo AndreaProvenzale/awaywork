@@ -2,9 +2,10 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { killGroupWhenDone } from '../core/group.js'
 import { launch } from '../core/launch.js'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
+import { parseJson } from '../util/json.js'
+import { killGroupWhenDone } from '../util/process.js'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
@@ -165,12 +166,4 @@ export function toEvents(line: string): WorkerEvent[] {
     ]
   }
   return []
-}
-
-function parseJson(line: string) {
-  try {
-    return JSON.parse(line)
-  } catch {
-    return undefined
-  }
 }

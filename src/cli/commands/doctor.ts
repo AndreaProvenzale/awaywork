@@ -27,7 +27,6 @@ import { describeAllowance } from '../../format/allowances.js'
 import { NO_QUEUE } from '../../format/rules.js'
 import { type Status, statusMarker } from '../../format/terminal.js'
 import { ruleThread } from '../../plan/queue.js'
-import { counted } from '../../posts/report.js'
 import { codexLogin } from '../../providers/codex.js'
 import { commandBinary, isCommandProvider } from '../../providers/command.js'
 import { providerFor, providers } from '../../providers/index.js'
@@ -37,6 +36,7 @@ import { staleWorkflow, WORKFLOW } from '../../scheduler/github-actions.js'
 import { isCommand } from '../../sources/command.js'
 import { sourceFor } from '../../sources/index.js'
 import { gatesNeverRun } from '../../tasks/fanout.js'
+import { counted, errorText } from '../../util/text.js'
 import { staleSchedules } from './schedule.js'
 
 export interface Check {
@@ -587,12 +587,7 @@ function jobSecretCheck(what: string, job: Job, listed: RepoSecrets): Check {
 
 /** gh's own last line of a failed call, e.g. "gh: Not Found (HTTP 404)". */
 const reasonOf = (e: unknown) =>
-  (
-    String((e as { stderr?: string }).stderr ?? '').trim() ||
-    (e instanceof Error ? e.message : String(e))
-  )
-    .split('\n')
-    .at(-1)
+  (String((e as { stderr?: string }).stderr ?? '').trim() || errorText(e)).split('\n').at(-1)
 
 interface RepoSecrets {
   repo: Set<string>

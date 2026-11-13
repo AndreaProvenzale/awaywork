@@ -7,7 +7,6 @@ import { forgeFor } from '../forge/index.js'
 import { clip } from '../format/terminal.js'
 import { renderLink } from '../posts/footer.js'
 import { withApproved } from '../posts/posts.js'
-import { counted } from '../posts/report.js'
 import {
   closeThreads,
   linkPlanTasks,
@@ -20,6 +19,7 @@ import { type Allowance, allowance, pct } from '../quota/budget.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../quota/window.js'
 import { sourceFor } from '../sources/index.js'
 import { nextOccurrences, type RoutinesConfig } from '../sources/routines.js'
+import { counted } from '../util/text.js'
 import { configSecrets } from '../worker/secrets.js'
 import { maskSecrets } from '../worker/setup.js'
 import { checkPins } from '../worker/store.js'

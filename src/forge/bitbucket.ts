@@ -5,6 +5,8 @@ import type { Config } from '../config/schema.js'
 import type { CheckState, Forge, Item, PrRef } from '../core/types.js'
 import { GITHUB_ONLY } from '../plan/attempts.js'
 import { isOurs, leftIn } from '../posts/footer.js'
+import { parseJson } from '../util/json.js'
+import { errorText } from '../util/text.js'
 import { type Exec, exec } from './gh.js'
 import { byName, linksItem, prText } from './pr.js'
 import { pushHead } from './push.js'
@@ -53,18 +55,10 @@ export async function twg<T>(run: Exec, args: string[]): Promise<T> {
 function twgError(e: unknown): string {
   const { stdout = '', stderr = '' } = e as { stdout?: string; stderr?: string }
   for (const text of [stderr, stdout]) {
-    const message = parseJson(text)?.error?.message
+    const message = parseJson<{ error?: { message?: unknown } }>(text)?.error?.message
     if (typeof message === 'string') return message
   }
-  return stderr.trim().split('\n').at(-1) || (e instanceof Error ? e.message : String(e))
-}
-
-function parseJson(text: string): { error?: { message?: unknown } } | undefined {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return undefined
-  }
+  return stderr.trim().split('\n').at(-1) || errorText(e)
 }
 
 /** Every page: without `--page`, twg returns the first `--limit` and says nothing of the rest. */

@@ -1,9 +1,10 @@
-import { readdir, readFile } from 'node:fs/promises'
+import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Command } from 'commander'
 import { runsDir } from '../../config/paths.js'
 import { pct } from '../../quota/budget.js'
 import { type StatsRow, tally, type UnitStat, unitsFile } from '../../run/stats.js'
+import { readJson } from '../../util/json.js'
 
 export function statsCommand(program: Command): void {
   program
@@ -21,12 +22,8 @@ export async function loadStats(dir: string): Promise<UnitStat[]> {
   const runs = (await readdir(dir).catch(() => [])).sort()
   const lists = await Promise.all(
     runs.map(async (run) => {
-      try {
-        const parsed: unknown = JSON.parse(await readFile(join(dir, run, unitsFile), 'utf8'))
-        return Array.isArray(parsed) ? (parsed as UnitStat[]).filter(isUnitStat) : []
-      } catch {
-        return []
-      }
+      const parsed = await readJson<unknown>(join(dir, run, unitsFile), [])
+      return Array.isArray(parsed) ? (parsed as UnitStat[]).filter(isUnitStat) : []
     }),
   )
   return lists.flat()

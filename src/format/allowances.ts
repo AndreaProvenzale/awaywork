@@ -1,6 +1,6 @@
-import { counted } from '../posts/report.js'
 import { providers } from '../providers/index.js'
 import { type Allowance, pct } from '../quota/budget.js'
+import { counted } from '../util/text.js'
 
 /** An allowance in one line, with what a run outside the windows gets under `outside`, the present session limit. */
 export function describeAllowance(id: string, a: Allowance, outside: number): string {
@@ -46,4 +46,4 @@ function otherLimits(a: QuotaAllowance): string {
     .join(', ')
 }
 
-const runs = (n: number) => `${n} run${n === 1 ? '' : 's'}`
+const runs = (n: number) => counted(n, 'run')

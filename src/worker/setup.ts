@@ -1,6 +1,6 @@
-import { killGroupWhenDone } from '../core/group.js'
 import { asWorker } from '../core/isolation.js'
 import { type Launch, launch } from '../core/launch.js'
+import { killGroupWhenDone } from '../util/process.js'
 
 const TIMEOUT_MS = 15 * 60_000
 const TAIL_LINES = 5

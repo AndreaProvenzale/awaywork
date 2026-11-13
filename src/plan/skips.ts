@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { readJson } from '../util/json.js'
 
 export interface Skip {
   /** A local date, `YYYY-MM-DD`; the skip ends when that day starts. */
@@ -10,14 +11,7 @@ export interface Skip {
 /** Per item, by `source:key`. */
 type Skips = Record<string, Skip>
 
-export async function loadSkips(path: string): Promise<Skips> {
-  const text = await readFile(path, 'utf8').catch(() => '{}')
-  try {
-    return JSON.parse(text) as Skips
-  } catch {
-    return {}
-  }
-}
+export const loadSkips = (path: string) => readJson<Skips>(path, {})
 
 export async function saveSkips(path: string, skips: Skips): Promise<void> {
   await mkdir(dirname(path), { recursive: true })

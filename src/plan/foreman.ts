@@ -1,6 +1,5 @@
 import type { Config } from '../config/schema.js'
 import { isValidRef } from '../core/branch.js'
-import { globToRegExp } from '../core/glob.js'
 import { type Origin, resolveSkill, type SkillCatalog } from '../core/skills.js'
 import type {
   Condition,
@@ -28,6 +27,7 @@ import {
   stepReports,
 } from '../tasks/fanout.js'
 import { elsewhere, latestResult, planState, planThread } from '../tasks/plan-file.js'
+import { globToRegExp } from '../util/glob.js'
 import {
   type Attempts,
   byHand,

@@ -7,7 +7,6 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { parse } from 'yaml'
 import type { Config } from '../config/schema.js'
-import { globToRegExp } from '../core/glob.js'
 import type { Item } from '../core/types.js'
 import { itemState } from '../plan/where.js'
 import { commentKind, pinsOf } from '../posts/comments.js'
@@ -15,6 +14,7 @@ import type { Pin } from '../posts/footer.js'
 import { decisionPosts, type PinnedPost } from '../posts/posts.js'
 import { runShell, TIMEOUT_MS } from '../sources/command.js'
 import { contractName } from '../tasks/plan-file.js'
+import { globToRegExp } from '../util/glob.js'
 
 /** `dir` is the folder of the config file that set the command, set when the config loads. */
 export type Store = NonNullable<Config['store']> & { dir?: string }
