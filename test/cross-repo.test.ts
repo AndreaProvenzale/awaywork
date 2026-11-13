@@ -11,11 +11,13 @@ import { formatWhy } from '../src/cli/format/why.js'
 import { linkPlanTasks } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { type Attempts, recordAttempts } from '../src/core/attempts.js'
-import { allowance } from '../src/core/budget.js'
-import { approveReply, markComment, planComment } from '../src/core/comments.js'
-import { planLimits, taskBranches, taskItem, taskMarkdown } from '../src/core/fanout.js'
-import { planRun } from '../src/core/foreman.js'
+import { builtinSkills } from '../src/core/skills.js'
+import type { Item, Provider, Source, TaskPr, Write } from '../src/core/types.js'
+import { type Attempts, recordAttempts } from '../src/plan/attempts.js'
+import { planRun } from '../src/plan/foreman.js'
+import { approveReply, markComment, planComment } from '../src/posts/comments.js'
+import { allowance } from '../src/quota/budget.js'
+import { planLimits, taskBranches, taskItem, taskMarkdown } from '../src/tasks/fanout.js'
 import {
   checkPlan,
   contractText,
@@ -23,9 +25,7 @@ import {
   planContract,
   planState,
   planYaml,
-} from '../src/core/plan.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Provider, Source, TaskPr, Write } from '../src/core/types.js'
+} from '../src/tasks/plan-file.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'

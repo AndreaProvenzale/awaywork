@@ -10,8 +10,13 @@ import { formatWhy } from '../src/cli/format/why.js'
 import { linkPlanTasks } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { type Attempts, recordAttempts } from '../src/core/attempts.js'
-import { allowance } from '../src/core/budget.js'
+import { builtinSkills } from '../src/core/skills.js'
+import type { Item, Provider, Source, TaskPr, Unit, Write } from '../src/core/types.js'
+import { linksItem, prText } from '../src/forge/pr.js'
+import { type Attempts, recordAttempts } from '../src/plan/attempts.js'
+import { NOT_YOURS } from '../src/plan/continue.js'
+import { needsYou, planRun } from '../src/plan/foreman.js'
+import { rank, ruleFor } from '../src/plan/queue.js'
 import {
   approveReply,
   commentKind,
@@ -22,18 +27,19 @@ import {
   questionsComment,
   resultComment,
   waitingTasks,
-} from '../src/core/comments.js'
-import { NOT_YOURS } from '../src/core/continue.js'
-import { taskItem, taskMarkdown, taskPr } from '../src/core/fanout.js'
-import { footer } from '../src/core/footer.js'
-import { needsYou, planRun } from '../src/core/foreman.js'
-import { checkPlan, planContract, planState, planThread, taskPrUrls } from '../src/core/plan.js'
-import { heldMove, taskResults } from '../src/core/posts.js'
-import { rank, ruleFor } from '../src/core/queue.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Provider, Source, TaskPr, Unit, Write } from '../src/core/types.js'
-import { linksItem, prText } from '../src/forge/pr.js'
+} from '../src/posts/comments.js'
+import { footer } from '../src/posts/footer.js'
+import { heldMove, taskResults } from '../src/posts/posts.js'
+import { allowance } from '../src/quota/budget.js'
 import { writeItem } from '../src/sources/index.js'
+import { taskItem, taskMarkdown, taskPr } from '../src/tasks/fanout.js'
+import {
+  checkPlan,
+  planContract,
+  planState,
+  planThread,
+  taskPrUrls,
+} from '../src/tasks/plan-file.js'
 import { freeBranch } from '../src/worker/slices.js'
 import { runUnits } from '../src/worker/units.js'
 import { withRepos } from './fakes/acme.js'

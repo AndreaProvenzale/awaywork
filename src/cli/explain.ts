@@ -1,9 +1,9 @@
 import { isMap, isSeq, LineCounter, parseDocument } from 'yaml'
 import { ConfigError, parseConfig } from '../config/load.js'
-import { committingStep, gatesNeverRun } from '../core/fanout.js'
-import { isLoop } from '../core/queue.js'
 import type { SkillCatalog } from '../core/skills.js'
 import type { Rule, Where } from '../core/types.js'
+import { isLoop } from '../plan/queue.js'
+import { committingStep, gatesNeverRun } from '../tasks/fanout.js'
 
 const pct = (share: number) => `${Math.round(share * 100)}%`
 

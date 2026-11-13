@@ -1,8 +1,8 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { unsetSecret } from '../core/poll.js'
 import type { Ctx, Item, Source } from '../core/types.js'
+import { unsetSecret } from '../plan/poll.js'
 import { taskMarkdown } from './asana.js'
 
 const config = z

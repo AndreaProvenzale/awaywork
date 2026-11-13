@@ -8,11 +8,11 @@ import { type Command, InvalidArgumentError } from 'commander'
 import { flow, queueYaml } from '../config/edit.js'
 import { ConfigError, configPath, parseConfig } from '../config/load.js'
 import { bin, envFile, pluginDir } from '../config/paths.js'
-import { defaultRules } from '../core/queue.js'
 import type { Ctx, Discovery, Provider, Rule, Source } from '../core/types.js'
-import { time } from '../core/window.js'
 import { exec } from '../forge/gh.js'
+import { defaultRules } from '../plan/queue.js'
 import { providers } from '../providers/index.js'
+import { time } from '../quota/window.js'
 import { sources } from '../sources/index.js'
 
 export function initCommand(program: Command): void {

@@ -1,6 +1,6 @@
-import { planThread } from './plan.js'
-import { type Post, postAnswer, reportPost } from './posts.js'
-import type { Item, Loop, Order, Rule, ThenStep, Where } from './types.js'
+import type { Item, Loop, Order, Rule, ThenStep, Where } from '../core/types.js'
+import { type Post, postAnswer, reportPost } from '../posts/posts.js'
+import { planThread } from '../tasks/plan-file.js'
 import { failedIn, itemState } from './where.js'
 
 const rule = (skill: string, source: string, where: Where): Rule => ({

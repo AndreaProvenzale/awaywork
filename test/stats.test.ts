@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { formatStats, loadStats } from '../src/cli/stats.js'
-import type { UnitResult } from '../src/core/report.js'
 import { tally, type UnitStat, unitStats } from '../src/core/stats.js'
 import type { Quota } from '../src/core/types.js'
+import type { UnitResult } from '../src/posts/report.js'
 
 const quota = (used: number): Quota => ({
   windows: [

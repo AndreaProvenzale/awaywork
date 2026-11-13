@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import { allowance } from '../src/core/budget.js'
+import type { Item } from '../src/core/types.js'
+import { planRun } from '../src/plan/foreman.js'
 import {
   commentKind,
   isAwayworkComment,
@@ -10,10 +11,9 @@ import {
   postState,
   resultComment,
   resultOf,
-} from '../src/core/comments.js'
-import { planRun } from '../src/core/foreman.js'
-import { approvedSkill, heldMove, postAnswer, reportPost } from '../src/core/posts.js'
-import type { Item } from '../src/core/types.js'
+} from '../src/posts/comments.js'
+import { approvedSkill, heldMove, postAnswer, reportPost } from '../src/posts/posts.js'
+import { allowance } from '../src/quota/budget.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 const at = (n: number) => `2026-11-0${n}T00:00:00Z`

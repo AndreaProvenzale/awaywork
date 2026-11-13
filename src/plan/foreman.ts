@@ -1,38 +1,7 @@
 import type { Config } from '../config/schema.js'
-import { type Attempts, gaveUpUntil, pushedOnto, unchangedSince } from './attempts.js'
-import { isValidRef } from './branch.js'
-import { type Allowance, quotaFacts, route } from './budget.js'
-import { awaitsAnswer } from './comments.js'
-import { holds } from './condition.js'
-import { byHand } from './continue.js'
-import { dedupe } from './dedupe.js'
-import {
-  branchName,
-  committingStep,
-  expandPlans,
-  gatesNeverRun,
-  planLimits,
-  stepReports,
-} from './fanout.js'
-import { globToRegExp } from './glob.js'
-import { MAX_ATTEMPTS } from './max-attempts.js'
-import { elsewhere, latestResult, planState, planThread } from './plan.js'
-import { postAnswer, reportPost, taskPost } from './posts.js'
-import {
-  closestRule,
-  doneWith,
-  isAwayworkPr,
-  isLoop,
-  matches,
-  type Ranked,
-  rank,
-  ruleFor,
-  waitsOn,
-} from './queue.js'
-import type { Moved } from './report.js'
-import { repoListed, settingsFor } from './repos.js'
-import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
-import { describeSkip, type Skip } from './skips.js'
+import { isValidRef } from '../core/branch.js'
+import { globToRegExp } from '../core/glob.js'
+import { type Origin, resolveSkill, type SkillCatalog } from '../core/skills.js'
 import type {
   Condition,
   Deliver,
@@ -45,7 +14,38 @@ import type {
   Unit,
   Where,
   WhereValue,
-} from './types.js'
+} from '../core/types.js'
+import { awaitsAnswer } from '../posts/comments.js'
+import { postAnswer, reportPost, taskPost } from '../posts/posts.js'
+import type { Moved } from '../posts/report.js'
+import { type Allowance, quotaFacts, route } from '../quota/budget.js'
+import {
+  branchName,
+  committingStep,
+  expandPlans,
+  gatesNeverRun,
+  planLimits,
+  stepReports,
+} from '../tasks/fanout.js'
+import { elsewhere, latestResult, planState, planThread } from '../tasks/plan-file.js'
+import { type Attempts, gaveUpUntil, pushedOnto, unchangedSince } from './attempts.js'
+import { holds } from './condition.js'
+import { byHand } from './continue.js'
+import { dedupe } from './dedupe.js'
+import { MAX_ATTEMPTS } from './max-attempts.js'
+import {
+  closestRule,
+  doneWith,
+  isAwayworkPr,
+  isLoop,
+  matches,
+  type Ranked,
+  rank,
+  ruleFor,
+  waitsOn,
+} from './queue.js'
+import { repoListed, settingsFor } from './repos.js'
+import { describeSkip, type Skip } from './skips.js'
 import {
   describeComparison,
   failedIn,

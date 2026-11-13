@@ -17,12 +17,12 @@ import {
 } from '../../src/cli/triage.js'
 import { parseConfig } from '../../src/config/load.js'
 import { runsDir } from '../../src/config/paths.js'
-import type { Allowance } from '../../src/core/budget.js'
-import { type PlannedUnit, planRun, type RunPlan } from '../../src/core/foreman.js'
-import { defaultRules } from '../../src/core/queue.js'
-import { chains, type RunReport } from '../../src/core/report.js'
 import { builtinSkills } from '../../src/core/skills.js'
 import type { Item, PrRef } from '../../src/core/types.js'
+import { type PlannedUnit, planRun, type RunPlan } from '../../src/plan/foreman.js'
+import { defaultRules } from '../../src/plan/queue.js'
+import { chains, type RunReport } from '../../src/posts/report.js'
+import type { Allowance } from '../../src/quota/budget.js'
 
 const startedAt = new Date('2026-10-19T22:00:12Z')
 const resetsAt = startedAt.getTime() / 1000 + 5 * 24 * 3600

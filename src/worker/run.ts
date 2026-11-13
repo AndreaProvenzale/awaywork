@@ -1,6 +1,6 @@
-import { type Allowance, pct } from '../core/budget.js'
 import { asWorker } from '../core/isolation.js'
 import type { Job, Provider, Quota } from '../core/types.js'
+import { type Allowance, pct } from '../quota/budget.js'
 import { startWatchdog, type Watchdog } from './watchdog.js'
 
 export type WorkerStatus =

@@ -2,10 +2,10 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { commentMarkdown } from '../core/comments.js'
-import { linkProblem, threadBody, threadOf } from '../core/footer.js'
 import { awaitGroup } from '../core/group.js'
 import type { Ctx, Item, Source, ThreadHost, Write } from '../core/types.js'
+import { commentMarkdown } from '../posts/comments.js'
+import { linkProblem, threadBody, threadOf } from '../posts/footer.js'
 
 export const linkTemplate = z
   .string()

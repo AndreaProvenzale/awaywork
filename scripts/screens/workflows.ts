@@ -7,21 +7,21 @@ import { formatSkipped, needsYouLines, skippedLines } from '../../src/cli/format
 import { heading, type Style } from '../../src/cli/format/terminal.js'
 import { parseConfig } from '../../src/config/load.js'
 import type { Config } from '../../src/config/schema.js'
-import { allowance } from '../../src/core/budget.js'
+import { builtinSkills } from '../../src/core/skills.js'
+import type { Item, PrRef, Source, TaskPr } from '../../src/core/types.js'
+import { planRun, type RunPlan } from '../../src/plan/foreman.js'
 import {
   approveReply,
   markComment,
   planComment,
   questionsComment,
   resultComment,
-} from '../../src/core/comments.js'
-import { taskMarkdown } from '../../src/core/fanout.js'
-import { footer, type Pin, pinBlock, threadBody } from '../../src/core/footer.js'
-import { planRun, type RunPlan } from '../../src/core/foreman.js'
-import type { RunReport, UnitResult } from '../../src/core/report.js'
-import { builtinSkills } from '../../src/core/skills.js'
-import type { Item, PrRef, Source, TaskPr } from '../../src/core/types.js'
+} from '../../src/posts/comments.js'
+import { footer, type Pin, pinBlock, threadBody } from '../../src/posts/footer.js'
+import type { RunReport, UnitResult } from '../../src/posts/report.js'
+import { allowance } from '../../src/quota/budget.js'
 import { threadTitle } from '../../src/sources/github.js'
+import { taskMarkdown } from '../../src/tasks/fanout.js'
 import { gatesSection } from '../../src/worker/gates.js'
 import { continueLine } from '../../src/worker/slices.js'
 

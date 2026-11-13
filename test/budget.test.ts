@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Budget } from '../src/config/schema.js'
-import { type Allowance, allowance, quotaFacts, route, withQuota } from '../src/core/budget.js'
 import type { Quota } from '../src/core/types.js'
+import { type Allowance, allowance, quotaFacts, route, withQuota } from '../src/quota/budget.js'
 
 // Thursday at 01:00 local time, as the default window opens.
 const now = new Date(2026, 0, 1, 1).getTime()

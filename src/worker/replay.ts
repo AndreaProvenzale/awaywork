@@ -4,8 +4,6 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
-import { type Allowance, MAX_TURNS } from '../core/budget.js'
-import { modelFor } from '../core/foreman.js'
 import {
   contain,
   contained,
@@ -14,8 +12,10 @@ import {
   workerHome,
   workerRoot,
 } from '../core/isolation.js'
-import { settingsFor } from '../core/repos.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
+import { modelFor } from '../plan/foreman.js'
+import { settingsFor } from '../plan/repos.js'
+import { type Allowance, MAX_TURNS } from '../quota/budget.js'
 import { commandEnv, workerEnv } from './env.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
 import { copyOut } from './safe-files.js'

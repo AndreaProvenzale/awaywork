@@ -4,28 +4,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join, posix } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { Config } from '../config/schema.js'
-import type { Attempts } from '../core/attempts.js'
-import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
-import {
-  leanPlanComment,
-  type PostState,
-  planComment,
-  questionsComment,
-  resultComment,
-  type Status,
-} from '../core/comments.js'
-import { describeCondition, holds } from '../core/condition.js'
-import { byHand } from '../core/continue.js'
-import { type Pin, pinBlock } from '../core/footer.js'
-import {
-  describeChain,
-  modelFor,
-  namesUnit,
-  type PlannedUnit,
-  type RunPlan,
-  slug,
-  taskChain,
-} from '../core/foreman.js'
 import {
   AGENT_HOME,
   CONTAINER_HOME,
@@ -37,30 +15,6 @@ import {
   workerHome,
   workerRoot,
 } from '../core/isolation.js'
-import {
-  checkPlan,
-  contractName,
-  contractText,
-  elsewhere,
-  latestResult,
-  PLAN_TASKS,
-  planYaml,
-} from '../core/plan.js'
-import { readBackPosts } from '../core/posts.js'
-import { ruleThread } from '../core/queue.js'
-import {
-  type Commented,
-  counted,
-  type Moved,
-  type PlanPost,
-  type Posted,
-  type Questions,
-  type RunReport,
-  type StepFiles,
-  summaryOf,
-  type UnitResult,
-} from '../core/report.js'
-import { settingsFor } from '../core/repos.js'
 import type {
   Ctx,
   Deliver,
@@ -72,7 +26,53 @@ import type {
   Source,
   Unit,
 } from '../core/types.js'
+import type { Attempts } from '../plan/attempts.js'
+import { describeCondition, holds } from '../plan/condition.js'
+import { byHand } from '../plan/continue.js'
+import {
+  describeChain,
+  modelFor,
+  namesUnit,
+  type PlannedUnit,
+  type RunPlan,
+  slug,
+  taskChain,
+} from '../plan/foreman.js'
+import { ruleThread } from '../plan/queue.js'
+import { settingsFor } from '../plan/repos.js'
+import {
+  leanPlanComment,
+  type PostState,
+  planComment,
+  questionsComment,
+  resultComment,
+  type Status,
+} from '../posts/comments.js'
+import { type Pin, pinBlock } from '../posts/footer.js'
+import { readBackPosts } from '../posts/posts.js'
+import {
+  type Commented,
+  counted,
+  type Moved,
+  type PlanPost,
+  type Posted,
+  type Questions,
+  type RunReport,
+  type StepFiles,
+  summaryOf,
+  type UnitResult,
+} from '../posts/report.js'
+import { MAX_TURNS, quotaFacts, route, withQuota } from '../quota/budget.js'
 import { type Threads, threaded, unwritable, writeItem } from '../sources/index.js'
+import {
+  checkPlan,
+  contractName,
+  contractText,
+  elsewhere,
+  latestResult,
+  PLAN_TASKS,
+  planYaml,
+} from '../tasks/plan-file.js'
 import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { gateEnv, workerEnv } from './env.js'

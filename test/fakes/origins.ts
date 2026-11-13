@@ -1,9 +1,9 @@
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../../src/config/paths.js'
-import { type Left, leftIn } from '../../src/core/footer.js'
 import type { Item } from '../../src/core/types.js'
 import { prText } from '../../src/forge/pr.js'
+import { type Left, leftIn } from '../../src/posts/footer.js'
 import { fakeForge } from './forge.js'
 
 const git = (dir: string, ...args: string[]) =>

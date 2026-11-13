@@ -11,21 +11,21 @@ import { finishedSince, probeAndPlan, ruleNumber } from '../src/cli/plan.js'
 import { oneOffRefusal } from '../src/cli/run.js'
 import type { Step } from '../src/cli/triage.js'
 import { parseConfig } from '../src/config/load.js'
+import { renderBranch, templateProblem } from '../src/core/branch.js'
+import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
+import type { Item, PrRef, Quota, Rule } from '../src/core/types.js'
 import {
   type Attempts,
   loadAttempts,
   recordAttempts,
   saveAttempts,
   unchangedSince,
-} from '../src/core/attempts.js'
-import { renderBranch, templateProblem } from '../src/core/branch.js'
-import { type Allowance, allowance } from '../src/core/budget.js'
-import { approveReply, markComment, planComment, resultComment } from '../src/core/comments.js'
-import { needsYou, planRun } from '../src/core/foreman.js'
-import type { RunReport } from '../src/core/report.js'
-import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
-import type { Skip } from '../src/core/skips.js'
-import type { Item, PrRef, Quota, Rule } from '../src/core/types.js'
+} from '../src/plan/attempts.js'
+import { needsYou, planRun } from '../src/plan/foreman.js'
+import type { Skip } from '../src/plan/skips.js'
+import { approveReply, markComment, planComment, resultComment } from '../src/posts/comments.js'
+import type { RunReport } from '../src/posts/report.js'
+import { type Allowance, allowance } from '../src/quota/budget.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 vi.mock('../src/config/paths.js', async (original) => {

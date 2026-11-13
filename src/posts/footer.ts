@@ -1,5 +1,5 @@
-import { placeholderProblem } from './branch.js'
-import type { Item } from './types.js'
+import { placeholderProblem } from '../core/branch.js'
+import type { Item } from '../core/types.js'
 
 const marker = '<!-- awaywork'
 

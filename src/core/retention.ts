@@ -2,8 +2,8 @@ import { lstat, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { attemptsPath, runsDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
-import { loadAttempts } from './attempts.js'
-import { spanMs } from './where.js'
+import { loadAttempts } from '../plan/attempts.js'
+import { spanMs } from '../plan/where.js'
 
 export interface Pruned {
   removed: number

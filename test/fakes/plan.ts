@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
-import { markComment, planComment } from '../../src/core/comments.js'
-import { planState, planYaml } from '../../src/core/plan.js'
 import type { Item } from '../../src/core/types.js'
+import { markComment, planComment } from '../../src/posts/comments.js'
+import { planState, planYaml } from '../../src/tasks/plan-file.js'
 
 /** A plan.yml with what a tracker's rich text could mangle: indentation, a blank line, quotes, `#`, Markdown. */
 export const roundTripYaml = `tasks:

@@ -4,7 +4,6 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
 import {
   asWorker,
   isolate,
@@ -18,6 +17,7 @@ import { launch } from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
 import { codexProvider } from '../src/providers/codex.js'
 import { commandProvider } from '../src/providers/command.js'
+import { type Allowance, MAX_TURNS } from '../src/quota/budget.js'
 import { commitsSince, createChecks, head } from '../src/worker/checks.js'
 import { runWorker } from '../src/worker/run.js'
 import { runCommand } from '../src/worker/setup.js'

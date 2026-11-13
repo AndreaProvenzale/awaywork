@@ -1,7 +1,4 @@
-import type { Outcome } from '../worker/publish.js'
-import type { WorkerStatus } from '../worker/run.js'
-import { type Allowance, pct, presenceLine } from './budget.js'
-import type { PostState } from './comments.js'
+import type { Item, Quota } from '../core/types.js'
 import {
   describeChain,
   needsYou,
@@ -10,8 +7,11 @@ import {
   type SkipKind,
   type Skipped,
   shortRef,
-} from './foreman.js'
-import type { Item, Quota } from './types.js'
+} from '../plan/foreman.js'
+import { type Allowance, pct, presenceLine } from '../quota/budget.js'
+import type { Outcome } from '../worker/publish.js'
+import type { WorkerStatus } from '../worker/run.js'
+import type { PostState } from './comments.js'
 
 export interface UnitResult {
   planned: PlannedUnit
