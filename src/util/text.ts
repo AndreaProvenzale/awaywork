@@ -1,4 +1,4 @@
-/** `3 units`, `1 unit`. */
+/** `3 files`, `1 file`. */
 export const counted = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`
 
 /** A thrown value's message, whatever was thrown. */

@@ -8,6 +8,7 @@ import type { ReadableStream } from 'node:stream/web'
 import { execa } from 'execa'
 import { envFile, runsDir } from '../config/paths.js'
 import { inAwayworkImage } from '../core/isolation.js'
+import { parseJson } from '../util/json.js'
 import { awaitGroup } from '../util/process.js'
 
 /** The port `awaywork watch` serves the CLI on when AWAYWORK_REMOTE_TOKEN is set. */
@@ -217,10 +218,7 @@ export function tokenRefused(url: string, via?: string) {
 
 /** On the box, a call that came over ssh, `[via, ...args]` as base64url JSON: forwarded to this box's daemon until the laptop's end goes. */
 async function fromSsh(word = '', url = '', token = ''): Promise<number> {
-  let call: unknown
-  try {
-    call = JSON.parse(Buffer.from(word, 'base64url').toString())
-  } catch {}
+  const call = parseJson<unknown>(Buffer.from(word, 'base64url').toString())
   if (!Array.isArray(call) || !call.length || !call.every((a) => typeof a === 'string'))
     return fail(`awaywork ${FROM_SSH}: not a call as awaywork sends it over ssh`)
   const [via, ...args] = call as string[]

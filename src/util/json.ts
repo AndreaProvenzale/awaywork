@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
 /** `text` parsed, or undefined when it isn't JSON. */
-// biome-ignore lint/suspicious/noExplicitAny: untyped JSON unless the caller names a type
+// biome-ignore lint/suspicious/noExplicitAny: callers read fields off JSON whose shape they already know
 export function parseJson<T = any>(text: string): T | undefined {
   try {
     return JSON.parse(text)
