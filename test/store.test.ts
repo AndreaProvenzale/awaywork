@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
+import { approveItem } from '../src/cli/approve.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
@@ -426,6 +427,13 @@ describe('lean posts', () => {
       state: 'approved',
       plan: { tasks: [{ id: 'api', title: 'VAT endpoint' }] },
     })
+    const sources = { github: fakeSource([yours(1, [post(body())])]) }
+    await expect(
+      approveItem('github:acme/api#1/api', config, '', {
+        sources,
+        ctx: { env: process.env, log: () => {} },
+      }),
+    ).rejects.toThrow('github:acme/api#1/api is a task of the plan on github:acme/api#1')
   })
 })
 
