@@ -1,4 +1,4 @@
-import type { UnitResult } from './report.js'
+import type { UnitResult } from '../posts/report.js'
 
 /** What a unit cost and delivered, as kept in its run's `units.json`. */
 export interface UnitStat {

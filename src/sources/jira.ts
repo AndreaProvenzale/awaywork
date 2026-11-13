@@ -2,8 +2,8 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
-import { httpError, unsetSecret } from '../core/poll.js'
 import type { Ctx, Item, Source } from '../core/types.js'
+import { httpError, unsetSecret } from '../plan/poll.js'
 import { taskMarkdown } from './asana.js'
 
 const config = z

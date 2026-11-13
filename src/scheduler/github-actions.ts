@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { isMap, isNode, isScalar, parseDocument } from 'yaml'
 import { skillsDirOf } from '../config/paths.js'
-import { HOSTED_JOB_MINUTES, SELF_HOSTED_JOB_MINUTES } from '../core/window.js'
+import { HOSTED_JOB_MINUTES, SELF_HOSTED_JOB_MINUTES } from '../quota/window.js'
 import type { Start } from './index.js'
 
 export const WORKFLOW = '.github/workflows/awaywork.yml'

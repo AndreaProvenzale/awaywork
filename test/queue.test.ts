@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-
-import { closestRule, defaultRules, matches, rank, ruleMatches } from '../src/core/queue.js'
 import type { Order, Rule } from '../src/core/types.js'
-import { failedIn, lookback } from '../src/core/where.js'
+import { closestRule, defaultRules, matches, rank, ruleMatches } from '../src/plan/queue.js'
+import { failedIn, lookback } from '../src/plan/where.js'
 
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 

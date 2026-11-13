@@ -1,3 +1,5 @@
+import type { Item } from '../core/types.js'
+import { planThread } from '../tasks/plan-file.js'
 import {
   answerTo,
   commentKind,
@@ -12,8 +14,6 @@ import {
   resultStatus,
 } from './comments.js'
 import { footerPins, type Pin } from './footer.js'
-import { planThread } from './plan.js'
-import type { Item } from './types.js'
 
 type Comment = Item['comments'][number]
 

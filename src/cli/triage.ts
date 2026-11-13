@@ -1,13 +1,13 @@
 import { styleText } from 'node:util'
-import type { RunPlan } from '../core/foreman.js'
+import type { Item } from '../core/types.js'
+import type { RunPlan } from '../plan/foreman.js'
 import {
   chains,
   needsYouOn,
   quotaLines,
   type ReportedSkip,
   type RunReport,
-} from '../core/report.js'
-import type { Item } from '../core/types.js'
+} from '../posts/report.js'
 import { listedUnits, planUnitTable, providerLines } from './format/plan.js'
 import { reportUnitTable, runHeader } from './format/report.js'
 import { type SkipRow, skippedHeading, skipRows } from './format/skips.js'

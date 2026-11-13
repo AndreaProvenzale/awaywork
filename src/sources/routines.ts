@@ -1,9 +1,9 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { localTime } from '../core/report.js'
 import type { Item, Source } from '../core/types.js'
-import { clock, DAYS, time } from '../core/window.js'
+import { localTime } from '../posts/report.js'
+import { clock, DAYS, time } from '../quota/window.js'
 import { itemMarkdown } from './command.js'
 
 const routine = z

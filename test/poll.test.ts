@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { formatPlan } from '../src/cli/format/plan.js'
 import { describeRule } from '../src/cli/format/rules.js'
 import { parseConfig } from '../src/config/load.js'
-import type { Attempts } from '../src/core/attempts.js'
-import { planRun } from '../src/core/foreman.js'
+import { builtinSkills } from '../src/core/skills.js'
+import type { Item, Rule } from '../src/core/types.js'
+import type { Attempts } from '../src/plan/attempts.js'
+import { planRun } from '../src/plan/foreman.js'
 import {
   claimUnits,
   dueUnits,
@@ -12,9 +14,7 @@ import {
   releaseUnits,
   type Seen,
   soonSources,
-} from '../src/core/poll.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Rule } from '../src/core/types.js'
+} from '../src/plan/poll.js'
 import { type RoutinesConfig, routines } from '../src/sources/routines.js'
 import { fakeItem } from './fakes/items.js'
 

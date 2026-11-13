@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reportJson } from '../src/cli/format/json.js'
 import { printReport } from '../src/cli/run.js'
 import { remoteDir, runsDir } from '../src/config/paths.js'
-import type { RunReport, StepFiles } from '../src/core/report.js'
+import type { RunReport, StepFiles } from '../src/posts/report.js'
 import { githubPr } from './fakes/items.js'
 
 vi.mock('../src/config/paths.js', async (original) => {

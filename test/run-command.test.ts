@@ -13,10 +13,10 @@ import {
   skipsPath,
   watchLockPath,
 } from '../src/config/paths.js'
-import { saveAttempts } from '../src/core/attempts.js'
-import { claimUnits } from '../src/core/poll.js'
-import { saveSkips } from '../src/core/skips.js'
 import type { PrRef } from '../src/core/types.js'
+import { saveAttempts } from '../src/plan/attempts.js'
+import { claimUnits } from '../src/plan/poll.js'
+import { saveSkips } from '../src/plan/skips.js'
 import { github } from '../src/sources/github.js'
 import { githubPr } from './fakes/items.js'
 

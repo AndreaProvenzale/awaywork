@@ -1,8 +1,8 @@
 import { posix } from 'node:path'
+import type { Item } from '../core/types.js'
+import { MAX_ATTEMPTS } from '../plan/attempts.js'
+import type { Contract } from '../tasks/plan-file.js'
 import { type Pin, trailingPins } from './footer.js'
-import { MAX_ATTEMPTS } from './max-attempts.js'
-import type { Contract } from './plan.js'
-import type { Item } from './types.js'
 
 /** The files awaywork's post pins, right above its mark. */
 export const pinsOf = (c: Item['comments'][number]): Pin[] =>

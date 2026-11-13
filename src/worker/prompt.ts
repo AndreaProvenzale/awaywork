@@ -1,4 +1,4 @@
-import type { Scalar } from './types.js'
+import type { Scalar } from '../core/types.js'
 
 interface PromptParts {
   harness: string

@@ -8,7 +8,7 @@ import {
   type Skip,
   saveSkips,
   untilTime,
-} from '../core/skips.js'
+} from '../plan/skips.js'
 
 export function skipCommand(program: Command): void {
   program

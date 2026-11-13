@@ -14,9 +14,11 @@ import {
   watchStatePath,
 } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
-import { loadAttempts } from '../core/attempts.js'
-import type { RunPlan } from '../core/foreman.js'
 import { isolateFor } from '../core/isolation.js'
+import { lockHolder, takeRunLock } from '../core/run-lock.js'
+import { exec } from '../forge/gh.js'
+import { loadAttempts } from '../plan/attempts.js'
+import type { RunPlan } from '../plan/foreman.js'
 import {
   claimUnits,
   dueUnits,
@@ -25,11 +27,9 @@ import {
   releaseUnits,
   type Seen,
   soonSources,
-} from '../core/poll.js'
-import { counted, localTime } from '../core/report.js'
-import { lockHolder, takeRunLock } from '../core/run-lock.js'
-import { firstOpening, windowEnd, windowRun } from '../core/window.js'
-import { exec } from '../forge/gh.js'
+} from '../plan/poll.js'
+import { counted, localTime } from '../posts/report.js'
+import { firstOpening, windowEnd, windowRun } from '../quota/window.js'
 import { holdAwake } from '../scheduler/wake.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedChains } from '../worker/units.js'

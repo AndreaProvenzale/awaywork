@@ -7,7 +7,7 @@ import { ejectSkill, listSkills, skillsJson } from '../src/cli/skills.js'
 import { loadConfig, parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
 import { unknownSkillsWarning } from '../src/config/skills.js'
-import { ruleMatches } from '../src/core/queue.js'
+import { ruleMatches } from '../src/plan/queue.js'
 import { asanaTask, githubPr } from './fakes/items.js'
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')

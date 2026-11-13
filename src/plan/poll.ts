@@ -1,7 +1,7 @@
 import type { Config } from '../config/schema.js'
+import type { Item } from '../core/types.js'
 import type { Attempts } from './attempts.js'
 import type { RunPlan, Skipped } from './foreman.js'
-import type { Item } from './types.js'
 import { spanMs } from './where.js'
 
 const MINUTE = 60_000

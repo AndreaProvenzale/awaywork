@@ -6,10 +6,14 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 
 | Path | What |
 | --- | --- |
-| `src/core/` | The contracts between modules (`types.ts`) and the foreman: queue, units, budget, prompt, report |
+| `src/core/` | The contracts between modules (`types.ts`) and what they share: isolation and `launch`, branch names, skills, the run lock, retention, stats |
+| `src/plan/` | The foreman (`planRun`) and what it reads: the queue, `where`, conditions, repos, skips, attempts, polling |
+| `src/tasks/` | The plan file and its tasks (`plan-file.ts`), and fanning them out |
+| `src/posts/` | What awaywork writes on items (comments, posts, the footer), and the run report that records them |
+| `src/quota/` | The budget, and the `windows` a scheduled run starts and stops in |
 | `src/sources/`, `src/providers/` | One adapter per file, plus the registry in `index.ts` |
 | `src/forge/` | GitHub through `gh`: clone, find PRs, push, draft PRs |
-| `src/worker/` | The workspace, the worker run, the watchdog and publishing |
+| `src/worker/` | The workspace, the worker prompt, the worker run, the watchdog and publishing |
 | `src/config/`, `src/cli/`, `src/scheduler/` | Config schema and loading, one file per command, launchd/systemd/cron/Actions |
 | `harness.md`, `skills/` | The fixed worker prompt and the built-in skills |
 | `plugin/` | The Claude Code plugin: the `away` skill, and the `/away` pane in `hooks/register.tsx` |

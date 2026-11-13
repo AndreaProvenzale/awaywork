@@ -11,7 +11,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { allowance } from '../src/core/budget.js'
+import { builtinSkills } from '../src/core/skills.js'
+import type { Item, Provider, Source, Write } from '../src/core/types.js'
+import { planRun } from '../src/plan/foreman.js'
 import {
   commentKind,
   leanPlanComment,
@@ -21,22 +23,20 @@ import {
   planComment,
   resultComment,
   resultOf,
-} from '../src/core/comments.js'
-import { footer, footerPins, type Pin, pinBlock } from '../src/core/footer.js'
-import { planRun } from '../src/core/foreman.js'
-import { cardTasks, planState } from '../src/core/plan.js'
+} from '../src/posts/comments.js'
+import { footer, footerPins, type Pin, pinBlock } from '../src/posts/footer.js'
 import {
   postAnswer,
   readBackPosts,
   reportPost,
   taskResults,
   withApproved,
-} from '../src/core/posts.js'
-import { formatReport } from '../src/core/report.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Provider, Source, Write } from '../src/core/types.js'
+} from '../src/posts/posts.js'
+import { formatReport } from '../src/posts/report.js'
+import { allowance } from '../src/quota/budget.js'
 import { TIMEOUT_MS } from '../src/sources/command.js'
 import { githubSource } from '../src/sources/github.js'
+import { cardTasks, planState } from '../src/tasks/plan-file.js'
 import { checkPins, putFiles, readBack, type Store } from '../src/worker/store.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'

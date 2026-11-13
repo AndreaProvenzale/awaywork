@@ -1,4 +1,4 @@
-import type { Age, Comparison, Item, Match, Scalar, Where, WhereValue } from './types.js'
+import type { Age, Comparison, Item, Match, Scalar, Where, WhereValue } from '../core/types.js'
 
 export const itemStates = ['open', 'merged', 'closed'] as const
 export type ItemState = (typeof itemStates)[number]

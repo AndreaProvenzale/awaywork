@@ -2,9 +2,9 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { formatWhy } from '../src/cli/format/why.js'
 import { collectItems } from '../src/cli/plan.js'
 import { ConfigError, parseConfig } from '../src/config/load.js'
-import type { Attempts } from '../src/core/attempts.js'
-import { planRun } from '../src/core/foreman.js'
 import { builtinSkills } from '../src/core/skills.js'
+import type { Attempts } from '../src/plan/attempts.js'
+import { planRun } from '../src/plan/foreman.js'
 import {
   lastOccurrence,
   nextOccurrence,

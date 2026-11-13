@@ -1,5 +1,5 @@
-import { pct } from './budget.js'
-import type { Condition } from './types.js'
+import type { Condition } from '../core/types.js'
+import { pct } from '../quota/budget.js'
 import { matchesValue } from './where.js'
 
 /** What awaywork knows when it checks a condition: the verdict, and whether the command and paths passed. */

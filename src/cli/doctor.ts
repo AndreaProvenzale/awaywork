@@ -10,8 +10,6 @@ import { expandHome, loginCommand, type Pin, pinLogins } from '../config/logins.
 import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import { type Config, canMatch } from '../config/schema.js'
 import { hasSkills, loadSkills, unknownSkillsWarning } from '../config/skills.js'
-import { allowance } from '../core/budget.js'
-import { gatesNeverRun } from '../core/fanout.js'
 import {
   DOCKER_TIMEOUT_MS,
   dockerVersion,
@@ -21,19 +19,21 @@ import {
   WORKER,
   workerFor,
 } from '../core/isolation.js'
-import { ruleThread } from '../core/queue.js'
-import { counted } from '../core/report.js'
 import { builtinSkills } from '../core/skills.js'
 import type { Ctx, Provider } from '../core/types.js'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
 import { type Exec, exec, onHost } from '../forge/gh.js'
+import { ruleThread } from '../plan/queue.js'
+import { counted } from '../posts/report.js'
 import { codexLogin } from '../providers/codex.js'
 import { commandBinary, isCommandProvider } from '../providers/command.js'
 import { providerFor, providers } from '../providers/index.js'
+import { allowance } from '../quota/budget.js'
 import { staleDocker } from '../scheduler/docker.js'
 import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
+import { gatesNeverRun } from '../tasks/fanout.js'
 import { describeAllowance } from './format/allowances.js'
 import { NO_QUEUE } from './format/rules.js'
 import { type Status, statusMarker } from './format/terminal.js'

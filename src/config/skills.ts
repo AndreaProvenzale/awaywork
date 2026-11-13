@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { ruleSteps } from '../core/queue.js'
 import { builtinSkills, parseSkill, resolveSkill, type SkillMeta } from '../core/skills.js'
+import { ruleSteps } from '../plan/queue.js'
 import type { Config } from './schema.js'
 
 /** Skills in a directory, one folder with a SKILL.md each, linked ones included; a missing directory has none. */
