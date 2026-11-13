@@ -2549,7 +2549,7 @@
         "command": {
           "type": "string",
           "minLength": 1,
-          "description": "Shell command run like a custom source's, once per file: it reads {\"op\":\"put\",\"item\",\"unit\",\"path\",\"kind\"} on stdin and prints {\"url\":\"…\"}, or reads {\"op\":\"get\",\"url\"} and prints the file's bytes"
+          "description": "Shell command run like a custom source's, once per file: it reads {\"op\":\"put\",\"item\",\"unit\",\"path\",\"kind\"} on stdin and prints {\"url\":\"…\"}, or {\"skip\":true} to keep the file out of the store, or reads {\"op\":\"get\",\"url\"} and prints the file's bytes"
         },
         "secrets": {
           "default": [],

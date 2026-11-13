@@ -751,8 +751,16 @@ function threadsMarkdown(threads: Thread[]): string {
 }
 
 async function checksMarkdown(run: Exec, repo: string, checks: Check[]): Promise<string> {
-  const failed = checks.filter((c) => checkResult(c)[1] === 'failing')
-  if (!failed.length) return 'No failing checks.\n'
+  const isFailing = (c: Check) => checkResult(c)[1] === 'failing'
+  const failed = checks.filter(isFailing)
+  const others = checks
+    .filter((c) => !isFailing(c))
+    .map((c) =>
+      c.__typename === 'StatusContext'
+        ? `- ${c.context}: ${[c.state, c.targetUrl].filter(Boolean).join(' ')}`
+        : `- ${c.name}: ${c.conclusion ?? c.status} ${c.detailsUrl}`,
+    )
+  const rest = others.length ? `\n## Not failing\n\n${others.join('\n')}\n` : ''
   const sections = await Promise.all(
     failed.map(async (c) => {
       if (c.__typename === 'StatusContext')
@@ -767,5 +775,5 @@ async function checksMarkdown(run: Exec, repo: string, checks: Check[]): Promise
       return `## ${c.name}: ${c.conclusion}\n\n${c.detailsUrl}\n\n\`\`\`\n${log}\n\`\`\`\n`
     }),
   )
-  return sections.join('\n')
+  return (sections.join('\n') || 'No failing checks.\n') + rest
 }

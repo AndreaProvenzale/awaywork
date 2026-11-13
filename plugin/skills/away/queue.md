@@ -31,7 +31,7 @@ Turn what the developer wants offloaded into rules, check them on their real ite
    - `post`: `summary`, the default with a `store` and an error without one, or `full`, the report inline.
    - `thread`: `item` (the default), `github` (an issue in the item's repo, assigned to them, for a source that can't write) or a custom source with `thread: true`.
 
-   `where: { approved: <skill> }` takes the items whose newest post that they approved or that went ahead is that skill's, even on a tracker awaywork can't move cards on. Top-level `store: { command, secrets, read }` is a script that keeps the files a post pins (https://andreaprovenzale.github.io/awaywork/guide/workflows.md#store); with one, posts are lean.
+   `where: { approved: <skill> }` takes the items whose newest post that they approved or that went ahead is that skill's, even on a tracker awaywork can't move cards on. Top-level `store: { command, secrets, read }` is a script that keeps the files a post pins, or skips one by printing `{"skip": true}` (https://andreaprovenzale.github.io/awaywork/guide/workflows.md#store); with one, posts are lean.
 
 5. **Check on real items.** `awaywork --config <draft> plan --rules --json` reads the sources and probes no provider. It prints:
 
