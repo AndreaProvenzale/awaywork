@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { loadSkills } from '../src/config/skills.js'
-import { assemblePrompt } from '../src/core/prompt.js'
 import { builtinSkills, parseSkill, resolveSkill } from '../src/core/skills.js'
+import { assemblePrompt } from '../src/worker/prompt.js'
 
 describe('skills', () => {
   it('looks up user, then in-repo, then built-in skills', () => {

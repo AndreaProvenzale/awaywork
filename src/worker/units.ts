@@ -27,8 +27,8 @@ import type {
   Unit,
 } from '../core/types.js'
 import type { Attempts } from '../plan/attempts.js'
+import { byHand } from '../plan/attempts.js'
 import { describeCondition, holds } from '../plan/condition.js'
-import { byHand } from '../plan/continue.js'
 import {
   describeChain,
   modelFor,

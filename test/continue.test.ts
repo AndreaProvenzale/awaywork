@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { byHand, GITHUB_ONLY, NOT_YOURS } from '../src/plan/continue.js'
+import { byHand, GITHUB_ONLY, NOT_YOURS } from '../src/plan/attempts.js'
 
 it("goes on with its own GitHub draft only at the head it left, body yours, under the cap, else says why it's yours", () => {
   const left = { continued: 2, head: 'abc1234def' }
