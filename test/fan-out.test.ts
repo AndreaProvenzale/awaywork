@@ -542,24 +542,15 @@ describe('tasks as items', () => {
     ])
     expect(skips(accepted)[0]?.[2]).toBe('fanned out: api PR open, qa done')
     const again = plan([fanned(waits, yours('Shoot the third screen too.', 4))], qaRule)
-    expect(again.units.map((u) => u.unit.id)).toEqual(['acme-api-1-qa'])
-    expect(skips(again)).toEqual([
-      ['acme/api#1', 'fanned_out', 'fanned out: api waits for qa, qa runs again on your feedback'],
-      [
-        'acme/api#1/api',
-        'waiting_for_task',
-        'waiting for task qa to run again on your feedback on https://example.com/1',
-      ],
-    ])
+    expect(again.units.map((u) => u.unit.id)).toContain('acme-api-1-qa')
+    expect(skips(again)[0]?.[2]).toBe('fanned out: api PR open, qa runs again on your feedback')
     const feedback = [waits, yours('Shoot the third screen too.', 4)]
     expect(taskResults(fanned(...feedback, result(5, { went: true, gates: ['proof'] })))).toEqual({
       qa: 'approved',
     })
     expect(taskResults(fanned(...feedback, result(5, { waits: true })))).toEqual({ qa: 'waiting' })
     const goesOn = posted(resultComment('Half.', 'continue', 'qa', 'qa', 1), 5)
-    // Half a rerun passed no gate: the hold stays until a done result.
-    expect(taskResults(fanned(...feedback, goesOn))).toEqual({ qa: 'feedback' })
-    expect(taskResults(fanned(goesOn))).toEqual({ qa: undefined })
+    expect(taskResults(fanned(...feedback, goesOn))).toEqual({ qa: undefined })
   })
 
   it('runs nothing for a card no longer yours or whose task PRs went unread, and fans out on Bitbucket', () => {
@@ -1425,7 +1416,7 @@ describe('one post of a card waits at a time', () => {
     expect(second.writes[0]).toMatch(/^Result of task qa2\n/)
   })
 
-  it('runs the task again on your feedback, on the machine that ran it, and no other task of the card until its new result is done', async () => {
+  it('runs the task again on your feedback, on the machine that ran it, and holds the other tasks no longer', async () => {
     const qaPlan =
       'tasks:\n  - { id: qa0, title: Before, skill: review }\n  - { id: qa, title: QA evidence, skill: review }\n  - { id: qa2, title: More, skill: review }\n'
     const before = posted(resultComment('Fine.', 'done', 'review', 'qa0'), 3)
@@ -1439,33 +1430,27 @@ describe('one post of a card waits at a time', () => {
       fields: { ...fanned.fields, updated: at(6) },
     })
     const again = plan([replied()], gated, attempts)
-    expect(again.units.map((u) => u.unit.id)).toEqual(['acme-api-1-qa'])
+    expect(again.units.map((u) => u.unit.id)).toEqual(['acme-api-1-qa', 'acme-api-1-qa2'])
     expect(skips(again)).toEqual([
       [
         'acme/api#1',
         'fanned_out',
-        'fanned out: qa0 done, qa runs again on your feedback, qa2 waits for qa',
+        'fanned out: qa0 done, qa runs again on your feedback, qa2 no result yet',
       ],
       ['acme/api#1/qa0', 'task_done', 'done: its result is on https://example.com/1'],
-      [
-        'acme/api#1/qa2',
-        'waiting_for_task',
-        'waiting for task qa to run again on your feedback on https://example.com/1',
-      ],
     ])
-    const rerun = (status: 'done' | 'continue', post?: PostState) => ({
+    const rerun = (post: PostState) => ({
       ...posted('', 6),
       body: markComment(
-        resultComment('Three shots.', status, 'review', 'qa', 0, !!post && 'waits' in post),
+        resultComment('Three shots.', 'done', 'review', 'qa', 0, 'waits' in post),
         post,
       ),
     })
     const ids = (...more: Item['comments']) =>
       plan([replied(...more)], gated, attempts).units.map((u) => u.unit.id)
-    expect(ids(rerun('continue'))).toEqual(['acme-api-1-qa'])
-    expect(ids(rerun('done', { waits: true }))).toEqual([])
-    expect(ids(rerun('done', { waits: true }), yours('approve', 7))).toEqual(['acme-api-1-qa2'])
-    expect(ids(rerun('done', { went: true, gates: ['proof'] }))).toEqual(['acme-api-1-qa2'])
+    expect(ids(rerun({ waits: true }))).toEqual([])
+    expect(ids(rerun({ waits: true }), yours('approve', 7))).toEqual(['acme-api-1-qa2'])
+    expect(ids(rerun({ went: true, gates: ['proof'] }))).toEqual(['acme-api-1-qa2'])
   })
 
   it('runs no later task of the card once a task asked', async () => {

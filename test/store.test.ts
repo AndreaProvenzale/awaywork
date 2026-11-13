@@ -965,7 +965,7 @@ describe('stale posts', () => {
     })
   })
 
-  it("runs a task again on an edited file of its result, though its card is unchanged since its run, and holds the card's other tasks", async () => {
+  it("runs a task again on an edited file of its result, though its card is unchanged since its run, ahead of the card's other tasks", async () => {
     const queue =
       '  - { skill: plan, deliver: plan }\n  - { skill: review, where: { planned: true }, deliver: report }'
     const config = parseConfig(
@@ -1009,17 +1009,18 @@ describe('stale posts', () => {
       units: ['acme-api-1-web'],
       skipped: [['acme/api#1/qa', 'unchanged', 'unchanged since run r30']],
     })
-    const held = {
-      units: ['acme-api-1-qa'],
-      skipped: [['acme/api#1/web', 'waiting_for_task', 'waiting for task qa to run again']],
-    }
     const edited = () => pinned('report.md', 'edited', sha('as posted'))
+    const same = () => pinned('report.md', 'as posted')
     const approve = post('approve', '2026-10-24T04:00:00Z')
-    expect(await planned({ waits: true }, await edited(), approve)).toEqual(held)
-    expect(await planned({ went: true, gates: ['proof'] }, await edited())).toEqual(held)
-    expect(
-      (await planned({ waits: true }, await pinned('report.md', 'as posted'), approve)).units,
-    ).toEqual(['acme-api-1-web'])
+    // A stale pin is feedback: qa runs again first, and the run stops web behind it if its gate fires again.
+    const again = { units: ['acme-api-1-qa', 'acme-api-1-web'], skipped: [] }
+    expect(await planned({ waits: true }, await edited())).toEqual(again)
+    expect(await planned({ waits: true }, await edited(), approve)).toEqual(again)
+    expect(await planned({ went: true, gates: ['proof'] }, await edited())).toEqual(again)
+    expect((await planned({ waits: true }, await same(), approve)).units).toEqual([
+      'acme-api-1-web',
+    ])
+    expect((await planned({ waits: true }, await same())).units).toEqual([])
   })
 
   it("skips a card's tasks as store_failed while a task's result, approved or gone ahead, can't be read back", async () => {

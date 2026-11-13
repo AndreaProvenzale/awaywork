@@ -153,7 +153,7 @@ describe('approve', () => {
     await expect(
       approveItem('github:acme/api#5', config, '', { sources: under.sources, ctx }),
     ).rejects.toThrow(
-      "task web's result on https://example.com/1 went ahead: task api's result above it waits, approve github:acme/api#5/api",
+      "task web's result on https://example.com/1 went ahead: task api's result waits, approve github:acme/api#5/api",
     )
     const answered = github([card(yes, waits, { ...yes, body: 'Shoot the third too.', at: at(4) })])
     await expect(

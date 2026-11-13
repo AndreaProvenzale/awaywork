@@ -57,14 +57,13 @@ function tasksFrom(item: Pick<Item, 'comments'>): number {
   return answer ? item.comments.indexOf(answer) + 1 : item.comments.length
 }
 
-/** Each task's newest result on the card since its plan's approval, and its post when it says it waits or went ahead; a result that isn't `done` keeps the post it ran again from. */
+/** Each task's newest result on the card since its plan's approval, and its post when it says it waits or went ahead. */
 function taskPosts(item: Pick<Item, 'comments'>): Map<string, { result: Comment; post?: Post }> {
   const from = tasksFrom(item)
   const newest = new Map<string, { result: Comment; post?: Post }>()
   item.comments.forEach((c, at) => {
     const task = at >= from && commentKind(c) === 'result' ? commentTask(c) : undefined
-    const post =
-      postAt(item, at) ?? (resultStatus(c) === 'done' ? undefined : newest.get(task ?? '')?.post)
+    const post = postAt(item, at)
     if (task) newest.set(task, { result: c, ...(post && { post }) })
   })
   return newest
@@ -72,8 +71,7 @@ function taskPosts(item: Pick<Item, 'comments'>): Map<string, { result: Comment;
 
 /**
  * Where each task's newest `done` result on the card stands since its plan's approval:
- * `approved` is done, a plain result too; one a gate fired on is `waiting` for your answer, or runs again on your `feedback`,
- * which it keeps until a `done` result follows.
+ * `approved` is done, a plain result too; one a gate fired on is `waiting` for your answer, or runs again on your `feedback`.
  */
 export function taskResults(
   item: Pick<Item, 'comments'>,
@@ -81,7 +79,7 @@ export function taskResults(
   const results: ReturnType<typeof taskResults> = {}
   for (const [task, { result, post }] of taskPosts(item)) {
     const done = resultStatus(result) === 'done'
-    results[task] = post ? (done ? postAnswer(post) : 'feedback') : done ? 'approved' : undefined
+    results[task] = !done ? undefined : post ? postAnswer(post) : 'approved'
   }
   return results
 }

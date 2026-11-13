@@ -78,10 +78,10 @@ export async function approveItem(
   if (!target || !post) throw new Error(`nothing on ${key} waits for your approval`)
   const what = post.what === 'plan' ? 'the plan' : post.what
   const on = target.thread?.url ?? target.url
-  // Another task's older result may still wait under the one that went ahead.
+  // Another task's result may still wait beside the one that went ahead.
   const [older] = Object.entries(taskResults(target)).find(([, at]) => at === 'waiting') ?? []
   const waits = older
-    ? `task ${older}'s result above it waits, approve ${target.source}:${target.key}/${older}`
+    ? `task ${older}'s result waits, approve ${target.source}:${target.key}/${older}`
     : 'nothing waits for your approval'
   if (post.went) throw new Error(`${what} on ${on} went ahead: ${waits}`)
   if (post.answer)

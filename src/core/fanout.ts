@@ -208,7 +208,7 @@ export function taskPr(
 /**
  * Replaces each card a `deliver: plan` rule took whose plan you approved with its tasks, in the
  * order they run, which go down the queue like any item. The card itself skips, as do the tasks
- * that make no unit: merged, waiting on another's merge, or held while any task's questions or gated result wait, or its gated result has your feedback and no newer one.
+ * that make no unit: merged, waiting on another's merge, or held while any task's questions or gated result wait.
  * A card whose tasks' PRs closed unmerged since stays, to plan again.
  */
 export function expandPlans(
@@ -251,8 +251,6 @@ export function expandPlans(
     const asked = waitingTasks(card)
     // A gate that fired on a task's result holds the card's tasks like its questions, until you answer the post.
     const gated = tasks.filter((t) => reportsOnly(t) && results[t.id] === 'waiting')
-    // Your feedback on one keeps that hold on the others until the task ran again: nothing gets past a gate you didn't approve.
-    const again = tasks.filter((t) => reportsOnly(t) && results[t.id] === 'feedback')
     const posts = card.thread?.url ?? card.url
     // A task's result awaywork couldn't read back decides nothing yet: nothing of the card counts as done or runs.
     const unread = unreadTaskResult(card)
@@ -301,15 +299,6 @@ export function expandPlans(
           `waiting for your approval of ${named} result on ${posts}`,
           posts,
         )
-      } else if (again.length && !again.includes(t)) {
-        const ids = again.map((g) => g.id).join(' and ')
-        states.push(`${t.id} waits for ${ids}`)
-        skip(
-          item,
-          'waiting_for_task',
-          `waiting for task ${ids} to run again on your feedback on ${posts}`,
-          posts,
-        )
       } else if (pr) {
         states.push(pr.left ? `${t.id} draft says ${pr.left.status}` : `${t.id} PR open`)
         out.push({ ...item, linkedPrs: [pr] })
@@ -330,8 +319,9 @@ export function expandPlans(
           prs[checkedOn]?.url,
         )
       } else {
+        const again = reportsOnly(t) && results[t.id] === 'feedback'
         states.push(
-          again.includes(t)
+          again
             ? `${t.id} runs again on your feedback`
             : `${t.id} ${reportsOnly(t) ? 'no result' : 'no PR'} yet`,
         )
