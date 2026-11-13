@@ -3,7 +3,6 @@
     "target": "ES2023",
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": true,
