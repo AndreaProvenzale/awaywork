@@ -3,7 +3,6 @@ import {
   commentKind,
   commentTask,
   isApprove,
-  isAwayworkComment,
   type PostState,
   pinsOf,
   postState,
@@ -52,21 +51,37 @@ export const postAnswer = ({ post, state, answer }: Post): 'waiting' | 'feedback
         : 'feedback'
 
 /**
- * Where each task's newest `done` result on the card stands since its plan's approval, a re-plan's leaving older results behind:
+ * Each task's results on the card since its plan's approval, oldest first, a re-plan's leaving older ones behind.
+ * Your reply answers only the newest result waiting above it: an older one keeps waiting.
+ */
+function taskPosts(item: Pick<Item, 'comments'>): { task: string; at: number; post?: Post }[] {
+  const answer = planThread(item)?.answer
+  const from = answer ? item.comments.indexOf(answer) + 1 : item.comments.length
+  const found = item.comments.flatMap((c, at) => {
+    const task = at >= from && commentKind(c) === 'result' ? commentTask(c) : undefined
+    return task ? [{ task, at, post: postAt(item, at) }] : []
+  })
+  return found.map((r, i) => {
+    const { post } = r
+    const next = found.slice(i + 1).find((n) => n.post && 'waits' in n.post.state)
+    const passed =
+      post?.answer && 'waits' in post.state && next && next.at < item.comments.indexOf(post.answer)
+    return passed ? { ...r, post: { post: post.post, state: post.state } } : r
+  })
+}
+
+/**
+ * Where each task's newest `done` result on the card stands since its plan's approval:
  * `approved` is done, a plain result too; one a gate fired on is `waiting` for your answer, or runs again on your `feedback`.
  */
 export function taskResults(
   item: Pick<Item, 'comments'>,
 ): Record<string, ReturnType<typeof postAnswer> | undefined> {
-  const answer = planThread(item)?.answer
-  const from = answer ? item.comments.indexOf(answer) + 1 : item.comments.length
   const results: ReturnType<typeof taskResults> = {}
-  item.comments.forEach((c, at) => {
-    const task = at >= from && commentKind(c) === 'result' ? commentTask(c) : undefined
-    if (!task) return
-    const post = postAt(item, at)
-    results[task] = resultStatus(c) !== 'done' ? undefined : post ? postAnswer(post) : 'approved'
-  })
+  for (const { task, at, post } of taskPosts(item)) {
+    const done = resultStatus(item.comments[at] as Comment) === 'done'
+    results[task] = !done ? undefined : post ? postAnswer(post) : 'approved'
+  }
   return results
 }
 
@@ -86,43 +101,48 @@ export const withApproved = (item: Item): Item => {
 }
 
 /**
- * The move on_done held on awaywork's newest post on the item, once you approved it: only while the card is
+ * The move on_done held on awaywork's newest post on the item that waits, once you approved it: only while the card is
  * still in the status the post saw and the move isn't applied yet, as a GitHub label shows it.
  */
 export function heldMove(item: Pick<Item, 'comments' | 'status' | 'labels'>): string | undefined {
-  const at = item.comments.findLastIndex(
-    (c) => isAwayworkComment(c) && commentKind(c) !== 'approve',
-  )
+  const at = item.comments.findLastIndex((c) => 'waits' in (postState(c) ?? {}))
   const post = postAt(item, at)
   if (!post || !('waits' in post.state) || postAnswer(post) !== 'approved') return undefined
   const { move, saw } = post.state
   return move && item.status === saw && !item.labels.includes(move) ? move : undefined
 }
 
-/** Awaywork's newest post on the item that waits or waited for your decision: a plan, or a result that says so; with `task`, that task's result on its card. */
+/**
+ * Awaywork's post on the item that waits or waited for your decision: a plan, or a result that says so, one that still
+ * waits before a newer one that doesn't; with `task`, that task's result on its card since the plan's approval.
+ */
 export function decisionPost(
   item: Pick<Item, 'comments'>,
   task?: string,
 ): { what: string; post: Comment; answer?: Comment; went?: true } | undefined {
   const plan = task ? undefined : planThread(item)
-  const at = item.comments.findLastIndex(
-    (c) => commentKind(c) === 'result' && !!postState(c) && (!task || commentTask(c) === task),
-  )
-  const report = postAt(item, at)
-  const planAt = plan ? item.comments.indexOf(plan.plan) : -1
-  if (plan && planAt > at) return { what: 'plan', ...plan, post: plan.plan }
+  const at = (c: Comment) => item.comments.indexOf(c)
+  const reports = task ? [] : item.comments.filter((c) => resultSkill(c))
+  const posts = [
+    ...reports.flatMap((c) => postAt(item, at(c)) ?? []),
+    ...taskPosts(item).flatMap((r) => ((!task || r.task === task) && r.post) || []),
+  ].sort((a, b) => at(a.post) - at(b.post))
+  const report = posts.findLast((p) => 'waits' in p.state && !p.answer) ?? posts.at(-1)
+  if (plan && (!report || at(plan.plan) > at(report.post)))
+    return { what: 'plan', ...plan, post: plan.plan }
   if (!report) return undefined
   const of = commentTask(report.post)
   const what = of ? `task ${of}'s result` : `${resultSkill(report.post)}'s result`
   return { what, ...report, ...('went' in report.state && { went: true as const }) }
 }
 
-/** The posts on the item whose answer decides a rule: the newest plan, and each skill's newest result that waits or went ahead. */
+/** The posts on the item whose answer decides a rule: the newest plan, and each skill's and each task's newest result that waits or went ahead. */
 export function decisionPosts(item: Pick<Item, 'comments'>): Comment[] {
   const plan = planThread(item)?.plan
   const skills = new Set(item.comments.flatMap((c) => resultSkill(c) ?? []))
   const reports = [...skills].flatMap((skill) => reportPost(item, skill)?.post ?? [])
-  return [...(plan ? [plan] : []), ...reports]
+  const tasks = new Map(taskPosts(item).map((r) => [r.task, r.post?.post]))
+  return [...(plan ? [plan] : []), ...reports, ...[...tasks.values()].flatMap((c) => c ?? [])]
 }
 
 /** A post whose pinned files a unit reads back: its folder's name under `files/`, what it is, its pins, whether a file edited since is your feedback, else left out, and whether the unit can't go without it. */

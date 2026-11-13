@@ -314,7 +314,12 @@ export function expandPlans(
           prs[checkedOn]?.url,
         )
       } else {
-        states.push(`${t.id} ${reportsOnly(t) ? 'no result' : 'no PR'} yet`)
+        const again = reportsOnly(t) && results[t.id] === 'feedback'
+        states.push(
+          again
+            ? `${t.id} runs again on your feedback`
+            : `${t.id} ${reportsOnly(t) ? 'no result' : 'no PR'} yet`,
+        )
         out.push(item)
       }
     }

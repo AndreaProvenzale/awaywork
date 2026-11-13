@@ -23,7 +23,13 @@ import {
 import { footer, footerPins, type Pin, pinBlock } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
 import { cardTasks, planState } from '../src/core/plan.js'
-import { postAnswer, readBackPosts, reportPost, withApproved } from '../src/core/posts.js'
+import {
+  postAnswer,
+  readBackPosts,
+  reportPost,
+  taskResults,
+  withApproved,
+} from '../src/core/posts.js'
 import { formatReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, Write } from '../src/core/types.js'
@@ -930,6 +936,32 @@ describe('stale posts', () => {
       attempts,
     })
     expect(plan.units.map((u) => [u.unit.skill, u.unit.waits])).toEqual([['story', true]])
+  })
+
+  it("counts an edited file of a task's waiting result as feedback too, though you approved it", async () => {
+    const plan = post(markComment(planComment('N.', 'tasks:\n  - { id: qa, title: Q }\n')))
+    const result = (pin: Pin) =>
+      post(
+        markComment(
+          `${resultComment('Two shots.', 'done', 'qa', 'qa', 0, true)}${pinBlock([pin])}`,
+          { waits: true },
+        ),
+        '2026-10-24T03:00:00Z',
+      )
+    const read = async (pin: Pin) => {
+      const card = yours(1, [
+        plan,
+        post('approve', '2026-10-24T02:00:00Z'),
+        result(pin),
+        post('approve', '2026-10-24T04:00:00Z'),
+      ])
+      await checkPins([card], config.store as Store, process.env)
+      return taskResults(card)
+    }
+    expect(await read(await pinned('report.md', 'as posted'))).toEqual({ qa: 'approved' })
+    expect(await read(await pinned('report.md', 'edited', sha('as posted')))).toEqual({
+      qa: 'feedback',
+    })
   })
 
   it('plans an unanswered post whose file was edited as feedback, on the card and its PR, and while its pins match holds the card alone', async () => {

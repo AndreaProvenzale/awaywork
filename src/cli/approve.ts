@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import type { Config } from '../config/schema.js'
-import { approveReply } from '../core/comments.js'
+import { approveReply, commentTask, postState } from '../core/comments.js'
 import { cardTasks, planThread } from '../core/plan.js'
 import { decisionPost } from '../core/posts.js'
 import type { Ctx, Forge, Source } from '../core/types.js'
@@ -63,6 +63,12 @@ export async function approveItem(
     throw new Error(`the plan on ${id}:${card.key} has no task ${task}`)
   // A task's result waits only when a gate of its rule fired, on its card.
   const gated = card && task ? decisionPost(card, task) : undefined
+  // A plan posted since left the task's result behind: your reply would answer the plan.
+  const left = card ? card.comments.some((c) => commentTask(c) === task && postState(c)) : false
+  if (card && !gated && left)
+    throw new Error(
+      `task ${task}'s result on ${card.thread?.url ?? card.url} is older than the plan on ${id}:${card.key}${planThread(card)?.answer ? ': nothing of it waits' : `, which waits for your approval: approve ${id}:${card.key}`}`,
+    )
   if (card && !gated)
     throw new Error(
       `${key} is a task of the plan on ${id}:${card.key}: a task takes no approval of its own, approving the plan on the card covers it`,

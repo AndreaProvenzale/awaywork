@@ -149,5 +149,36 @@ describe('approve', () => {
       approveItem('github:acme/api#5/api', config, '', { sources: answered.sources, ctx }),
     ).rejects.toThrow(/^task api's result on https:\/\/example.com\/1 was already answered by me/)
     expect(answered.writes).toEqual([])
+    // Another task's result that went ahead after it doesn't hide the one that waits.
+    const went = {
+      ...waits,
+      body: markComment(resultComment('Fine.', 'done', 'qa', 'web'), { went: true, gates: ['p'] }),
+      at: at(4),
+    }
+    const later = github([card(yes, waits, went)])
+    expect(
+      await approveItem('github:acme/api#5', config, '', { sources: later.sources, ctx }),
+    ).toBe("task api's result approved: replied approve on https://example.com/1#issuecomment-1")
+  })
+
+  it("refuses a task's result a newer plan left behind, naming the plan that waits, which the card's key approves", async () => {
+    const at = (n: number) => `2026-01-0${n}T00:00:00Z`
+    const yes = { author: 'me', body: 'approve', at: at(2), mine: true as const }
+    const waits = {
+      author: 'me',
+      body: markComment(resultComment('Two shots.', 'done', 'qa', 'api', 0, true), { waits: true }),
+      at: at(3),
+      mine: true as const,
+    }
+    const { sources, writes } = github([card(yes, waits, { ...plan, at: at(4) })])
+    await expect(
+      approveItem('github:acme/api#5/api', config, '', { sources, ctx }),
+    ).rejects.toThrow(
+      "task api's result on https://example.com/1 is older than the plan on github:acme/api#5, which waits for your approval: approve github:acme/api#5",
+    )
+    expect(writes).toEqual([])
+    expect(await approveItem('github:acme/api#5', config, '', { sources, ctx })).toBe(
+      'plan approved: replied approve on https://example.com/1#issuecomment-1',
+    )
   })
 })

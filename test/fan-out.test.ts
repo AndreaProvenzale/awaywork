@@ -534,6 +534,9 @@ describe('tasks as items', () => {
     const moves = result(3, { waits: true, move: 'QA', saw: 'open' })
     expect(heldMove(fanned(moves, yours('approve', 4)))).toBe('QA')
     expect(heldMove(fanned(moves, yours('Not yet.', 4)))).toBeUndefined()
+    // A plain post of awaywork's after it doesn't lose the move.
+    const plain = posted(resultComment('Done.', 'done', 'implement', 'api'), 5)
+    expect(heldMove(fanned(moves, yours('approve', 4), plain))).toBe('QA')
     const accepted = plan([fanned(waits, yours('approve\nThe third screen is gone.', 4))], qaRule)
     expect(skips(accepted)).toContainEqual([
       'acme/api#1/qa',
@@ -543,7 +546,7 @@ describe('tasks as items', () => {
     expect(skips(accepted)[0]?.[2]).toBe('fanned out: api PR open, qa done')
     const again = plan([fanned(waits, yours('Shoot the third screen too.', 4))], qaRule)
     expect(again.units.map((u) => u.unit.id)).toContain('acme-api-1-qa')
-    expect(skips(again)[0]?.[2]).toBe('fanned out: api PR open, qa no result yet')
+    expect(skips(again)[0]?.[2]).toBe('fanned out: api PR open, qa runs again on your feedback')
     const feedback = [waits, yours('Shoot the third screen too.', 4)]
     expect(taskResults(fanned(...feedback, result(5, { went: true, gates: ['proof'] })))).toEqual({
       qa: 'approved',
@@ -551,6 +554,35 @@ describe('tasks as items', () => {
     expect(taskResults(fanned(...feedback, result(5, { waits: true })))).toEqual({ qa: 'waiting' })
     const goesOn = posted(resultComment('Half.', 'continue', 'qa', 'qa', 1), 5)
     expect(taskResults(fanned(...feedback, goesOn))).toEqual({ qa: undefined })
+  })
+
+  it('takes your reply as the answer to the newest result waiting above it only: an older one keeps waiting', () => {
+    const gates = "gates: { proof: { command: 'scripts/proof.sh' } }"
+    const qaRule = configOf(
+      `${queue}  - { skill: qa, where: { planned: true }, deliver: report, ${gates} }\n`,
+    )
+    const qaPlan = `tasks:\n  - { id: qa, title: Q, skill: qa }\n  - { id: qa2, title: R, skill: qa }\n`
+    const waits = (task: string, n: number) => ({
+      ...posted('', n),
+      body: markComment(resultComment('Two shots.', 'done', 'qa', task, 0, true), { waits: true }),
+    })
+    const both = card([
+      planned(qaPlan),
+      yours(approveReply('')),
+      waits('qa', 3),
+      waits('qa2', 4),
+      yours('approve', 5),
+    ])
+    expect(taskResults(both)).toEqual({ qa: 'waiting', qa2: 'approved' })
+    expect(skips(plan([both], qaRule))).toEqual([
+      ['acme/api#1', 'fanned_out', 'fanned out: qa waits for your approval, qa2 done'],
+      [
+        'acme/api#1/qa',
+        'waiting_for_approval',
+        "waiting for your approval of task qa's result on https://example.com/1",
+      ],
+      ['acme/api#1/qa2', 'task_done', 'done: its result is on https://example.com/1'],
+    ])
   })
 
   it('runs nothing for a card no longer yours or whose task PRs went unread, and fans out on Bitbucket', () => {
@@ -1356,4 +1388,75 @@ it("runs a report task's own gates on what it left: one that fires posts its res
   expect(clear.writes).toEqual([['acme/api#1', { op: 'comment', body: went }]])
   const done = card([...fanned.comments, { author: 'me', body: went, at: at(3), mine: true }])
   expect(skips(plan([done], gated(0)))[0]?.[1]).toBe('all_tasks_done')
+})
+
+describe('one post of a card waits at a time', () => {
+  const gated = configOf(
+    `${queue}  - { skill: review, where: { planned: true }, deliver: report, gates: { proof: { command: 'echo no shot of step 3; exit 1' } } }\n`,
+  )
+  const run = async (fanned: Item, worker: Provider) => {
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-fanout-'))
+    const { forge } = await originForge(root)
+    const writes: string[] = []
+    const source = {
+      ...fakeSource(),
+      write: async (_cfg: unknown, _item: Item, w: Write) => {
+        if (w.op === 'comment') writes.push(w.body)
+        return {}
+      },
+    } as Source
+    const report = await runUnits({
+      config: gated,
+      configDir: root,
+      plan: plan([fanned], gated),
+      runId: 'r1',
+      runDir: join(root, 'run'),
+      dryRun: false,
+      providers: { claude: worker },
+      sources: { github: source },
+      forge,
+      ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+      watch: () => ({ stop: async () => {} }),
+      shortage: async () => undefined,
+      skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+    })
+    const results = report.results.map((r) => [r.planned.unit.id, r.status, r.reason])
+    return { results, writes }
+  }
+  const leaves = (file: string, text: string): Provider => ({
+    ...fakeProvider('claude'),
+    async *run(job) {
+      await writeFile(join(job.dir, '.away/out', file), text)
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  })
+
+  it("runs no later task of the card once a gate fired on a task's result, until you approve it", async () => {
+    const qaPlan =
+      'tasks:\n  - { id: qa, title: QA evidence, skill: review }\n  - { id: qa2, title: More, skill: review }\n'
+    const fanned = card([planned(qaPlan), yours(approveReply(''))])
+    const first = await run(fanned, leaves('report.md', 'Two shots.'))
+    expect(first.results).toEqual([
+      ['acme-api-1-qa', 'done', undefined],
+      ['acme-api-1-qa2', 'skipped', "qa's result waits for your approval"],
+    ])
+    expect(first.writes).toHaveLength(1)
+    const waits = { author: 'me', body: first.writes[0] as string, at: at(3), mine: true as const }
+    const answered = card([...fanned.comments, waits, yours('approve', 4)])
+    const second = await run(answered, leaves('report.md', 'Three shots.'))
+    expect(second.results).toEqual([['acme-api-1-qa2', 'done', undefined]])
+    expect(second.writes[0]).toMatch(/^Result of task qa2\n/)
+  })
+
+  it('runs no later task of the card once a task asked', async () => {
+    const mixed =
+      'tasks:\n  - { id: api, title: API }\n  - { id: qa, title: QA evidence, skill: review }\n'
+    const fanned = card([planned(mixed), yours(approveReply(''))])
+    const { results, writes } = await run(fanned, leaves('questions.md', 'Per user or per key?'))
+    expect(results.map(([id, , reason]) => [id, reason])).toEqual([
+      ['acme-api-1-api', undefined],
+      ['acme-api-1-qa', "api's questions wait for your answer"],
+    ])
+    expect(writes).toEqual([markComment(questionsComment('Per user or per key?', 'api'))])
+  })
 })
