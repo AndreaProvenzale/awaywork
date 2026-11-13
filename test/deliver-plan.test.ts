@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Item } from '../src/core/types.js'
+import type { Item } from '#core/types'
 import {
   approveReply,
   awaitsAnswer,
@@ -12,9 +12,9 @@ import {
   resultComment,
   resultStatus,
   waitingTasks,
-} from '../src/posts/comments.js'
-import { taskResults } from '../src/posts/posts.js'
-import { checkPlan, planState, planYaml } from '../src/tasks/plan-file.js'
+} from '#posts/comments'
+import { taskResults } from '#posts/posts'
+import { checkPlan, planState, planYaml } from '#tasks/plan-file'
 
 const limits = { maxTasks: 3, repo: 'acme/api' }
 const problem = (yaml: string) => {

@@ -1,11 +1,11 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { emitKeypressEvents, type Key } from 'node:readline'
-import type { Config } from '../../config/schema.js'
-import type { OnProgress } from '../../plan/probe.js'
-import { approveItem } from '../commands/approve.js'
-import { skipItem } from '../commands/skip.js'
-import { terminalBrand } from './ask.js'
+import { approveItem } from '#cli/commands/approve'
+import { skipItem } from '#cli/commands/skip'
+import type { Config } from '#config/schema'
+import type { OnProgress } from '#plan/probe'
+import { terminalBrand } from './ask'
 import {
   type Effect,
   loading,
@@ -18,7 +18,7 @@ import {
   tick,
   update,
   view,
-} from './triage.js'
+} from './triage'
 
 /** A person at a terminal: stdin and stdout are TTYs and `CI` is unset. */
 export const interactive = () => !!process.stdin.isTTY && !!process.stdout.isTTY && !process.env.CI

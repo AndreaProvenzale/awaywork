@@ -1,5 +1,5 @@
-import type { Config } from '../config/schema.js'
-import { globToRegExp } from '../util/glob.js'
+import type { Config } from '#config/schema'
+import { globToRegExp } from '#util/glob'
 
 type Settings = Config['repos'][string]
 

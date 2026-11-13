@@ -1,13 +1,13 @@
 import { cp, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { bin } from '../config/paths.js'
-import { counted } from '../util/text.js'
-import { git } from './checks.js'
-import { writeOutput } from './safe-files.js'
-import { addTo } from './steps.js'
-import { outputFile, WORK_DIR } from './work-dir.js'
-import { inClone } from './workspace.js'
+import { bin } from '#config/paths'
+import { counted } from '#util/text'
+import { git } from './checks'
+import { writeOutput } from './safe-files'
+import { addTo } from './steps'
+import { outputFile, WORK_DIR } from './work-dir'
+import { inClone } from './workspace'
 
 /** What awaywork's own merge of a PR's base did: made the merge `commit`, stopped on conflicting `paths` of the base at `head`, `byHand` naming what of them no worker can resolve, or found nothing to merge. */
 export type Merge =

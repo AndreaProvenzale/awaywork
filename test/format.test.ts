@@ -1,26 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { parseConfig } from '../src/config/load.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Rule } from '../src/core/types.js'
-import { reportJson } from '../src/format/json.js'
-import { formatPlan, listedUnits } from '../src/format/plan.js'
-import { findChains, formatRun, formatUnit } from '../src/format/report.js'
-import { describeRule } from '../src/format/rules.js'
-import { formatSkipped, groupOf, type SkipRow, skipRows } from '../src/format/skips.js'
-import {
-  brandHeader,
-  clip,
-  pad,
-  statusMarker,
-  warningLines,
-  width,
-} from '../src/format/terminal.js'
-import { ambiguous, formatWhy, namedItems } from '../src/format/why.js'
-import { type PlannedUnit, planRun, type RunPlan } from '../src/plan/foreman.js'
-import { formatReport, type RunReport, summaryOf, type UnitResult } from '../src/posts/report.js'
-import { allowance } from '../src/quota/budget.js'
-import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
-import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
+import { parseConfig } from '#config/load'
+import { builtinSkills } from '#core/skills'
+import type { Item, Rule } from '#core/types'
+import { reportJson } from '#format/json'
+import { formatPlan, listedUnits } from '#format/plan'
+import { findChains, formatRun, formatUnit } from '#format/report'
+import { describeRule } from '#format/rules'
+import { formatSkipped, groupOf, type SkipRow, skipRows } from '#format/skips'
+import { brandHeader, clip, pad, statusMarker, warningLines, width } from '#format/terminal'
+import { ambiguous, formatWhy, namedItems } from '#format/why'
+import { type PlannedUnit, planRun, type RunPlan } from '#plan/foreman'
+import { formatReport, type RunReport, summaryOf, type UnitResult } from '#posts/report'
+import { allowance } from '#quota/budget'
+import { acmePlan, acmeRun, waitingSkip } from './fakes/acme'
+import { asanaTask, fakeItem, githubPr } from './fakes/items'
 
 /** The row of `acme/api#31` among the skips. */
 const row = (skipped: RunPlan['skipped'], clipAt?: number): SkipRow | undefined =>

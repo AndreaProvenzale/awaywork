@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
-import { type Io, installSchedule, removeSchedule } from '../src/cli/commands/schedule.js'
-import { Cancelled } from '../src/cli/tui/ask.js'
-import type { Ask } from '../src/core/types.js'
-import { SchedulerError } from '../src/scheduler/error.js'
-import { WORKFLOW } from '../src/scheduler/github-actions.js'
-import { defaultScheduler, type Scheduler } from '../src/scheduler/index.js'
-import { initial, scriptedAsk } from './fakes/ask.js'
+import { type Io, installSchedule, removeSchedule } from '#cli/commands/schedule'
+import { Cancelled } from '#cli/tui/ask'
+import type { Ask } from '#core/types'
+import { SchedulerError } from '#scheduler/error'
+import { WORKFLOW } from '#scheduler/github-actions'
+import { defaultScheduler, type Scheduler } from '#scheduler/index'
+import { initial, scriptedAsk } from './fakes/ask'
 
 const { installed, removed, woke, commands, stops } = vi.hoisted(() => ({
   stops: [] as number[],
@@ -25,16 +25,16 @@ let wakeReason: string | undefined
 let wakeDefault = true
 let stuck: number | undefined
 
-vi.mock('../src/run/daemon.js', async (original) => ({
-  ...(await original<typeof import('../src/run/daemon.js')>()),
+vi.mock('#run/daemon', async (original) => ({
+  ...(await original<typeof import('#run/daemon')>()),
   stopWatch: async () => {
     stops.push(installed.length)
     return stuck
   },
 }))
 
-vi.mock('../src/scheduler/wake.js', async (original) => ({
-  ...(await original<typeof import('../src/scheduler/wake.js')>()),
+vi.mock('#scheduler/wake', async (original) => ({
+  ...(await original<typeof import('#scheduler/wake')>()),
   wakeFor: async () =>
     wakeReason ?? {
       question: 'Wake this machine when a window opens?',
@@ -46,7 +46,7 @@ vi.mock('../src/scheduler/wake.js', async (original) => ({
     },
 }))
 
-vi.mock('../src/scheduler/index.js', async (original) => {
+vi.mock('#scheduler/index', async (original) => {
   const fake = (id: string): Scheduler => ({
     id,
     install: async (s) => {
@@ -62,7 +62,7 @@ vi.mock('../src/scheduler/index.js', async (original) => {
     read: async () => undefined,
   })
   return {
-    ...(await original<typeof import('../src/scheduler/index.js')>()),
+    ...(await original<typeof import('#scheduler/index')>()),
     schedulers: () => ({ launchd: fake('launchd'), systemd: fake('systemd'), cron: fake('cron') }),
   }
 })

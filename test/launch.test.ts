@@ -4,30 +4,23 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseConfig } from '../src/config/load.js'
-import {
-  AWAYWORK_ENV,
-  dockerArgs,
-  isolate,
-  sudoArgs,
-  WORKER,
-  workerFor,
-} from '../src/core/isolation.js'
-import { launch } from '../src/core/launch.js'
-import type { Job, Unit } from '../src/core/types.js'
-import { claudeProvider } from '../src/providers/claude.js'
-import { codexProvider } from '../src/providers/codex.js'
-import { commandProvider } from '../src/providers/command.js'
-import { cursorProvider } from '../src/providers/cursor.js'
-import { createChecks } from '../src/worker/checks.js'
-import { fetchContexts } from '../src/worker/context.js'
-import { commandEnv, gateEnv, workerEnv } from '../src/worker/env.js'
-import { runSetup } from '../src/worker/setup.js'
-import { escaped, escaping } from './fakes/escape.js'
-import { fakeItem } from './fakes/items.js'
+import { parseConfig } from '#config/load'
+import { AWAYWORK_ENV, dockerArgs, isolate, sudoArgs, WORKER, workerFor } from '#core/isolation'
+import { launch } from '#core/launch'
+import type { Job, Unit } from '#core/types'
+import { claudeProvider } from '#providers/claude'
+import { codexProvider } from '#providers/codex'
+import { commandProvider } from '#providers/command'
+import { cursorProvider } from '#providers/cursor'
+import { createChecks } from '#worker/checks'
+import { fetchContexts } from '#worker/context'
+import { commandEnv, gateEnv, workerEnv } from '#worker/env'
+import { runSetup } from '#worker/setup'
+import { escaped, escaping } from './fakes/escape'
+import { fakeItem } from './fakes/items'
 
-vi.mock('../src/core/launch.js', async (original) => {
-  const real = await original<typeof import('../src/core/launch.js')>()
+vi.mock('#core/launch', async (original) => {
+  const real = await original<typeof import('#core/launch')>()
   return { ...real, launch: vi.fn(real.launch) }
 })
 

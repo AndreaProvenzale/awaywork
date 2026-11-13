@@ -2,10 +2,10 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import type { Provider } from '../src/core/types.js'
-import { githubPr, issue } from './fakes/items.js'
-import { fakeProvider } from './fakes/provider.js'
-import { git, looper, loopRun } from './fakes/units.js'
+import type { Provider } from '#core/types'
+import { githubPr, issue } from './fakes/items'
+import { fakeProvider } from './fakes/provider'
+import { git, looper, loopRun } from './fakes/units'
 
 /** Pushes two steps onto PR 1, reports on issue 2, and runs a failing notify. */
 const notifyQueue = (out: string) => `queue:

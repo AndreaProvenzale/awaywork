@@ -1,6 +1,6 @@
 import { parse } from 'yaml'
-import { type CommitType, commitTypes } from './branch.js'
-import type { Deliver } from './types.js'
+import { type CommitType, commitTypes } from './branch'
+import type { Deliver } from './types'
 
 export interface SkillMeta {
   deliver?: Deliver

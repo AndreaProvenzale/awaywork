@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { approveItem } from '../src/cli/commands/approve.js'
-import { parseConfig } from '../src/config/load.js'
-import type { Item, Source, Write } from '../src/core/types.js'
-import { markComment, type PostState, planComment, resultComment } from '../src/posts/comments.js'
-import { fakeItem } from './fakes/items.js'
-import { fakeSource } from './fakes/source.js'
+import { approveItem } from '#cli/commands/approve'
+import { parseConfig } from '#config/load'
+import type { Item, Source, Write } from '#core/types'
+import { markComment, type PostState, planComment, resultComment } from '#posts/comments'
+import { fakeItem } from './fakes/items'
+import { fakeSource } from './fakes/source'
 
 const ctx = { env: {}, log: () => {} }
 const config = parseConfig(`

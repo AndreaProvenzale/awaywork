@@ -1,5 +1,5 @@
 import { execa } from 'execa'
-import { killGroupWhenDone } from '../util/process.js'
+import { killGroupWhenDone } from '#util/process'
 
 const TIMEOUT_MS = 60_000
 

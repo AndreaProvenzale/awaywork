@@ -1,8 +1,8 @@
-import type { Config } from '../config/schema.js'
-import type { Forge } from '../core/types.js'
-import { githubThreads } from '../sources/github.js'
-import { bitbucketForge, bitbucketWorkspaces } from './bitbucket.js'
-import { githubForge, githubHost } from './github.js'
+import type { Config } from '#config/schema'
+import type { Forge } from '#core/types'
+import { githubThreads } from '#sources/github'
+import { bitbucketForge, bitbucketWorkspaces } from './bitbucket'
+import { githubForge, githubHost } from './github'
 
 /** The config's forge; GitHub comes with its thread issues. */
 export const forgeFor = (config: Config): Forge =>

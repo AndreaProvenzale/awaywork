@@ -8,22 +8,15 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { runsDir } from '../src/config/paths.js'
-import {
-  checkArgs,
-  forward,
-  remoteCall,
-  servedRemotely,
-  serveRemote,
-  sshArgs,
-} from '../src/run/remote.js'
+import { runsDir } from '#config/paths'
+import { checkArgs, forward, remoteCall, servedRemotely, serveRemote, sshArgs } from '#run/remote'
 
-vi.mock('../src/config/paths.js', async (original) => {
+vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const state = await mkdtemp(`${tmpdir()}/awaywork-remote-`)
   return {
-    ...(await original<typeof import('../src/config/paths.js')>()),
+    ...(await original<typeof import('#config/paths')>()),
     runsDir: `${state}/runs`,
   }
 })

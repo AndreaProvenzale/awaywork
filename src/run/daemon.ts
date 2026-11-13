@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
-import { ConfigError, loadConfig } from '../config/load.js'
+import { ConfigError, loadConfig } from '#config/load'
 import {
   attemptsPath,
   runLockPath,
@@ -11,13 +11,13 @@ import {
   watchLockPath,
   watchLogPath,
   watchStatePath,
-} from '../config/paths.js'
-import type { Config } from '../config/schema.js'
-import { isolateFor } from '../core/isolation.js'
-import { exec } from '../forge/gh.js'
-import { ambiguous } from '../format/why.js'
-import { loadAttempts } from '../plan/attempts.js'
-import type { RunPlan } from '../plan/foreman.js'
+} from '#config/paths'
+import type { Config } from '#config/schema'
+import { isolateFor } from '#core/isolation'
+import { exec } from '#forge/gh'
+import { ambiguous } from '#format/why'
+import { loadAttempts } from '#plan/attempts'
+import type { RunPlan } from '#plan/foreman'
 import {
   claimUnits,
   dueUnits,
@@ -26,15 +26,15 @@ import {
   releaseUnits,
   type Seen,
   soonSources,
-} from '../plan/poll.js'
-import { probeAndPlan, sourceFailure } from '../plan/probe.js'
-import { localTime } from '../posts/report.js'
-import { firstOpening, windowEnd, windowRun } from '../quota/window.js'
-import { holdAwake } from '../scheduler/wake.js'
-import { readJson } from '../util/json.js'
-import { counted } from '../util/text.js'
-import { maskSecrets } from '../worker/setup.js'
-import { namedChains } from '../worker/units.js'
+} from '#plan/poll'
+import { probeAndPlan, sourceFailure } from '#plan/probe'
+import { localTime } from '#posts/report'
+import { firstOpening, windowEnd, windowRun } from '#quota/window'
+import { holdAwake } from '#scheduler/wake'
+import { readJson } from '#util/json'
+import { counted } from '#util/text'
+import { maskSecrets } from '#worker/setup'
+import { namedChains } from '#worker/units'
 import {
   executeRun,
   newRunId,
@@ -44,9 +44,9 @@ import {
   type RunLog,
   serial,
   skillRefusal,
-} from './execute.js'
-import { type Output, type Remote, serveRemote } from './remote.js'
-import { lockHolder, takeRunLock } from './run-lock.js'
+} from './execute'
+import { type Output, type Remote, serveRemote } from './remote'
+import { lockHolder, takeRunLock } from './run-lock'
 
 type Trigger = 'window' | 'soon' | 'unit'
 

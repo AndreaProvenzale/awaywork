@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { parseJson } from '../src/util/json.js'
-import { errorText } from '../src/util/text.js'
+import { parseJson } from '#util/json'
+import { errorText } from '#util/text'
 
 it('parses JSON, or gives undefined for empty or broken text', () => {
   expect(parseJson('{"a":1}')).toEqual({ a: 1 })

@@ -1,12 +1,12 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Item, Provider } from '../src/core/types.js'
-import { type Attempts, recordAttempts } from '../src/plan/attempts.js'
-import { formatReport } from '../src/posts/report.js'
-import { yours } from './fakes/items.js'
-import { fakeProvider } from './fakes/provider.js'
-import { asker, finishedRun } from './fakes/units.js'
+import type { Item, Provider } from '#core/types'
+import { type Attempts, recordAttempts } from '#plan/attempts'
+import { formatReport } from '#posts/report'
+import { yours } from './fakes/items'
+import { fakeProvider } from './fakes/provider'
+import { asker, finishedRun } from './fakes/units'
 
 describe('a one-off --skill unit', () => {
   const noRule = '  - { skill: fix, where: { type: pr } }'

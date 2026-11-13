@@ -2,14 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import {
-  asWorker,
-  isolate,
-  sudoersLines,
-  WORKER,
-  workerHome,
-  workerRoot,
-} from '../src/core/isolation.js'
+import { asWorker, isolate, sudoersLines, WORKER, workerHome, workerRoot } from '#core/isolation'
 
 // A file of its own: bin() keeps the first sudo it finds, here the fake one.
 it('chowns a clone and its home only as the sudoers lines allow, a folder straight under /tmp', async () => {

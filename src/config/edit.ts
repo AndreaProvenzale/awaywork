@@ -1,5 +1,5 @@
 import { stringify } from 'yaml'
-import type { Rule } from '../core/types.js'
+import type { Rule } from '#core/types'
 
 const queueHeader =
   'queue:                          # first matching rule wins; top = highest priority'

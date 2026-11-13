@@ -8,21 +8,21 @@ import {
   type UnitFiles,
   update,
   view,
-} from '../../src/cli/tui/triage.js'
-import { parseConfig } from '../../src/config/load.js'
-import { runsDir } from '../../src/config/paths.js'
-import { builtinSkills } from '../../src/core/skills.js'
-import type { Item, PrRef } from '../../src/core/types.js'
-import { formatPlan } from '../../src/format/plan.js'
-import { findChains, formatRun, formatUnit } from '../../src/format/report.js'
-import { formatQueue } from '../../src/format/rules.js'
-import { brandHeader } from '../../src/format/terminal.js'
-import { formatWhy, namedItems } from '../../src/format/why.js'
-import { type PlannedUnit, planRun, type RunPlan } from '../../src/plan/foreman.js'
-import { defaultRules } from '../../src/plan/queue.js'
-import { chains, type RunReport } from '../../src/posts/report.js'
-import type { Allowance } from '../../src/quota/budget.js'
-import { detachedLine } from '../../src/run/execute.js'
+} from '#cli/tui/triage'
+import { parseConfig } from '#config/load'
+import { runsDir } from '#config/paths'
+import { builtinSkills } from '#core/skills'
+import type { Item, PrRef } from '#core/types'
+import { formatPlan } from '#format/plan'
+import { findChains, formatRun, formatUnit } from '#format/report'
+import { formatQueue } from '#format/rules'
+import { brandHeader } from '#format/terminal'
+import { formatWhy, namedItems } from '#format/why'
+import { type PlannedUnit, planRun, type RunPlan } from '#plan/foreman'
+import { defaultRules } from '#plan/queue'
+import { chains, type RunReport } from '#posts/report'
+import type { Allowance } from '#quota/budget'
+import { detachedLine } from '#run/execute'
 
 const startedAt = new Date('2026-10-19T22:00:12Z')
 const resetsAt = startedAt.getTime() / 1000 + 5 * 24 * 3600

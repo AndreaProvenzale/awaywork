@@ -1,6 +1,6 @@
-import { providers } from '../providers/index.js'
-import { type Allowance, pct } from '../quota/budget.js'
-import { counted } from '../util/text.js'
+import { providers } from '#providers/index'
+import { type Allowance, pct } from '#quota/budget'
+import { counted } from '#util/text'
 
 /** An allowance in one line, with what a run outside the windows gets under `outside`, the present session limit. */
 export function describeAllowance(id: string, a: Allowance, outside: number): string {

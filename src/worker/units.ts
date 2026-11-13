@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, posix } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import type { Config } from '../config/schema.js'
+import type { Config } from '#config/schema'
 import {
   AGENT_HOME,
   CONTAINER_HOME,
@@ -14,7 +14,7 @@ import {
   lostToWorker,
   workerHome,
   workerRoot,
-} from '../core/isolation.js'
+} from '#core/isolation'
 import type {
   Ctx,
   Deliver,
@@ -25,9 +25,9 @@ import type {
   Quota,
   Source,
   Unit,
-} from '../core/types.js'
-import { type Attempts, byHand } from '../plan/attempts.js'
-import { describeCondition, holds } from '../plan/condition.js'
+} from '#core/types'
+import { type Attempts, byHand } from '#plan/attempts'
+import { describeCondition, holds } from '#plan/condition'
 import {
   describeChain,
   modelFor,
@@ -36,9 +36,9 @@ import {
   type RunPlan,
   slug,
   taskChain,
-} from '../plan/foreman.js'
-import { ruleThread } from '../plan/queue.js'
-import { settingsFor } from '../plan/repos.js'
+} from '#plan/foreman'
+import { ruleThread } from '#plan/queue'
+import { settingsFor } from '#plan/repos'
 import {
   leanPlanComment,
   type PostState,
@@ -46,9 +46,9 @@ import {
   questionsComment,
   resultComment,
   type Status,
-} from '../posts/comments.js'
-import { type Pin, pinBlock } from '../posts/footer.js'
-import { readBackPosts } from '../posts/posts.js'
+} from '#posts/comments'
+import { type Pin, pinBlock } from '#posts/footer'
+import { readBackPosts } from '#posts/posts'
 import {
   type Commented,
   type Moved,
@@ -59,9 +59,9 @@ import {
   type StepFiles,
   summaryOf,
   type UnitResult,
-} from '../posts/report.js'
-import { MAX_TURNS, quotaFacts, route, withQuota } from '../quota/budget.js'
-import { type Threads, threaded, unwritable, writeItem } from '../sources/index.js'
+} from '#posts/report'
+import { MAX_TURNS, quotaFacts, route, withQuota } from '#quota/budget'
+import { type Threads, threaded, unwritable, writeItem } from '#sources/index'
 import {
   checkPlan,
   contractName,
@@ -70,18 +70,18 @@ import {
   latestResult,
   PLAN_TASKS,
   planYaml,
-} from '../tasks/plan-file.js'
-import { counted } from '../util/text.js'
-import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
-import { fetchContexts } from './context.js'
-import { gateEnv, workerEnv } from './env.js'
-import { notifyUnit } from './notify.js'
-import type { Outcome } from './publish.js'
-import type { ReplayState } from './replay.js'
-import { runWorker, type WorkerOptions } from './run.js'
-import { copyOut, notSymlink, readOutput, refuseSymlinks, writeOutput } from './safe-files.js'
-import { configSecrets } from './secrets.js'
-import { maskSecrets, runSetup } from './setup.js'
+} from '#tasks/plan-file'
+import { counted } from '#util/text'
+import { commitsSince, createChecks, git, head, untilHolds } from './checks'
+import { fetchContexts } from './context'
+import { gateEnv, workerEnv } from './env'
+import { notifyUnit } from './notify'
+import type { Outcome } from './publish'
+import type { ReplayState } from './replay'
+import { runWorker, type WorkerOptions } from './run'
+import { copyOut, notSymlink, readOutput, refuseSymlinks, writeOutput } from './safe-files'
+import { configSecrets } from './secrets'
+import { maskSecrets, runSetup } from './setup'
 import {
   describeLoop,
   freeBranch,
@@ -91,7 +91,7 @@ import {
   prependSection,
   publishSlice,
   type StepReport,
-} from './slices.js'
+} from './slices'
 import {
   discard,
   handOff,
@@ -103,8 +103,8 @@ import {
   type Snapshot,
   setupEnv,
   snapshot,
-} from './steps.js'
-import { type Kind, outFiles, putFiles, readBack, type Store } from './store.js'
+} from './steps'
+import { type Kind, outFiles, putFiles, readBack, type Store } from './store'
 import {
   concludeMerge,
   conflictsFile,
@@ -112,10 +112,10 @@ import {
   type Merge,
   mergeBase,
   type Resolving,
-} from './sync.js'
-import { shortage } from './watchdog.js'
-import { outputFile, reportsOnly, WORK_DIR } from './work-dir.js'
-import { type Previous, prepareWorkspace, revealHidden, type Shipped } from './workspace.js'
+} from './sync'
+import { shortage } from './watchdog'
+import { outputFile, reportsOnly, WORK_DIR } from './work-dir'
+import { type Previous, prepareWorkspace, revealHidden, type Shipped } from './workspace'
 
 export interface RunInput {
   config: Config

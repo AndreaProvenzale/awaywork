@@ -2,10 +2,10 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { parseEnv } from 'node:util'
 import { confirm, isCancel, log, select } from '@clack/prompts'
-import { ConfigError } from '../../config/load.js'
-import { envFile } from '../../config/paths.js'
-import type { Ask, Choice } from '../../core/types.js'
-import { brandHeader } from '../../format/terminal.js'
+import { ConfigError } from '#config/load'
+import { envFile } from '#config/paths'
+import type { Ask, Choice } from '#core/types'
+import { brandHeader } from '#format/terminal'
 
 export class Cancelled extends Error {}
 

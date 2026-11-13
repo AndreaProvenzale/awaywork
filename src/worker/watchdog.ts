@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { statfs } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { execa } from 'execa'
-import { launched } from '../core/launch.js'
+import { launched } from '#core/launch'
 
 const GB = 2 ** 30
 

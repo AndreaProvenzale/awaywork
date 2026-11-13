@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { explainConfig } from '../src/cli/commands/explain.js'
-import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
+import { explainConfig } from '#cli/commands/explain'
+import { builtinSkills, type SkillCatalog } from '#core/skills'
 
 const base = 'providers: [claude]\nrepos: { a/b: {} }\nsources: { github: {} }\n'
 const builtin: SkillCatalog = { builtin: builtinSkills }

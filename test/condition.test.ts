@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { describeCondition, holds } from '../src/plan/condition.js'
+import { describeCondition, holds } from '#plan/condition'
 
 it('holds a quota condition against runs and headroom, and fails without a reading', () => {
   const when = { runs_until_reset: 1, headroom: 0.2 }

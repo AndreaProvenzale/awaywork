@@ -2,12 +2,12 @@ import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ConfigError, parseConfig } from '../src/config/load.js'
-import type { Job, WorkerEvent } from '../src/core/types.js'
-import { describeAllowance } from '../src/format/allowances.js'
-import { commandProvider } from '../src/providers/command.js'
-import { providerFor, providersOf } from '../src/providers/index.js'
-import { providerContract } from './contracts/provider.contract.js'
+import { ConfigError, parseConfig } from '#config/load'
+import type { Job, WorkerEvent } from '#core/types'
+import { describeAllowance } from '#format/allowances'
+import { commandProvider } from '#providers/command'
+import { providerFor, providersOf } from '#providers/index'
+import { providerContract } from './contracts/provider.contract'
 
 // realpath: macOS's tmpdir is a symlink, and `pwd` prints the resolved path.
 const tmp = await realpath(await mkdtemp(join(tmpdir(), 'awaywork-command-provider-')))

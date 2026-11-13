@@ -2,9 +2,9 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
-import type { Ctx, Item, Source } from '../core/types.js'
-import { httpError, unsetSecret } from '../plan/poll.js'
-import { taskMarkdown } from './asana.js'
+import type { Ctx, Item, Source } from '#core/types'
+import { httpError, unsetSecret } from '#plan/poll'
+import { taskMarkdown } from './asana'
 
 const config = z
   .strictObject({

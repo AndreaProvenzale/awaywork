@@ -2,8 +2,8 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { runCommand, runSetup } from '../src/worker/setup.js'
-import { escaped, escaping } from './fakes/escape.js'
+import { runCommand, runSetup } from '#worker/setup'
+import { escaped, escaping } from './fakes/escape'
 
 const env = { PATH: process.env.PATH, NPM_TOKEN: 'npm-secret' }
 const alive = (pid: number) => {

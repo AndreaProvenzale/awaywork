@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Item } from '../src/core/types.js'
-import { dedupe, type Ranked } from '../src/plan/queue.js'
-import { asanaTask, githubPr } from './fakes/items.js'
+import type { Item } from '#core/types'
+import { dedupe, type Ranked } from '#plan/queue'
+import { asanaTask, githubPr } from './fakes/items'
 
 const keys = (groups: Ranked[][]) => groups.map((g) => g.map((e) => `${e.item.key}@${e.rule}`))
 const linkedTo = (pr: Item) => ({ linkedPrs: pr.linkedPrs })

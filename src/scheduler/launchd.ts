@@ -3,8 +3,8 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
-import type { Exec } from '../forge/gh.js'
-import type { Schedule, Scheduler } from './index.js'
+import type { Exec } from '#forge/gh'
+import type { Schedule, Scheduler } from './index'
 
 const LABEL = 'awaywork'
 

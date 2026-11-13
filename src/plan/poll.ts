@@ -1,8 +1,8 @@
-import type { Config } from '../config/schema.js'
-import type { Item } from '../core/types.js'
-import type { Attempts } from './attempts.js'
-import type { RunPlan, Skipped } from './foreman.js'
-import { spanMs } from './where.js'
+import type { Config } from '#config/schema'
+import type { Item } from '#core/types'
+import type { Attempts } from './attempts'
+import type { RunPlan, Skipped } from './foreman'
+import { spanMs } from './where'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE

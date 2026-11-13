@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
-import { type LaunchOptions, start } from './isolation.js'
+import { type LaunchOptions, start } from './isolation'
 
 /**
  * Starts a process that runs repo code: setup, the agent and the checks, never awaywork's own commands.

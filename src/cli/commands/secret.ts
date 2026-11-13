@@ -2,8 +2,8 @@ import type { Readable } from 'node:stream'
 import { text } from 'node:stream/consumers'
 import { isCancel, password } from '@clack/prompts'
 import type { Command } from 'commander'
-import { envFile } from '../../config/paths.js'
-import { saveSecret } from '../tui/ask.js'
+import { saveSecret } from '#cli/tui/ask'
+import { envFile } from '#config/paths'
 
 export function secretCommand(program: Command, shell: NodeJS.ProcessEnv): void {
   program

@@ -1,13 +1,13 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, relative } from 'node:path'
 import { execa } from 'execa'
-import { bin } from '../config/paths.js'
-import type { Condition, Unit } from '../core/types.js'
-import { type Facts, holds } from '../plan/condition.js'
-import { checkEnv, gateEnv } from './env.js'
-import { refuseSymlinks, writeOutput } from './safe-files.js'
-import { runCommand } from './setup.js'
-import { inClone, restoreGitConfig } from './workspace.js'
+import { bin } from '#config/paths'
+import type { Condition, Unit } from '#core/types'
+import { type Facts, holds } from '#plan/condition'
+import { checkEnv, gateEnv } from './env'
+import { refuseSymlinks, writeOutput } from './safe-files'
+import { runCommand } from './setup'
+import { inClone, restoreGitConfig } from './workspace'
 
 const CHECK_LOG_CHARS = 8000
 

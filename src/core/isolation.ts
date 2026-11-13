@@ -4,9 +4,9 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { execa, type Options } from 'execa'
-import { bin } from '../config/paths.js'
-import type { Config } from '../config/schema.js'
-import type { Login } from './types.js'
+import { bin } from '#config/paths'
+import type { Config } from '#config/schema'
+import type { Login } from './types'
 
 /** The user repo code runs as under `isolation: user`, made by `action.yml` on a GitHub-hosted runner, by you elsewhere. */
 export const WORKER = 'awaywork'

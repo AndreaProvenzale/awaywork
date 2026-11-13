@@ -1,4 +1,4 @@
-import type { CheckState } from '../core/types.js'
+import type { CheckState } from '#core/types'
 
 /** A commit's checks, for a GraphQL `Commit`: check runs and commit statuses. */
 export const checkContexts = `statusCheckRollup { contexts(first: 100) { nodes {

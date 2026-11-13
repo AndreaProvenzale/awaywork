@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { loadSkills } from '../src/config/skills.js'
-import { builtinSkills, parseSkill, resolveSkill } from '../src/core/skills.js'
-import { assemblePrompt } from '../src/worker/prompt.js'
+import { loadSkills } from '#config/skills'
+import { builtinSkills, parseSkill, resolveSkill } from '#core/skills'
+import { assemblePrompt } from '#worker/prompt'
 
 describe('skills', () => {
   it('looks up user, then in-repo, then built-in skills', () => {

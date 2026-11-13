@@ -2,18 +2,27 @@ import { existsSync } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { type Command, Option } from 'commander'
-import { ConfigError, configPath, loadConfig } from '../../config/load.js'
-import { remoteDir, runLockPath, runsDir, watchLockPath } from '../../config/paths.js'
-import { isolateFor } from '../../core/isolation.js'
-import { fetchRun, type UploadedRun, uploadedRuns } from '../../forge/artifacts.js'
-import { type Exec, exec, gitRoot } from '../../forge/gh.js'
-import { reportJson } from '../../format/json.js'
-import { findChains, formatRun, formatUnit } from '../../format/report.js'
-import { formatSkipped } from '../../format/skips.js'
-import { ambiguous } from '../../format/why.js'
-import type { OnProgress } from '../../plan/probe.js'
-import { type Chain, chains, localTime, type RunReport, runLine } from '../../posts/report.js'
-import { describeWindow, hostedEnd, runEnd } from '../../quota/window.js'
+import { reportConfigError } from '#cli/tui/ask'
+import {
+  type ItemCommands,
+  interactive,
+  itemCommands,
+  openScreen,
+  type Screen,
+} from '#cli/tui/browse'
+import { runTriage, type UnitFiles } from '#cli/tui/triage'
+import { ConfigError, configPath, loadConfig } from '#config/load'
+import { remoteDir, runLockPath, runsDir, watchLockPath } from '#config/paths'
+import { isolateFor } from '#core/isolation'
+import { fetchRun, type UploadedRun, uploadedRuns } from '#forge/artifacts'
+import { type Exec, exec, gitRoot } from '#forge/gh'
+import { reportJson } from '#format/json'
+import { findChains, formatRun, formatUnit } from '#format/report'
+import { formatSkipped } from '#format/skips'
+import { ambiguous } from '#format/why'
+import type { OnProgress } from '#plan/probe'
+import { type Chain, chains, localTime, type RunReport, runLine } from '#posts/report'
+import { describeWindow, hostedEnd, runEnd } from '#quota/window'
 import {
   abortOnSignals,
   DETACHED_RUN,
@@ -25,20 +34,11 @@ import {
   type RunOptions,
   reportJsonFile,
   tellParent,
-} from '../../run/execute.js'
-import { lockHolder, takeRunLock } from '../../run/run-lock.js'
-import { WORKFLOW } from '../../scheduler/github-actions.js'
-import { counted } from '../../util/text.js'
-import { reportConfigError } from '../tui/ask.js'
-import {
-  type ItemCommands,
-  interactive,
-  itemCommands,
-  openScreen,
-  type Screen,
-} from '../tui/browse.js'
-import { runTriage, type UnitFiles } from '../tui/triage.js'
-import { ruleNumber, skipKinds } from './plan.js'
+} from '#run/execute'
+import { lockHolder, takeRunLock } from '#run/run-lock'
+import { WORKFLOW } from '#scheduler/github-actions'
+import { counted } from '#util/text'
+import { ruleNumber, skipKinds } from './plan'
 
 export function runCommand(program: Command): void {
   program

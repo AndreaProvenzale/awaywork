@@ -12,16 +12,16 @@ import {
   workerFor,
   workerHome,
   workerRoot,
-} from '../src/core/isolation.js'
-import { launch } from '../src/core/launch.js'
-import type { Job } from '../src/core/types.js'
-import { codexProvider } from '../src/providers/codex.js'
-import { commandProvider } from '../src/providers/command.js'
-import { type Allowance, MAX_TURNS } from '../src/quota/budget.js'
-import { commitsSince, createChecks, head } from '../src/worker/checks.js'
-import { runWorker } from '../src/worker/run.js'
-import { runCommand } from '../src/worker/setup.js'
-import { restoreGitConfig } from '../src/worker/workspace.js'
+} from '#core/isolation'
+import { launch } from '#core/launch'
+import type { Job } from '#core/types'
+import { codexProvider } from '#providers/codex'
+import { commandProvider } from '#providers/command'
+import { type Allowance, MAX_TURNS } from '#quota/budget'
+import { commitsSince, createChecks, head } from '#worker/checks'
+import { runWorker } from '#worker/run'
+import { runCommand } from '#worker/setup'
+import { restoreGitConfig } from '#worker/workspace'
 
 const CANARY = 'canary-4f2a9c'
 const env = {

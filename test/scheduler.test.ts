@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
-import { installWorkflow, offerSecrets, staleSchedules } from '../src/cli/commands/schedule.js'
-import type { Exec } from '../src/forge/gh.js'
-import { cron, cronLines, parseCronLines } from '../src/scheduler/cron.js'
+import { installWorkflow, offerSecrets, staleSchedules } from '#cli/commands/schedule'
+import type { Exec } from '#forge/gh'
+import { cron, cronLines, parseCronLines } from '#scheduler/cron'
 import {
   REPO_CONFIG,
   REPO_SKILLS,
@@ -15,10 +15,10 @@ import {
   staleWorkflow,
   WORKFLOW,
   workflow,
-} from '../src/scheduler/github-actions.js'
-import { olderJob, type Schedule, type Scheduler, type Start } from '../src/scheduler/index.js'
-import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
-import { parseService, service, systemd } from '../src/scheduler/systemd.js'
+} from '#scheduler/github-actions'
+import { olderJob, type Schedule, type Scheduler, type Start } from '#scheduler/index'
+import { launchd, parsePlist, plist } from '#scheduler/launchd'
+import { parseService, service, systemd } from '#scheduler/systemd'
 import {
   holdAwake,
   keepAwake,
@@ -28,8 +28,8 @@ import {
   wakeFor,
   wakeTimer,
   wakeUndo,
-} from '../src/scheduler/wake.js'
-import { initial, scriptedAsk } from './fakes/ask.js'
+} from '#scheduler/wake'
+import { initial, scriptedAsk } from './fakes/ask'
 
 const schedule: Schedule = {
   command: ['/opt/node', '/opt/away work/index.js', 'watch', '--config', "/h/it's.yml"],

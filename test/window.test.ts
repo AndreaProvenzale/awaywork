@@ -9,7 +9,7 @@ import {
   type Window,
   windowEnd,
   windowRun,
-} from '../src/quota/window.js'
+} from '#quota/window'
 
 const at = (day: number, time: string) => new Date(`2026-09-${day}T${time}:00`)
 

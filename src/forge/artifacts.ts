@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { type Exec, exec } from './gh.js'
+import { type Exec, exec } from './gh'
 
 /** A run a control repo's workflow uploaded as the artifact `<workflow>-<run id>`. */
 export interface UploadedRun {

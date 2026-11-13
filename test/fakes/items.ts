@@ -1,4 +1,4 @@
-import type { Item } from '../../src/core/types.js'
+import type { Item } from '#core/types'
 
 export function fakeItem(overrides: Partial<Item> = {}): Item {
   return {

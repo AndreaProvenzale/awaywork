@@ -2,27 +2,20 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { bin } from '../config/paths.js'
-import type { Config } from '../config/schema.js'
-import {
-  contain,
-  contained,
-  isolated,
-  lostToWorker,
-  workerHome,
-  workerRoot,
-} from '../core/isolation.js'
-import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
-import { modelFor } from '../plan/foreman.js'
-import { settingsFor } from '../plan/repos.js'
-import { type Allowance, MAX_TURNS } from '../quota/budget.js'
-import { commandEnv, workerEnv } from './env.js'
-import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
-import { copyOut } from './safe-files.js'
-import { configSecrets } from './secrets.js'
-import { runSetup } from './setup.js'
-import { WORK_DIR } from './work-dir.js'
-import { inClone, prepareWorkspace, restoreGitConfig } from './workspace.js'
+import { bin } from '#config/paths'
+import type { Config } from '#config/schema'
+import { contain, contained, isolated, lostToWorker, workerHome, workerRoot } from '#core/isolation'
+import type { Ctx, Forge, Provider, Source, Unit } from '#core/types'
+import { modelFor } from '#plan/foreman'
+import { settingsFor } from '#plan/repos'
+import { type Allowance, MAX_TURNS } from '#quota/budget'
+import { commandEnv, workerEnv } from './env'
+import { runWorker, type WorkerOptions, type WorkerResult } from './run'
+import { copyOut } from './safe-files'
+import { configSecrets } from './secrets'
+import { runSetup } from './setup'
+import { WORK_DIR } from './work-dir'
+import { inClone, prepareWorkspace, restoreGitConfig } from './workspace'
 
 /** What a chain's first step leaves in `units/<id>/1-<skill>/replay.json` so it can be rebuilt: the clone's commit before any worker ran. */
 export interface ReplayState {

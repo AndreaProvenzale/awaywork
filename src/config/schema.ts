@@ -1,9 +1,9 @@
 import { z } from 'zod'
-import { defaultBranch, templateProblem } from '../core/branch.js'
-import { builtinSkills } from '../core/skills.js'
-import type { Provider, Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
-import { ruleSteps, ruleThread } from '../plan/queue.js'
-import { repoListed, settingsFor } from '../plan/repos.js'
+import { defaultBranch, templateProblem } from '#core/branch'
+import { builtinSkills } from '#core/skills'
+import type { Provider, Rule, Scalar, Source, Where, WhereValue } from '#core/types'
+import { ruleSteps, ruleThread } from '#plan/queue'
+import { repoListed, settingsFor } from '#plan/repos'
 import {
   bounds,
   DEFAULT_LOOKBACK,
@@ -14,11 +14,11 @@ import {
   matchesValue,
   newerThan,
   spanPattern,
-} from '../plan/where.js'
-import { headerSecret } from '../providers/codex.js'
-import { commandProviderConfig } from '../providers/command.js'
-import { providers } from '../providers/index.js'
-import { DAYS, time } from '../quota/window.js'
+} from '#plan/where'
+import { headerSecret } from '#providers/codex'
+import { commandProviderConfig } from '#providers/command'
+import { providers } from '#providers/index'
+import { DAYS, time } from '#quota/window'
 import {
   commandConfig,
   contextCommand,
@@ -26,9 +26,9 @@ import {
   linkTemplate,
   pollEvery,
   pollSpan,
-} from '../sources/command.js'
-import { itemFields, sourceField, sourceFor, sources } from '../sources/index.js'
-import { refuseOwnKeys, routines } from '../sources/routines.js'
+} from '#sources/command'
+import { itemFields, sourceField, sourceFor, sources } from '#sources/index'
+import { refuseOwnKeys, routines } from '#sources/routines'
 
 const percent = z
   .string()

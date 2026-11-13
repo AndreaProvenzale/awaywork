@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { dockerDir, packageVersion } from '../config/paths.js'
+import { dockerDir, packageVersion } from '#config/paths'
 
 /** What `schedule install --with docker` writes at the repo root, from the package's `docker/`. */
 export const DOCKER_FILES = ['Dockerfile', 'compose.yml', 'entrypoint.sh']

@@ -1,10 +1,10 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import type { Item, Source } from '../core/types.js'
-import { localTime } from '../posts/report.js'
-import { clock, DAYS, time } from '../quota/window.js'
-import { itemMarkdown } from './command.js'
+import type { Item, Source } from '#core/types'
+import { localTime } from '#posts/report'
+import { clock, DAYS, time } from '#quota/window'
+import { itemMarkdown } from './command'
 
 const routine = z
   .strictObject(

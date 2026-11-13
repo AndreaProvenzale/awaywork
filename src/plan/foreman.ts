@@ -1,6 +1,6 @@
-import type { Config } from '../config/schema.js'
-import { isValidRef } from '../core/branch.js'
-import { type Origin, resolveSkill, type SkillCatalog } from '../core/skills.js'
+import type { Config } from '#config/schema'
+import { isValidRef } from '#core/branch'
+import { type Origin, resolveSkill, type SkillCatalog } from '#core/skills'
 import type {
   Condition,
   Deliver,
@@ -13,11 +13,11 @@ import type {
   Unit,
   Where,
   WhereValue,
-} from '../core/types.js'
-import { awaitsAnswer } from '../posts/comments.js'
-import { postAnswer, reportPost, taskPost } from '../posts/posts.js'
-import type { Moved } from '../posts/report.js'
-import { type Allowance, quotaFacts, route } from '../quota/budget.js'
+} from '#core/types'
+import { awaitsAnswer } from '#posts/comments'
+import { postAnswer, reportPost, taskPost } from '#posts/posts'
+import type { Moved } from '#posts/report'
+import { type Allowance, quotaFacts, route } from '#quota/budget'
 import {
   branchName,
   committingStep,
@@ -25,9 +25,9 @@ import {
   gatesNeverRun,
   planLimits,
   stepReports,
-} from '../tasks/fanout.js'
-import { elsewhere, latestResult, planState, planThread } from '../tasks/plan-file.js'
-import { globToRegExp } from '../util/glob.js'
+} from '#tasks/fanout'
+import { elsewhere, latestResult, planState, planThread } from '#tasks/plan-file'
+import { globToRegExp } from '#util/glob'
 import {
   type Attempts,
   byHand,
@@ -35,8 +35,8 @@ import {
   MAX_ATTEMPTS,
   pushedOnto,
   unchangedSince,
-} from './attempts.js'
-import { holds } from './condition.js'
+} from './attempts'
+import { holds } from './condition'
 import {
   closestRule,
   dedupe,
@@ -48,9 +48,9 @@ import {
   rank,
   ruleFor,
   waitsOn,
-} from './queue.js'
-import { repoListed, settingsFor } from './repos.js'
-import { describeSkip, type Skip } from './skips.js'
+} from './queue'
+import { repoListed, settingsFor } from './repos'
+import { describeSkip, type Skip } from './skips'
 import {
   describeComparison,
   failedIn,
@@ -59,7 +59,7 @@ import {
   isMatch,
   TOP,
   within,
-} from './where.js'
+} from './where'
 
 export interface PlannedUnit {
   unit: Unit

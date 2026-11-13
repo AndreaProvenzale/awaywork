@@ -1,8 +1,8 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import type { Item, Source } from '../../src/core/types.js'
-import { fakeItem } from './items.js'
+import type { Item, Source } from '#core/types'
+import { fakeItem } from './items'
 
 const config = z.strictObject({ token_env: z.string().default('FAKE_TOKEN') })
 

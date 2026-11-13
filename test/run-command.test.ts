@@ -4,25 +4,19 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runCommand } from '../src/cli/commands/run.js'
-import { loadConfig } from '../src/config/load.js'
-import {
-  attemptsPath,
-  runLockPath,
-  runsDir,
-  skipsPath,
-  watchLockPath,
-} from '../src/config/paths.js'
-import type { PrRef } from '../src/core/types.js'
-import { saveAttempts } from '../src/plan/attempts.js'
-import { claimUnits } from '../src/plan/poll.js'
-import { saveSkips } from '../src/plan/skips.js'
-import { abortOnSignals, executeRun, type RunArgs } from '../src/run/execute.js'
-import { github } from '../src/sources/github.js'
-import { githubPr } from './fakes/items.js'
+import { runCommand } from '#cli/commands/run'
+import { loadConfig } from '#config/load'
+import { attemptsPath, runLockPath, runsDir, skipsPath, watchLockPath } from '#config/paths'
+import type { PrRef } from '#core/types'
+import { saveAttempts } from '#plan/attempts'
+import { claimUnits } from '#plan/poll'
+import { saveSkips } from '#plan/skips'
+import { abortOnSignals, executeRun, type RunArgs } from '#run/execute'
+import { github } from '#sources/github'
+import { githubPr } from './fakes/items'
 
-vi.mock('../src/providers/index.js', async () => {
-  const { fakeProvider } = await import('./fakes/provider.js')
+vi.mock('#providers/index', async () => {
+  const { fakeProvider } = await import('./fakes/provider')
   const providers = { claude: fakeProvider('claude') }
   return {
     providers,
@@ -30,12 +24,12 @@ vi.mock('../src/providers/index.js', async () => {
     providersOf: () => providers,
   }
 })
-vi.mock('../src/config/paths.js', async (original) => {
+vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
   const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
   return {
-    ...(await original<typeof import('../src/config/paths.js')>()),
+    ...(await original<typeof import('#config/paths')>()),
     runsDir: `${state}/runs`,
     attemptsPath: `${state}/attempts.json`,
     runLockPath: `${state}/run.lock`,

@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import type { Job, WorkerEvent } from '../src/core/types.js'
-import { cliConfig, cursorProvider, mcpConfig, toEvents } from '../src/providers/cursor.js'
-import { providerContract } from './contracts/provider.contract.js'
-import { fakeItem } from './fakes/items.js'
+import type { Job, WorkerEvent } from '#core/types'
+import { cliConfig, cursorProvider, mcpConfig, toEvents } from '#providers/cursor'
+import { providerContract } from './contracts/provider.contract'
+import { fakeItem } from './fakes/items'
 
 const bin = fileURLToPath(new URL('./fakes/cursor.mjs', import.meta.url))
 const provider = cursorProvider(bin)

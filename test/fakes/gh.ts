@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import type { Exec } from '../../src/forge/gh.js'
+import type { Exec } from '#forge/gh'
 
 export const fixture = (name: string) =>
   readFileSync(new URL(`../fixtures/gh/${name}`, import.meta.url), 'utf8')

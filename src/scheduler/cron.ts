@@ -1,8 +1,8 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Exec } from '../forge/gh.js'
-import type { Schedule, Scheduler } from './index.js'
+import type { Exec } from '#forge/gh'
+import type { Schedule, Scheduler } from './index'
 
 const TAG = '# awaywork'
 

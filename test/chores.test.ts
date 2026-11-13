@@ -1,13 +1,13 @@
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { parseConfig } from '../src/config/load.js'
-import { builtinSkills } from '../src/core/skills.js'
-import type { Ctx, Quota } from '../src/core/types.js'
-import { recordAttempts } from '../src/plan/attempts.js'
-import { planRun } from '../src/plan/foreman.js'
-import type { RunReport } from '../src/posts/report.js'
-import { allowance } from '../src/quota/budget.js'
-import { type CommandConfig, commandSource } from '../src/sources/command.js'
+import { parseConfig } from '#config/load'
+import { builtinSkills } from '#core/skills'
+import type { Ctx, Quota } from '#core/types'
+import { recordAttempts } from '#plan/attempts'
+import { planRun } from '#plan/foreman'
+import type { RunReport } from '#posts/report'
+import { allowance } from '#quota/budget'
+import { type CommandConfig, commandSource } from '#sources/command'
 
 const dir = fileURLToPath(new URL('fixtures/chores', import.meta.url))
 const now = Date.UTC(2026, 0, 1, 1)

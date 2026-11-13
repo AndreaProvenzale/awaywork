@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
-import { bin } from '../src/config/paths.js'
-import { recordAttempts } from '../src/plan/attempts.js'
-import { unitStats } from '../src/run/stats.js'
-import { fakeItem, issue } from './fakes/items.js'
-import { git, looper, loopRun } from './fakes/units.js'
+import { bin } from '#config/paths'
+import { recordAttempts } from '#plan/attempts'
+import { unitStats } from '#run/stats'
+import { fakeItem, issue } from './fakes/items'
+import { git, looper, loopRun } from './fakes/units'
 
 it('tells a step to write the PR body until one wrote it, and to keep it after', async () => {
   const provider = looper({ 'acme-api-1-review-2': 'approve' })

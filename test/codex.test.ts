@@ -5,10 +5,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
-import type { Job, WorkerEvent } from '../src/core/types.js'
-import { codexProvider, lock, mcpOverrides, toEvents, toQuota } from '../src/providers/codex.js'
-import { providerContract } from './contracts/provider.contract.js'
-import { fakeItem } from './fakes/items.js'
+import type { Job, WorkerEvent } from '#core/types'
+import { codexProvider, lock, mcpOverrides, toEvents, toQuota } from '#providers/codex'
+import { providerContract } from './contracts/provider.contract'
+import { fakeItem } from './fakes/items'
 
 const bin = fileURLToPath(new URL('./fakes/codex.mjs', import.meta.url))
 const tmp = await mkdtemp(join(tmpdir(), 'awaywork-codex-'))

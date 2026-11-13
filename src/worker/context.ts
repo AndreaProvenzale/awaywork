@@ -2,12 +2,12 @@ import { cp, lstat, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import type { Config } from '../config/schema.js'
-import type { Item } from '../core/types.js'
-import { slug } from '../plan/foreman.js'
-import { runCommand } from './setup.js'
-import { setupEnv } from './steps.js'
-import { WORK_DIR } from './work-dir.js'
+import type { Config } from '#config/schema'
+import type { Item } from '#core/types'
+import { slug } from '#plan/foreman'
+import { runCommand } from './setup'
+import { setupEnv } from './steps'
+import { WORK_DIR } from './work-dir'
 
 /** `dir` is the folder of the config file that set the command, set when the config loads. */
 export type ContextSource = { context?: { command: string; secrets: string[]; dir?: string } }

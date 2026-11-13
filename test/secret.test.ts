@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { parseEnv } from 'node:util'
 import { describe, expect, it } from 'vitest'
-import { secretFrom } from '../src/cli/commands/secret.js'
+import { secretFrom } from '#cli/commands/secret'
 
 const envIn = async () => join(await mkdtemp(join(tmpdir(), 'awaywork-env-')), 'env')
 const piped = (text: string) => Readable.from([text])

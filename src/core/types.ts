@@ -1,6 +1,6 @@
 import type { z } from 'zod'
-import type { DraftLeft, Left, Pin } from '../posts/footer.js'
-import type { Contract, PlanLimits } from '../tasks/plan-file.js'
+import type { DraftLeft, Left, Pin } from '#posts/footer'
+import type { Contract, PlanLimits } from '#tasks/plan-file'
 
 /** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
 export type Login = (

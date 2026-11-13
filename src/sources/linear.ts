@@ -1,9 +1,9 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import type { Ctx, Item, Source } from '../core/types.js'
-import { unsetSecret } from '../plan/poll.js'
-import { taskMarkdown } from './asana.js'
+import type { Ctx, Item, Source } from '#core/types'
+import { unsetSecret } from '#plan/poll'
+import { taskMarkdown } from './asana'
 
 const config = z
   .strictObject({

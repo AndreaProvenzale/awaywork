@@ -5,11 +5,11 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
-import type { Job, WorkerEvent } from '../src/core/types.js'
-import { claudeProvider, toEvents } from '../src/providers/claude.js'
-import { commandEnv, workerEnv } from '../src/worker/env.js'
-import { providerContract } from './contracts/provider.contract.js'
-import { fakeItem } from './fakes/items.js'
+import type { Job, WorkerEvent } from '#core/types'
+import { claudeProvider, toEvents } from '#providers/claude'
+import { commandEnv, workerEnv } from '#worker/env'
+import { providerContract } from './contracts/provider.contract'
+import { fakeItem } from './fakes/items'
 
 const bin = fileURLToPath(new URL('./fakes/claude.mjs', import.meta.url))
 const provider = claudeProvider(bin)

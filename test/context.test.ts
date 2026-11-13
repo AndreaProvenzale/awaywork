@@ -2,9 +2,9 @@ import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { parseConfig } from '../src/config/load.js'
-import { fetchContexts } from '../src/worker/context.js'
-import { fakeItem } from './fakes/items.js'
+import { parseConfig } from '#config/load'
+import { fetchContexts } from '#worker/context'
+import { fakeItem } from './fakes/items'
 
 const item = fakeItem({ source: 'github', key: 'ACME-1', url: 'https://x/1', title: 'Crash' })
 const config = (context: string) =>
