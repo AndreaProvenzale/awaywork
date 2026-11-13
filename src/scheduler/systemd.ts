@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
+import { errorText } from '../util/text.js'
 import { SchedulerError } from './error.js'
 import type { Schedule, Scheduler } from './index.js'
 
@@ -33,9 +34,7 @@ export function systemd(home: string, run: Exec): Scheduler {
         else await writeFile(file, previous)
         await systemctl('daemon-reload').catch(() => '')
         const { stderr } = e as { stderr?: string }
-        const reason = (stderr?.trim() || (e instanceof Error ? e.message : String(e))).split(
-          '\n',
-        )[0]
+        const reason = (stderr?.trim() || errorText(e)).split('\n')[0]
         throw new SchedulerError(
           `systemctl failed (${reason}); without a systemd user session, log in directly or use --with cron`,
           { cause: e },

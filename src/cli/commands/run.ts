@@ -12,14 +12,7 @@ import { findChains, formatRun, formatUnit } from '../../format/report.js'
 import { formatSkipped } from '../../format/skips.js'
 import { ambiguous } from '../../format/why.js'
 import type { OnProgress } from '../../plan/probe.js'
-import {
-  type Chain,
-  chains,
-  counted,
-  localTime,
-  type RunReport,
-  runLine,
-} from '../../posts/report.js'
+import { type Chain, chains, localTime, type RunReport, runLine } from '../../posts/report.js'
 import { describeWindow, hostedEnd, runEnd } from '../../quota/window.js'
 import {
   abortOnSignals,
@@ -35,6 +28,7 @@ import {
 } from '../../run/execute.js'
 import { lockHolder, takeRunLock } from '../../run/run-lock.js'
 import { WORKFLOW } from '../../scheduler/github-actions.js'
+import { counted } from '../../util/text.js'
 import { reportConfigError } from '../tui/ask.js'
 import {
   type ItemCommands,

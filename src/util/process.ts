@@ -21,7 +21,7 @@ export function killGroupWhenDone(child: Child, stop?: AbortSignal): () => void 
   return () => stop?.removeEventListener('abort', kill)
 }
 
-/** Awaits a `detached` child, then kills its group; awaywork exiting first kills it too. */
+/** Awaits a `detached` child, then kills its group; this process exiting first kills it too. */
 export async function awaitGroup<T extends Child & PromiseLike<unknown>>(
   child: T,
 ): Promise<Awaited<T>> {

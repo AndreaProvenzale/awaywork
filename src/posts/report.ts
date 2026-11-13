@@ -9,6 +9,7 @@ import {
   shortRef,
 } from '../plan/foreman.js'
 import { type Allowance, pct, presenceLine } from '../quota/budget.js'
+import { counted } from '../util/text.js'
 import type { Outcome } from '../worker/publish.js'
 import type { WorkerStatus } from '../worker/run.js'
 import type { PostState } from './comments.js'
@@ -289,9 +290,6 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
   }
   return `${out.join('\n')}\n`
 }
-
-/** `3 units`, `1 unit`. */
-export const counted = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`
 
 /** `Run <id>: 1 PR, 1 draft PR, 2 reports, 1 pending review, 3 units`. */
 export function runHeadline(r: RunReport): string {

@@ -2,10 +2,11 @@ import { lstat, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { killGroupWhenDone } from '../core/group.js'
 import { AGENT_HOME } from '../core/isolation.js'
 import { launch } from '../core/launch.js'
 import type { Job, McpServer, Provider, WorkerEvent } from '../core/types.js'
+import { parseJson } from '../util/json.js'
+import { killGroupWhenDone } from '../util/process.js'
 
 /** Never `--force` or `--approve-mcps`: the allowlist in `cli-config.json` decides, and the clone's `.cursor/mcp.json` stays off. */
 const PRINT = ['-p', '--output-format', 'stream-json', '--trust']
@@ -173,12 +174,4 @@ export function toEvents(
   }[kind ?? '']
   const text = line ? line() : kind && `${kind}: ${JSON.stringify(args).slice(0, 200)}${refused}`
   return text ? [{ type: 'log', line: text }] : []
-}
-
-function parseJson(line: string) {
-  try {
-    return JSON.parse(line)
-  } catch {
-    return undefined
-  }
 }

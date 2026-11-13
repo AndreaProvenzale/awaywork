@@ -2,10 +2,11 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { awaitGroup } from '../core/group.js'
 import type { Ctx, Item, Source, ThreadHost, Write } from '../core/types.js'
 import { commentMarkdown } from '../posts/comments.js'
 import { linkProblem, threadBody, threadOf } from '../posts/footer.js'
+import { parseJson } from '../util/json.js'
+import { awaitGroup } from '../util/process.js'
 
 export const linkTemplate = z
   .string()
@@ -220,10 +221,7 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
           ctx,
           JSON.stringify({ op, item: item.key, id: item.id, ...write }),
         )
-        let printed: unknown
-        try {
-          printed = JSON.parse(stdout)
-        } catch {}
+        const printed = parseJson<unknown>(stdout)
         // Times it didn't print, or printed wrong, are none: the move then reads as a change.
         return written.safeParse(printed).data ?? {}
       },
@@ -248,10 +246,7 @@ export function commandThreads(id: string, cfg: CommandConfig, ctx: Ctx): Thread
     async openThread(_repo, item) {
       const title = `${item.key}: ${item.title}`
       const stdout = await write({ op: 'open', item: item.key, title, body: threadBody(item) })
-      let opened: unknown
-      try {
-        opened = JSON.parse(stdout)
-      } catch {}
+      const opened = parseJson<unknown>(stdout)
       const { data } = z
         .object({ key: z.string().min(1), id: z.string().min(1).optional(), url: z.string() })
         .safeParse(opened)

@@ -18,6 +18,7 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 | `src/format/` | What gets printed for people to read, in the terminal or in a run's files: plans, reports, skips, rules, JSON |
 | `src/cli/` | The CLI: `index.ts`, one file per command in `commands/`, prompts and the browsable views in `tui/`; nothing outside it imports it |
 | `src/config/` | Config schema and loading |
+| `src/util/` | Generic helpers several folders share: JSON, text, globs, process groups. They import only `node:` and npm packages and know nothing of awaywork; Biome refuses an import from the rest of `src/` |
 | `src/scheduler/` | launchd, systemd, cron and Actions |
 | `harness.md`, `skills/` | The fixed worker prompt and the built-in skills |
 | `plugin/` | The Claude Code plugin: the `away` skill, and the `/away` pane in `hooks/register.tsx` |

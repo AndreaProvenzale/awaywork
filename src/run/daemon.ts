@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 import { ConfigError, loadConfig } from '../config/load.js'
@@ -28,9 +28,11 @@ import {
   soonSources,
 } from '../plan/poll.js'
 import { probeAndPlan, sourceFailure } from '../plan/probe.js'
-import { counted, localTime } from '../posts/report.js'
+import { localTime } from '../posts/report.js'
 import { firstOpening, windowEnd, windowRun } from '../quota/window.js'
 import { holdAwake } from '../scheduler/wake.js'
+import { readJson } from '../util/json.js'
+import { counted } from '../util/text.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedChains } from '../worker/units.js'
 import {
@@ -451,9 +453,7 @@ export async function stopWatch(waitMs = 2 * MINUTE): Promise<number | undefined
 
 /** `schedule status`'s lines on the daemon, the next window read from `config` when it isn't running. */
 export async function watchStatus(config: string, now = new Date()): Promise<string[]> {
-  const state: WatchState | undefined = await readFile(watchStatePath, 'utf8')
-    .then(JSON.parse)
-    .catch(() => undefined)
+  const state = await readJson<WatchState | undefined>(watchStatePath, undefined)
   const pid = await lockHolder(watchLockPath)
   const up = pid !== undefined && state?.pid === pid
   const windows = await loadConfig(up ? state.config : config, { pin: false }).then(

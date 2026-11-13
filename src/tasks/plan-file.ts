@@ -1,6 +1,5 @@
 import { parse } from 'yaml'
 import { z } from 'zod'
-import { globToRegExp } from '../core/glob.js'
 import type { Item, TaskPr } from '../core/types.js'
 import {
   answerTo,
@@ -13,6 +12,7 @@ import {
   postState,
   resultOf,
 } from '../posts/comments.js'
+import { globToRegExp } from '../util/glob.js'
 
 const task = z.strictObject({
   id: z.string(),

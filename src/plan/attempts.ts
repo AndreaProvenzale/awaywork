@@ -1,7 +1,8 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { Item, PrRef } from '../core/types.js'
 import type { RunReport, UnitResult } from '../posts/report.js'
+import { readJson } from '../util/json.js'
 import { itemState } from './where.js'
 
 export const MAX_ATTEMPTS = 3
@@ -32,14 +33,7 @@ export type Attempts = Record<
   }
 >
 
-export async function loadAttempts(path: string): Promise<Attempts> {
-  const text = await readFile(path, 'utf8').catch(() => '{}')
-  try {
-    return JSON.parse(text) as Attempts
-  } catch {
-    return {}
-  }
-}
+export const loadAttempts = (path: string) => readJson<Attempts>(path, {})
 
 export async function saveAttempts(path: string, attempts: Attempts): Promise<void> {
   await mkdir(dirname(path), { recursive: true })

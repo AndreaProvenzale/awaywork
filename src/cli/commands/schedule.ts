@@ -44,6 +44,7 @@ import {
 import { staleWake, wakeFor, wakeUndo } from '../../scheduler/wake.js'
 import { isCommand } from '../../sources/command.js'
 import { sourceFor } from '../../sources/index.js'
+import { errorText } from '../../util/text.js'
 import { contextSecrets } from '../../worker/context.js'
 import { Cancelled, printBrand, reportConfigError, terminalAsk } from '../tui/ask.js'
 
@@ -286,7 +287,7 @@ async function offerWake(starts: Start[], io: Io): Promise<void> {
     console.log('This machine wakes when a window opens')
   } catch (e) {
     const { stderr } = e as { stderr?: string }
-    console.error(`No wake set: ${stderr?.trim() || (e instanceof Error ? e.message : String(e))}`)
+    console.error(`No wake set: ${stderr?.trim() || errorText(e)}`)
     process.exitCode = 1
   }
 }

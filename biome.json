@@ -28,6 +28,26 @@
           }
         }
       }
+    },
+    {
+      "includes": ["src/util/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["../**"],
+                    "message": "src/util imports only node: and npm packages."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "javascript": { "formatter": { "quoteStyle": "single", "semicolons": "asNeeded" } },
