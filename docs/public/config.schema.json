@@ -1113,7 +1113,7 @@
             "type": "boolean"
           },
           "gates": {
-            "description": "Gates of the rule's own, under names no top-level or repo gate has. On a rule that opens a PR or pushes they run with those, and one that fires does what theirs does; on deliver: plan or report, where those never run, they run on what the step left, without changed, and one that fires puts its line on the post and makes it wait; not on pending_review, nor on a planned rule that reports",
+            "description": "Gates of the rule's own, under names no top-level or repo gate has. On a rule that opens a PR or pushes they run with those, and one that fires does what theirs does; on deliver: plan or report, where those never run, they run on what the step left, without changed, and one that fires puts its line on the post and makes it wait, a planned rule's task holding its card's other tasks until you answer; not on pending_review",
             "type": "object",
             "propertyNames": {
               "type": "string",

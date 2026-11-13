@@ -1410,8 +1410,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const opened: Record<string, { repo: string; branch: string; url: string; head: string }> = {}
   const started = new Set<string>()
   const held = new Map<string, Held['status']>()
+  // The post of a task that waits for you, by card: one waits at a time, so none of its other tasks runs after it.
+  const waiting = new Map<string, string>()
 
-  /** Why a task's chain can't start: a task it stacks on or waits for opened no PR in this run; else the files its tasks in other repos ship, from their PRs. */
+  /** Why a task's chain can't start: a task it stacks on or waits for opened no PR in this run, or one of its card's posted what waits for you; else the files its tasks in other repos ship, from their PRs. */
   const blocked = async (head: PlannedUnit): Promise<{ skip: string } | { shipped: Shipped[] }> => {
     const item = head.unit.items[0] as Item
     const task = item.task
@@ -1427,6 +1429,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       return {
         skip: `${missing.id} ${held.has(missing.chain) ? `left a draft that says ${held.get(missing.chain)}` : started.has(missing.chain) ? 'opened no PR' : "didn't run"}`,
       }
+    const post = waiting.get(`${item.source}:${task.parent.key}`)
+    if (post) return { skip: post }
     const shipped: Shipped[] = []
     for (const dep of elsewhere(own, task.plan).filter((t) => t.ships?.length)) {
       const pr = task.parent.taskPrs?.[dep.id]
@@ -1503,6 +1507,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             )
       if (done.some((r) => r.status !== 'skipped')) started.add(head.unit.id)
       const lead = done.find((r) => !r.planned.chain && !r.retried)
+      const of = head.unit.items[0] as Item
+      const card = `${of.source}:${of.task?.parent.key}`
+      if (of.task && lead?.questions?.url)
+        waiting.set(card, `${of.task.id}'s questions wait for your answer`)
+      else if (of.task && lead?.result?.some((c) => c.post && 'waits' in c.post))
+        waiting.set(card, `${of.task.id}'s result waits for your approval`)
       // A draft that waits for a later run holds half-done work: nothing stacks on it.
       if (lead?.outcome?.kind === 'pr' && lead.outcome.held)
         held.set(head.unit.id, lead.outcome.held)

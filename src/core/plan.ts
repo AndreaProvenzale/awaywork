@@ -10,7 +10,6 @@ import {
   pinsOf,
   postState,
   resultOf,
-  resultStatus,
 } from './comments.js'
 import { globToRegExp } from './glob.js'
 import type { Item, TaskPr } from './types.js'
@@ -293,15 +292,6 @@ export function planThread(
   if (state && 'went' in state) return { plan, answer: plan, went: true }
   const answer = answerTo(item, at)
   return { plan, ...(answer && { answer }) }
-}
-
-/** The tasks whose `done` result is on the card after its plan's approval: a re-plan's approval leaves older results behind. */
-export function doneTasks(item: Pick<Item, 'comments'>): string[] {
-  const answer = planThread(item)?.answer
-  if (!answer) return []
-  return item.comments
-    .slice(item.comments.indexOf(answer) + 1)
-    .flatMap((c) => (resultStatus(c) === 'done' && commentTask(c)) || [])
 }
 
 /** The newest result awaywork posted for the item: a task's on its card after the plan's approval, else one on the item that no task heads. */

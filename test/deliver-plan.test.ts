@@ -12,7 +12,8 @@ import {
   resultStatus,
   waitingTasks,
 } from '../src/core/comments.js'
-import { checkPlan, doneTasks, planState, planYaml } from '../src/core/plan.js'
+import { checkPlan, planState, planYaml } from '../src/core/plan.js'
+import { taskResults } from '../src/core/posts.js'
 import type { Item } from '../src/core/types.js'
 
 const limits = { maxTasks: 3, repo: 'acme/api' }
@@ -192,26 +193,26 @@ describe('a task done by its result', () => {
     posted(resultComment('Done.', 'done', 'qa-evidence', task), n)
   it("counts a task's done result only after the plan's approval, so a re-plan's leaves older ones behind", () => {
     const approve = posted(approveReply(''), 2)
-    expect(doneTasks({ comments: [plan, result('qa', 2)] })).toEqual([])
-    expect(doneTasks({ comments: [plan, approve, result('qa', 3), result('api', 4)] })).toEqual([
-      'qa',
-      'api',
-    ])
+    expect(taskResults({ comments: [plan, result('qa', 2)] })).toEqual({})
+    expect(taskResults({ comments: [plan, approve, result('qa', 3), result('api', 4)] })).toEqual({
+      qa: 'approved',
+      api: 'approved',
+    })
     const replanned = posted(planComment('Again.', yaml), 5)
-    expect(doneTasks({ comments: [plan, approve, result('qa', 3), replanned] })).toEqual([])
+    expect(taskResults({ comments: [plan, approve, result('qa', 3), replanned] })).toEqual({})
     expect(
-      doneTasks({
+      taskResults({
         comments: [plan, approve, result('qa', 3), replanned, posted(approveReply(''), 6)],
       }),
-    ).toEqual([])
+    ).toEqual({})
   })
 
   it("never reads awaywork's result as the plan's answer", () => {
     expect(state(plan, result('qa', 2))).toEqual({ state: 'waiting' })
     const approve = posted(approveReply(''), 3)
-    expect(doneTasks({ comments: [plan, result('api', 2), approve, result('qa', 4)] })).toEqual([
-      'qa',
-    ])
+    expect(taskResults({ comments: [plan, result('api', 2), approve, result('qa', 4)] })).toEqual({
+      qa: 'approved',
+    })
   })
 })
 

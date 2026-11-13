@@ -6,7 +6,6 @@ import type { SkipKind, Skipped } from './foreman.js'
 import {
   type Contract,
   cardTasks,
-  doneTasks,
   holdingTask,
   isCheck,
   openedChain,
@@ -19,6 +18,7 @@ import {
   type Task,
   taskPrUrls,
 } from './plan.js'
+import { taskResults, unreadTaskResult } from './posts.js'
 import { isLoop, ruleFor } from './queue.js'
 import { settingsFor } from './repos.js'
 import { resolveSkill, type SkillCatalog } from './skills.js'
@@ -76,9 +76,7 @@ export function committingStep(rule: Rule, skills: SkillCatalog): ThenStep | und
 export function gatesNeverRun(rule: Rule, skills: SkillCatalog): string | undefined {
   const posts = rule.deliver === 'plan' || rule.deliver === 'report'
   if (!rule.gates || posts || committingStep(rule, skills)) return undefined
-  return 'planned' in rule.where
-    ? "drop its gates: a task's report takes none for now"
-    : `set deliver: report (${rule.skill} commits nothing, so its gates would never run)`
+  return `set deliver: report (${rule.skill} commits nothing, so its gates would never run)`
 }
 
 /** The branch a rule's slice on the item publishes on: the template with the item and the type of the step it starts with. */
@@ -210,7 +208,7 @@ export function taskPr(
 /**
  * Replaces each card a `deliver: plan` rule took whose plan you approved with its tasks, in the
  * order they run, which go down the queue like any item. The card itself skips, as do the tasks
- * that make no unit: merged, waiting on another's merge, or held while any task's questions wait.
+ * that make no unit: merged, waiting on another's merge, or held while any task's questions or gated result wait.
  * A card whose tasks' PRs closed unmerged since stays, to plan again.
  */
 export function expandPlans(
@@ -248,9 +246,14 @@ export function expandPlans(
     const { reports = [] } = planLimits(config, queue, card, catalog)
     const reportsOnly = (t: Task) => reports.includes(t.skill ?? TASK_SKILL)
     // A task that reports is done by its result on the card, as one that opens a PR is by its merge.
-    const results = doneTasks(card)
-    const reported = (t: Task) => reportsOnly(t) && results.includes(t.id)
+    const results = taskResults(card)
+    const reported = (t: Task) => reportsOnly(t) && results[t.id] === 'approved'
     const asked = waitingTasks(card)
+    // A gate that fired on a task's result holds the card's tasks like its questions, until you answer the post.
+    const gated = tasks.filter((t) => reportsOnly(t) && results[t.id] === 'waiting')
+    const posts = card.thread?.url ?? card.url
+    // A task's result awaywork couldn't read back decides nothing yet: nothing of the card counts as done or runs.
+    const unread = unreadTaskResult(card)
     const states: string[] = []
     // The card's own skip goes first, its tasks' under it.
     const at = skipped.length
@@ -271,6 +274,9 @@ export function expandPlans(
       if (pr?.state === 'merged') {
         states.push(`${t.id} merged`)
         skip(item, 'task_merged', `merged in ${pr.url}`, pr.url)
+      } else if (unread) {
+        states.push(`${t.id} waits for the store`)
+        skip(item, 'store_failed', unread)
       } else if (reported(t)) {
         states.push(`${t.id} done`)
         skip(item, 'task_done', `done: its result is on ${card.url}`, card.url)
@@ -282,6 +288,16 @@ export function expandPlans(
           'waiting_for_answer',
           `waiting for your answer to ${named} questions on ${card.url}`,
           card.url,
+        )
+      } else if (gated.length) {
+        const named = gated.map((g) => `task ${g.id}'s`).join(' and ')
+        const ids = gated.map((g) => g.id).join(' and ')
+        states.push(`${t.id} waits for ${gated.includes(t) ? 'your approval' : ids}`)
+        skip(
+          item,
+          gated.includes(t) ? 'waiting_for_approval' : 'waiting_for_task',
+          `waiting for your approval of ${named} result on ${posts}`,
+          posts,
         )
       } else if (pr) {
         states.push(pr.left ? `${t.id} draft says ${pr.left.status}` : `${t.id} PR open`)
@@ -303,11 +319,16 @@ export function expandPlans(
           prs[checkedOn]?.url,
         )
       } else {
-        states.push(`${t.id} ${reportsOnly(t) ? 'no result' : 'no PR'} yet`)
+        const again = reportsOnly(t) && results[t.id] === 'feedback'
+        states.push(
+          again
+            ? `${t.id} runs again on your feedback`
+            : `${t.id} ${reportsOnly(t) ? 'no result' : 'no PR'} yet`,
+        )
         out.push(item)
       }
     }
-    const done = tasks.every((t) => merged(t.id) || reported(t))
+    const done = !unread && tasks.every((t) => merged(t.id) || reported(t))
     skipped.splice(at, 0, {
       item: card,
       ...(done

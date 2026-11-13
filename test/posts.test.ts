@@ -111,6 +111,13 @@ describe('the move a waiting post holds', () => {
     expect(held(card(post('story', { waits: true }), yours('approve')))).toBeUndefined()
   })
 
+  it("isn't made again once a newer post of awaywork's that doesn't wait followed, though the card is back where the post saw it", () => {
+    const approved = [post('story', waits), yours('approve')]
+    expect(held(card(...approved, post('prototype', undefined, 3)))).toBeUndefined()
+    const went = post('prototype', { went: true, gates: ['taste'] }, 3)
+    expect(held(card(...approved, went))).toBeUndefined()
+  })
+
   it("counts awaywork's own approve as yours, and a GitHub label already added as made", () => {
     const approve = { ...yours('approve'), body: markComment('approve') }
     expect(held(card(post('story', waits), approve))).toBe('Ready for design')

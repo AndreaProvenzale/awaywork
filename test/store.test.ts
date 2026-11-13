@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
+import { approveItem } from '../src/cli/approve.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
@@ -15,6 +16,7 @@ import {
   commentKind,
   leanPlanComment,
   markComment,
+  type PostState,
   pinsOf,
   planComment,
   resultComment,
@@ -23,7 +25,13 @@ import {
 import { footer, footerPins, type Pin, pinBlock } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
 import { cardTasks, planState } from '../src/core/plan.js'
-import { postAnswer, readBackPosts, reportPost, withApproved } from '../src/core/posts.js'
+import {
+  postAnswer,
+  readBackPosts,
+  reportPost,
+  taskResults,
+  withApproved,
+} from '../src/core/posts.js'
 import { formatReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, Write } from '../src/core/types.js'
@@ -472,6 +480,13 @@ describe('lean posts', () => {
       state: 'approved',
       plan: { tasks: [{ id: 'api', title: 'VAT endpoint' }] },
     })
+    const sources = { github: fakeSource([yours(1, [post(body())])]) }
+    await expect(
+      approveItem('github:acme/api#1/api', config, '', {
+        sources,
+        ctx: { env: process.env, log: () => {} },
+      }),
+    ).rejects.toThrow('github:acme/api#1/api is a task of the plan on github:acme/api#1')
   })
 })
 
@@ -1020,6 +1035,126 @@ describe('stale posts', () => {
       attempts,
     })
     expect(plan.units.map((u) => [u.unit.skill, u.unit.waits])).toEqual([['story', true]])
+  })
+
+  it("counts an edited file of a task's waiting result as feedback too, though you approved it", async () => {
+    const plan = post(markComment(planComment('N.', 'tasks:\n  - { id: qa, title: Q }\n')))
+    const result = (pin: Pin) =>
+      post(
+        markComment(
+          `${resultComment('Two shots.', 'done', 'qa', 'qa', 0, true)}${pinBlock([pin])}`,
+          { waits: true },
+        ),
+        '2026-10-24T03:00:00Z',
+      )
+    const read = async (pin: Pin) => {
+      const card = yours(1, [
+        plan,
+        post('approve', '2026-10-24T02:00:00Z'),
+        result(pin),
+        post('approve', '2026-10-24T04:00:00Z'),
+      ])
+      await checkPins([card], config.store as Store, process.env)
+      return taskResults(card)
+    }
+    expect(await read(await pinned('report.md', 'as posted'))).toEqual({ qa: 'approved' })
+    expect(await read(await pinned('report.md', 'edited', sha('as posted')))).toEqual({
+      qa: 'feedback',
+    })
+  })
+
+  it("runs a task again on an edited file of its result, though its card is unchanged since its run, ahead of the card's other tasks", async () => {
+    const queue =
+      '  - { skill: plan, deliver: plan }\n  - { skill: review, where: { planned: true }, deliver: report }'
+    const config = parseConfig(
+      `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${shared.config}\nqueue:\n${queue}\n`,
+    )
+    const tasks =
+      'tasks:\n  - { id: qa, title: Q, skill: review }\n  - { id: web, title: W, skill: review }\n'
+    const ran = { runId: 'r30', skill: 'review', updated: '2026-10-24T00:00:00Z' }
+    const planned = async (state?: PostState, pin?: Pin, ...more: Item['comments']) => {
+      const text = resultComment(
+        'Two shots.',
+        'done',
+        'review',
+        'qa',
+        0,
+        !!state && 'waits' in state,
+      )
+      const card = yours(1, [
+        post(markComment(planComment('N.', tasks))),
+        post('approve', '2026-10-24T02:00:00Z'),
+        ...(state && pin
+          ? [post(markComment(`${text}${pinBlock([pin])}`, state), '2026-10-24T03:00:00Z')]
+          : []),
+        ...more,
+      ])
+      await checkPins([card], config.store as Store, process.env)
+      const plan = planRun({
+        config,
+        items: [card],
+        allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+        skills: { builtin: builtinSkills },
+        attempts: { 'github:acme/api#1/qa': ran },
+      })
+      return {
+        units: plan.units.map((u) => u.unit.id),
+        skipped: plan.skipped.slice(1).map((s) => [s.item.key, s.kind, s.reason.split(' on ')[0]]),
+      }
+    }
+    // The attempt counts: without a post, the task is unchanged since it.
+    expect(await planned()).toEqual({
+      units: ['acme-api-1-web'],
+      skipped: [['acme/api#1/qa', 'unchanged', 'unchanged since run r30']],
+    })
+    const edited = () => pinned('report.md', 'edited', sha('as posted'))
+    const same = () => pinned('report.md', 'as posted')
+    const approve = post('approve', '2026-10-24T04:00:00Z')
+    // A stale pin is feedback: qa runs again first, and the run stops web behind it if its gate fires again.
+    const again = { units: ['acme-api-1-qa', 'acme-api-1-web'], skipped: [] }
+    expect(await planned({ waits: true }, await edited())).toEqual(again)
+    expect(await planned({ waits: true }, await edited(), approve)).toEqual(again)
+    expect(await planned({ went: true, gates: ['proof'] }, await edited())).toEqual(again)
+    expect((await planned({ waits: true }, await same(), approve)).units).toEqual([
+      'acme-api-1-web',
+    ])
+    expect((await planned({ waits: true }, await same())).units).toEqual([])
+  })
+
+  it("skips a card's tasks as store_failed while a task's result, approved or gone ahead, can't be read back", async () => {
+    const queue =
+      '  - { skill: plan, deliver: plan }\n  - { skill: review, where: { planned: true }, deliver: report }'
+    const config = parseConfig(
+      `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${shared.config}\nqueue:\n${queue}\n`,
+    )
+    const tasks =
+      'tasks:\n  - { id: qa, title: Q, skill: review }\n  - { id: qa2, title: R, skill: review }\n'
+    const gone = { name: 'report.md', url: 'file:///nowhere/report.md', sha256: sha('x') }
+    const skipped = async (state: PostState, ...more: Item['comments']) => {
+      const text = resultComment('Two shots.', 'done', 'review', 'qa', 0, 'waits' in state)
+      const card = yours(1, [
+        post(markComment(planComment('N.', tasks))),
+        post('approve', '2026-10-24T02:00:00Z'),
+        post(markComment(`${text}${pinBlock([gone])}`, state), '2026-10-24T03:00:00Z'),
+        ...more,
+      ])
+      await checkPins([card], config.store as Store, process.env)
+      const plan = planRun({
+        config,
+        items: [card],
+        allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+        skills: { builtin: builtinSkills },
+      })
+      expect(plan.units).toEqual([])
+      return plan.skipped.map((s) => [s.item.key, s.kind, s.reason.split(':')[0]])
+    }
+    const unread = [
+      ['acme/api#1', 'fanned_out', 'fanned out'],
+      ['acme/api#1/qa', 'store_failed', "couldn't read report.md from the store"],
+      ['acme/api#1/qa2', 'store_failed', "couldn't read report.md from the store"],
+    ]
+    expect(await skipped({ waits: true }, post('approve', '2026-10-24T04:00:00Z'))).toEqual(unread)
+    expect(await skipped({ went: true, gates: ['proof'] })).toEqual(unread)
   })
 
   it('plans an unanswered post whose file was edited as feedback, on the card and its PR, and while its pins match holds the card alone', async () => {

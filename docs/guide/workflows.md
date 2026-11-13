@@ -268,7 +268,8 @@ queue:
 - A judge gets the same copy, told to judge those files against the item, not a diff. The built-in `judge` looks for product calls: acceptance criteria that can go two ways, UX or copy, scope the card doesn't settle, data kept or shown to someone new, a contract another team owns.
 - The post is what the step left: awaywork restores `.away/out/` before posting, and a judge that changed it fires.
 - None fired: `Gates: none fired (product, size)` tops the post, which under `wait: false` goes ahead, its mark line naming the gates that ran clear.
-- A rule gate takes no name a top-level or repo gate has, and on a plan or report rule no `changed`: there's no diff. A `pending_review` rule takes no gates, and a `planned` rule that reports takes none for now.
+- On a `planned` rule that reports, one that fires makes the [task's result wait](#a-gate-on-a-report-task), and holds the card's other tasks until you answer.
+- A rule gate takes no name a top-level or repo gate has, and on a plan or report rule no `changed`: there's no diff. A `pending_review` rule takes no gates.
 
 ## Plans
 
@@ -429,14 +430,14 @@ Once awaywork's plan comment is on an open card of yours, the card goes to the `
 
 #### Task details
 
-- **Questions from a task** go on the card, headed `Questions from task api` (`awaywork's questions from task api` in `item.md`), through the usual ownership check. While they wait, every task of the card is skipped as `waiting for your answer to task api's questions`. The first comment after them that's neither a bot's nor awaywork's answers them, so one reply under two tasks' questions answers both.
+- **Questions from a task** go on the card, headed `Questions from task api` (`awaywork's questions from task api` in `item.md`), through the usual ownership check. The run stops the card's [block](#the-feature-block) there: no task of the card runs after it that run, skipped as `api's questions wait for your answer`, so one post of a card waits for you at a time. While they wait, later runs skip every task of the card as `waiting for your answer to task api's questions`. The first comment after them that's neither a bot's nor awaywork's answers them.
 - **A task's PR is its result:** it posts nothing else on the card. A [report task](#report-tasks) posts its report there instead.
 - **Writes go to the card:** a `planned` rule's `on_done` moves the card; a task writes nowhere else. Reassign the card and nothing fans out or writes (`plan approved, but the card isn't yours: its tasks don't run`).
 - **A task PR closed unmerged** after the plan was posted re-plans the card, though the card didn't change. Its id is retired: the prompt names it and its PR, with the tasks whose PR is open or merged, and a plan reusing it isn't posted. The new plan needs a fresh approval, even under `wait: false`; a task that keeps its id keeps its PR.
 - **A task's branch is its name for good.** When something else holds `away/ENG-2101-api`, the task is skipped with `delete it to run this task`, never moved to `-2`, which its PR lookup wouldn't find.
 - A [`branch`](./configuration.md#branch-names) template renders from the task's key alone, so a re-plan that retitles a task keeps its PR: `{title}` or `{type}` in a `planned` rule's template, own or inherited, is a config error. A re-plan may hand a task another skill, and so another `planned` rule, so all `planned` rules for a source set the same `branch`, or none does.
 - A task branch whose PR failed to open still reads `no PR yet` (the PR is the task's state), and each morning report says `away/ENG-2101-api exists on acme/api without a PR; delete it to run again`.
-- A task takes no approval of its own, the plan's covers it: no `approved`, `awaywork approve tracker:ENG-2101/api` is refused, and a `planned` rule takes no `wait`, and gates of its own only when it opens a PR.
+- A task takes no approval of its own, the plan's covers it: no `approved`, `awaywork approve tracker:ENG-2101/api` is refused, and a `planned` rule takes no `wait`. The one exception is a report task's result that a [gate of its rule](#a-gate-on-a-report-task) fired on: it waits for your reply.
 - On [Bitbucket](./configuration.md#bitbucket-and-jira) it works the same, through twg. A declined or superseded PR counts as closed unmerged, when last updated; a stacked task's PR goes into the branch of the one below (no stacks there); a task whose draft says `continue`, or asks, holds its dependents back, but it's yours to [finish](#continue).
 
 ### Report tasks
@@ -464,10 +465,55 @@ tasks:
 
 Its result is its report, posted on the card when its chain finishes, as [`on_done: { comment: result }`](./configuration.md#on-done) would, unasked: `Result of task qa`, the report, `Status: done` (`awaywork's result of task qa` in `item.md`). Like any awaywork comment, it answers nobody's questions, a plan's included, and isn't a change to the card.
 
-- It's **done** once a `done` result for it, newer than your approval, is on the card: `plan` skips it as `done: its result is on <card>`, and the card reads `qa done`. Until then it runs, failed attempts counting as usual. A re-plan's approval leaves older results behind, so its tasks report again.
+- It's **done** once a `done` result for it, newer than your approval, is on the card, and no [gate holds it](#a-gate-on-a-report-task): `plan` skips it as `done: its result is on <card>`, and the card reads `qa done`. Until then it runs, failed attempts counting as usual. A re-plan's approval leaves older results behind, so its tasks report again.
 - A `continue` result isn't done: the task [runs again](#continue).
 - **Nothing can wait on it:** no PR to stack on, check or merge, so a plan whose `after` names one isn't posted. It can wait on others, as `qa` waits for `app`.
 - A `planned` rule delivers `draft_pr`, `pr` or `report`; anything else is a config error.
+
+#### A gate on a report task
+
+Give the rule [gates of its own](#gates-of-a-rule-s-own) to check what the task left, say that every acceptance criterion has a file:
+
+```yaml
+queue:
+  - skill: qa-evidence
+    where: { planned: true }
+    deliver: report
+    gates:
+      proof: { command: scripts/has-proof.sh } # reads $AWAYWORK_OUT_DIR
+```
+
+One that fires posts the result as a [post that waits](#posts-that-wait), the gate's line on top:
+
+<!-- Generated by `pnpm docs:gen` from scripts/screens.ts. Do not edit. -->
+
+```text workflows-task-gate
+Result of task qa
+
+## Needs a decision
+
+### Gates (from scripts)
+
+- proof: no file for criterion 3
+
+---
+
+Two of three criteria recorded against the preview.
+
+Status: done
+
+To approve, reply with approve as the first line. Any other reply is feedback: awaywork runs this step again with it.
+
+— awaywork · waits
+```
+
+- **It holds the feature**, as a task's [questions](#task-details) do. The task isn't done: `plan` skips it as **waiting for your approval** (`approve`, `task qa's result`), under Needs you, and every other task of the card as `waiting for your approval of task qa's result on <card>`. The card reads `fanned out: api waits for qa, qa waits for your approval`.
+- **One post of a card waits at a time.** The run that posts it stops the card's [block](#the-feature-block): no task of the card runs after it that run, skipped as `qa's result waits for your approval`. Results the tasks before it posted stay as they are.
+- **Your first reply after it decides**, from your own account; a teammate's comment is context. First line `approve`: you accept the gap, and the task is done. `awaywork approve tracker:ENG-2101/qa`, the card's key or `a` posts it. Anything else is feedback, and ends the hold too: the card reads `qa runs again on your feedback`, the task runs again with the thread in `item.md`, ahead of the tasks after it, and the other tasks go on. Its gates run on the new result: if one fires again that run, the tasks after it stop behind it. A [pinned file](#files-that-come-back) of the post edited in the store is feedback too, whatever you replied, though the card didn't change.
+- **None fired:** `Gates: none fired (proof)` tops the result, marked `— awaywork · went ahead · gates=proof`, and the task is done as without gates.
+- A newer plan leaves the result behind: `approve tracker:ENG-2101/qa` is refused as `older than the plan`, and while that plan waits your reply answers the plan.
+- A `planned` rule's `on_done: { move }` is held with the post, as on [any that waits](#posts-that-wait).
+- All of it is read off the card or its thread every run.
 
 ### The feature block
 
@@ -477,7 +523,7 @@ Its result is its report, posted on the card when its chain finishes, as [`on_do
 - **`opened`**: only until that task's PR opens, in the same run. Its clone starts from that task's branch and its PR stacks on that task's, so the whole feature is up for review in the morning, as a stack. A task in [another repo](#across-repos) only waits.
 - **a check's name**, like `Vercel Preview`: `opened` plus that check passing, which takes a later run ([Waiting on a check](#waiting-on-a-check)).
 
-The run that sees a card runs its tasks back to back, as one block, in the order they wait on each other, before the next unit, wherever the first ranks. A task joins once every `merged` task it names merged and every `opened` one has an open or merged PR, or runs earlier in the block. So a block stops only at `merged`, which needs you to merge something.
+The run that sees a card runs its tasks back to back, as one block, in the order they wait on each other, before the next unit, wherever the first ranks. A task joins once every `merged` task it names merged and every `opened` one has an open or merged PR, or runs earlier in the block. So a block stops only where it needs you: at `merged`, to merge something, or at a task's post that waits, its [questions](#task-details) or a result [a gate fired on](#a-gate-on-a-report-task), to answer it.
 
 ```yaml
 tasks:
@@ -667,7 +713,7 @@ Details:
 
 - A held move happens only while the card is in the status the post saw (on GitHub, the label not on yet) and no newer awaywork post is on the item. A dry run only says it would; the report lists the move, or why it failed, under Held moves. Moving or reassigning the card yourself releases the post.
 - A report rule that waits, or has gates of its own, needs a source that can write, or a [thread](#threads): naming one that can't is a config error, and `doctor` warns about any it may match.
-- `wait` on a `pr`, `draft_pr`, `push` or `pending_review` rule is a config error: the PR is the decision.
+- `wait` on a `pr`, `draft_pr`, `push` or `pending_review` rule is a config error: the PR is the decision. So is `wait` on a `planned` rule: a report task's result waits only when a [gate of its rule fires](#a-gate-on-a-report-task), and it sets no `approved`.
 
 The simplest two-stage queue plans the sprint's tasks as reports and implements those you approve:
 
@@ -787,7 +833,7 @@ When the store fails:
 
 - A failed put leaves the file in the run dir, pins nothing and adds a morning report line (`fail.bin not stored: Command failed with exit code 1: …`, or `printed 11 characters that aren't JSON, not {"url": "…"}`, never quoting the output); post and PR still go out.
 - A lean report whose own `report.md` failed posts the whole report in place of the summary, other pins kept, and says so; over 30 KB it fails like any result.
-- A failed get on a post the unit depends on (the one an approval covers, its own when it runs again, a PR's footer) skips the unit as `fix store`, with why, counting no attempt.
+- A failed get on a post the unit depends on (the one an approval covers, its own when it runs again, a PR's footer) skips the unit as `fix store`, with why, counting no attempt. One on a task's result that waits or went ahead skips every task of its card the same way, a done task's result too: the card's tasks stay held until the store gives the file back.
 - On any other post (an older plan, a newer report) it costs only that post's files and a morning report line, so an expired `plan.yml` on an old plan stops nothing.
 
 ## Files that come back
@@ -836,7 +882,7 @@ Also:
 
 ### An edit is feedback
 
-Every `plan`, run and watch poll reads back, within the cap, the files of the posts that decide a rule (a plan's, a waiting or approved report's) and checks their hash. A mismatch makes the post stale, which counts as your feedback, whoever edited it: the step runs again, though the card didn't change, with the edited file in context and its path in `files/EDITED` (one per line), which its prompt calls feedback, and posts again. A rule that waits needs a fresh `approve`, so you only approve what awaywork has seen:
+Every `plan`, run and watch poll reads back, within the cap, the files of the posts that decide a rule (a plan's, a waiting or approved report's, a task's result that waits or went ahead) and checks their hash. A mismatch makes the post stale, which counts as your feedback, whoever edited it: the step runs again, though the card didn't change, with the edited file in context and its path in `files/EDITED` (one per line), which its prompt calls feedback, and posts again. A rule that waits needs a fresh `approve`, so you only approve what awaywork has seen:
 
 <!-- Generated by `pnpm docs:gen` from scripts/screens.ts. Do not edit. -->
 

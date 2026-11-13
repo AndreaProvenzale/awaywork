@@ -1,12 +1,13 @@
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import type { Config } from '../config/schema.js'
-import { approveReply } from '../core/comments.js'
+import { approveReply, commentTask, postState } from '../core/comments.js'
 import { cardTasks, planThread } from '../core/plan.js'
-import { decisionPost } from '../core/posts.js'
-import type { Ctx, Forge, Source } from '../core/types.js'
+import { decisionPost, taskResults } from '../core/posts.js'
+import type { Ctx, Forge, Item, Source } from '../core/types.js'
 import { forgeFor } from '../forge/index.js'
 import { sourceFor, writeItem } from '../sources/index.js'
+import { checkPins } from '../worker/store.js'
 import { checkKey, printOutcome } from './skip.js'
 import { linkThreads, threadHosts } from './threads.js'
 
@@ -26,7 +27,7 @@ export function approveCommand(program: Command): void {
 /** Replies `approve` on the item when awaywork's post on it waits, a plan or a result, through its source as any write; refuses once it was answered or went ahead, or when nothing waits. */
 export async function approveItem(
   key: string,
-  config: Pick<Config, 'sources' | 'queue'>,
+  config: Pick<Config, 'sources' | 'queue' | 'store'>,
   notes = '',
   {
     sources = {},
@@ -59,23 +60,39 @@ export async function approveItem(
   }
   const card = !item && items.find((i) => key.startsWith(`${id}:${i.key}/`) && planThread(i))
   const task = card && key.slice(`${id}:${card.key}/`.length)
+  // A lean plan names its tasks only in its plan.yml, in the store.
+  if (card && config.store) await checkPins([card], config.store, ctx.env)
   if (card && !cardTasks(card).some((t) => t.id === task))
     throw new Error(`the plan on ${id}:${card.key} has no task ${task}`)
-  if (card)
+  // A task's result waits only when a gate of its rule fired, on its card.
+  const gated = card && task ? decisionPost(card, task) : undefined
+  // A plan posted since left the task's result behind: your reply would answer the plan.
+  const left = (c: Item['comments'][number]) => commentTask(c) === task && !!postState(c)
+  if (card && !planThread(card)?.answer && card.comments.some(left))
+    throw new Error(
+      `task ${task}'s result on ${card.thread?.url ?? card.url} is older than the plan on ${id}:${card.key}, which waits for your approval: approve ${id}:${card.key}`,
+    )
+  if (card && !gated)
     throw new Error(
       `${key} is a task of the plan on ${id}:${card.key}: a task takes no approval of its own, approving the plan on the card covers it`,
     )
-  const post = item && decisionPost(item)
-  if (!item || !post) throw new Error(`nothing on ${key} waits for your approval`)
+  const target = item ?? (card || undefined)
+  const post = gated ?? (target && decisionPost(target))
+  if (!target || !post) throw new Error(`nothing on ${key} waits for your approval`)
   const what = post.what === 'plan' ? 'the plan' : post.what
-  const on = item.thread?.url ?? item.url
-  if (post.went) throw new Error(`${what} on ${on} went ahead: nothing waits for your approval`)
+  const on = target.thread?.url ?? target.url
+  // Another task's result may still wait beside the one that went ahead.
+  const [older] = Object.entries(taskResults(target)).find(([, at]) => at === 'waiting') ?? []
+  const waits = older
+    ? `task ${older}'s result waits, approve ${target.source}:${target.key}/${older}`
+    : 'nothing waits for your approval'
+  if (post.went) throw new Error(`${what} on ${on} went ahead: ${waits}`)
   if (post.answer)
     throw new Error(
       `${what} on ${on} was already answered by ${post.answer.author}, ${post.answer.at}`,
     )
   const write = { op: 'comment', body: approveReply(notes) } as const
   const threads = { forge, sources: config.sources }
-  const { url = item.url } = await writeItem(source, cfg, item, write, ctx, undefined, threads)
+  const { url = target.url } = await writeItem(source, cfg, target, write, ctx, undefined, threads)
   return `${post.what} approved: replied approve${notes.trim() ? ', with your notes,' : ''} on ${url}`
 }

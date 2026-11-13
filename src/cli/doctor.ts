@@ -210,7 +210,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   })
   config.queue?.forEach((rule, i) => {
     // A report that waits posts on its item, as on_done does.
-    const waits = rule.deliver === 'report' && (rule.wait || rule.gates)
+    const waits =
+      rule.deliver === 'report' && !('planned' in rule.where) && (rule.wait || rule.gates)
     if (!rule.on_done && !waits) return
     // A rule without `source` moves the items of the source it matched: only those it can match.
     const scope = rule.source
