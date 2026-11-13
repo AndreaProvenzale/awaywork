@@ -45,7 +45,7 @@ import { staleWake, wakeFor, wakeUndo } from '../../scheduler/wake.js'
 import { isCommand } from '../../sources/command.js'
 import { sourceFor } from '../../sources/index.js'
 import { contextSecrets } from '../../worker/context.js'
-import { Cancelled, printBrand, reportConfigError, terminalAsk } from '../format/ask.js'
+import { Cancelled, printBrand, reportConfigError, terminalAsk } from '../tui/ask.js'
 
 const GITHUB_ACTIONS = 'github-actions'
 const DOCKER = 'docker'

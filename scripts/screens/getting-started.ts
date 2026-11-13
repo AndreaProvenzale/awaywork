@@ -1,5 +1,5 @@
-import { brandHeader } from '../../src/cli/format/terminal.js'
 import { type Loading, loading, loadingView, progress, tick } from '../../src/cli/tui/triage.js'
+import { brandHeader } from '../../src/format/terminal.js'
 import type { Step } from '../../src/plan/probe.js'
 
 function planLoading(): string {

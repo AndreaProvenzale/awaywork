@@ -1,5 +1,18 @@
 import { styleText } from 'node:util'
 import type { Item } from '../../core/types.js'
+import { listedUnits, planUnitTable, providerLines } from '../../format/plan.js'
+import { reportUnitTable, runHeader } from '../../format/report.js'
+import { type SkipRow, skippedHeading, skipRows } from '../../format/skips.js'
+import {
+  byGroup,
+  columns,
+  graphemes,
+  heading,
+  pad,
+  warningBlock,
+  width,
+} from '../../format/terminal.js'
+import { formatWhy } from '../../format/why.js'
 import type { RunPlan } from '../../plan/foreman.js'
 import type { Step } from '../../plan/probe.js'
 import {
@@ -9,19 +22,6 @@ import {
   type ReportedSkip,
   type RunReport,
 } from '../../posts/report.js'
-import { listedUnits, planUnitTable, providerLines } from '../format/plan.js'
-import { reportUnitTable, runHeader } from '../format/report.js'
-import { type SkipRow, skippedHeading, skipRows } from '../format/skips.js'
-import {
-  byGroup,
-  columns,
-  graphemes,
-  heading,
-  pad,
-  warningBlock,
-  width,
-} from '../format/terminal.js'
-import { formatWhy } from '../format/why.js'
 
 /** What a key does on a row. */
 export type Action = 'read' | 'open' | 'log' | 'diff' | 'skip' | 'approve'

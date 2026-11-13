@@ -9,7 +9,7 @@ import { providersOf } from '../../providers/index.js'
 import { abortOnSignals } from '../../run/execute.js'
 import { sourceFor } from '../../sources/index.js'
 import { replayUnit } from '../../worker/replay.js'
-import { reportConfigError } from '../format/ask.js'
+import { reportConfigError } from '../tui/ask.js'
 
 export function replayCommand(program: Command): void {
   program

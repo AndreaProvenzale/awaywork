@@ -15,7 +15,8 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 | `src/forge/` | GitHub through `gh`: clone, find PRs, push, draft PRs |
 | `src/worker/` | The workspace, the worker prompt, the worker run, the watchdog and publishing |
 | `src/run/` | A run (`execute.ts`), the `watch` daemon, the remote, and the run lock, retention and stats around them |
-| `src/cli/` | The CLI: `index.ts`, one file per command in `commands/`, text and JSON output and prompts in `format/`, the browsable views in `tui/`; the rest of `src/` imports only `format/` from it |
+| `src/format/` | What gets printed for people to read, in the terminal or in a run's files: plans, reports, skips, rules, JSON |
+| `src/cli/` | The CLI: `index.ts`, one file per command in `commands/`, prompts and the browsable views in `tui/`; nothing outside it imports it |
 | `src/config/` | Config schema and loading |
 | `src/scheduler/` | launchd, systemd, cron and Actions |
 | `harness.md`, `skills/` | The fixed worker prompt and the built-in skills |

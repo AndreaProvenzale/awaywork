@@ -1,6 +1,5 @@
 import { stripVTControlCharacters } from 'node:util'
 import { describe, expect, it } from 'vitest'
-import { brandHeader } from '../src/cli/format/terminal.js'
 import { pagerCommand } from '../src/cli/tui/browse.js'
 import {
   clipLine,
@@ -18,6 +17,7 @@ import {
   update,
   view,
 } from '../src/cli/tui/triage.js'
+import { brandHeader } from '../src/format/terminal.js'
 import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
 import { fakeItem, githubPr } from './fakes/items.js'
 

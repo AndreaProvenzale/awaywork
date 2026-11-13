@@ -1,5 +1,5 @@
 import { styleText } from 'node:util'
-import { isNamed, shortRef } from '../../plan/foreman.js'
+import { isNamed, shortRef } from '../plan/foreman.js'
 import {
   type Chain,
   chainCells,
@@ -14,7 +14,7 @@ import {
   type UnitResult,
   unitNotes,
   unposted,
-} from '../../posts/report.js'
+} from '../posts/report.js'
 import { unitRef } from './plan.js'
 import { needsYouLines, skippedLines } from './skips.js'
 import {

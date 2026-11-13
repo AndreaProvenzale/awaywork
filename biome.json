@@ -19,8 +19,8 @@
               "options": {
                 "patterns": [
                   {
-                    "group": ["**/cli/**", "!**/cli/format/**"],
-                    "message": "Only src/cli imports the CLI; the rest may use its output formats in cli/format."
+                    "group": ["**/cli/**"],
+                    "message": "Only src/cli imports the CLI."
                   }
                 ]
               }

@@ -1,6 +1,6 @@
-import type { Item } from '../../core/types.js'
-import { type SkipKind, shortRef } from '../../plan/foreman.js'
-import { byKind, needsYouOn, type ReportedSkip } from '../../posts/report.js'
+import type { Item } from '../core/types.js'
+import { type SkipKind, shortRef } from '../plan/foreman.js'
+import { byKind, needsYouOn, type ReportedSkip } from '../posts/report.js'
 import {
   brief,
   byGroup,

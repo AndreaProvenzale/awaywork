@@ -7,6 +7,10 @@ import { remoteDir, runLockPath, runsDir, watchLockPath } from '../../config/pat
 import { isolateFor } from '../../core/isolation.js'
 import { fetchRun, type UploadedRun, uploadedRuns } from '../../forge/artifacts.js'
 import { type Exec, exec, gitRoot } from '../../forge/gh.js'
+import { reportJson } from '../../format/json.js'
+import { findChains, formatRun, formatUnit } from '../../format/report.js'
+import { formatSkipped } from '../../format/skips.js'
+import { ambiguous } from '../../format/why.js'
 import type { OnProgress } from '../../plan/probe.js'
 import {
   type Chain,
@@ -31,11 +35,7 @@ import {
 } from '../../run/execute.js'
 import { lockHolder, takeRunLock } from '../../run/run-lock.js'
 import { WORKFLOW } from '../../scheduler/github-actions.js'
-import { reportConfigError } from '../format/ask.js'
-import { reportJson } from '../format/json.js'
-import { findChains, formatRun, formatUnit } from '../format/report.js'
-import { formatSkipped } from '../format/skips.js'
-import { ambiguous } from '../format/why.js'
+import { reportConfigError } from '../tui/ask.js'
 import {
   type ItemCommands,
   interactive,

@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
-import { formatWhy } from '../src/cli/format/why.js'
 import { ConfigError, parseConfig } from '../src/config/load.js'
 import { builtinSkills } from '../src/core/skills.js'
+import { formatWhy } from '../src/format/why.js'
 import type { Attempts } from '../src/plan/attempts.js'
 import { planRun } from '../src/plan/foreman.js'
 import { collectItems } from '../src/plan/probe.js'

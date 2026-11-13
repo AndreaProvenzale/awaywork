@@ -2,7 +2,6 @@ import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
-import { ambiguous } from '../cli/format/why.js'
 import { ConfigError, loadConfig } from '../config/load.js'
 import {
   attemptsPath,
@@ -16,6 +15,7 @@ import {
 import type { Config } from '../config/schema.js'
 import { isolateFor } from '../core/isolation.js'
 import { exec } from '../forge/gh.js'
+import { ambiguous } from '../format/why.js'
 import { loadAttempts } from '../plan/attempts.js'
 import type { RunPlan } from '../plan/foreman.js'
 import {

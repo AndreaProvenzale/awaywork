@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type Handoff, handOff, initCommand, withoutEnvFile } from '../src/cli/commands/init.js'
-import { printBrand } from '../src/cli/format/ask.js'
+import { printBrand } from '../src/cli/tui/ask.js'
 import { pluginDir } from '../src/config/paths.js'
 
 vi.mock('../src/providers/index.js', async () => {

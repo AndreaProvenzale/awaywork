@@ -1,8 +1,8 @@
-import type { Item } from '../../core/types.js'
-import { isNamed, type PlannedUnit, type RunPlan } from '../../plan/foreman.js'
-import type { RunReport } from '../../posts/report.js'
-import { describeOccurrence, routines } from '../../sources/routines.js'
-import { isCheck } from '../../tasks/plan-file.js'
+import type { Item } from '../core/types.js'
+import { isNamed, type PlannedUnit, type RunPlan } from '../plan/foreman.js'
+import type { RunReport } from '../posts/report.js'
+import { describeOccurrence, routines } from '../sources/routines.js'
+import { isCheck } from '../tasks/plan-file.js'
 import {
   checkLines,
   deliverOf,

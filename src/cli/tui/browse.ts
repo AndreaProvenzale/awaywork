@@ -5,7 +5,7 @@ import type { Config } from '../../config/schema.js'
 import type { OnProgress } from '../../plan/probe.js'
 import { approveItem } from '../commands/approve.js'
 import { skipItem } from '../commands/skip.js'
-import { terminalBrand } from '../format/ask.js'
+import { terminalBrand } from './ask.js'
 import {
   type Effect,
   loading,
