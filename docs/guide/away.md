@@ -96,7 +96,7 @@ With a config, bare `/away` opens the pane, read from `awaywork report --json`:
 ![The /away pane beside the chat in Claude Code, on its Needs you tab: cards for two draft PRs to review, with the first card's reason and link below](/demo/away-pane.png)
 
 ```text
-☾ awaywork · last run 01:00 · 9 PRs · 14 need you
+☾ >_ awaywork · last run 01:00 · 9 PRs · 14 need you
 r: refresh p: plan
 1: Needs you (14)  2: Last run (12)  3: Next run
 4: Skipped (30)

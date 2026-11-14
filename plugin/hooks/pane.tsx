@@ -75,21 +75,18 @@ export function paneView({ e, els, now, d, v, c, keys: cardButtons, on }: Input)
   const prs = heads.filter((r) => r.outcome?.kind === 'pr').length
   const needs = rows.needs.length
   const noRunsYet = d.noReport && /^no runs in /.test(d.noReport)
-  const facts = c.setup
-    ? ['setting up']
-    : d.error
-      ? []
-      : [
-          report
-            ? `last run ${when(report.finishedAt, now)}${report.dryRun ? ' (dry run)' : ''}`
-            : d.loading
-              ? 'reading the last run…'
-              : d.noReport && !noRunsYet
-                ? d.noReport
-                : 'no run yet',
-          prs > 0 && counted(prs, 'PR'),
-          d.planning && 'planning…',
-        ].filter(Boolean)
+
+  const facts: string[] = []
+  if (c.setup) facts.push('setting up')
+  else if (!d.error) {
+    if (report)
+      facts.push(`last run ${when(report.finishedAt, now)}${report.dryRun ? ' (dry run)' : ''}`)
+    else if (d.loading) facts.push('reading the last run…')
+    else if (d.noReport && !noRunsYet) facts.push(d.noReport)
+    else facts.push('no run yet')
+    if (prs > 0) facts.push(counted(prs, 'PR'))
+    if (d.planning) facts.push('planning…')
+  }
 
   /** A plain Button whose hotkey the strip can press too. */
   const button = (key: string, hotkey: string | undefined, label: string, run: () => unknown) => {
@@ -99,7 +96,7 @@ export function paneView({ e, els, now, d, v, c, keys: cardButtons, on }: Input)
 
   const gap = e.surface === 'desktop' ? 'xs' : 0
   const needsYou = needs > 0 ? ` · ${needs} need you` : ''
-  const lead = `☾ awaywork${facts.length ? ` · ${facts.join(' · ')}` : ''}${needsYou}`
+  const lead = `☾ >_ awaywork${facts.length ? ` · ${facts.join(' · ')}` : ''}${needsYou}`
   // The buttons beside the line when both fit, else under it, the line cut: never a wrap to guess.
   const headRows = lead.length + 2 + 'r: refresh p: plan'.length <= width ? 1 : 2
   const header = (
@@ -109,7 +106,9 @@ export function paneView({ e, els, now, d, v, c, keys: cardButtons, on }: Input)
       columnGap={2}
     >
       <Text wrap="truncate-end">
-        <Text bold>☾ awaywork</Text>
+        <Text weight="bold">
+          ☾ <Text color="#F7B240">&gt;_</Text> awaywork
+        </Text>
         {facts.length > 0 && <Text dimColor> · {facts.join(' · ')}</Text>}
         {needs > 0 && <Text color="warning">{needsYou}</Text>}
       </Text>

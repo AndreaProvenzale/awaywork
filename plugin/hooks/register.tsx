@@ -328,17 +328,14 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
           key: `pick:${s.name}`,
           hotkey: i === 0 ? 'g' : i <= 9 ? String(i) : undefined,
           label: s.name,
-          run: () =>
-            update($, view, (x) => ({
+          run: () => {
+            const question = `${startQuestion(pick.ref, s.name, s.deliver)}${pick.theirs && s.deliver !== 'report' ? " Merging it can close an issue that isn't assigned to you." : ''}`
+            return update($, view, (x) => ({
               ...x,
               pick: undefined,
-              confirm: {
-                action: 'run',
-                key: pick.key,
-                skill: s.name,
-                question: `${startQuestion(pick.ref, s.name, s.deliver)}${pick.theirs && s.deliver !== 'report' ? " Merging it can close an issue that isn't assigned to you." : ''}`,
-              },
-            })),
+              confirm: { action: 'run' as Action, key: pick.key, skill: s.name, question },
+            }))
+          },
         }),
       ),
       {
