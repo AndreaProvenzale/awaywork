@@ -6,7 +6,7 @@ description: How to add a coding-agent provider to awaywork, with the research i
 
 A provider wraps one vendor's agent CLI. Adding one is a file in `src/providers/`, a line in the registry and a passing contract suite.
 
-Just want your own CLI in the rotation? A [command provider](../guide/configuration.md#bring-your-own-cli) needs no code, only a few lines of config. The rest of this page is for shipping a built-in.
+Just want your own CLI in the rotation? A [command provider](../guide/config/providers.md#bring-your-own-cli) needs no code, only a few lines of config. The rest of this page is for shipping a built-in.
 
 ## Research first
 

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
-import { canMatch } from '#config/schema'
+import { canMatch } from '#config/validate/where'
 import type { Provider } from '#core/types'
 import type { Exec } from '#forge/gh'
 import { workflow } from '#scheduler/github-actions'
@@ -474,7 +474,7 @@ describe('doctor on isolation', () => {
         status: 'warn',
         what: 'isolation',
         detail:
-          'none: setup, the agent and the checks run as you, your logins in reach; see https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox',
+          'none: setup, the agent and the checks run as you, your logins in reach; see https://andreaprovenzale.github.io/awaywork/guide/safety/isolation#not-a-sandbox',
       },
     ])
   })

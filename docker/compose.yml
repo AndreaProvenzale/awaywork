@@ -1,4 +1,4 @@
-# awaywork's daemon: docs/guide/scheduling.md, "In a container". One per developer, never one serving several.
+# awaywork's daemon: docs/guide/scheduling/container.md. One per developer, never one serving several.
 services:
   awaywork:
     build: .
@@ -13,7 +13,7 @@ services:
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       # Your windows' timezone, such as Europe/Rome.
       TZ: ${TZ:-UTC}
-      # 32 characters or more, to reach the daemon from your laptop: docs/guide/scheduling.md, "From your laptop".
+      # 32 characters or more, to reach the daemon from your laptop: docs/guide/scheduling/laptop.md.
       AWAYWORK_REMOTE_TOKEN: ${AWAYWORK_REMOTE_TOKEN:-}
     # For the proxy in front (Coolify's, or Caddy on a VPS), not the host; served only with the token set.
     expose:

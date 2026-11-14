@@ -64,9 +64,9 @@ Machine-readable docs:
    - `--provider`, `--source` and `--window` override what it detects ([`init`](../reference/cli.md#awaywork-init)).
    - Asana is skipped with a note unless `ASANA_TOKEN` is set; then it takes the first workspace and every project with the user's tasks. Linear likewise needs `LINEAR_API_KEY`. Jira is skipped: it needs a site and an email.
    - Cursor counts as installed only with `CURSOR_API_KEY` set; `--provider cursor` takes it anyway. Where it's the only agent, `--yes` without either stops, naming the missing key.
-   - To go further, edit the file from [Configuration](./configuration.md) and the [reference](../reference/config.md). `awaywork sources asana --json` gives the workspace and project gids and the real section names for `where`; `sources linear`, `sources jira` (once the config has its `site` and `email`) and `sources github` do the same, never showing the token.
+   - To go further, edit the file from [Configuration](./config/index.md) and the [reference](../reference/config.md). `awaywork sources asana --json` gives the workspace and project gids and the real section names for `where`; `sources linear`, `sources jira` (once the config has its `site` and `email`) and `sources github` do the same, never showing the token.
 3. Secrets go in `~/.config/awaywork/env` (`NAME=value` lines, mode 600), never the config. The user puts them there with `awaywork secret ASANA_TOKEN` (a hidden prompt; in Claude Code, `! pbpaste | awaywork secret ASANA_TOKEN` after copying it). Don't ask for them in the chat, and don't read that file or other tools' credentials.
-4. `awaywork doctor` until the config's line isn't `FAIL`. Its `gh login` and `<provider> login` lines name the account each run uses; with several on a machine, the config pins them ([Which login](./configuration.md#which-login)). Without a config it still lists each agent CLI: `ok` with its version, `warn` when not installed or, for Cursor, `CURSOR_API_KEY` unset.
+4. `awaywork doctor` until the config's line isn't `FAIL`. Its `gh login` and `<provider> login` lines name the account each run uses; with several on a machine, the config pins them ([Which login](./config/providers.md#which-login)). Without a config it still lists each agent CLI: `ok` with its version, `warn` when not installed or, for Cursor, `CURSOR_API_KEY` unset.
 5. For the queue, follow the [skill](#codex-and-friends). Run `awaywork plan` and show the user. With stdin and stdout both a terminal, `plan` and `report` open an interactive view; piped (`| cat`) or with `CI` set, they print text.
 
 ### What each command does
@@ -148,7 +148,7 @@ Plans and tasks:
   - With no id it's the last run that has one (`report --unit` and `--skipped` pick the same), so a run still going, or one that died, doesn't take its place. With none, or an id of a run without one, it exits 1.
   - Items are references (`source`, `key`, `title`, `url`), plus `type` and, when it's yours, `mine` on a skipped one. Skipped entries have `kind` and `needsYou` as in `plan --json`, except in runs from before skips had kinds.
   - Each started step has `files`, relative to the run dir: `log`, `report` and `diff` (its own commits) from its folder. A slice's first step, which publishes it, also has `sliceBody` and `sliceDiff` from `out/` (`out-2/` for a stacked slice and so on): the PR body or push summary (the joined report when the slice published reports) and the commits it published, or would have if the publish failed.
-  - A key is there only when its file was; a run [from the runner](./scheduling.md#reports-from-the-runner) has only `report.md`, `report.json` and `units.json`, so check a path exists before opening it.
+  - A key is there only when its file was; a run [from the runner](./scheduling/actions.md#reports-from-the-runner) has only `report.md`, `report.json` and `units.json`, so check a path exists before opening it.
   - `summary` is the first paragraph of `sliceBody`, else of `report`; the PR it opened or pushed onto is `outcome.url`. A `fix` that found nothing to commit, trimmed:
 
   ```json

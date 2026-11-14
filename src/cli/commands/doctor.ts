@@ -8,8 +8,9 @@ import { parse } from 'yaml'
 import { ConfigError, configPath, loadConfig } from '#config/load'
 import { expandHome, loginCommand, type Pin, pinLogins } from '#config/logins'
 import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '#config/paths'
-import { type Config, canMatch } from '#config/schema'
+import type { Config } from '#config/schema'
 import { hasSkills, loadSkills, unknownSkillsWarning } from '#config/skills'
+import { canMatch } from '#config/validate/where'
 import {
   DOCKER_TIMEOUT_MS,
   dockerVersion,
@@ -308,7 +309,7 @@ const tilde = (path: string) => {
 const CURSOR_KEYLESS =
   "CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file"
 
-const SAFETY = 'https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox'
+const SAFETY = 'https://andreaprovenzale.github.io/awaywork/guide/safety/isolation#not-a-sandbox'
 
 /**
  * twg's login per workspace, and one SSH push path that needs no passphrase: under launchd or cron

@@ -104,7 +104,10 @@ repos: { acme/api: { secrets: [DATABASE_URL] } }
     )
     const built = await read('Dockerfile')
     expect(built).toContain('ARG PACKAGES="@anthropic-ai/claude-code @openai/codex"\n')
-    const guide = await readFile(new URL('../docs/guide/scheduling.md', import.meta.url), 'utf8')
+    const guide = await readFile(
+      new URL('../docs/guide/scheduling/container.md', import.meta.url),
+      'utf8',
+    )
     const cursor = guide.match(/```dockerfile\n([\s\S]*?)```/)?.[1]?.replace(/^ {2}/gm, '')
     expect(cursor).toMatch(/^RUN install -d \/opt\/cursor/)
     expect(built).toContain(`as RUN lines: setup runs as the worker user.\n${cursor}`)

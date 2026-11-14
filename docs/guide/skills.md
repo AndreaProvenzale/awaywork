@@ -10,12 +10,12 @@ A skill tells the worker what to do with a unit. Every skill is an [Agent Skills
 
 | Skill | For | Delivers |
 | --- | --- | --- |
-| `fix` | Problems listed on an item: your PR's failing checks or unresolved threads, threads you started on an awaywork PR, a task back from QA, an error from a [custom source](./custom-sources.md#recipe-sentry-errors), or this run's review in a [loop](./chains.md#loops) | draft PR |
-| `implement` | An issue or task with no PR, or in progress with yours: the unambiguous next steps, or [questions](./workflows.md#questions) when it's too vague | draft PR |
+| `fix` | Problems listed on an item: your PR's failing checks or unresolved threads, threads you started on an awaywork PR, a task back from QA, an error from a [custom source](../examples/sentry.md), or this run's review in a [loop](./config/chains.md#loops) | draft PR |
+| `implement` | An issue or task with no PR, or in progress with yours: the unambiguous next steps, or [questions](./workflows/questions.md#questions) when it's too vague | draft PR |
 | `review` | A PR awaiting your review, or this run's work as a `then` step. Posts nothing unless `deliver: pending_review` leaves it as your pending review. Verdict `approve`, `comments` or `changes`; line comments to `review.json` under `pending_review` | report |
-| `plan` | A task with no PR: a plan, no code, or [questions](./workflows.md#questions) when no reading is likely enough; under `deliver: plan`, tasks in `plan.yml` ([Plans](./workflows.md#plans)) | report |
-| `judge` | A [gate's judge](./workflows.md#judges) of commits or a plan's or report's files: verdict `fires` when a human must decide, one line per decision | report |
-| `sync` | Your PR behind its base: awaywork merges and pushes, a model only on `conflicts: true`; needs `deliver: push` ([`sync`](./chains.md#sync)) | push |
+| `plan` | A task with no PR: a plan, no code, or [questions](./workflows/questions.md#questions) when no reading is likely enough; under `deliver: plan`, tasks in `plan.yml` ([Plans](./workflows/plans.md)) | report |
+| `judge` | A [gate's judge](./workflows/gates.md#judges) of commits or a plan's or report's files: verdict `fires` when a human must decide, one line per decision | report |
+| `sync` | Your PR behind its base: awaywork merges and pushes, a model only on `conflicts: true`; needs `deliver: push` ([`sync`](./config/chains.md#sync)) | push |
 
 ```sh
 awaywork skills list   # every skill a rule can name, and where it comes from
@@ -38,7 +38,7 @@ It's a one-off rule, last in the queue, for that run alone: `plan` doesn't show 
 
 - Any listed skill but `judge` (a gate) and `sync` (needs `deliver: push`).
 - No `on_done`, `deliver`, `wait`, thread or gates of its own (top-level gates still apply): a draft PR on a new `away/` branch, or a report.
-- Nothing on the item: no comment, move or thread. What a rule would post, questions included, stays in the report; a draft's `.away/out/` files still go to your [`store`](./workflows.md#store).
+- Nothing on the item: no comment, move or thread. What a rule would post, questions included, stays in the report; a draft's `.away/out/` files still go to your [`store`](./workflows/store.md).
 - Nothing goes on from it: after `continue` or `ask` you finish the draft or report by hand, and the attempt counts for no rule.
 
 ## Where skills come from
@@ -98,12 +98,12 @@ awaywork replay 20261006-020000 acme-api-1
 
 Replay rebuilds a past unit's first step, a clone at its start commit with its saved context, and runs it again, so you see what an edited skill or instruction does. The files are read fresh: each `SKILL.md`, instruction file and repo and provider config. The unit is as recorded: its skills and its rule's `model`, `with` and `instructions` list, so config edits to those change nothing.
 
-It runs the provider and model once, outside the quota ceilings, under your [isolation](./configuration.md#isolation), and never pushes or opens a PR. The clone stays on the unit's branch under `replays/` in the run's state dir (its own `/tmp/awaywork-*` under `user`), with the worker's `out/` beside it. Fetch the branch into your checkout to look (`git fetch <clone> away/acme-api-1`), which runs nothing of it.
+It runs the provider and model once, outside the quota ceilings, under your [isolation](./safety/isolation.md), and never pushes or opens a PR. The clone stays on the unit's branch under `replays/` in the run's state dir (its own `/tmp/awaywork-*` under `user`), with the worker's `out/` beside it. Fetch the branch into your checkout to look (`git fetch <clone> away/acme-api-1`), which runs nothing of it.
 
 Details:
 
 - The context is the post-run copy, so files the worker edited under `context/` replay as edited. Setup gets no repo `secrets`; MCP servers don't start.
-- Only a unit's first step, on its rule's first model. A later [`then`](./chains.md#then) step starts from commits only the chain's clone had, and records no `replay.json`, nor does a [retry](./configuration.md#retry-on-the-next-model), a unit that never started, or one from before replay existed.
+- Only a unit's first step, on its rule's first model. A later [`then`](./config/chains.md#then) step starts from commits only the chain's clone had, and records no `replay.json`, nor does a [retry](./config/queue-rules.md#retry-on-the-next-model), a unit that never started, or one from before replay existed.
 - The clone is still the worker's, `.git` included: read its files, but run no git in it, not even `git status`, `git diff` or `git log`, nor its scripts. A worker's submodule config runs its `core.fsmonitor` on your `git status`, as would the clone's `core.pager` if the replay couldn't restore its config; an `.envrc`, a `package.json` script or editor tasks run as you too, what `user` and `container` prevent.
 - awaywork restores `.git/config` and removes `.git/hooks`, nothing more, unless the clone is lost, and prints where it stays, even on failure.
 
@@ -139,22 +139,22 @@ queue:
     where: { type: pr, mine: true, checks: failing, label: flaky }
 ```
 
-Say what the output must state, as the built-ins do: what was checked, how, and what couldn't be. A skill that proves a change, with the gates that check what it left, is worked through in [Proving a change](./workflows.md#proving-a-change). The context is in `.away/context/<item>/`: `item.md` always, `diff.patch`, `threads.md` and `checks.md` for a PR, and for a plan's task the contract in `contract/` and what other repos' tasks ship in `shipped/<task>/` ([Across repos](./workflows.md#across-repos)).
+Say what the output must state, as the built-ins do: what was checked, how, and what couldn't be. A skill that proves a change, with the gates that check what it left, is worked through in [Proving a change](./workflows/proving.md). The context is in `.away/context/<item>/`: `item.md` always, `diff.patch`, `threads.md` and `checks.md` for a PR, and for a plan's task the contract in `contract/` and what other repos' tasks ship in `shipped/<task>/` ([Across repos](./workflows/tasks.md#across-repos)).
 
 Frontmatter and rule keys:
 
-- `metadata.deliver: report` makes it report; otherwise it commits, where the rule's [`deliver`](./chains.md#then) says.
-- `metadata.type`, a conventional-commit type (`feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, `revert`), fills `{type}` in a [branch name](./configuration.md#branch-names): `{type}/{key}-{title}` gives `feat/ENG-12-login-with-sso` for `implement`. The chain's first committing skill decides; otherwise `chore`.
+- `metadata.deliver: report` makes it report; otherwise it commits, where the rule's [`deliver`](./config/chains.md#then) says.
+- `metadata.type`, a conventional-commit type (`feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, `revert`), fills `{type}` in a [branch name](./config/repos.md#branch-names): `{type}/{key}-{title}` gives `feat/ENG-12-login-with-sso` for `implement`. The chain's first committing skill decides; otherwise `chore`.
   - It's read at plan time, before the clone, so a repo's `.awaywork/skills/` can't set it: a repo skill replacing a built-in gets the built-in's type, others `chore`.
-- `metadata.merge: base` has awaywork merge the PR's base itself before setup and push it, as [`sync`](./chains.md#sync) does; the body matters only on a [conflict](./chains.md#conflicts), for the worker resolving it, which can edit or delete the merge's files but not add one. The rule must be one step with `deliver: push`, else it's skipped.
+- `metadata.merge: base` has awaywork merge the PR's base itself before setup and push it, as [`sync`](./config/chains.md#sync) does; the body matters only on a [conflict](./config/chains.md#conflicts), for the worker resolving it, which can edit or delete the merge's files but not add one. The rule must be one step with `deliver: push`, else it's skipped.
 - `with: { key: value }` on a rule or step lists values in the prompt's Parameters section (multi-line values JSON-quoted on one line). Document them under `metadata`, e.g. `metadata: { depth: "quick or thorough" }`; awaywork doesn't check them.
 - `skills: [name]` on a rule, or top-level, adds skills the agent may call.
 
 What a skill writes in `.away/out/`:
 
-- **`status`:** one word when a step stops, as the harness asks: `done`, `ask` or `continue`. A skill writing none works as before ([Questions](./workflows.md#questions), [Continue](./workflows.md#continue)).
-- **`verdict`:** one lowercase word, like `pass`, shown in the report and matched by a [loop](./chains.md#loops)'s `until`.
+- **`status`:** one word when a step stops, as the harness asks: `done`, `ask` or `continue`. A skill writing none works as before ([Questions](./workflows/questions.md#questions), [Continue](./workflows/questions.md#continue)).
+- **`verdict`:** one lowercase word, like `pass`, shown in the report and matched by a [loop](./config/chains.md#loops)'s `until`.
 - **`review.json`:** line comments, `[{ "path": "src/limit.ts", "line": 42, "body": "Burst should come from config." }]`, `line` on the new side, at most 100 comments and 100 KB. Under [`pending_review`](./how-it-works.md#delivery) they land on lines the diff adds or shows, `report.md` the body; if GitHub refuses one, all go in the body, and an invalid file is dropped, the result saying why. Otherwise unread.
-- **`questions.md`**, with `ask` in `status`: plain text (Jira and Asana show no Markdown), at most 30 KB. awaywork posts it on your item and waits ([Questions](./workflows.md#questions)); the next `item.md` shows it under `awaywork's questions`, replies after. Without `ask`, a committing step went on and nobody reads it.
-- **`plan.yml`:** asked for under `deliver: plan`, in the shape the prompt spells out (the `planned` rules' skills, the repos a task may name, task ids a closed PR retired), optionally with a contract file; any skill can write it. awaywork checks it and posts it with `report.md` ([Plans](./workflows.md#plans)); the next `item.md` shows it under `awaywork's plan`.
-- **Anything else** but a plan's contract is kept with the run and reaches [notify](./configuration.md#notify) as `$AWAYWORK_OUT_DIR`, unread by awaywork. Treat it as untrusted: the model wrote it after reading others' text. It also holds earlier [chain](./chains.md#then) steps' files, so check `$AWAYWORK_SKILL` first.
+- **`questions.md`**, with `ask` in `status`: plain text (Jira and Asana show no Markdown), at most 30 KB. awaywork posts it on your item and waits ([Questions](./workflows/questions.md#questions)); the next `item.md` shows it under `awaywork's questions`, replies after. Without `ask`, a committing step went on and nobody reads it.
+- **`plan.yml`:** asked for under `deliver: plan`, in the shape the prompt spells out (the `planned` rules' skills, the repos a task may name, task ids a closed PR retired), optionally with a contract file; any skill can write it. awaywork checks it and posts it with `report.md` ([Plans](./workflows/plans.md)); the next `item.md` shows it under `awaywork's plan`.
+- **Anything else** but a plan's contract is kept with the run and reaches [notify](./results.md#notify) as `$AWAYWORK_OUT_DIR`, unread by awaywork. Treat it as untrusted: the model wrote it after reading others' text. It also holds earlier [chain](./config/chains.md#then) steps' files, so check `$AWAYWORK_SKILL` first.

@@ -1,5 +1,5 @@
 ---
-description: Read the plan awaywork would run, with plan --why, --skipped and --rules, run one unit, detached or narrowed to a repo or a rule, and read the morning report, its keys, report.md and stats.
+description: Read the plan awaywork would run, with plan --why, --skipped and --rules, why a unit waits, run one unit, detached or narrowed to a repo or a rule, and read the morning report, its keys, report.md and stats.
 ---
 
 # Plan, run, report
@@ -95,6 +95,28 @@ Queue
 
 An item goes to the first rule it matches; a later rule that matches it too shows `1 taken by #1: acme/api#1`. To reorder, move the rules in the config.
 
+## Why a unit waits
+
+`awaywork plan` says why a unit makes no work this run:
+
+- **Waiting for review:** it links an open awaywork PR. awaywork doesn't add to work you haven't read.
+- **Waiting for your answer:** the item's newest comment is awaywork's [questions](./workflows/questions.md#questions).
+- **Waiting for your approval:** of awaywork's [plan](./workflows/plans.md) on it, or of a report rule's result that [waits](./workflows/posts.md#posts-that-wait).
+- **Unchanged since run `<id>`:** no item changed (`updated`, and for a [`sync`](./config/chains.md#sync) its base's head) since a worker last finished this skill on it, so a review isn't redone every run. A [`continue`](./workflows/questions.md#continue) is exempt.
+- **Gave up after 3 attempts; next try on `<date>`:** its chain didn't finish 3 runs in a row. It retries a week later, changed or not, and again a week after each failed try, so an error that fires nightly isn't retried nightly.
+- **Skipped by you:** `awaywork skip <source:key>` (e.g. `github:acme/api#5`) holds an item, and any unit it joins, until `awaywork unskip` or the `--until` date. `plan --skipped skipped_by_you` lists it with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`.
+
+`run --unit` runs a unit anyway, unchanged, skipped or given up; a given-up one runs as its one try.
+
+Details:
+
+- An awaywork PR matches only rules whose `where` names `ours`, like the default `fix` on threads you left on it. That rule takes the unit even over a better-ranked linked item, and its draft stacks on the awaywork PR.
+- A GitHub issue's draft PR into the default branch says `Closes` it, which links them, so the issue waits with the draft.
+- awaywork's draft whose footer says it goes on there doesn't wait: the unit [continues](./workflows/questions.md#continue) on it.
+- A PR awaywork [pushed onto](./config/chains.md#push) waits while its head is awaywork's push, unless that was a [`sync`](./config/chains.md#sync)'s clean merge.
+- An attempt is one chain, finished when every step that ran was done and no publish left anything behind. A failure, an error, a `unit_minutes` timeout or unpushed commits don't finish it; a plan report then a failed implement is one failure.
+- A finished attempt clears the count; another skill starts a new one. Skipped, dry-run and aborted units don't count, nor do stops the item didn't or may not have caused (quota, session limit, window end, a watchdog stop for low memory or disk). Attempts live in `~/.local/state/awaywork/attempts.json`.
+
 ## Run one unit
 
 ```sh
@@ -124,7 +146,7 @@ To stop a detached unit, kill the pid in `~/.local/state/awaywork/run.lock`: it 
 
 `--repo <glob>` and `--rule <n>` (counting from 1, as `plan` shows) work on `plan` and `run`, and together both must hold. Caps and ceilings stay the full run's, but only matching units count: with `limits.units: 3`, `--repo acme/api` plans up to three acme/api units.
 
-The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the worker's log, its context files and the report. The id is the run's start time in UTC; old ones go after [`keep_runs`](./configuration.md#old-runs).
+The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the worker's log, its context files and the report. The id is the run's start time in UTC; old ones go after [`keep_runs`](./config/index.md#old-runs).
 
 ## The morning report
 
@@ -169,7 +191,7 @@ diff: this unit left no diff
 - A skipped item ends on what it asks of you (`review PR`, `answer question`, `approve`, `add repo`, ...) or why it waits (`no rule`, `over cap`, ...). Needs you sorts a repo's items by that, so PRs to review sit together.
 - The line under a skipped item is the rest of its reason, without the closest rule in Needs you; `⏎` has all of it. Rows run to the terminal's width, keeping that word on screen.
 - It opens on the first Needs you item, else the first unit, else the first skip, and leaves out empty sections; with nothing at all, it says why.
-- The footer dims keys with nothing behind them: `d` on a unit that committed nothing, `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs.
+- The footer dims keys with nothing behind them: `d` on a unit that committed nothing, `l` on a run [from the runner](./scheduling/actions.md#reports-from-the-runner), which keeps no logs.
 
 | Key | Does |
 | --- | --- |
@@ -202,7 +224,7 @@ awaywork report 20261019-220012 --unit <n|key>    shows one
 awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
 ```
 
-`report --unit <n>` prints one unit in full, as `⏎` pages it: links, each step with its provider and what it left when there are several, the files still there (none on a run [from the runner](./scheduling.md#reports-from-the-runner)), then its PR body or report. It takes the row number, the unit id (a step's gives its chain) or an item:
+`report --unit <n>` prints one unit in full, as `⏎` pages it: links, each step with its provider and what it left when there are several, the files still there (none on a run [from the runner](./scheduling/actions.md#reports-from-the-runner)), then its PR body or report. It takes the row number, the unit id (a step's gives its chain) or an item:
 
 <!-- Generated by `pnpm docs:gen` from scripts/screens.ts. Do not edit. -->
 
@@ -228,9 +250,9 @@ Fix the billing page build
 Also:
 
 - `report --skipped [kind]` lists the skipped items as `plan --skipped` does; `report --json` prints the run as [JSON](./agents.md).
-- `report --list` lists recent runs with their units, PRs and reports, and `report <id>` prints one; inside a control repo they include the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner).
+- `report --list` lists recent runs with their units, PRs and reports, and `report <id>` prints one; inside a control repo they include the runs GitHub Actions [uploaded](./scheduling/actions.md#reports-from-the-runner).
 - During a run there's no report yet: `report` lists the steps done, the one working and its `worker.log` path, to `tail -f`.
-- The run dir also keeps `report.md`, the run as markdown: units with every step under its chain and a summary line each, Needs you, the skips folded by kind, each report folded under its unit. GitHub Actions puts it in the job summary and [`notify`](./configuration.md#notify) gets it. A run from before `report.json` prints its `report.md`.
+- The run dir also keeps `report.md`, the run as markdown: units with every step under its chain and a summary line each, Needs you, the skips folded by kind, each report folded under its unit. GitHub Actions puts it in the job summary and [`notify`](./results.md#notify) gets it. A run from before `report.json` prints its `report.md`.
 
 ## Stats
 

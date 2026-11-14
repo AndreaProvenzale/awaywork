@@ -1,5 +1,5 @@
 #!/bin/sh
-# Renders docs/public/demo/: the quick-start GIF, then a second night's run and the /away pane's PNG. Needs vhs, and for the pane Claude Code and a token.
+# Renders docs/public/demo/: the quick-start GIF, then a second night's run and the /away pane's PNGs, Needs you and Config. Needs vhs, and for the pane Claude Code and a token.
 set -eu
 cd "$(dirname "$0")/../.."
 home=${DEMO_HOME:-/tmp/awaywork-demo}
