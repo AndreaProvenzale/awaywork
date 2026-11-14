@@ -3,6 +3,7 @@ import { atom, read, update } from 'claude-code'
 
 import type { ConfigRule, ConfigState, Explained, RuleTakes, View } from '../types'
 import { awaywork, firstLine, json } from './cli'
+import { clip } from './text'
 
 const config = atom({ plugin: 'awaywork', key: 'config' } as const, {} as ConfigState, {
   shape: 'config-1',
@@ -19,6 +20,12 @@ export async function configPaths($: EngineInterface, named?: string, timeoutMs 
   const missing = r.exitCode === 1 && /not found; awaywork init writes one/.test(r.stderr)
   if (!path.startsWith('/')) return { missing }
   return { missing, path, draft: `${folderOf(path)}/${DRAFT}` }
+}
+
+/** A call on the config setup named, which the shell profile can't bring to this session. */
+export async function onKnownConfig($: EngineInterface, args: string[]) {
+  const { named } = await read($, config)
+  return named ? ['--config', named, ...args] : args
 }
 
 type Slot = { running?: Promise<unknown>; again?: boolean }
@@ -245,9 +252,6 @@ function flowOf(r: ConfigRule, rules: ConfigRule[], width: number) {
   ]
   return { line: flat, under: undefined }
 }
-
-const clip = (text: string, room: number) =>
-  text.length <= room ? text : `${text.slice(0, Math.max(0, room - 1))}…`
 
 type Button = (
   key: string,

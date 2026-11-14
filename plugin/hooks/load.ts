@@ -2,8 +2,9 @@ import type { EngineInterface } from 'claude-code'
 import { atom, update } from 'claude-code'
 
 import type { Data, Plan, Report, View } from '../types'
-import { acts, onKnownConfig, PLAN_TIMEOUT } from './actions'
-import { json } from './cli'
+import { acts } from './actions'
+import { json, PLAN_TIMEOUT } from './cli'
+import { onKnownConfig } from './config'
 
 const data = atom({ plugin: 'awaywork', key: 'data' } as const, {} as Data, { shape: 'data-2' })
 const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-3' })

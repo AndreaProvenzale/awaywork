@@ -58,7 +58,7 @@ function groupOf({ source, key }: ItemRef): string {
 const reasonOf = (s: Skip) => s.reason.replace(` ${s.url ?? s.item.url}`, '').replace(/ on$/, '')
 
 /** What a skip asks of you, or plainly why it waits, ranked as its group lists them, as the CLI's `actions`. */
-const actions: Record<string, string> = {
+const kindWords: Record<string, string> = {
   waiting_for_review: 'review PR',
   waiting_for_answer: 'answer question',
   waiting_for_approval: 'approve',
@@ -85,7 +85,7 @@ const actions: Record<string, string> = {
   running: 'running',
 }
 
-const ranks = Object.keys(actions)
+const ranks = Object.keys(kindWords)
 
 type Glyph = { word: string; color?: Color }
 
@@ -136,7 +136,7 @@ function skipRow(tab: Tab, s: Skip): Row {
   const stays = s.kind === 'skipped_by_you' ? ' Your skip stays for the coming runs.' : ''
   // Your skip hides "pushed onto your PR": the url on it is that PR.
   const pushedOn = s.kind === 'skipped_by_you' && s.url
-  const action = s.kind && actions[s.kind]
+  const action = s.kind && kindWords[s.kind]
   const glyph = s.needsYou && s.kind ? needsGlyphs[s.kind] : undefined
   return {
     id: `row:${tab}:${key}`,

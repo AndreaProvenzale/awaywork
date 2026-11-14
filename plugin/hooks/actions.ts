@@ -2,24 +2,17 @@ import type { EngineInterface } from 'claude-code'
 import { atom, read, update } from 'claude-code'
 
 import type { Action, ConfigState, Data, Mark, Skills, Tab, View } from '../types'
-import { awaywork, firstLine, json } from './cli'
-import { wantTakes } from './config'
+import { awaywork, firstLine, json, PLAN_TIMEOUT } from './cli'
+import { onKnownConfig, wantTakes } from './config'
 import { itemKey, layout, type Row, startQuestion } from './rows'
 
 export const PANE = 'away'
-export const PLAN_TIMEOUT = 600_000
 
 const data = atom({ plugin: 'awaywork', key: 'data' } as const, {} as Data, { shape: 'data-2' })
 const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-3' })
 const config = atom({ plugin: 'awaywork', key: 'config' } as const, {} as ConfigState, {
   shape: 'config-1',
 })
-
-/** A call on the config setup named, which the shell profile can't bring to this session. */
-export async function onKnownConfig($: EngineInterface, args: string[]) {
-  const { named } = await read($, config)
-  return named ? ['--config', named, ...args] : args
-}
 
 const questions = {
   skip: (ref: string) => `skip ${ref} in the coming runs? awaywork unskip undoes it`,

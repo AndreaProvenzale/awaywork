@@ -10,7 +10,7 @@ export function when(iso: string, now: number) {
   return `${pad(t.getMonth() + 1)}-${pad(t.getDate())} ${time}`
 }
 
-const clip = (text: string, room: number) =>
+export const clip = (text: string, room: number) =>
   text.length <= room ? text : `${text.slice(0, Math.max(0, room - 1))}…`
 
 export const counted = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`

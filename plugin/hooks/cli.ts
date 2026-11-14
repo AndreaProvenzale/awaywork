@@ -1,6 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
 const FIX = 'npm i -g awaywork@latest'
+export const PLAN_TIMEOUT = 600_000
 
 export type Got<T> = { json: T } | { error: string } | { failed: string }
 
