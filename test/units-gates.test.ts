@@ -610,6 +610,25 @@ it('fires the gate of a judge that turns the folder of a config it hid into a fi
   expect(outcomes[0]).toMatchObject({ draft: 'gate risk fired' })
 })
 
+it("hides a slice's config that git ignores from its judge without firing the gate", async () => {
+  const settings = '.claude/settings.local.json'
+  const seen: Record<string, string | undefined> = {}
+  const { outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    async (dir, skill) => {
+      seen[skill] = await readFile(join(dir, settings), 'utf8').catch(() => undefined)
+      if (skill === 'judge') return verdict('clear')(dir)
+      await appendFile(join(dir, '.git/info/exclude'), `/${settings}\n`)
+      await mkdir(join(dir, '.claude'), { recursive: true })
+      await writeFile(join(dir, settings), 'SLICE HOOKS')
+      return commitFile(dir, 'src/app.ts', 'x')
+    },
+    { provider: { repoConfig: [settings] } },
+  )
+  expect(seen).toEqual({ implement: undefined, judge: undefined })
+  expect(outcomes[0]).not.toHaveProperty('draft')
+})
+
 it("fires the gate when its judge can't run", async () => {
   const { opened, outcomes } = await gated(
     `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,

@@ -1,4 +1,14 @@
-import { link, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  link,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -402,6 +412,27 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
     expect(await readFile(join(dir, '.away/out/pr.md'), 'utf8')).toBe('Add VAT\n\nDone.\n')
     expect((await stat(join(dir, '.away/out/pr.md'))).nlink).toBe(1)
     expect((await readdir(join(dir, '.away/out'))).sort()).toEqual(['diff.patch', 'pr.md'])
+  }
+})
+
+it("fires on a judge's write to an agent's config that git ignores, and puts back the slice's own", async () => {
+  const settings = '.claude/settings.local.json'
+  for (const own of [undefined, 'SLICE HOOKS']) {
+    const { dir, from } = await slice()
+    await appendFile(join(dir, '.git/info/exclude'), `/${settings}\n`)
+    await mkdir(join(dir, '.claude'))
+    if (own) await writeFile(join(dir, settings), own)
+    const judge = judging('clear', '', (dir) => writeFile(join(dir, settings), 'JUDGE HOOKS'))
+    expect(
+      await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, { from, out }),
+    ).toEqual([
+      {
+        name: 'risk',
+        line: 'the judge changed the clone; awaywork dropped its changes',
+        judged: true,
+      },
+    ])
+    expect(await readFile(join(dir, settings), 'utf8').catch(() => undefined)).toBe(own)
   }
 })
 

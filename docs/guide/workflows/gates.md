@@ -98,7 +98,7 @@ Details:
 
 - Any other verdict, or none, adds nothing. Scripts set the minimum; a judge only adds, and can't clear a script's gate, even one with its name.
 - It reads what the agent wrote, `// reviewed: safe` comments included, so it can be fooled, and then it just doesn't fire.
-- It can't change what's published: a commit, moved HEAD, uncommitted change or changed `.away/out/` file it leaves is put back, and the gate fires with `the judge changed the clone; awaywork dropped its changes`. A worker process that outlived the watchdog could still change a file after that.
+- It can't change what's published: a commit, moved HEAD, uncommitted change, changed `.away/out/` file or agent config it leaves (`.claude/settings.local.json` too, though git ignores it) is put back, and the gate fires with `the judge changed the clone; awaywork dropped its changes`. A worker process that outlived the watchdog could still change a file after that.
 - It fails closed: a judge that errors, times out, is stopped or can't run fires with `judge didn't run: <why>`, so a run out of quota drafts its `deliver: pr` PR.
 - Each judge is one more model run per published chain, on the steps' quota, logged as `acme-backend-412: gate risk, judge on claude`, its own log beside what the chain published (`out/judge-risk-judge.log`).
 

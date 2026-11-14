@@ -1,7 +1,8 @@
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { cp, lstat, mkdir, rm, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
+import { providers } from '#providers/index'
 import { git } from './checks'
 import { commandEnv } from './env'
 import { readOutput, refuseSymlinks } from './safe-files'
@@ -59,7 +60,10 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
   )
 }
 
-/** A clone as a step found it, as git trees: what it staged, and its working tree with `out/`. */
+/** The files in a clone any agent reads as config, which a gitignore may hide from git. */
+const agentConfig = [...new Set(Object.values(providers).flatMap((p) => p.repoConfig ?? []))]
+
+/** A clone as a step found it, as git trees: what it staged, and its working tree with `out/` and the agents' config. */
 export interface Snapshot {
   staged: string
   tree: string
@@ -80,7 +84,10 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
     // Starting from the clone's index spares hashing every unchanged file again.
     await cp(join(dir, '.git', 'index'), index)
     await addTo(dir, index, '-A', ['.'])
-    await addTo(dir, index, '-f', [`${WORK_DIR}/out`])
+    const present = await Promise.all(
+      agentConfig.map((p) => lstat(join(dir, p)).catch(() => undefined)),
+    )
+    await addTo(dir, index, '-f', [`${WORK_DIR}/out`, ...agentConfig.filter((_, i) => present[i])])
     return { staged, tree: await run('write-tree') }
   } finally {
     await rm(index, { force: true })
@@ -124,6 +131,9 @@ export async function discard(dir: string, start: string, saved: Snapshot): Prom
   await rm(join(dir, WORK_DIR, 'out'), { recursive: true, force: true })
   await git(dir, 'reset', '-q', '--hard', start)
   await git(dir, 'clean', '-q', '-fd')
+  // `clean` skips ignored files: the agents' config goes too, the tree putting back its own.
+  await refuseSymlinks(dir, agentConfig.map(dirname))
+  await Promise.all(agentConfig.map((p) => rm(join(dir, p), { recursive: true, force: true })))
   await git(dir, 'read-tree', '-u', '--reset', saved.tree)
   await git(dir, 'read-tree', saved.staged)
 }
