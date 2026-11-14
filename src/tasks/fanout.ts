@@ -2,7 +2,7 @@ import type { Config } from '#config/schema'
 import { defaultType, renderBranch } from '#core/branch'
 import { resolveSkill, type SkillCatalog } from '#core/skills'
 import type { BranchPr, Item, Rule, TaskPr, ThenStep } from '#core/types'
-import type { SkipKind, Skipped } from '#plan/foreman'
+import type { Skipped, SkipReason } from '#plan/foreman'
 import { isLoop, ruleFor } from '#plan/queue'
 import { settingsFor } from '#plan/repos'
 import type { Skip } from '#plan/skips'
@@ -220,13 +220,13 @@ export function expandPlans(
 ): { items: Item[]; skipped: Skipped[] } {
   const out: Item[] = []
   const skipped: Skipped[] = []
-  const skip = (item: Item, kind: SkipKind, reason: string, url?: string) =>
+  const skip = (item: Item, { kind, reason, url }: SkipReason) =>
     skipped.push({ item, kind, reason, ...(url && { url }) })
   for (const card of items) {
     const state = planCard(card, queue, config, catalog)
     // Without its tasks' PRs a re-plan wouldn't know the retired ids, nor a fan-out what's done.
     if ((state?.state === 'feedback' || state?.state === 'approved') && card.taskPrs === null) {
-      skip(card, 'fanned_out', "its plan's tasks' PRs couldn't be read")
+      skip(card, { kind: 'fanned_out', reason: "its plan's tasks' PRs couldn't be read" })
       continue
     }
     // A card you skipped goes down the queue as itself, to be skipped there, its tasks with it.
@@ -235,7 +235,10 @@ export function expandPlans(
       continue
     }
     if (!card.mine) {
-      skip(card, 'refused_delivery', "plan approved, but the card isn't yours: its tasks don't run")
+      skip(card, {
+        kind: 'refused_delivery',
+        reason: "plan approved, but the card isn't yours: its tasks don't run",
+      })
       continue
     }
     // Unset only when no task had a rule or a repo to look its PR up by.
@@ -273,51 +276,51 @@ export function expandPlans(
           .find(([, , state]) => state) ?? []
       if (pr?.state === 'merged') {
         states.push(`${t.id} merged`)
-        skip(item, 'task_merged', `merged in ${pr.url}`, pr.url)
+        skip(item, { kind: 'task_merged', reason: `merged in ${pr.url}`, url: pr.url })
       } else if (unread) {
         states.push(`${t.id} waits for the store`)
-        skip(item, 'store_failed', unread)
+        skip(item, { kind: 'store_failed', reason: unread })
       } else if (reported(t)) {
         states.push(`${t.id} done`)
-        skip(item, 'task_done', `done: its result is on ${card.url}`, card.url)
+        skip(item, {
+          kind: 'task_done',
+          reason: `done: its result is on ${card.url}`,
+          url: card.url,
+        })
       } else if (asked.length) {
         states.push(`${t.id} waits for your answer`)
         const named = asked.map((id) => `task ${id}'s`).join(' and ')
-        skip(
-          item,
-          'waiting_for_answer',
-          `waiting for your answer to ${named} questions on ${card.url}`,
-          card.url,
-        )
+        skip(item, {
+          kind: 'waiting_for_answer',
+          reason: `waiting for your answer to ${named} questions on ${card.url}`,
+          url: card.url,
+        })
       } else if (gated.length) {
         const named = gated.map((g) => `task ${g.id}'s`).join(' and ')
         const ids = gated.map((g) => g.id).join(' and ')
         states.push(`${t.id} waits for ${gated.includes(t) ? 'your approval' : ids}`)
-        skip(
-          item,
-          gated.includes(t) ? 'waiting_for_approval' : 'waiting_for_task',
-          `waiting for your approval of ${named} result on ${posts}`,
-          posts,
-        )
+        skip(item, {
+          kind: gated.includes(t) ? 'waiting_for_approval' : 'waiting_for_task',
+          reason: `waiting for your approval of ${named} result on ${posts}`,
+          url: posts,
+        })
       } else if (pr) {
         states.push(pr.left ? `${t.id} draft says ${pr.left.status}` : `${t.id} PR open`)
         out.push({ ...item, linkedPrs: [pr] })
       } else if (blocker) {
         states.push(`${t.id} waits for ${blocker}`)
-        skip(
-          item,
-          'waiting_for_task',
-          `waiting for task ${blocker}'s PR to merge${blocker === waitedOn ? '' : `, ${waitedOn}'s merged into it`}`,
-          prs[blocker]?.url,
-        )
+        skip(item, {
+          kind: 'waiting_for_task',
+          reason: `waiting for task ${blocker}'s PR to merge${blocker === waitedOn ? '' : `, ${waitedOn}'s merged into it`}`,
+          url: prs[blocker]?.url,
+        })
       } else if (checkedOn) {
         states.push(`${t.id} waits for ${checkedOn}'s check ${check}`)
-        skip(
-          item,
-          'waiting_for_task',
-          `waiting for ${checkedOn}'s check ${check} (${checkState})`,
-          prs[checkedOn]?.url,
-        )
+        skip(item, {
+          kind: 'waiting_for_task',
+          reason: `waiting for ${checkedOn}'s check ${check} (${checkState})`,
+          url: prs[checkedOn]?.url,
+        })
       } else {
         const again = reportsOnly(t) && results[t.id] === 'feedback'
         states.push(

@@ -9,7 +9,7 @@ import { latestResult, planState } from '#tasks/plan-file'
 import { globToRegExp } from '#util/glob'
 import type { Attempts } from './attempts'
 import { chainUnits, landing } from './chain'
-import { holdsOn, openedElsewhere, postsOn, refusal, stackTarget } from './holds'
+import { type Group, holdsOn, openedElsewhere, postsOn, refusal, stackTarget } from './holds'
 import {
   closestRule,
   dedupe,
@@ -119,12 +119,30 @@ export const needsYou: Record<SkipKind, boolean> = {
   running: false,
 }
 
-export interface Skipped {
-  item: Item
+/** Why an item, or a group of them, made no unit. */
+export interface SkipReason {
   kind: SkipKind
   reason: string
   /** The PR it waits on for review: one the item links, the PR awaywork pushed onto, or the item itself; or the item awaywork asked its questions or posted its plan on. */
   url?: string
+}
+
+export interface Skipped extends SkipReason {
+  item: Item
+}
+
+/** What every group of a run is planned against, built once in `planRun`. */
+export interface PlanRun {
+  config: Config
+  queue: Rule[]
+  skills: SkillCatalog
+  allowances: Record<string, Allowance>
+  skips: Record<string, Skip>
+  attempts: Attempts
+  /** The time attempts are judged at. */
+  now: number
+  /** A `run: soon` run. */
+  soon: boolean
 }
 
 export interface RunPlan {
@@ -199,128 +217,117 @@ export function planRun(input: {
   ]
   const units: PlannedUnit[] = []
   const caps: Caps = { routed: {}, perRepo: {}, perRule: {}, counted: 0 }
+  const run: PlanRun = {
+    config,
+    queue,
+    skills: input.skills,
+    allowances,
+    skips,
+    attempts: input.attempts ?? {},
+    now,
+    soon: !!only.soon,
+  }
 
   // A post that waits holds its card for its rule only: the card's linked items rank on their own.
   const waiting = (e: Ranked) => waitsOn(rules[e.rule] as Rule, e.item)
   const takenHere = [...ranked, ...picked.map((item) => ({ item, rule: queue.length }))]
   for (const found of inBlocks(dedupe(takenHere, waiting), candidates)) {
-    const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
-    // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
-    const pickup = ours && found.find((e) => isAwayworkPr(e.item))
-    const group = pickup ? [pickup, ...found.filter((e) => e !== pickup)] : found
-    const items = group.map((e) => e.item)
-    const ruleIndex = group[0]?.rule ?? 0
-    const rule = rules[ruleIndex] as Rule
-    const oneOff = ruleIndex === queue.length
+    const group = readGroup(run, rules, found, units)
+    const { items, lead, rule, ruleIndex, id, ours, draft } = group
     if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
     if (only.soon && rule.run !== 'soon') continue
-    if (only.units && !only.units.includes(slug(items[0]?.key ?? ''))) continue
-    const skip = (kind: SkipKind, reason: string, url?: string) =>
+    if (only.units && !only.units.includes(id)) continue
+    const skip = ({ kind, reason, url }: SkipReason) =>
       skipped.push(...items.map((item) => ({ item, kind, reason, ...(url && { url }) })))
-    const card =
-      rule.deliver === 'plan'
-        ? items.flatMap((item) => {
-            const state = planState(item, planLimits(config, queue, item, input.skills))
-            return state ? [{ item, ...state }] : []
-          })[0]
-        : undefined
-    const id = slug(items[0]?.key ?? '')
     // An approved plan runs as its tasks, so naming its card lifts nothing.
     const named =
-      name !== undefined && card?.state !== 'approved' && namesChain(id, rule, items, name)
-    const prs = items.flatMap((i) => i.linkedPrs)
-    // awaywork's own draft for these items, which it left for a later run.
-    const keys = items.map((i) => `${i.source}:${i.key}`)
-    // A one-off opens only a new branch's draft, so it never goes on with one.
-    const draft =
-      !oneOff && !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
-    // What an earlier run left for this one: its draft, else a report's `continue` result, which goes on though its items didn't change.
-    const result = draft ? undefined : latestResult(items[0] as Item)
-    const left = draft ?? (result?.status === 'continue' ? result : undefined)
-    const stack = prs.length === 0 ? stackTarget(items[0] as Item, units) : undefined
-    const waitsFor = prs.length === 0 ? openedElsewhere(items[0] as Item) : []
-    // A report's post that waits holds its rule, whatever else changed on the card.
-    const posted =
-      rule.deliver === 'report' && !items[0]?.task
-        ? items.flatMap((item) => {
-            const post = reportPost(item, rule.skill)
-            return post ? [{ item, answer: postAnswer(post) }] : []
-          })[0]
-        : undefined
-    const held = holdsOn({
-      items,
-      rule,
-      skips,
-      attempts: input.attempts ?? {},
-      now,
-      soon: !!only.soon,
-      ours,
-      pickup: !!pickup,
-      waitedOn: found.some(waiting),
-      draft,
-      left,
-      card,
-      posted,
-      stack,
-      waitsFor,
-      units,
-    })
+      name !== undefined && group.card?.state !== 'approved' && namesChain(id, rule, items, name)
+    const held = holdsOn(run, group, units)
     const hold = held.find((h) => !(named && h.liftable))
     if (hold) {
-      skip(hold.kind, hold.reason, hold.url)
+      skip(hold)
       continue
     }
     // A unit you name goes past its holds, taking no room under the caps a run without the name would have left.
-    const lifted = held.length > 0 || (!!items[0] && namedTasks.includes(items[0]))
-    const committing = committingStep(rule, input.skills)
+    const lifted = held.length > 0 || namedTasks.includes(lead)
+    const committing = committingStep(rule, run.skills)
+    const prs = items.flatMap((i) => i.linkedPrs)
     const pr = (draft && ours) || (committing ? prs.find((p) => p.mine) : undefined) || prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
-      skip('no_repo', 'no repo: no linked PR or repo field')
+      skip({ kind: 'no_repo', reason: 'no repo: no linked PR or repo field' })
       continue
     }
     if (onlyRepo && !onlyRepo.test(repo)) continue
-    const at = landing({
-      config,
-      rule,
-      skills: input.skills,
-      items,
-      repo,
-      pr,
-      committing,
-      onto: stack?.pr,
-      draft,
-    })
-    const refused = refusal(config, rule, input.skills, items, at)
+    const at = landing(run, group, { repo, pr, committing })
+    const refused = refusal(run, group, at)
     if (refused) {
-      skip(refused.kind, refused.reason)
+      skip(refused)
       continue
     }
-    const capped = overCap(caps, config, rule, ruleIndex, repo)
+    const capped = overCap(caps, run, group, repo)
     if (capped && !named) {
-      skip('over_cap', capped)
+      skip({ kind: 'over_cap', reason: capped })
       continue
     }
-    const chain = chainUnits({ config, queue, skills: input.skills, allowances }, caps.routed, {
-      rule,
-      ruleIndex,
-      itemRules: group.map((e) => e.rule),
-      items,
-      id,
-      steps: thenSteps(rule, id),
-      oneOff,
-      at,
-      draft,
-      left,
-      card,
-      posted,
-      after: stack?.after,
-      waitsFor,
-    })
+    const chain = chainUnits(run, group, at, thenSteps(rule, id), caps.routed)
     units.push(...chain.units)
     if (chain.counts && !capped && !lifted) take(caps, repo, ruleIndex)
   }
   return { queue, units, skipped, allowances }
+}
+
+/** The group `found` ranks: its lead, its rule and what earlier runs left on its items. */
+function readGroup(run: PlanRun, rules: Rule[], found: Ranked[], units: PlannedUnit[]): Group {
+  const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
+  // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
+  const pickup = ours && found.find((e) => isAwayworkPr(e.item))
+  const ranked = pickup ? [pickup, ...found.filter((e) => e !== pickup)] : found
+  const items = ranked.map((e) => e.item)
+  const lead = items[0] as Item
+  const ruleIndex = ranked[0]?.rule ?? 0
+  const rule = rules[ruleIndex] as Rule
+  const oneOff = ruleIndex === run.queue.length
+  const card =
+    rule.deliver === 'plan'
+      ? items.flatMap((item) => {
+          const state = planState(item, planLimits(run.config, run.queue, item, run.skills))
+          return state ? [{ item, ...state }] : []
+        })[0]
+      : undefined
+  const prs = items.flatMap((i) => i.linkedPrs)
+  const keys = items.map((i) => `${i.source}:${i.key}`)
+  // A one-off opens only a new branch's draft, so it never goes on with one.
+  const draft =
+    !oneOff && !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
+  // What an earlier run left for this one: its draft, else a report's `continue` result, which goes on though its items didn't change.
+  const result = draft ? undefined : latestResult(lead)
+  // A report's post that waits holds its rule, whatever else changed on the card.
+  const posted =
+    rule.deliver === 'report' && !lead.task
+      ? items.flatMap((item) => {
+          const post = reportPost(item, rule.skill)
+          return post ? [{ item, answer: postAnswer(post) }] : []
+        })[0]
+      : undefined
+  return {
+    items,
+    lead,
+    rule,
+    ruleIndex,
+    itemRules: ranked.map((e) => e.rule),
+    id: slug(lead.key),
+    oneOff,
+    ours,
+    pickup: !!pickup,
+    waitedOn: found.some((e) => waitsOn(rules[e.rule] as Rule, e.item)),
+    draft,
+    left: draft ?? (result?.status === 'continue' ? result : undefined),
+    card,
+    posted,
+    stack: prs.length === 0 ? stackTarget(lead, units) : undefined,
+    waitsFor: prs.length === 0 ? openedElsewhere(lead) : [],
+  }
 }
 
 /** `run --skill`'s rule, for the one item it names: no delivery, on_done, wait, gates, thread or post of its own. */
@@ -334,20 +341,25 @@ const oneOffRule = (skill: string): Rule => ({
 
 /** A rule's `then` steps with their unit ids, a loop's round by round. */
 function thenSteps(rule: Rule, id: string) {
-  return (rule.then ?? []).flatMap(
-    (entry, at): { written: ThenStep; id: string; loop?: LoopRound }[] => {
-      if (!isLoop(entry)) return [{ written: entry, id: `${id}-${slug(entry.skill)}` }]
-      const { until, max } = entry
-      const skills = entry.loop.map((s) => s.skill)
-      return Array.from({ length: max }, (_, r) =>
-        entry.loop.map((written, step) => {
-          const round = r + 1
-          const loop = { at, round, step, skills, until, max }
-          return { written, id: `${id}-${slug(written.skill)}-${round}`, loop }
-        }),
-      ).flat()
-    },
-  )
+  return (rule.then ?? []).flatMap((entry, at): ChainStep[] => {
+    if (!isLoop(entry)) return [{ written: entry, id: `${id}-${slug(entry.skill)}` }]
+    const { until, max } = entry
+    const skills = entry.loop.map((s) => s.skill)
+    return Array.from({ length: max }, (_, r) =>
+      entry.loop.map((written, step) => {
+        const round = r + 1
+        const loop = { at, round, step, skills, until, max }
+        return { written, id: `${id}-${slug(written.skill)}-${round}`, loop }
+      }),
+    ).flat()
+  })
+}
+
+/** A `then` step as written, its unit id and, in a loop, its round. */
+export interface ChainStep {
+  written: ThenStep
+  id: string
+  loop?: LoopRound
 }
 
 /** What the units planned so far took under the run's caps, and how many of them each provider was routed. */
@@ -359,13 +371,9 @@ interface Caps {
 }
 
 /** The first cap a chain of the rule in the repo would go over, as why it's skipped. */
-function overCap(
-  caps: Caps,
-  config: Config,
-  rule: Rule,
-  ruleIndex: number,
-  repo: string,
-): string | undefined {
+function overCap(caps: Caps, run: PlanRun, group: Group, repo: string): string | undefined {
+  const { config } = run
+  const { rule, ruleIndex } = group
   const cap = [
     { name: 'limits.units', max: config.limits.units, count: caps.counted },
     {
@@ -406,7 +414,7 @@ export function modelFor(models: Step['model'], provider: string, attempt = 0): 
 }
 
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`, or the last report rule done with it. */
-export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
+export function noRuleReason(item: Item, queue: Rule[]): SkipReason {
   const done = queue.findLastIndex((r) => matches(r, item) && doneWith(r, item))
   const post = done >= 0 && !isAwayworkPr(item) && doneWith(queue[done] as Rule, item)
   if (post) {
