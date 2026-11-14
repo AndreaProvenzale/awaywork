@@ -1,5 +1,5 @@
 ---
-description: "Queue rules decide which skill runs on which item: where matching, finished items, order, retrying on the next model, on_done moves and comments, and run: soon."
+description: "Queue rules decide which skill runs on which item: the first match, awaywork's own PRs, a plan's tasks, finished items, order, retrying on the next model, on_done moves and comments, and run: soon."
 ---
 
 # Queue rules
@@ -18,7 +18,7 @@ queue:
 
 | Key | Does |
 | --- | --- |
-| `skill`, `source`, `where` | What runs, on which items: [`where`](#where) |
+| `skill`, `source`, `where` | What runs, on which items: [Matching items](./where.md) |
 | `provider`, `model` | Overrides routing for this rule; two models [retry](#retry-on-the-next-model) |
 | `skills`, `mcp`, `instructions`, `with` | Extra skills, [MCP servers](./mcp.md), instruction files, [parameters](../skills.md#write-your-own) |
 | `deliver` | `draft_pr` (default), `pr`, [`push`](./chains.md#push), `report`, `pending_review` or [`plan`](../workflows/plans.md); see [Delivery](../how-it-works.md#delivery) |
@@ -47,36 +47,7 @@ flowchart TD
 
 Four kinds of item go their own way: awaywork's own PRs reach only [`ours` rules](#your-reviewed-awaywork-prs), a plan's tasks only the first [`planned` rule](#a-plan-s-tasks) for their skill, a card carrying awaywork's plan [stays on its plan rule](../workflows/tasks.md#the-plan-sticks-to-the-card), and an item whose report you approved [goes on to the next rule](../workflows/posts.md#posts-that-wait).
 
-## `where`
-
-```yaml
-where:
-  type: pr                          # equals
-  checks: [failing, pending]        # any of
-  review_requested: { not: true }   # not
-  unresolved_threads: { gte: 2 }    # on a number field: gt, gte, lt, lte; combine for a range
-  updated: { older_than: 3d }       # on a date field: older_than, newer_than; m, h, d or w
-  title: { matches: '^\[bug\]' }    # on title, description or a text field: case-insensitive regex
-  label: awaywork                # on a list field: contains; GitHub issues must also be assigned to you
-  behind: { gt: 0 }                 # GitHub: your PR's base has commits its branch lacks; see sync
-  conflicts: false                  # GitHub: it merges cleanly into its base
-  "fields.Priority": High           # an Asana custom field
-  blocked: false                    # Linear, Jira, Asana: no open blocker
-  any:                              # at least one entry holds; each is a where, ANDed with the keys above
-    - { label: urgent }
-    - { checks: failing }
-```
-
-Strings compare ignoring case (`section: In progress` matches `In Progress`); numbers and booleans exactly; fixed values like `type` are lowercase. Every source has `title`, `description`, `approved`, `state`, `closed` and `planned`; the [field table](../how-it-works.md#items) lists the rest.
-
-Details:
-
-- A missing field equals nothing and is neither older nor newer than anything. Spans count back from when the plan runs.
-- Config errors: an unknown key (the error lists each source's keys), an invalid regex, an empty `any` entry.
-- `plan` names the match an item failed, for `any` each entry's.
-- `approved` is the skill of the newest result of awaywork's on the item that you approved or that went ahead ([Posts that wait](../workflows/posts.md#posts-that-wait)); `approved: true` is an error that says so.
-
-### Your reviewed awaywork PRs
+## Your reviewed awaywork PRs
 
 awaywork's own PRs match only rules whose top-level `where` names `ours` (in `any` it's an error), so they wait for your review. After it:
 
@@ -91,7 +62,7 @@ awaywork's own PRs match only rules whose top-level `where` names `ours` (in `an
 - The rule runs on threads you started, but the agent reads every unresolved one.
 - `ours` is the GitHub source's: a custom source's `ours` field holds nothing back.
 
-### A plan's tasks
+## A plan's tasks
 
 A [task](../workflows/tasks.md) matches only rules whose top-level `where` names `planned: true`, the first whose `skill` is the task's (`implement` by default), and those rules take only tasks. Tasks carry their card's fields:
 

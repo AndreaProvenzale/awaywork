@@ -8,14 +8,14 @@ Each source reads your own items from one place:
 
 | Source | Reads | You set |
 | --- | --- | --- |
-| `github` | Your PRs, PRs awaiting your review, issues assigned to you, in the [`repos`](./repos.md#repos-and-instructions) you list | `{}` is enough; optional `search` |
-| `asana` | Your incomplete tasks | `workspace` gid; optional `projects`, `repo_map` |
-| `linear` | Your open issues | Optional `repo_map` |
+| `github` | Your PRs, PRs awaiting your review, issues assigned to you, in the [`repos`](./repos.md#repos-and-instructions) you list, plus any `search` (`label:awaywork`, `mentions:@me`) | `{}` is enough; optional `search` |
+| `asana` | Your incomplete tasks in the workspace, optionally only some projects | `workspace` gid; optional `projects`, `repo_map` |
+| `linear` | Your issues neither completed nor canceled | Optional `repo_map` |
 | `jira` | Your unresolved issues | `site`, `email`; optional `cloud_id` (scoped token), `jql` (no `ORDER BY`), `repo_map` |
-| `routines` | Items from the clock | [Routines](#routines) |
+| `routines` | Each routine's latest occurrence | [Routines](#routines) |
 | any other name | Your command's JSON | [Custom sources](./custom-sources.md) |
 
-The rest, defaults and `token_env` names included, is in the [reference](../../reference/config.md#sources). Every source takes an `every` for [`run: soon`](./queue-rules.md#run-soon); all but `github` and `routines` a [`link`](./repos.md#linking-prs).
+Each also reads its [finished items](./queue-rules.md#finished-items) when a rule asks. The rest, defaults and `token_env` names included, is in the [reference](../../reference/config.md#sources). Every source takes an `every` for [`run: soon`](./queue-rules.md#run-soon); all but `github` and `routines` a [`link`](./repos.md#linking-prs).
 
 `awaywork sources <id>` lists, read-only, the ids and names your keys and `where` take (`--json` for scripts):
 

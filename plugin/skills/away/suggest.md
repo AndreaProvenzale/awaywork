@@ -71,7 +71,7 @@ Their own PRs with the reviews on them (trimmed: a review's body is someone else
 
 | Pattern | Becomes |
 | --- | --- |
-| Event on an item, then an action | A queue rule: a `where` on a configured source, with real names from `awaywork sources --json` as in `queue.md`'s step 3 (fields per source: https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#items), and a skill |
+| Event on an item, then an action | A queue rule: a `where` on a configured source, with real names from `awaywork sources --json` as in `queue.md`'s step 3 (fields per source: https://andreaprovenzale.github.io/awaywork/guide/config/where.md#fields), and a skill |
 | Same time each week, then an action | A routine, `sources.routines.<name>: { days, at, repo, title, description }`, and a rule with `source: routines`, `where: { name: <name> }` and `deliver: report`; `run: soon` when it shouldn't wait for a window (https://andreaprovenzale.github.io/awaywork/guide/config/sources.md#routines) |
 | The action | A skill from `awaywork skills list`: built-in, ejected, or the repo's own |
 | A correction every agent on the repo needs | A line in the repo's `AGENTS.md`, or `CLAUDE.md` when that's what it has |

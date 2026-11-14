@@ -19,6 +19,7 @@ Where to find what:
 - [Linking PRs](./repos.md#linking-prs): how a PR is tied to an item.
 - [Repos and instructions](./repos.md#repos-and-instructions): per-repo commands, and everything that runs in a clone.
 - [Queue rules](./queue-rules.md): which skill runs on which item.
+- [Matching items](./where.md): `where`, and each source's fields.
 - [Notify](../results.md#notify): your command after each step and each run.
 - [MCP servers](./mcp.md): servers a rule gives its units.
 - [Isolation](../safety/isolation.md): a worker user or a container.

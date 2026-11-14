@@ -35,6 +35,7 @@ const sidebar: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'The config file', link: '/guide/config/' },
       { text: 'Queue rules', link: '/guide/config/queue-rules' },
+      { text: 'Matching items', link: '/guide/config/where' },
       { text: 'Chains', link: '/guide/config/chains' },
       { text: 'Providers and budget', link: '/guide/config/providers' },
       { text: 'Sources', link: '/guide/config/sources' },

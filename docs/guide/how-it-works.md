@@ -30,34 +30,17 @@ flowchart TD
   publish --> report
 ```
 
-Workers make every model call but one: each step, each gate's judge and `sync`'s conflict resolution run in the unit's clone. awaywork's own is the quota probe `plan`, `run` and `doctor` make, one Haiku turn for Claude; Codex reads its quota without one. Everything else is plain code you can inspect with `awaywork plan` before a run.
+Workers make every model call but one: each step, each gate's judge and `sync`'s conflict resolution run in the unit's clone.
+
+awaywork's own is the quota probe `plan`, `run` and `doctor` make, one Haiku turn for Claude; Codex reads its quota without one.
+
+Everything else is plain code you can inspect with `awaywork plan` before a run.
 
 ## Items
 
-An item is one open thing of yours a source returns: a PR, an issue, a task. Rules match on:
+An item is one open thing of yours a source returns: a PR, an issue, a task.
 
-- `type` (`pr`, `issue` or `task`), `title` and `description`;
-- `approved`: the skill of awaywork's newest result on it that you approved or that [went ahead](./workflows/posts.md#posts-that-wait);
-- `state`: `open`, or `merged` or `closed` for the [finished items](./config/queue-rules.md#finished-items) a rule asks for; `closed` is when it finished;
-- `planned`: it's a [task](./workflows/tasks.md) of a plan you approved;
-- the source's own fields:
-
-| Source | Items | Fields |
-| --- | --- | --- |
-| GitHub | Open PRs you authored, PRs awaiting your review, issues assigned to you, plus any extra `search` (e.g. `label:awaywork`, `mentions:@me`), in the repos [`repos`](./config/repos.md#repos-and-instructions) lists; your merged and closed ones too when a rule asks | `repo`, `label`, `author`, `trusted`, `mine`, `ours`, `draft`, `checks`, `unresolved_threads`, `my_unresolved_threads`, `files`, `changed_lines`, `conflicts`, `behind`, `review_requested`, `created`, `updated` |
-| Asana | Incomplete tasks assigned to you in a workspace, optionally some projects; completed ones too when a rule asks | `project`, `section`, `blocked` (a dependency is incomplete), `tags`, `repo` (from `repo_map`), `fields.<custom field>`, `created`, `updated`, `due` |
-| Linear | Issues assigned to you that are neither completed nor canceled; completed and canceled ones too when a rule asks | `team` (key), `status` (the workflow state), `labels`, `priority` (e.g. `High`), `blocked` (an open blocker), `project`, `repo` (from `repo_map`), `created`, `updated` |
-| Jira Cloud | Unresolved issues assigned to you, optionally narrowed by `jql`; resolved ones too when a rule asks | `project` (key), `status`, `labels`, `priority`, `blocked` (an open "is blocked by" link), `issuetype` (e.g. `Bug`), `repo` (from `repo_map`), `fields.<custom field>`, `created`, `updated` |
-| Routines | One task per [routine](./config/sources.md#routines) in your config: its latest occurrence | `name`, `repo`, `created`, `updated` (both the occurrence) |
-
-GitHub's fields that need a word:
-
-- `trusted`: the author is an owner, member or collaborator. `mine`: a PR you authored or an issue assigned to you. `ours`: awaywork opened it.
-- `checks`: `failing`, `pending` or `passing`.
-- `unresolved_threads`: those [shown to the agent](./safety/index.md#public-repos); `my_unresolved_threads`: the ones you started.
-- `files`: the first 500 paths the PR touches; test with `matches`. `changed_lines`: additions plus deletions.
-- `conflicts`: it doesn't merge cleanly into its base; unset while GitHub works it out.
-- `behind`: commits on its base its branch lacks, on your own open PRs.
+Rules match on what every item has, like `type`, `title` and `state`, and on the source's own fields, like `checks` on a GitHub PR or `section` on an Asana task: see [Fields](./config/where.md#fields).
 
 ## The queue
 
