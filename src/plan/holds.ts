@@ -14,7 +14,7 @@ import {
   unchangedSince,
 } from './attempts'
 import type { Landing } from './chain'
-import type { PlannedUnit, PlanRun, SkipReason } from './foreman'
+import type { ChainStep, PlannedUnit, PlanRun, SkipReason } from './foreman'
 import { repoListed, settingsFor } from './repos'
 import { describeSkip, type Skip } from './skips'
 
@@ -46,6 +46,8 @@ export interface Group {
   id: string
   /** Picked with `run --skill`: its rule is the one-off past the queue. */
   oneOff: boolean
+  /** The PRs its items link. */
+  prs: PrRef[]
   /** awaywork's PR among the items' links, and whether one of the items is it. */
   ours?: PrRef
   pickup: boolean
@@ -59,6 +61,8 @@ export interface Group {
   stack?: StackTarget
   /** Its `opened` tasks in other repos with no PR yet. */
   waitsFor: string[]
+  /** Its rule's `then` steps. */
+  steps: ChainStep[]
 }
 
 /** Why a group makes no unit; a unit you name goes past a `liftable` one. */

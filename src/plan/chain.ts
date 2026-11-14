@@ -3,7 +3,7 @@ import type { Condition, Gate, PrRef, Publishes, Rule, Step, ThenStep, Unit } fr
 import { type Allowance, quotaFacts, route } from '#quota/budget'
 import { branchName, planLimits, stepReports } from '#tasks/fanout'
 import { holds } from './condition'
-import type { ChainStep, PlannedUnit, PlanRun } from './foreman'
+import type { PlannedUnit, PlanRun } from './foreman'
 import type { Group } from './holds'
 import { settingsFor } from './repos'
 
@@ -21,7 +21,7 @@ export type Landing = Pick<Unit, 'repo' | 'branch' | 'base' | 'foreign' | 'fork'
 export function landing(
   run: PlanRun,
   group: Group,
-  chain: { repo: string; pr?: PrRef; committing?: ThenStep },
+  chain: Pick<Landing, 'repo' | 'pr' | 'committing'>,
 ): Landing {
   const { config, skills } = run
   const { rule, lead, draft } = group
@@ -52,7 +52,6 @@ export function chainUnits(
   run: PlanRun,
   group: Group,
   landed: Landing,
-  steps: ChainStep[],
   routed: Record<string, number>,
 ): { units: PlannedUnit[]; counts: boolean } {
   const { config, allowances } = run
@@ -98,7 +97,7 @@ export function chainUnits(
   }
   const settings = settingsFor(config.repos, repo)
   const units: PlannedUnit[] = []
-  for (const { written, id, loop } of [{ written: rule, id: group.id }, ...steps]) {
+  for (const { written, id, loop } of [{ written: rule, id: group.id }, ...group.steps]) {
     const step = written === rule ? rule : inherit(rule, written)
     const skill = resolveSkill(step.skill, run.skills)
     const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
