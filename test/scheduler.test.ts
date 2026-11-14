@@ -297,11 +297,11 @@ it("touches a self-hosted machine's disk, global installs and git config not at 
   expect(step('Free disk').run).toMatch(/^sudo rm -rf \/usr\/share\/dotnet /)
   expect(step('Install')).toMatchObject({
     if: hosted,
-    run: 'npm install -g "awaywork@$VERSION" $PACKAGES',
+    run: 'env -i PATH="$PATH" HOME="$HOME" USER="$USER" npm install -g "awaywork@$VERSION" $PACKAGES',
   })
   expect(step('Install by script')).toMatchObject({
     if: hosted,
-    run: 'bash -eo pipefail -c "$SCRIPTS"',
+    run: 'env -i PATH="$PATH" HOME="$HOME" USER="$USER" bash -eo pipefail -c "$SCRIPTS"',
     env: { SCRIPTS: '${{ inputs.scripts }}' },
   })
   const local = step('Install for this job')
