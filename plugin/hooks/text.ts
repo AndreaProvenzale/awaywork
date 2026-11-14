@@ -62,3 +62,5 @@ export function rowsOf(parts: string[], width: number, gap = 2) {
   }
   return rows
 }
+
+export const folderOf = (path: string) => path.slice(0, path.lastIndexOf('/'))

@@ -1,29 +1,47 @@
-import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
-import { atom, read, update } from 'claude-code'
+import type { Elements, RenderChildren, RenderElement, RenderInput } from 'claude-code'
 
 import type { ConfigState, Data, Tab, View } from '../types'
-import {
-  askClaude,
-  cardButtons,
-  openInEditor,
-  pickOn,
-  select,
-  setDrawn,
-  showTab,
-  step,
-  stepRule,
-} from './actions'
 import { CARD_ROWS, type Card, card } from './cards'
-import { configBody, skillColor, wantTakes } from './config'
-import { loadPlan, refresh } from './load'
-import { itemKey, layout } from './rows'
+import { configBody, skillColor } from './config'
+import { itemKey, layout, pickOn, type Row } from './rows'
 import { cardsFit, counted, rowsOf, twoLines, when, wrap } from './text'
 
-const data = atom({ plugin: 'awaywork', key: 'data' } as const, {} as Data, { shape: 'data-2' })
-const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-3' })
-const config = atom({ plugin: 'awaywork', key: 'config' } as const, {} as ConfigState, {
-  shape: 'config-1',
-})
+export type Key = { key: string; hotkey?: string; label: string; run: () => unknown }
+
+/** No `strip` when the pane is too short for its regions: the engine scrolls it then. */
+export type Drawn = {
+  press: Record<string, () => unknown>
+  strip?: [number, number]
+  detailMax: number
+  /** The desktop app scrolls the pane itself: an arrow there is a smooth scroll, many events and none upward from the top. */
+  nativeScroll?: boolean
+}
+
+/** What the pane's buttons and the Config tab do. */
+type On = {
+  refresh: () => unknown
+  plan: () => unknown
+  takes: () => unknown
+  tab: (tab: Tab) => unknown
+  step: (by: number) => unknown
+  select: (id: string) => unknown
+  fill: (text: string) => unknown
+  setView: (patch: Partial<View>) => unknown
+  open: (file: string, line: number) => unknown
+  stepRule: (by: number) => unknown
+}
+
+type Input = {
+  e: RenderInput<'Pane'>
+  els: Elements[RenderInput<'Pane'>['surface']]
+  now: number
+  d: Data
+  v: View
+  c: ConfigState
+  /** The selected card's buttons. */
+  keys: (row: Row) => Key[]
+  on: On
+}
 
 const MAX_ROWS = 28
 const MIN_DETAIL = 3
@@ -36,21 +54,19 @@ const titles: Record<Tab, string> = {
   config: 'Config',
 }
 
-/** The pane: header, tabs, and the selected tab's cards and detail, or the Config tab. */
-export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
-  const els = $.ui.resolve(e)
+/** The pane: header, tabs, and the selected tab's cards and detail, or the Config tab, and what it drew. */
+export function paneView({ e, els, now, d, v, c, keys: cardButtons, on }: Input): {
+  tree: RenderElement
+  drawn: Drawn
+} {
   const { Box, Text, Button } = els
   // Every surface's table names every tag, drawing the ones it lacks as nothing.
   const Client =
     (e.surface === 'terminal' || e.surface === 'desktop') && 'Client' in els
       ? els.Client
       : undefined
-  const d = await read($, data)
-  const v = await read($, view)
-  const c = await read($, config)
   const padding = e.surface === 'desktop' ? { x: 2, y: 1 } : { x: 0, y: 0 }
   const width = e.props.bodyColumns - padding.x * 2
-  const now = await $.clock.now()
   const press: Record<string, () => unknown> = {}
 
   const { report, heads, rows, tab, order, shown: reviews, list, row } = layout(d, v)
@@ -98,8 +114,8 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
         {needs > 0 && <Text color="warning">{needsYou}</Text>}
       </Text>
       <Box flexDirection="row" gap={1} flexShrink={0}>
-        {button('refresh', 'r', 'refresh', () => (tab === 'config' ? wantTakes($) : refresh($)))}
-        {!c.setup && button('plan', 'p', 'plan', () => loadPlan($))}
+        {button('refresh', 'r', 'refresh', () => (tab === 'config' ? on.takes() : on.refresh()))}
+        {!c.setup && button('plan', 'p', 'plan', on.plan)}
       </Box>
     </Box>
   )
@@ -111,7 +127,7 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
       {shown.map((t) => {
         // The digits pick a skill while the picker is up.
         const hotkey = pickOn(v, row) ? undefined : String(order.indexOf(t) + 1)
-        if (hotkey) press[hotkey] = () => showTab($, t)
+        if (hotkey) press[hotkey] = () => on.tab(t)
         return (
           <Button
             key={`tab:${t}`}
@@ -119,7 +135,7 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
             hotkey={hotkey}
             dimColor={t !== tab}
             label={label(t)}
-            onPress={() => showTab($, t)}
+            onPress={() => on.tab(t)}
           />
         )
       })}
@@ -136,8 +152,8 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
   )
 
   const done = (body?: RenderChildren, minHeight?: number) => {
-    setDrawn({ press, detailMax: 0, nativeScroll: e.surface === 'desktop' })
-    return (
+    const drawn = { press, detailMax: 0, nativeScroll: e.surface === 'desktop' }
+    const tree = (
       <Box
         flexDirection="column"
         rowGap={gap}
@@ -153,20 +169,21 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
         {minHeight !== undefined && <Text> </Text>}
       </Box>
     )
+    return { tree, drawn }
   }
 
   if (tab === 'config')
     return done(
       configBody({
-        fill: (text) => askClaude($, text),
+        fill: on.fill,
         els,
         c,
         v,
         width,
         button,
-        setView: (patch) => update($, view, (x) => ({ ...x, ...patch })),
-        open: (file, line) => openInEditor($, file, line),
-        step: e.surface === 'desktop' ? (by) => stepRule($, by, true) : undefined,
+        setView: on.setView,
+        open: on.open,
+        step: e.surface === 'desktop' ? on.stepRule : undefined,
       }),
       // Arrows reach `ui.scroll` only with a row to scroll: a spare one, and a blank last row so overflow is exact.
       e.surface !== 'desktop' && (v.source ?? 'flow') === 'flow' && c.view
@@ -227,8 +244,8 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Text>
       </Text>
       <Box flexDirection="row" gap={1} flexShrink={0}>
-        {button('prev', 'h', '‹', () => step($, -1))}
-        {button('nextCard', 'l', '›', () => step($, 1))}
+        {button('prev', 'h', '‹', () => on.step(-1))}
+        {button('nextCard', 'l', '›', () => on.step(1))}
       </Box>
     </Box>
   )
@@ -252,7 +269,7 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
             c,
             start + i === at,
             w,
-            <Button key={`card:${c.id}`} plain label={c.ref} onPress={() => select($, c.id)} />,
+            <Button key={`card:${c.id}`} plain label={c.ref} onPress={() => on.select(c.id)} />,
           ),
         )}
     </Box>
@@ -275,7 +292,7 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
   const picking = pickOn(v, row)
   const asks = v.confirm?.question ?? (picking && `Run ${picking.ref} with which skill?`)
   const question = asks ? wrap(asks, width) : []
-  const cardKeys = cardButtons($, v, row)
+  const cardKeys = cardButtons(row)
   const keyRows = rowsOf(
     cardKeys.map((b) => (b.hotkey ? `${b.hotkey}: ${b.label}` : b.label)),
     width,
@@ -309,8 +326,10 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
     </Box>
   )
 
-  setDrawn(fits ? { press, strip: [top, top + CARD_ROWS - 1], detailMax } : { press, detailMax })
-  return (
+  const drawn: Drawn = fits
+    ? { press, strip: [top, top + CARD_ROWS - 1], detailMax }
+    : { press, detailMax }
+  const tree = (
     <Box
       flexDirection="column"
       height={fits ? total : undefined}
@@ -339,4 +358,5 @@ export async function pane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Text>
     </Box>
   )
+  return { tree, drawn }
 }

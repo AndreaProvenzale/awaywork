@@ -256,3 +256,22 @@ export function layout(d: Data, v: View) {
   const row = list.find((r) => r.id === v.row) ?? list[0]
   return { report, heads, rows, tab, order, shown, list, row }
 }
+
+/** The picker `row` has up: a picker belongs to its card, which a load or a refresh may have moved off. */
+export const pickOn = (v: View, row: Row | undefined) =>
+  v.pick?.row === row?.id ? v.pick : undefined
+
+export const selected = (v: View, id: string): View => ({
+  ...v,
+  row: id,
+  at: 0,
+  confirm: undefined,
+  pick: undefined,
+  reading: undefined,
+  status: undefined,
+})
+
+export const isPr = (url: string) => /\/(pull|merge_requests|pull-requests)\//.test(url)
+
+export const opens = (url: string) =>
+  isPr(url) ? 'open PR' : /\/issues\//.test(url) ? 'open issue' : 'open'
