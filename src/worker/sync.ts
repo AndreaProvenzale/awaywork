@@ -219,7 +219,7 @@ async function worktreeTree(
   try {
     const staging = { ...env, GIT_INDEX_FILE: index }
     await seed(index)
-    await addTo(dir, index, flag, ['.'], env)
+    await addTo(dir, index, [flag], ['.'], env)
     // Git ignores `.away/` through `.git/info/exclude`, which the worker could edit.
     await run(dir, staging, ['rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', WORK_DIR])
     return (await run(dir, staging, ['write-tree'])).stdout

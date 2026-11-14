@@ -1,4 +1,15 @@
-import { link, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  link,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -402,6 +413,31 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
     expect(await readFile(join(dir, '.away/out/pr.md'), 'utf8')).toBe('Add VAT\n\nDone.\n')
     expect((await stat(join(dir, '.away/out/pr.md'))).nlink).toBe(1)
     expect((await readdir(join(dir, '.away/out'))).sort()).toEqual(['diff.patch', 'pr.md'])
+  }
+})
+
+it("fires on a judge's write to an agent's config that git ignores, and puts back the slice's own", async () => {
+  const settings = '.claude/settings.local.json'
+  for (const [own, linked] of [[undefined], ['SLICE HOOKS'], [undefined, true]] as const) {
+    const { dir, from } = await slice()
+    await appendFile(join(dir, '.git/info/exclude'), 'settings.local.json\n')
+    // A `.claude` linked to a folder in the clone, as a repo sharing it with other agents has.
+    if (linked) {
+      await mkdir(join(dir, '.agents'))
+      await symlink('.agents', join(dir, '.claude'))
+    } else await mkdir(join(dir, '.claude'))
+    if (own) await writeFile(join(dir, settings), own)
+    const gates = unit({ risk: { skills: ['judge'] } })
+    expect(await runJudges(judging('clear'), gates, dir, { from, out })).toEqual([])
+    const judge = judging('clear', '', (dir) => writeFile(join(dir, settings), 'JUDGE HOOKS'))
+    expect(await runJudges(judge, gates, dir, { from, out })).toEqual([
+      {
+        name: 'risk',
+        line: 'the judge changed the clone; awaywork dropped its changes',
+        judged: true,
+      },
+    ])
+    expect(await readFile(join(dir, settings), 'utf8').catch(() => undefined)).toBe(own)
   }
 })
 
