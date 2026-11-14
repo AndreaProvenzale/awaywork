@@ -3,17 +3,12 @@ import type { ConfigShape } from '#config/schema'
 import type { Rule, Scalar, Where, WhereValue } from '#core/types'
 import { bounds, DEFAULT_LOOKBACK, isAge, isMatch, matchesValue, newerThan } from '#plan/where'
 import { itemFields, sourceField, sourceFor } from '#sources/index'
+import type { Issue, Path } from './issue'
 
 /** A rule's where: keys its sources know, values their fields take, and how far back closed reads. */
-export function checkRuleWhere(
-  cfg: ConfigShape,
-  ctx: z.RefinementCtx,
-  r: Rule,
-  at: (string | number)[],
-  sourceIds: string[],
-) {
-  const scope = r.source ? [r.source] : sourceIds
-  checkWhere(r.where, [...at, 'where'], false, undefined)
+export function checkRuleWhere(cfg: ConfigShape, r: Rule, issue: Issue) {
+  const scope = r.source ? [r.source] : Object.keys(cfg.sources)
+  checkWhere(r.where, ['where'], false, undefined)
   function canFinish(state: WhereValue | undefined, where: Where): boolean {
     const finished = (s: WhereValue) => ['merged', 'closed'].some((f) => matchesValue(s, f))
     const entries = (where.any as Where[] | undefined) ?? []
@@ -23,7 +18,7 @@ export function checkRuleWhere(
   }
   function checkWhere(
     where: Where,
-    path: (string | number)[],
+    path: Path,
     outerBounded: boolean,
     outerState: WhereValue | undefined,
   ) {
@@ -33,86 +28,54 @@ export function checkRuleWhere(
       if (key === 'any') {
         for (const [i, w] of (value as Where[]).entries())
           if (Object.keys(w).length === 0)
-            ctx.addIssue({
-              code: 'custom',
-              path: [...path, key, i],
-              message: 'an empty entry matches everything',
-            })
+            issue([...path, key, i], 'an empty entry matches everything')
           else checkWhere(w, [...path, key, i], bounded, state)
         continue
       }
       if (key === 'ours' && path.includes('any')) {
-        ctx.addIssue({
-          code: 'custom',
-          path: [...path, key],
-          message: 'ours only lifts the awaywork PR wait at the top of where',
-        })
+        issue([...path, key], 'ours only lifts the awaywork PR wait at the top of where')
         continue
       }
       if (key === 'planned' && path.includes('any')) {
-        ctx.addIssue({
-          code: 'custom',
-          path: [...path, key],
-          message: "planned only takes a plan's tasks at the top of where",
-        })
+        issue([...path, key], "planned only takes a plan's tasks at the top of where")
         continue
       }
       const v = value as WhereValue
       if (key === 'approved' && whereValues(v).some((x) => typeof x === 'boolean')) {
-        ctx.addIssue({
-          code: 'custom',
-          path: [...path, key],
-          message: "approved names the approved post's skill now, e.g. approved: story",
-        })
+        issue([...path, key], "approved names the approved post's skill now, e.g. approved: story")
         continue
       }
       const field = itemFields[key] ?? fieldFor(cfg.sources, scope, key)
       if (!field) {
-        ctx.addIssue({
-          code: 'custom',
-          path: [...path, key],
-          message: unknownKey(cfg.sources, scope, key),
-        })
+        issue([...path, key], unknownKey(cfg.sources, scope, key))
         continue
       }
       if (typeof v === 'object' && !Array.isArray(v) && isMatch(v)) {
-        if (!isText(field))
-          ctx.addIssue({
-            code: 'custom',
-            path: [...path, key],
-            message: 'matches needs a text field',
-          })
+        if (!isText(field)) issue([...path, key], 'matches needs a text field')
         continue
       }
       if (typeof v === 'object' && !Array.isArray(v) && isAge(v)) {
         if (!field.safeParse(new Date().toISOString()).success)
-          ctx.addIssue({
-            code: 'custom',
-            path: [...path, key],
-            message: 'older_than and newer_than need a date field',
-          })
+          issue([...path, key], 'older_than and newer_than need a date field')
         else if (key === 'closed' && !canFinish(state, where))
-          ctx.addIssue({
-            code: 'custom',
-            path: [...path, key],
-            message: 'closed only matches merged or closed items; add state: [merged, closed]',
-          })
+          issue(
+            [...path, key],
+            'closed only matches merged or closed items; add state: [merged, closed]',
+          )
         else if (key === 'closed' && 'older_than' in v && !bounded)
-          ctx.addIssue({
-            code: 'custom',
-            path: [...path, key],
-            message: `closed needs newer_than to bound how far back to read; without it, awaywork reads ${DEFAULT_LOOKBACK} back`,
-          })
+          issue(
+            [...path, key],
+            `closed needs newer_than to bound how far back to read; without it, awaywork reads ${DEFAULT_LOOKBACK} back`,
+          )
         continue
       }
       const hint = scope.includes('linear') ? "; Linear's workflow state is status" : ''
       for (const scalar of whereValues(v))
         if (!field.safeParse(scalar).success)
-          ctx.addIssue({
-            code: 'custom',
-            path: [...path, key],
-            message: `invalid value ${JSON.stringify(scalar)}${key === 'state' ? `: state is open, merged or closed${hint}` : ''}`,
-          })
+          issue(
+            [...path, key],
+            `invalid value ${JSON.stringify(scalar)}${key === 'state' ? `: state is open, merged or closed${hint}` : ''}`,
+          )
     }
   }
 }
