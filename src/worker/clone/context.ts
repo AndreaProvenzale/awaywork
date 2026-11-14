@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '#config/schema'
-import type { Item } from '#core/types'
+import type { Item, Provider, Source } from '#core/types'
 import { slug } from '#plan/foreman'
-import { runCommand } from './setup'
-import { setupEnv } from './steps'
-import { WORK_DIR } from './work-dir'
+import { setupEnv } from '#worker/chain/handoff'
+import { runCommand } from '#worker/process/command'
+import { WORK_DIR } from './files'
 
 /** `dir` is the folder of the config file that set the command, set when the config loads. */
 export type ContextSource = { context?: { command: string; secrets: string[]; dir?: string } }
@@ -94,4 +94,21 @@ async function unfit(dir: string): Promise<string | undefined> {
   return (
     why ?? (bytes > MAX_BYTES ? `wrote ${bytes} bytes, over the ${MAX_BYTES} limit` : undefined)
   )
+}
+
+/** Every secret the config names, for `workerEnv` to withhold. */
+export function configSecrets(
+  config: Config,
+  providers: Record<string, Provider>,
+  sources: Record<string, Source>,
+): string[] {
+  return [
+    ...Object.values(providers).flatMap((p) => p.secrets),
+    ...Object.entries(config.sources).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
+    ...contextSecrets(config),
+    ...(config.notify?.secrets ?? []),
+    ...(config.store?.secrets ?? []),
+    ...Object.values(config.repos).flatMap((r) => r.secrets),
+    ...Object.values(config.mcp).flatMap((s) => s.secrets),
+  ]
 }

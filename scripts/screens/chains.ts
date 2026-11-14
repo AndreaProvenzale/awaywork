@@ -9,7 +9,7 @@ import { type PlannedUnit, planRun } from '#plan/foreman'
 import { type RunReport, summaryOf } from '#posts/report'
 import { allowance } from '#quota/budget'
 import { detachedLine } from '#run/execute'
-import { describeFired, gatesSection } from '#worker/gates'
+import { describeFired, gatesSection } from '#worker/deliver/gates'
 
 const style: Style = (format, text) => styleText(format, text)
 const now = Date.UTC(2026, 10, 9, 22)

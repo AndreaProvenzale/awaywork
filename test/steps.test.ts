@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterEach, expect, it } from 'vitest'
 import { bin } from '#config/paths'
-import { discard, handOff, snapshot } from '#worker/steps'
+import { discard, handOff, snapshot } from '#worker/chain/handoff'
 
 let root = ''
 const before = process.env.GIT_CONFIG_GLOBAL

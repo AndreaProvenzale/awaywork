@@ -3,33 +3,28 @@ import { join } from 'node:path'
 import type { Forge, Unit } from '#core/types'
 import { MAX_ATTEMPTS } from '#plan/attempts'
 import { footerItems, hasTrailer, type Left, type Pin } from '#posts/footer'
+import { describeLoop, type OpenLoop } from '#worker/chain/loop'
+import {
+  outputFile,
+  readOutput,
+  refuseSymlinks,
+  reportsOnly,
+  WORK_DIR,
+  writeOutput,
+} from '#worker/clone/files'
+import { commitsSince } from '#worker/clone/git'
 import {
   type Check,
   type CheckOptions,
   checkDetails,
   checkLog,
-  commitsSince,
   type RanCheck,
-} from './checks'
+} from '#worker/process/checks'
 import { describeFired, gateOut, gatesSection, type Judged } from './gates'
 import { type Outcome, publish } from './publish'
 import { leaveReview } from './review'
-import { readOutput, refuseSymlinks, writeOutput } from './safe-files'
-import { outputFile, reportsOnly, WORK_DIR } from './work-dir'
 
 const MAX_SUFFIX = 10
-
-/** A loop of the chain, while its rounds run. */
-export interface OpenLoop {
-  skills: string[]
-  rounds: number
-  verdict?: string
-  /** The last run of `until`'s command. */
-  check?: RanCheck
-  ended?: string
-  /** Its `until` held. */
-  held?: true
-}
 
 /** Why a slice's draft waits for a later run: its step asked, its questions on `url`, or said `continue`; and the times its unit said `continue` so far. */
 export type Held = Pick<Left, 'status' | 'continued'> & { url?: string }
@@ -240,12 +235,6 @@ function joinReports(reports: StepReport[]): string {
   return latestReports(reports)
     .map((r) => `### ${r.id}\n\n${r.text}`)
     .join('\n\n')
-}
-
-/** E.g. `2 rounds of review ⇄ fix; until held: verdict approve`. */
-export function describeLoop(loop: OpenLoop): string {
-  const rounds = `${loop.rounds} ${loop.rounds === 1 ? 'round' : 'rounds'}`
-  return `${rounds} of ${loop.skills.join(' ⇄ ')}; ${loop.ended ?? 'nothing ran'}`
 }
 
 /** awaywork's own notes in the PR body or push summary: how each loop went, its failing check, and the steps' reports. */

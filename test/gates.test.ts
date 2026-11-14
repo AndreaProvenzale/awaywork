@@ -20,9 +20,9 @@ import { builtinSkills } from '#core/skills'
 import type { Gate, Unit } from '#core/types'
 import { planRun } from '#plan/foreman'
 import { allowance } from '#quota/budget'
-import type { Check } from '#worker/checks'
-import type { Judged } from '#worker/gates'
-import { describeFired, gatesSection, runGates, runJudges } from '#worker/gates'
+import type { Judged } from '#worker/deliver/gates'
+import { describeFired, gatesSection, runGates, runJudges } from '#worker/deliver/gates'
+import type { Check } from '#worker/process/checks'
 import { fakeItem } from './fakes/items'
 
 const git = async (dir: string, ...args: string[]) =>

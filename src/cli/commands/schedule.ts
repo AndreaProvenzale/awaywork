@@ -46,7 +46,7 @@ import { staleWake, wakeFor, wakeUndo } from '#scheduler/wake'
 import { isCommand } from '#sources/command'
 import { sourceFor } from '#sources/index'
 import { errorText } from '#util/text'
-import { contextSecrets } from '#worker/context'
+import { contextSecrets } from '#worker/clone/context'
 
 const GITHUB_ACTIONS = 'github-actions'
 const DOCKER = 'docker'

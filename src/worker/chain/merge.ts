@@ -3,11 +3,10 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
 import { counted } from '#util/text'
-import { git } from './checks'
-import { writeOutput } from './safe-files'
-import { addTo } from './steps'
-import { outputFile, WORK_DIR } from './work-dir'
-import { inClone } from './workspace'
+import { outputFile, WORK_DIR, writeOutput } from '#worker/clone/files'
+import { git } from '#worker/clone/git'
+import { inClone } from '#worker/clone/workspace'
+import { addTo } from './handoff'
 
 /** What awaywork's own merge of a PR's base did: made the merge `commit`, stopped on conflicting `paths` of the base at `head`, `byHand` naming what of them no worker can resolve, or found nothing to merge. */
 export type Merge =

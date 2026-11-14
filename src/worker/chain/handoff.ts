@@ -3,11 +3,10 @@ import { basename, dirname, join, relative, sep } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
 import { providers } from '#providers/index'
-import { git } from './checks'
-import { commandEnv } from './env'
-import { readOutput, refuseSymlinks } from './safe-files'
-import { WORK_DIR } from './work-dir'
-import { inClone } from './workspace'
+import { commandEnv } from '#worker/clone/env'
+import { readOutput, refuseSymlinks, WORK_DIR } from '#worker/clone/files'
+import { git } from '#worker/clone/git'
+import { inClone } from '#worker/clone/workspace'
 
 export function isLast(loop: {
   round: number
