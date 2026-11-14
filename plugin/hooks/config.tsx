@@ -1,120 +1,10 @@
-import type { ClientElements, Color, EngineInterface, RenderChildren } from 'claude-code'
-import { atom, read, update } from 'claude-code'
+import type { ClientElements, Color, RenderChildren } from 'claude-code'
 
-import type { ConfigRule, ConfigState, Explained, RuleTakes, View } from '../types'
-import { awaywork, firstLine, json } from './cli'
+import type { ConfigRule, ConfigState, View } from '../types'
+import { DRAFT } from './cli'
+import { clip } from './text'
 
-const config = atom({ plugin: 'awaywork', key: 'config' } as const, {} as ConfigState, {
-  shape: 'config-1',
-})
-
-const DRAFT = 'config.draft.yml'
-const folderOf = (path: string) => path.slice(0, path.lastIndexOf('/'))
 const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1)
-
-/** The config's path, or that of the config setup `named`, and the draft's beside it; `missing` when awaywork says there's none. */
-export async function configPaths($: EngineInterface, named?: string, timeoutMs = 10_000) {
-  const r = await awaywork($, [...(named ? ['--config', named] : []), 'config', 'path'], timeoutMs)
-  const path = firstLine(r.stdout)
-  const missing = r.exitCode === 1 && /not found; awaywork init writes one/.test(r.stderr)
-  if (!path.startsWith('/')) return { missing }
-  return { missing, path, draft: `${folderOf(path)}/${DRAFT}` }
-}
-
-type Slot = { running?: Promise<unknown>; again?: boolean }
-
-/** Runs `work` one at a time; a call while it runs runs it once more after, so the last change is seen. */
-function latest(slot: Slot, work: () => Promise<unknown>): Promise<unknown> {
-  if (slot.running) {
-    slot.again = true
-    return slot.running
-  }
-  slot.running = work().finally(() => {
-    slot.running = undefined
-    if (slot.again) {
-      slot.again = false
-      void latest(slot, work)
-    }
-  })
-  return slot.running
-}
-
-async function fetchTakes($: EngineInterface) {
-  const c = await read($, config)
-  if (!c.file || !c.view) return
-  await update($, config, (x) => ({ ...x, takesError: undefined, readingTakes: true }))
-  const got = await json<RuleTakes>($, ['--config', c.file, 'plan', '--rules', '--json'], 120_000)
-  await update($, config, (x) => ({
-    ...x,
-    readingTakes: undefined,
-    takes: 'json' in got ? got.json : x.takes,
-    takesError: 'json' in got ? undefined : 'error' in got ? got.error : got.failed,
-  }))
-}
-
-const takesSlot: Slot = {}
-const syncSlot: Slot = {}
-
-function readTakes($: EngineInterface) {
-  return latest(takesSlot, () =>
-    fetchTakes($).catch((e) =>
-      update($, config, (x) => ({ ...x, readingTakes: undefined, takesError: String(e) })),
-    ),
-  )
-}
-
-/** Reads the draft, else the config, and what it says; an invalid file keeps the last good drawing. */
-async function fetchConfig($: EngineInterface) {
-  const c = await read($, config)
-  const where = await configPaths($, c.named)
-  if (!where.path || !where.draft) return
-  const located = { path: where.path, draft: where.draft, setup: where.missing }
-  const isDraft = await $.fs.exists(where.draft)
-  const hasConfig = await $.fs.exists(where.path)
-  const file = isDraft ? where.draft : where.path
-  const text = isDraft || hasConfig ? await $.fs.read(file) : undefined
-  // A file with problems is asked about again, so a failed explain doesn't outlive the file it failed on.
-  if (text === c.text && !c.problems) {
-    await update($, config, (x) => ({ ...x, ...located, file: text && file }))
-    return
-  }
-  const got =
-    text === undefined
-      ? undefined
-      : await json<Explained>($, ['--config', file, 'config', 'explain'])
-  const said = got && 'json' in got ? got.json : undefined
-  // A text explain gave no answer for isn't seen, so the next sync asks again.
-  const seen = text === undefined || said !== undefined
-  await update($, config, (x) => ({
-    ...x,
-    ...located,
-    file: text === undefined ? undefined : file,
-    text: seen ? text : x.text,
-    previous: seen && text !== x.text ? x.text : x.previous,
-    view: said?.valid ? said : text === undefined ? undefined : x.view,
-    problems:
-      said && !said.valid
-        ? said.problems
-        : got && !('json' in got)
-          ? ['error' in got ? got.error : got.failed]
-          : undefined,
-    takes: text === undefined ? undefined : x.takes,
-  }))
-  if (said?.valid && (await read($, config)).wantTakes) void readTakes($)
-}
-
-export function syncConfig($: EngineInterface) {
-  return latest(syncSlot, () =>
-    fetchConfig($).catch((e) => update($, config, (x) => ({ ...x, problems: [String(e)] }))),
-  )
-}
-
-/** The rows' counts of what each rule takes now come in the background: `plan --rules` reads the sources. */
-export async function wantTakes($: EngineInterface) {
-  await update($, config, (c) => ({ ...c, wantTakes: true }))
-  await syncConfig($)
-  void readTakes($)
-}
 
 /** The draft a tool call is working on: a Write or Edit of `config.draft.yml`, or an `awaywork --config` at one by a path that says where it is. */
 export function draftNamed(isFile: boolean, text: string) {
@@ -126,13 +16,6 @@ export function draftNamed(isFile: boolean, text: string) {
 
 export const mentionsConfig = (text: string, c: ConfigState) =>
   text.includes(DRAFT) || (!!c.path && text.includes(c.path))
-
-/** Follows setup's draft once it's on disk: the CLI expands a `~/` and says whether the file is there. */
-export async function useDraft($: EngineInterface, named: string) {
-  const { path, missing } = await configPaths($, named)
-  if (path && !missing)
-    await update($, config, (c) => ({ ...c, named: `${folderOf(path)}/config.yml` }))
-}
 
 /** One hunk from the first changed line to the last, what a single write changes. */
 export function lastChange(before: string, after: string): string | undefined {
@@ -245,9 +128,6 @@ function flowOf(r: ConfigRule, rules: ConfigRule[], width: number) {
   ]
   return { line: flat, under: undefined }
 }
-
-const clip = (text: string, room: number) =>
-  text.length <= room ? text : `${text.slice(0, Math.max(0, room - 1))}…`
 
 type Button = (
   key: string,

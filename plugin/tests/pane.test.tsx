@@ -190,7 +190,7 @@ test('bare /away lands on the first tab with something in it, reading only the r
 
   for (const surface of ALL) {
     const ui = await mount($, surface)
-    expect(await text(ui, /☾ awaywork/)).toBe(true)
+    expect(await text(ui, /☾ >_ awaywork/)).toBe(true)
     expect(await text(ui, /last run \d\d-\d\d \d\d:\d\d · 1 PR/)).toBe(true)
     expect(await text(ui, / · 6 need you/)).toBe(true)
     expect(await label(ui, 'tab:needs')).toBe('Needs you (6)')
