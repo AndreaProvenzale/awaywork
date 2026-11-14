@@ -677,6 +677,39 @@ mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
     expect(out).toContain('  commit .github/workflows/awaywork.yml')
   })
 
+  it("stops before writing when gh's account can't set the repo's secrets, and names the env token's owner", async () => {
+    const { root, config } = await setup()
+    const as =
+      (permission: string): Exec =>
+      async (cmd, args, env) => {
+        if (cmd === 'git') return root
+        if (args[0] === 'api') return env?.GH_TOKEN === 'ghp_secret' ? 'alice\n' : 'work-me\n'
+        return JSON.stringify({ nameWithOwner: 'alice/home', viewerPermission: permission })
+      }
+    const set: string[] = []
+    const install = (permission: string, script: [RegExp, unknown][]) =>
+      installWorkflow(config, {
+        run: as(permission),
+        ask: scriptedAsk([[/^Which runner\?$/, initial], ...script]),
+        env: { GH_TOKEN: 'ghp_secret' },
+        setSecret: async (name) => void set.push(name),
+        interactive: true,
+      })
+    await install('READ', [])
+    expect(process.exitCode).toBe(1)
+    expect(out).toEqual([
+      "gh acts as work-me, who can't set alice/home's secrets; switch with `gh auth switch --user <other>` or `forge.github.user`, or run `GH_TOKEN=$(gh auth token --user <other>) awaywork schedule install`",
+    ])
+    expect(existsSync(join(root, WORKFLOW))).toBe(false)
+    process.exitCode = undefined
+    await install('WRITE', [
+      [/^Set the GH_TOKEN repository secret from your env \(alice's token\)\?$/, true],
+    ])
+    expect(process.exitCode).toBeUndefined()
+    expect(set).toEqual(['GH_TOKEN'])
+    expect(existsSync(join(root, WORKFLOW))).toBe(true)
+  })
+
   it("leaves the repo's skills alone when the user has none, a stray file aside", async () => {
     const { root, home, install } = await setup()
     await rm(join(home, 'skills'), { recursive: true })
@@ -713,7 +746,7 @@ it('warns about a workflow that runs its steps inline instead of calling the act
 
 it('offers to set only the secrets it has values for, and never prints them', async () => {
   const ask = scriptedAsk([
-    [/^Set the GH_TOKEN repository secret/, true],
+    [/^Set the GH_TOKEN repository secret from your env \(alice's token\)\?$/, true],
     [/^Set the ASANA_TOKEN repository secret/, false],
     [/^Set the SLACK_WEBHOOK repository secret/, true],
   ])
@@ -726,6 +759,7 @@ it('offers to set only the secrets it has values for, and never prints them', as
       if (name === 'SLACK_WEBHOOK') throw new Error('gh failed')
       set.push([name, value])
     },
+    async (_cmd, _args, env) => (env?.GH_TOKEN === 'ghp_secret' ? 'alice\n' : ''),
   )
   expect(set).toEqual([['GH_TOKEN', 'ghp_secret']])
   expect(unset).toEqual(['CLAUDE_CODE_OAUTH_TOKEN', 'ASANA_TOKEN', 'SLACK_WEBHOOK'])
