@@ -1,4 +1,4 @@
-# awaywork's daemon, its units run as the worker user: docs/guide/scheduling.md, "In a container".
+# awaywork's daemon, its units run as the worker user: docs/guide/scheduling/container.md.
 # Built from a control repo's root, with the config in .awaywork/config.yml and its skills in .awaywork/skills/.
 FROM node:22-bookworm-slim
 

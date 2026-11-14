@@ -10,7 +10,7 @@ No new chain features until real runs ask for them: only fixes and simplificatio
 
 ## `then`
 
-Steps run after the rule's skill, one after the other. The whole chain is one unit and publishes once, when it ends: one PR, one push or one report. To split work into PRs of their own, [plan it into tasks](./workflows.md#plans). A step is a skill name, or a map:
+Steps run after the rule's skill, one after the other. The whole chain is one unit and publishes once, when it ends: one PR, one push or one report. To split work into PRs of their own, [plan it into tasks](../workflows/plans.md). A step is a skill name, or a map:
 
 ```yaml
 queue:
@@ -27,7 +27,7 @@ queue:
       - { skill: review, provider: codex, mcp: [] }
 ```
 
-A step takes `provider`, `model`, `skills`, `mcp` and `instructions`, inherited from the rule unless set (`[]` clears a list), plus its own `with` and [`when`](#when). Above, `implement` gets `sentry`, and `review` gets no server and keeps `opus` should it route to Claude. Each step finds the previous one's output in `.away/context/previous/`: `report.md`, `verdict`, the chain's `pr.md` so far, its commits in `diff.patch`, and in a loop the `until` output in `check.log`.
+A step takes `provider`, `model`, `skills`, `mcp` and `instructions`, inherited from the rule unless set (`[]` clears a list), plus its own `with` and [`when`](#when). Above, `implement` gets `sentry`, and `review` gets no server and keeps `opus` should it route to Claude. Each step finds the previous one's output in `.away/context/previous/`: `report.md`, `verdict`, the chain's `pr.md` so far, its commits in `diff.patch`, and in a loop the `until` output in `check.log`. The first step finds the item's latest report there instead, marked as from an earlier run: that's how an approved `implement` finds its plan, on a retry too, since a failed `implement` with no report doesn't replace it.
 
 `plan` shows a chain as one row, every step routed (every loop round up to `max`) and budgeted live:
 
@@ -48,16 +48,16 @@ The PR body is the `pr.md` the steps kept, plus an `## Awaywork chain` section w
 How a chain ends:
 
 - A step that leaves nothing for the next ends it (a committing step with no commits, a report step with no report), and the rest are passed over; the chain counts as finished.
-- So does a step that asks: `.away/out/questions.md` plus `ask` in `.away/out/status` (`implement` on a vague item). awaywork posts the questions on your item and publishes any commits, a PR as a draft; your reply reruns the unit, within minutes under [`run: soon`](./configuration.md#run-soon) ([Questions](./workflows.md#questions)).
-- So does `continue`: its commits open as a draft a later run goes on with ([Continue](./workflows.md#continue)).
+- So does a step that asks: `.away/out/questions.md` plus `ask` in `.away/out/status` (`implement` on a vague item). awaywork posts the questions on your item and publishes any commits, a PR as a draft; your reply reruns the unit, within minutes under [`run: soon`](./queue-rules.md#run-soon) ([Questions](../workflows/questions.md#questions)).
+- So does `continue`: its commits open as a draft a later run goes on with ([Continue](../workflows/questions.md#continue)).
 - A failed or stopped step, or the window's end, ends it and publishes what it has. A PR it opened or commits it [pushed](#push) wait for your review; otherwise it runs again next run. Ctrl-C publishes nothing.
 
 Details:
 
 - A skill commits unless its metadata says it reports, as `plan` and `review` do. A chain that committed nothing publishes its reports, joined, as one.
-- The rule's `deliver` decides where commits go; steps have no `deliver` or `branch`. A committing skill that should only report is a [skill of your own](./skills.md#write-your-own).
-- `model: { claude: [sonnet, opus] }` [retries a failed step](./configuration.md#retry-on-the-next-model) on the second, and the chain goes on.
-- A chain counts once against [caps](./configuration.md#windows-limits-and-budget) and its rule's `units`, once its first step has a provider; over a cap it's skipped whole.
+- The rule's `deliver` decides where commits go; steps have no `deliver` or `branch`. A committing skill that should only report is a [skill of your own](../skills.md#write-your-own).
+- `model: { claude: [sonnet, opus] }` [retries a failed step](./queue-rules.md#retry-on-the-next-model) on the second, and the chain goes on.
+- A chain counts once against [caps](./providers.md#windows-limits-and-budget) and its rule's `units`, once its first step has a provider; over a cap it's skipped whole.
 - On someone else's PR or a fork's, a chain that could commit is skipped with the reason; `deliver: report` makes it a review chain, and `pending_review` leaves its last report as your pending review.
 - A skill runs at most once outside loops, and once across loops: a loop may repeat the rule's skill, as in `fix` then `loop: [review, fix]`.
 - Steps are named `<unit>-<skill>`, in a loop `<unit>-<skill>-<round>`, each with a numbered folder under the run's `units/<unit>/`, next to `out/` with what the chain published:
@@ -70,7 +70,7 @@ Details:
     out/           pr.md  diff.patch
   ```
 
-- [`awaywork replay`](../reference/cli.md#awaywork-replay) rebuilds only a unit's first step: later ones start from commits that only existed in the clone.
+- [`awaywork replay`](../../reference/cli.md#awaywork-replay) rebuilds only a unit's first step: later ones start from commits that only existed in the clone.
 
 ## Loops
 
@@ -160,7 +160,7 @@ Details:
 - Right before the push awaywork rereads the PR and refuses if it's no longer yours or open, has auto-merge on (it would merge unreviewed commits), or its branch is on a fork, the default branch, protected, or another person's open PR's branch too.
 - Commits get the `Awaywork:` trailer, which drops signatures.
 - Only a rule opts in; a skill's frontmatter can't default to `push`.
-- The pushed head lives in the state dir, which a [GitHub-hosted runner](./scheduling.md#on-the-runner) doesn't keep: there the rule pushes every run its `where` holds.
+- The pushed head lives in the state dir, which a [GitHub-hosted runner](../scheduling/actions.md#on-the-runner) doesn't keep: there the rule pushes every run its `where` holds.
 
 ## `sync`
 
@@ -173,7 +173,7 @@ queue:
     deliver: push
 ```
 
-`behind` counts base commits the branch lacks ([GitHub fields](./how-it-works.md#items)). Leave `conflicts` out of `where`: GitHub resets it to unknown after a push to the base, so `conflicts: false` would miss the PRs that just fell behind; `sync` reads it itself. Without `conflicts: true` no model runs, so `plan` lists no provider, and the run pushes one `Merge <base> into <branch>` commit with the trailer:
+`behind` counts base commits the branch lacks ([GitHub fields](./where.md#fields)). Leave `conflicts` out of `where`: GitHub resets it to unknown after a push to the base, so `conflicts: false` would miss the PRs that just fell behind; `sync` reads it itself. Without `conflicts: true` no model runs, so `plan` lists no provider, and the run pushes one `Merge <base> into <branch>` commit with the trailer:
 
 <!-- Generated by `pnpm docs:gen` from scripts/screens.ts. Do not edit. -->
 
@@ -186,7 +186,7 @@ queue:
 Details:
 
 - awaywork runs `git merge --no-ff` of the base as fetched, first thing, before any repo code, with your identity and no signing config. A clean merge runs no worker, spends no quota and gets no gates: no model wrote anything.
-- A clean merge can still be wrong (two branches adding the same block), so `setup` then [`verify`](./configuration.md#repos-and-instructions) run on the merged tree, the only repo code here; a failure goes into the report and the push still happens, for your `checks: failing` rule to pick up.
+- A clean merge can still be wrong (two branches adding the same block), so `setup` then [`verify`](./repos.md#repos-and-instructions) run on the merged tree, the only repo code here; a failure goes into the report and the push still happens, for your `checks: failing` rule to pick up.
 - Only that merge is pushed. If `setup` or `verify` amend it, commit on top or move the branch, nothing is, and the report says the head isn't awaywork's merge.
 - An up-to-date branch pushes nothing (`already up to date with <base>`), a finished attempt: the PR is unchanged until it or its base moves, and awaywork remembers the base head it tried, since a base push doesn't touch the PR's `updated`.
 - No review hold after a clean merge, so the next `sync` or a `fix` on the CI it started can take the PR at once.
@@ -206,7 +206,7 @@ The commits on `awaywork-resolve-base` that touch them, newest first:
 - da5074a resolve probe: theirs
 ```
 
-The worker resolves the files, keeping both sides' intent, fixes fallout elsewhere (a function the base renamed), runs its checks and writes `.away/out/pr.md`. It doesn't commit: awaywork makes the merge commit from its working tree, on exactly your head and the base head it merged, whatever the worker did to `.git`. Then it's a normal `push`: `verify`, the [gates](./workflows.md#gates), and the summary in the report, the decision card on top when one fired:
+The worker resolves the files, keeping both sides' intent, fixes fallout elsewhere (a function the base renamed), runs its checks and writes `.away/out/pr.md`. It doesn't commit: awaywork makes the merge commit from its working tree, on exactly your head and the base head it merged, whatever the worker did to `.git`. Then it's a normal `push`: `verify`, the [gates](../workflows/gates.md), and the summary in the report, the decision card on top when one fired:
 
 <!-- Generated by `pnpm docs:gen` from scripts/screens.ts. Do not edit. -->
 
@@ -231,4 +231,4 @@ Details:
 - A conflicted lockfile often breaks `setup`, which runs on the conflicted tree first: `merge.md` then notes it, and the worker goes on.
 - `conflicts` reads unknown for a while after a base push, so a run may plan no provider and hit the conflict: it aborts, pushes nothing, says where (`conflicts with awaywork-resolve-base in resolve-probe/a.txt, and no provider to resolve them`), and counts no attempt, so a later run plans a provider. Same when providers had no quota.
 - A conflicted submodule pointer, or a file name that isn't valid UTF-8, aborts with no worker or quota and asks you to merge by hand (`conflicts with main in vendor/lib (a submodule): merge it by hand`), a finished attempt like `already up to date`.
-- The instructions are the skill's body, so you can [eject](./skills.md#tweak-a-built-in) `sync` to tweak how it resolves; keep `metadata.merge: base`.
+- The instructions are the skill's body, so you can [eject](../skills.md#tweak-a-built-in) `sync` to tweak how it resolves; keep `metadata.merge: base`.

@@ -76,13 +76,13 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 | --- | --- |
 | [Rules](docs/guide/how-it-works.md#the-queue) | An ordered list: each item takes the first rule it matches. With none, nothing runs |
 | [Skills](docs/guide/skills.md) | Plain Markdown: `fix`, `implement`, `review`, `plan` and more built in. Eject one or write your own |
-| [Chains and loops](docs/guide/chains.md) | More steps after a rule's skill, in the same clone: conditions, review-and-fix loops, pushing onto your PR |
-| [Plans](docs/guide/workflows.md#plans) | A feature split into tasks on your card. Once you approve, they run as PRs or reports, across repos too |
-| [Gates](docs/guide/workflows.md#gates) | A glob, a script or a judge spots a change that wants a human and puts a decision card on top of the PR or post |
-| [Posts that wait](docs/guide/workflows.md#posts-that-wait) | A result lands on your item and waits; your approve hands the item to the next rule |
-| [Threads](docs/guide/workflows.md#threads) | A card that can't take awaywork's posts gets a GitHub issue for them, assigned to you, or a page on a host of your own |
-| [Store](docs/guide/workflows.md#store) | Files a post pins go wherever your command puts them, and the next unit gets them back |
-| [Results](docs/guide/results.md) and [notify hooks](docs/guide/configuration.md#notify) | How far each rule's result reaches, and your own command for Notion, Slack and the like |
+| [Chains and loops](docs/guide/config/chains.md) | More steps after a rule's skill, in the same clone: conditions, review-and-fix loops, pushing onto your PR |
+| [Plans](docs/guide/workflows/plans.md) | A feature split into tasks on your card. Once you approve, they run as PRs or reports, across repos too |
+| [Gates](docs/guide/workflows/gates.md) | A glob, a script or a judge spots a change that wants a human and puts a decision card on top of the PR or post |
+| [Posts that wait](docs/guide/workflows/posts.md#posts-that-wait) | A result lands on your item and waits; your approve hands the item to the next rule |
+| [Threads](docs/guide/workflows/posts.md#threads) | A card that can't take awaywork's posts gets a GitHub issue for them, assigned to you, or a page on a host of your own |
+| [Store](docs/guide/workflows/store.md) | Files a post pins go wherever your command puts them, and the next unit gets them back |
+| [Results](docs/guide/results.md) and [notify hooks](docs/guide/results.md#notify) | How far each rule's result reaches, and your own command for Notion, Slack and the like |
 | [`/away` pane](docs/guide/away.md#the-pane) | Beside the chat in Claude Code: what needs you and what ran, with keys to skip, approve or start an item |
 | [Quota pacing](docs/guide/how-it-works.md#budget) | A ceiling per run spreads your quota over its window and keeps a reserve. Agents whose quota can't be read get fixed caps |
 
@@ -99,7 +99,7 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 - **It runs the vendor's own binary with your login.** It never calls the backing API with a subscription credential, and never stores or proxies someone else's.
 - **A watchdog cleans up** after every worker and kills units that eat all the RAM or disk.
 
-More in [Safety](docs/guide/safety.md).
+More in [Safety](docs/guide/safety/index.md).
 
 ## Supported
 
@@ -107,7 +107,7 @@ More in [Safety](docs/guide/safety.md).
 | --- | --- | --- |
 | Claude Code, Cursor (with a `CURSOR_API_KEY`, even locally), Codex (experimental, not on GitHub-hosted runners) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions, Docker |
 
-More agents and task trackers are on the way, or bring your own: [add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md), or point a [custom source](docs/guide/custom-sources.md) at any script that prints JSON. Needs Node 22+, `git`, and `gh auth login`, or `twg` and an SSH key for [Bitbucket Cloud](docs/guide/configuration.md#bitbucket-and-jira).
+More agents and task trackers are on the way, or bring your own: [add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md), or point a [custom source](docs/guide/config/custom-sources.md) at any script that prints JSON. Needs Node 22+, `git`, and `gh auth login`, or `twg` and an SSH key for [Bitbucket Cloud](docs/guide/config/sources.md#bitbucket-and-jira).
 
 ## Docs
 
@@ -119,14 +119,14 @@ The site: https://andreaprovenzale.github.io/awaywork/. Setting it up with an ag
 | [How it works](docs/guide/how-it-works.md) | Items, the queue, units, budget, routing, the worker, delivery |
 | [`/away` in Claude Code](docs/guide/away.md) | The plugin: setup in rounds of questions, the pane beside the chat and its keys |
 | [Plan, run, report](docs/guide/running.md) | Reading the plan, running one unit, the morning report |
-| [Configuration](docs/guide/configuration.md) | The config file by example. The schema holds across minor releases, [experimental keys aside](docs/guide/configuration.md#stability) |
-| [Workflows](docs/guide/workflows.md) | Questions, drafts that continue, gates, plans, posts that wait, threads, the store |
-| [Chains](docs/guide/chains.md) | More steps after a rule's skill: loops, conditions, stacked PRs, pushing onto your PR |
+| [Configuration](docs/guide/config/index.md) | The config file by example. The schema holds across minor releases, [experimental keys aside](docs/guide/config/index.md#stability) |
+| [Workflows](docs/guide/workflows/index.md) | Questions, drafts that continue, gates, plans, posts that wait, threads, the store |
+| [Chains](docs/guide/config/chains.md) | More steps after a rule's skill: loops, conditions, stacked PRs, pushing onto your PR |
 | [Where results go](docs/guide/results.md) | Who sees what, and notify hooks for Notion, Slack and the like |
-| [Custom sources](docs/guide/custom-sources.md) | Any task tracker, through a command that prints your items as JSON |
+| [Custom sources](docs/guide/config/custom-sources.md) | Any task tracker, through a command that prints your items as JSON |
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |
-| [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions, a container |
-| [Safety](docs/guide/safety.md) | Guardrails and vendor terms |
+| [Scheduling](docs/guide/scheduling/index.md) | launchd, systemd, cron, GitHub Actions, a container |
+| [Safety](docs/guide/safety/index.md) | Guardrails and vendor terms |
 | [With an AI agent](docs/guide/agents.md) | The skill for Codex and friends, a prompt to paste, and the machine-readable docs and commands |
 | [Suggested rules](docs/guide/suggest.md) | Rules, routines and `AGENTS.md` lines from your own sessions and PRs |
 | [CLI reference](docs/reference/cli.md) | Every command |

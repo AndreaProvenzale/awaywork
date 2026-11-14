@@ -6,7 +6,7 @@ description: How to add a work source such as a task tracker to awaywork, with t
 
 A source reads the developer's open work from a tracker, and what they finished lately when a rule asks. Adding one is a file in `src/sources/`, a line in the registry and a passing contract suite. [Sources](../sources.md) holds the research on which trackers can be read headless and how.
 
-For a private tracker, or one you don't want to maintain in here, a [custom source](../guide/custom-sources.md) needs no code change: any command that prints your items as JSON.
+For a private tracker, or one you don't want to maintain in here, a [custom source](../guide/config/custom-sources.md) needs no code change: any command that prints your items as JSON.
 
 ## Rules for a source
 
