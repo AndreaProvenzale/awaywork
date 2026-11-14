@@ -1125,28 +1125,39 @@ describe('github forge', () => {
         .nodes
     const run = recorded([[/-F number=347 /, JSON.stringify(recordedChecks)]])
     expect(await githubForge(run).checks('AndreaProvenzale/awaywork', 347)).toEqual({
-      check: 'passed',
-      isolation: 'passed',
-      container: 'passed',
+      check: { state: 'passed' },
+      isolation: { state: 'passed' },
+      container: { state: 'passed' },
     })
     nodes.push(
-      { __typename: 'CheckRun', name: 'Expo Preview', status: 'IN_PROGRESS', conclusion: null },
+      {
+        __typename: 'CheckRun',
+        name: 'Expo Preview',
+        status: 'IN_PROGRESS',
+        conclusion: null,
+        detailsUrl: 'https://expo.dev/preview/1',
+      },
       { __typename: 'CheckRun', name: 'docs', status: 'COMPLETED', conclusion: 'SKIPPED' },
       { __typename: 'CheckRun', name: 'check', status: 'COMPLETED', conclusion: 'FAILURE' },
-      { __typename: 'StatusContext', context: 'Vercel Preview', state: 'PENDING' },
+      {
+        __typename: 'StatusContext',
+        context: 'Vercel Preview',
+        state: 'PENDING',
+        targetUrl: 'https://vercel.com/acme/1',
+      },
       { __typename: 'StatusContext', context: 'Netlify', state: 'ERROR' },
       { __typename: 'StatusContext', context: 'ci/legacy', state: 'SUCCESS' },
     )
     const mixed = recorded([[/-F number=347 /, JSON.stringify(recordedChecks)]])
     expect(await githubForge(mixed).checks('AndreaProvenzale/awaywork', 347)).toEqual({
-      check: 'failing',
-      isolation: 'passed',
-      container: 'passed',
-      'Expo Preview': 'pending',
-      docs: 'passed',
-      'Vercel Preview': 'pending',
-      Netlify: 'failing',
-      'ci/legacy': 'passed',
+      check: { state: 'failing' },
+      isolation: { state: 'passed' },
+      container: { state: 'passed' },
+      'Expo Preview': { state: 'pending', url: 'https://expo.dev/preview/1' },
+      docs: { state: 'passed' },
+      'Vercel Preview': { state: 'pending', url: 'https://vercel.com/acme/1' },
+      Netlify: { state: 'failing' },
+      'ci/legacy': { state: 'passed' },
     })
   })
 

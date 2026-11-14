@@ -28,7 +28,7 @@ type Pr = {
   links: { html: { href: string } }
 }
 /** A build status as Bitbucket's API documents it; twg returned none to check it against. */
-type Status = { name: string; state: string; links?: { commit?: { href?: string } } }
+type Status = { name: string; state: string; url?: string; links?: { commit?: { href?: string } } }
 
 const STATUS: Record<string, CheckState> = {
   SUCCESSFUL: 'passed',
@@ -173,7 +173,14 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       const pr = await twg<Pr & { _statuses: Status[] }>(run, args)
       const onHead = (s: Status) =>
         s.links?.commit?.href?.split('/').at(-1)?.startsWith(pr.source.commit.hash) ?? true
-      return byName(pr._statuses.filter(onHead).map((s) => [s.name, STATUS[s.state] ?? 'pending']))
+      return byName(
+        pr._statuses
+          .filter(onHead)
+          .map((s) => [
+            s.name,
+            { state: STATUS[s.state] ?? 'pending', ...(s.url && { url: s.url }) },
+          ]),
+      )
     },
 
     async push(dir, branch, { repo }) {

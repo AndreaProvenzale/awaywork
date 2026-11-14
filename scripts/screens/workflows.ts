@@ -340,7 +340,7 @@ function waitingOnCheck(): string {
   const tasks = `tasks:
   - { id: api, title: VAT export endpoint, ships: [openapi.yaml] }
   - { id: web, title: Export button, repo: acme/web, after: { api: Vercel Preview } }`
-  const api = pr('acme/backend', 41, { checks: { 'Vercel Preview': 'pending' } })
+  const api = pr('acme/backend', 41, { checks: { 'Vercel Preview': { state: 'pending' } } })
   const p = plan(fanOut, [card(eng2101, tasks, { api })])
   return `$ awaywork plan --skipped\n${formatSkipped(p.skipped)}`
 }

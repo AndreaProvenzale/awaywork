@@ -102,7 +102,7 @@ function taskLines(item: Item): string[] {
       const away = repoOf(id) !== repoOf(task.id) ? ` in ${repoOf(id)}` : ''
       const state = pr ? `PR #${pr.number} ${pr.state}` : 'no PR yet'
       if (!isCheck(when)) return `${id} ${when}${away} (${state})`
-      const check = pr?.state === 'open' ? `, ${pr.checks?.[when] ?? 'not reported'}` : ''
+      const check = pr?.state === 'open' ? `, ${pr.checks?.[when]?.state ?? 'not reported'}` : ''
       return `${id}'s check ${when}${away} (${state}${check})`
     },
   )

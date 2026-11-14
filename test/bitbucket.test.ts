@@ -245,16 +245,16 @@ describe('bitbucket forge', () => {
     expect(
       await forge([
         status('Pipeline', 'SUCCESSFUL'),
-        status('Vercel Preview', 'INPROGRESS'),
+        { ...status('Vercel Preview', 'INPROGRESS'), url: 'https://vercel.com/acme/1' },
         status('Expo Preview', 'FAILED'),
         status('Lint', 'STOPPED'),
         status('Old', 'SUCCESSFUL', '09db4a1b3c29'),
       ]).checks(sandbox, 5),
     ).toEqual({
-      Pipeline: 'passed',
-      'Vercel Preview': 'pending',
-      'Expo Preview': 'failing',
-      Lint: 'failing',
+      Pipeline: { state: 'passed' },
+      'Vercel Preview': { state: 'pending', url: 'https://vercel.com/acme/1' },
+      'Expo Preview': { state: 'failing' },
+      Lint: { state: 'failing' },
     })
   })
 

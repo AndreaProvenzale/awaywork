@@ -751,7 +751,7 @@ function threadsMarkdown(threads: Thread[]): string {
 }
 
 async function checksMarkdown(run: Exec, repo: string, checks: Check[]): Promise<string> {
-  const isFailing = (c: Check) => checkResult(c)[1] === 'failing'
+  const isFailing = (c: Check) => checkResult(c)[1].state === 'failing'
   const failed = checks.filter(isFailing)
   const others = checks
     .filter((c) => !isFailing(c))

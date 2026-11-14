@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { builtinSkills } from '#core/skills'
-import type { CheckState, Forge, Item, Provider, Source, TaskPr } from '#core/types'
+import type { CheckResult, CheckState, Forge, Item, Provider, Source, TaskPr } from '#core/types'
 import { bitbucketForge } from '#forge/bitbucket'
 import type { Exec } from '#forge/gh'
 import { planJson } from '#format/json'
@@ -19,6 +19,7 @@ import { approveReply, markComment, planComment } from '#posts/comments'
 import { footer } from '#posts/footer'
 import { linkPlanTasks } from '#posts/threads'
 import { allowance } from '#quota/budget'
+import { taskMarkdown } from '#tasks/fanout'
 import { checkPlan, openedChain } from '#tasks/plan-file'
 import { runUnits } from '#worker/units'
 import { fakeForge } from './fakes/forge'
@@ -74,7 +75,7 @@ const card = (yaml: string, taskPrs: Record<string, TaskPr> = {}, source = 'gith
     fields: { repo: 'acme/backend', updated: at(5) },
     taskPrs,
   })
-const pr = (state: TaskPr['state'], checks?: Record<string, CheckState>): TaskPr => ({
+const pr = (state: TaskPr['state'], checks?: Record<string, CheckResult>): TaskPr => ({
   repo: 'acme/backend',
   number: 41,
   url: 'https://github.com/acme/backend/pull/41',
@@ -130,19 +131,19 @@ describe('a check name in after', () => {
     }
     const reason = (state: string) => `waiting for api's check Vercel Preview (${state})`
     const fannedOut = "fanned out: api PR open, web waits for api's check Vercel Preview"
-    expect(waiting({ api: pr('open', { 'Vercel Preview': 'pending' }) })).toEqual([
+    expect(waiting({ api: pr('open', { 'Vercel Preview': { state: 'pending' } }) })).toEqual([
       [],
       [
         ['acme/backend#1', 'fanned_out', fannedOut, 'https://github.com/acme/backend/issues/1'],
         ['acme/backend#1/web', 'waiting_for_task', reason('pending'), pr('open').url],
       ],
     ])
-    expect(waiting({ api: pr('open', { 'Vercel Preview': 'failing' }) })[1]?.[1]?.[2]).toBe(
-      reason('failing'),
-    )
-    expect(waiting({ api: pr('open', { 'vercel preview': 'passed' }) })[1]?.[1]?.[2]).toBe(
-      reason('not reported'),
-    )
+    expect(
+      waiting({ api: pr('open', { 'Vercel Preview': { state: 'failing' } }) })[1]?.[1]?.[2],
+    ).toBe(reason('failing'))
+    expect(
+      waiting({ api: pr('open', { 'vercel preview': { state: 'passed' } }) })[1]?.[1]?.[2],
+    ).toBe(reason('not reported'))
     expect(waiting({ api: pr('open') })[1]?.[1]?.[2]).toBe(reason('not reported'))
   })
 
@@ -158,7 +159,8 @@ describe('a check name in after', () => {
   })
 
   it('stacks on the PR once its check passed, and counts a merged PR as passed', () => {
-    const passed = plan([card(sameRepo, { api: pr('open', { 'Vercel Preview': 'passed' }) })])
+    const preview = { state: 'passed', url: 'https://vercel.com/acme/backend/1' } as const
+    const passed = plan([card(sameRepo, { api: pr('open', { 'Vercel Preview': preview }) })])
     expect(passed.units.map((u) => [u.unit.id, u.unit.base, u.unit.stackedOn ?? '-'])).toEqual([
       ['acme-backend-1-web', 'away/acme-backend-1-api', pr('open').url],
     ])
@@ -173,11 +175,14 @@ describe('a check name in after', () => {
       "stack     after api's check Vercel Preview (passed), stacks on #41",
     )
     expect(formatWhy(passed, web)).not.toContain('check     ')
-    expect(planJson(passed)).toContain('"Vercel Preview": "passed"')
+    expect(planJson(passed)).toContain('"state": "passed"')
+    expect(taskMarkdown(web)).toContain(
+      "- `web`: Export button (this task), after api's check Vercel Preview (passed, https://vercel.com/acme/backend/1)",
+    )
     const merged = plan([card(sameRepo, { api: pr('merged') })])
     expect(merged.units.map((u) => [u.unit.id, u.unit.base])).toEqual([['acme-backend-1-web', '']])
     expect(formatPlan(merged)).toContain("     after api's check Vercel Preview (api merged)")
-    const cross = plan([card(crossRepo, { api: pr('open', { 'Vercel Preview': 'passed' }) })])
+    const cross = plan([card(crossRepo, { api: pr('open', { 'Vercel Preview': preview }) })])
     expect(cross.units.map((u) => [u.unit.id, u.unit.repo, u.unit.base])).toEqual([
       ['acme-backend-1-web', 'acme/web', ''],
     ])
@@ -202,7 +207,10 @@ describe('reading checks', () => {
 
   it('reads only the checks a task names, on open task PRs, and none for a plan without check names', async () => {
     const forge = withPr()
-    forge.states['acme/backend#41'] = { 'Vercel Preview': 'pending', lint: 'failing' }
+    forge.states['acme/backend#41'] = {
+      'Vercel Preview': { state: 'pending', url: 'https://vercel.com/acme/backend/1' },
+      lint: { state: 'failing' },
+    }
     let reads = 0
     const counting = {
       ...forge,
@@ -212,7 +220,7 @@ describe('reading checks', () => {
       },
     }
     expect((await linked(sameRepo, counting)).taskPrs?.api?.checks).toEqual({
-      'Vercel Preview': 'pending',
+      'Vercel Preview': { state: 'pending', url: 'https://vercel.com/acme/backend/1' },
     })
     expect(reads).toBe(1)
     await linked(sameRepo.replace('Vercel Preview', 'opened'), counting)
@@ -293,7 +301,7 @@ describe('a check dependency run by run', () => {
       return [...ran, ...waits]
     }
     const check = (state: CheckState) => {
-      origins.forge.states['acme/backend#11'] = { 'Vercel Preview': state }
+      origins.forge.states['acme/backend#11'] = { 'Vercel Preview': { state } }
     }
     return { ...origins, run, check, shipped }
   }

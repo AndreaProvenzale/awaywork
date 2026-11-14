@@ -116,7 +116,7 @@ A skipped entry is `{ item, kind, reason }`, plus `url` when it waits on an away
 
 Plans and tasks:
 
-- A card's `taskPrs` holds its tasks' PRs by task id, with `checks`: the state of each check a task's `after` names (`passed`, `pending` or `failing`; missing when not reported).
+- A card's `taskPrs` holds its tasks' PRs by task id, with `checks`: each check a task's `after` names, as `{ state, url }`: `state` is `passed`, `pending` or `failing`, `url` the check's link when the forge gives one (untrusted); missing when not reported.
 - A task's `item.task` has its card as `parent`, its `id` and `skill`, `plan` (the plan's tasks, each with `after` (`opened`, `merged` or a check's name), `repo` and `ships`), `contract` when there is one, and `onto`, the task whose PR it stacks on. Its `item.fields.repo` is its own repo.
 - A unit stacked on a PR another unit of the run opens has `after`, that unit's id; one waiting for tasks in other repos to open their PR earlier in the run has `waitsFor`, their task ids.
 - A unit that goes on from an earlier run has `continued`, its `continue` count so far. On awaywork's own draft it also has `resume`: `url`, `number`, `status` (`continue` or `ask`), `head` (where awaywork left it) and `from` (the commit the draft's commits start after).

@@ -107,11 +107,17 @@ export interface TaskPr extends PrRef {
   state: 'open' | 'merged' | 'closed'
   closedAt?: string
   /** On an open PR, the checks some task's `after` names, by name, as they stand on its head; a name the forge doesn't report is missing. */
-  checks?: Record<string, CheckState>
+  checks?: Record<string, CheckResult>
 }
 
 /** A check's latest run or status on a commit. */
 export type CheckState = 'passed' | 'pending' | 'failing'
+
+/** A check's state and its link, which whoever reports the check sets. */
+export interface CheckResult {
+  state: CheckState
+  url?: string
+}
 
 export interface Ctx {
   env: NodeJS.ProcessEnv
@@ -265,8 +271,8 @@ export interface Forge {
   tipMessage(repo: string, branch: string): Promise<string>
   /** The text of the file at `path` in the repo at `ref`, a commit or branch; undefined when there's none. */
   fileAt(repo: string, ref: string, path: string): Promise<string | undefined>
-  /** The state of each check on PR `pr`'s head commit, by name. */
-  checks(repo: string, pr: number): Promise<Record<string, CheckState>>
+  /** The state and link of each check on PR `pr`'s head commit, by name. */
+  checks(repo: string, pr: number): Promise<Record<string, CheckResult>>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
   /**
    * Pushes HEAD onto PR `pr`'s branch, only while the PR is yours, open, in the repo, without
