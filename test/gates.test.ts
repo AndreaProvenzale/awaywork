@@ -418,7 +418,7 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
 
 it("fires on a judge's write to an agent's config that git ignores, and puts back the slice's own", async () => {
   const settings = '.claude/settings.local.json'
-  for (const [own, linked] of [[undefined], ['SLICE HOOKS'], ['SLICE HOOKS', true]] as const) {
+  for (const [own, linked] of [[undefined], ['SLICE HOOKS'], [undefined, true]] as const) {
     const { dir, from } = await slice()
     await appendFile(join(dir, '.git/info/exclude'), 'settings.local.json\n')
     // A `.claude` linked to a folder in the clone, as a repo sharing it with other agents has.

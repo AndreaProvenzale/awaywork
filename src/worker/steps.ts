@@ -63,7 +63,7 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
 /** The files in a clone any agent reads as config, which a gitignore may hide from git. */
 const agentConfig = [...new Set(Object.values(providers).flatMap((p) => p.repoConfig ?? []))]
 
-/** The agents' config paths in the clone `dir`, through any folder link in it, as git can add them; none behind a link out of it. */
+/** The agents' config files present in the clone `dir`, through any folder link in it, as git can add them; none behind a link out of it. */
 async function configIn(dir: string): Promise<string[]> {
   const clone = await realpath(dir)
   const paths = await Promise.all(
@@ -73,7 +73,10 @@ async function configIn(dir: string): Promise<string[]> {
       return inside ? relative(clone, join(parent, basename(p))) : ''
     }),
   )
-  return paths.filter(Boolean)
+  const present = await Promise.all(
+    paths.map((p) => p && lstat(join(dir, p)).catch(() => undefined)),
+  )
+  return paths.filter((_, i) => present[i])
 }
 
 /** A clone as a step found it, as git trees: what it staged, and its working tree with `out/` and the agents' config. */
@@ -97,9 +100,7 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
     // Starting from the clone's index spares hashing every unchanged file again.
     await cp(join(dir, '.git', 'index'), index)
     await addTo(dir, index, ['-A'], ['.'])
-    const config = await configIn(dir)
-    const present = await Promise.all(config.map((p) => lstat(join(dir, p)).catch(() => undefined)))
-    const paths = [`${WORK_DIR}/out`, ...config.filter((_, i) => present[i])]
+    const paths = [`${WORK_DIR}/out`, ...(await configIn(dir))]
     // `--sparse` passes over a config file a foreign chain's workspace hid, as `-A` does, instead of failing.
     await addTo(dir, index, ['-f', '--sparse'], paths)
     return { staged, tree: await run('write-tree') }
@@ -142,11 +143,12 @@ export async function addTo(
 
 /** Puts the clone back exactly as a failed step found it: at its `start` commit, with `snapshot`'s trees. */
 export async function discard(dir: string, start: string, saved: Snapshot): Promise<void> {
+  // Before `clean` drops a folder link the config goes through.
+  const config = await configIn(dir)
   await rm(join(dir, WORK_DIR, 'out'), { recursive: true, force: true })
   await git(dir, 'reset', '-q', '--hard', start)
   await git(dir, 'clean', '-q', '-fd')
   // `clean` skips ignored files: the agents' config goes too, the tree putting back its own.
-  const config = await configIn(dir)
   await Promise.all(config.map((p) => rm(join(dir, p), { recursive: true, force: true })))
   await git(dir, 'read-tree', '-u', '--reset', saved.tree)
   await git(dir, 'read-tree', saved.staged)
