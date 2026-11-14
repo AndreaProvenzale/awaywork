@@ -20,7 +20,7 @@ Before the first run:
   GH_TOKEN is a classic personal access token of yours with the `repo`, `workflow` and `read:org` scopes (…)
 ```
 
-It writes a workflow with a cron at each window's start (none with `windows: []`) plus `workflow_dispatch`, copies your config to `.awaywork/config.yml` and your [skills](../skills.md#where-skills-come-from) to `.awaywork/skills/`, and offers to set each needed secret it finds in your environment or env file with `gh secret set`, never printing values, and naming whose `GH_TOKEN` it is. Before writing anything it checks the account gh acts as (`GH_TOKEN`, else gh's active one) has write access to the repo; when it hasn't, it stops and names it: switch with `gh auth switch --user <other>`, or run `GH_TOKEN=$(gh auth token --user <other>) awaywork schedule install`.
+It writes a workflow with a cron at each window's start (none with `windows: []`) plus `workflow_dispatch`, copies your config to `.awaywork/config.yml` and your [skills](../skills.md#where-skills-come-from) to `.awaywork/skills/`, and offers to set each needed secret it finds in your environment or env file with `gh secret set`, never printing values, and naming whose `GH_TOKEN` it is. When it has secrets to offer, it first checks the account gh acts as (`GH_TOKEN`, else gh's active one) has write access to the repo; when it hasn't, it stops before writing anything and names it: switch with `gh auth switch --user <other>` or `forge.github.user`, or run `GH_TOKEN=$(gh auth token --user <other>) awaywork schedule install`.
 
 Then commit, add the secrets it lists as unset (`GH_TOKEN`, provider tokens, and any `secrets` of sources, repos, MCP servers and `notify`), and run it once from the Actions tab. `schedule remove` deletes the workflow.
 

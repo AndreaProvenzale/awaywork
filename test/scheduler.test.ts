@@ -698,7 +698,7 @@ mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
     await install('READ', [])
     expect(process.exitCode).toBe(1)
     expect(out).toEqual([
-      "gh acts as work-me, who can't set alice/home's secrets; switch with `gh auth switch --user <other>`, or run `GH_TOKEN=$(gh auth token --user <other>) awaywork schedule install`",
+      "gh acts as work-me, who can't set alice/home's secrets; switch with `gh auth switch --user <other>` or `forge.github.user`, or run `GH_TOKEN=$(gh auth token --user <other>) awaywork schedule install`",
     ])
     expect(existsSync(join(root, WORKFLOW))).toBe(false)
     process.exitCode = undefined

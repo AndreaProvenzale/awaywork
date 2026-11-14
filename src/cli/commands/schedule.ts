@@ -611,7 +611,7 @@ async function secretsRefused(run: Exec, host?: string): Promise<string | undefi
   ]).then(JSON.parse, () => ({}))
   // Setting a repo's secrets takes write access.
   if (['ADMIN', 'MAINTAIN', 'WRITE'].includes(repo.viewerPermission ?? '')) return
-  return `gh acts as ${login}, who can't set ${repo.nameWithOwner ?? 'this repo'}'s secrets; switch with \`gh auth switch --user <other>\`, or run \`GH_TOKEN=$(gh auth token --user <other>) awaywork schedule install\``
+  return `gh acts as ${login}, who can't set ${repo.nameWithOwner ?? 'this repo'}'s secrets; switch with \`gh auth switch --user <other>\` or \`forge.github.user\`, or run \`GH_TOKEN=$(gh auth token --user <other>) awaywork schedule install\``
 }
 
 /** A secret's value in the env; a token awaywork pinned from gh is gh's login, not one you put there. */
