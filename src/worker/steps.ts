@@ -1,5 +1,5 @@
-import { cp, lstat, mkdir, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { cp, lstat, mkdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { basename, dirname, join, relative, sep } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
 import { providers } from '#providers/index'
@@ -63,6 +63,19 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
 /** The files in a clone any agent reads as config, which a gitignore may hide from git. */
 const agentConfig = [...new Set(Object.values(providers).flatMap((p) => p.repoConfig ?? []))]
 
+/** The agents' config paths in the clone `dir`, through any folder link in it, as git can add them; none behind a link out of it. */
+async function configIn(dir: string): Promise<string[]> {
+  const clone = await realpath(dir)
+  const paths = await Promise.all(
+    agentConfig.map(async (p) => {
+      const parent = await realpath(join(dir, dirname(p))).catch(() => '')
+      const inside = parent === clone || parent.startsWith(`${clone}${sep}`)
+      return inside ? relative(clone, join(parent, basename(p))) : ''
+    }),
+  )
+  return paths.filter(Boolean)
+}
+
 /** A clone as a step found it, as git trees: what it staged, and its working tree with `out/` and the agents' config. */
 export interface Snapshot {
   staged: string
@@ -83,11 +96,12 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
   try {
     // Starting from the clone's index spares hashing every unchanged file again.
     await cp(join(dir, '.git', 'index'), index)
-    await addTo(dir, index, '-A', ['.'])
-    const present = await Promise.all(
-      agentConfig.map((p) => lstat(join(dir, p)).catch(() => undefined)),
-    )
-    await addTo(dir, index, '-f', [`${WORK_DIR}/out`, ...agentConfig.filter((_, i) => present[i])])
+    await addTo(dir, index, ['-A'], ['.'])
+    const config = await configIn(dir)
+    const present = await Promise.all(config.map((p) => lstat(join(dir, p)).catch(() => undefined)))
+    const paths = [`${WORK_DIR}/out`, ...config.filter((_, i) => present[i])]
+    // `--sparse` passes over a config file a foreign chain's workspace hid, as `-A` does, instead of failing.
+    await addTo(dir, index, ['-f', '--sparse'], paths)
     return { staged, tree: await run('write-tree') }
   } finally {
     await rm(index, { force: true })
@@ -95,13 +109,13 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
 }
 
 /**
- * `git add <flag>` of `pathspecs` into the index file `index`, but for the submodules it lists, which keep their commit:
+ * `git add <flags>` of `pathspecs` into the index file `index`, but for the submodules it lists, which keep their commit:
  * `add` runs git in each submodule, under its config, which repo code may have written. With `env`, on that env alone.
  */
 export async function addTo(
   dir: string,
   index: string,
-  flag: string,
+  flags: string[],
   pathspecs: string[],
   env?: NodeJS.ProcessEnv,
 ): Promise<void> {
@@ -118,7 +132,7 @@ export async function addTo(
     .map((entry) => `:(exclude,literal)${entry.slice(entry.indexOf('\t') + 1)}\0`)
   await execa(
     bin('git'),
-    [...inClone(dir), 'add', flag, '--pathspec-from-file=-', '--pathspec-file-nul'],
+    [...inClone(dir), 'add', ...flags, '--pathspec-from-file=-', '--pathspec-file-nul'],
     {
       ...options,
       input: Buffer.from([...pathspecs.map((p) => `${p}\0`), ...gitlinks].join(''), 'latin1'),
@@ -132,8 +146,8 @@ export async function discard(dir: string, start: string, saved: Snapshot): Prom
   await git(dir, 'reset', '-q', '--hard', start)
   await git(dir, 'clean', '-q', '-fd')
   // `clean` skips ignored files: the agents' config goes too, the tree putting back its own.
-  await refuseSymlinks(dir, agentConfig.map(dirname))
-  await Promise.all(agentConfig.map((p) => rm(join(dir, p), { recursive: true, force: true })))
+  const config = await configIn(dir)
+  await Promise.all(config.map((p) => rm(join(dir, p), { recursive: true, force: true })))
   await git(dir, 'read-tree', '-u', '--reset', saved.tree)
   await git(dir, 'read-tree', saved.staged)
 }
