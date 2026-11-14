@@ -35,6 +35,7 @@ Details:
 - A missing field equals nothing and is neither older nor newer than anything. Spans count back from when the plan runs.
 - Config errors: an unknown key (the error lists each source's keys), an invalid regex, an empty `any` entry.
 - `plan` names the match an item failed, for `any` each entry's.
+- GitHub reads only issues assigned to you, so a labelled issue nobody assigned to you plans nothing, unless a `search` reads it; then `mine: true` keeps a rule to yours.
 
 ## Fields
 

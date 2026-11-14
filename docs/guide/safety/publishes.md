@@ -45,7 +45,7 @@ To [continue](../workflows/questions.md#continue) its work, the next run fast-fo
 
 ## PRs it opens
 
-- One PR per unit, a **draft** unless `deliver: pr`, into the default branch or your own PR's branch (including an awaywork PR a rule naming `ours` took up). Never into someone else's PR or a fork's: those get a report or pending review. A fork PR is cloned from the repo's pull ref; nothing goes to the fork.
+- One PR per unit, a **draft** unless `deliver: pr`, into the default branch or your own PR's branch (including an awaywork PR a rule naming `ours` took up). Never into someone else's PR or a fork's: those get a report or pending review. A fork PR is cloned from the repo's pull ref, and the unit fails if that ref moved past the head its source read; nothing goes to the fork.
 - It never merges, approves or requests reviewers, and writes to PRs and issues only as [Tracker writes](#tracker-writes) says. Your [`notify` command](../results.md#pr-labels-reviewers-and-ready-for-review) can, as you.
 - A `deliver: pr` PR opens ready, so GitHub asks the code owners. It opens as a draft when a step failed or stopped or the run ended first, a step asked with `ask` or said `continue`, `verify` failed, a loop ended before its `until`, or a [gate](../workflows/gates.md) fired.
 - A PR stacked on an awaywork PR joins that PR's GitHub stack, or starts one, only while that PR tops its stack or has none. Linking edits neither, but GitHub merges stacks bottom-up (merging one merges those below) and rebases the ones above.

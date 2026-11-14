@@ -1,5 +1,5 @@
 ---
-description: "Queue rules decide which skill runs on which item: the first match, awaywork's own PRs, a plan's tasks, finished items, order, retrying on the next model, on_done moves and comments, and run: soon."
+description: "Queue rules decide which skill runs on which item: the first match, the default queue, awaywork's own PRs, a plan's tasks, finished items, order, retrying on the next model, on_done moves and comments, and run: soon."
 ---
 
 # Queue rules
@@ -46,6 +46,24 @@ flowchart TD
 ```
 
 Four kinds of item go their own way: awaywork's own PRs reach only [`ours` rules](#your-reviewed-awaywork-prs), a plan's tasks only the first [`planned` rule](#a-plan-s-tasks) for their skill, a card carrying awaywork's plan [stays on its plan rule](../workflows/tasks.md#the-plan-sticks-to-the-card), and an item whose report you approved [goes on to the next rule](../workflows/posts.md#posts-that-wait).
+
+## The default queue
+
+With no `queue`, or an empty one, nothing runs: `plan` says so and `doctor` warns. `awaywork init` writes these rules, minus those for sources you didn't configure:
+
+| Skill | GitHub | Trackers\* |
+| --- | --- | --- |
+| `fix` | Your PR, checks failing | `QA` |
+| `fix` | Your PR with unresolved threads; your awaywork PR with threads you started |  |
+| `review` | A trusted author's PR requesting your review |  |
+| `implement` |  | `In progress` |
+| `plan` |  | `Current sprint` (Asana), `Todo` (Linear), `To Do` (Jira) |
+
+\* An Asana section, a Linear or Jira status, matched ignoring case.
+
+Read it row by row, left to right: that's the rule order, so broken things get fixed before new work starts. On [Bitbucket](./sources.md#bitbucket-and-jira) only the tracker rules apply.
+
+The section and status names are guesses; the [`/away` setup](../away.md#set-up) writes the queue out with your tracker's real ones.
 
 ## Your reviewed awaywork PRs
 

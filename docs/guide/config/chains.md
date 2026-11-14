@@ -27,7 +27,7 @@ queue:
       - { skill: review, provider: codex, mcp: [] }
 ```
 
-A step takes `provider`, `model`, `skills`, `mcp` and `instructions`, inherited from the rule unless set (`[]` clears a list), plus its own `with` and [`when`](#when). Above, `implement` gets `sentry`, and `review` gets no server and keeps `opus` should it route to Claude. Each step finds the previous one's output in `.away/context/previous/`: `report.md`, `verdict`, the chain's `pr.md` so far, its commits in `diff.patch`, and in a loop the `until` output in `check.log`.
+A step takes `provider`, `model`, `skills`, `mcp` and `instructions`, inherited from the rule unless set (`[]` clears a list), plus its own `with` and [`when`](#when). Above, `implement` gets `sentry`, and `review` gets no server and keeps `opus` should it route to Claude. Each step finds the previous one's output in `.away/context/previous/`: `report.md`, `verdict`, the chain's `pr.md` so far, its commits in `diff.patch`, and in a loop the `until` output in `check.log`. The first step finds the item's latest report there instead, marked as from an earlier run: that's how an approved `implement` finds its plan, on a retry too, since a failed `implement` with no report doesn't replace it.
 
 `plan` shows a chain as one row, every step routed (every loop round up to `max`) and budgeted live:
 

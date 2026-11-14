@@ -1,5 +1,5 @@
 ---
-description: Read the plan awaywork would run, with plan --why, --skipped and --rules, run one unit, detached or narrowed to a repo or a rule, and read the morning report, its keys, report.md and stats.
+description: Read the plan awaywork would run, with plan --why, --skipped and --rules, why a unit waits, run one unit, detached or narrowed to a repo or a rule, and read the morning report, its keys, report.md and stats.
 ---
 
 # Plan, run, report
@@ -94,6 +94,28 @@ Queue
 ```
 
 An item goes to the first rule it matches; a later rule that matches it too shows `1 taken by #1: acme/api#1`. To reorder, move the rules in the config.
+
+## Why a unit waits
+
+`awaywork plan` says why a unit makes no work this run:
+
+- **Waiting for review:** it links an open awaywork PR. awaywork doesn't add to work you haven't read.
+- **Waiting for your answer:** the item's newest comment is awaywork's [questions](./workflows/questions.md#questions).
+- **Waiting for your approval:** of awaywork's [plan](./workflows/plans.md) on it, or of a report rule's result that [waits](./workflows/posts.md#posts-that-wait).
+- **Unchanged since run `<id>`:** no item changed (`updated`, and for a [`sync`](./config/chains.md#sync) its base's head) since a worker last finished this skill on it, so a review isn't redone every run. A [`continue`](./workflows/questions.md#continue) is exempt.
+- **Gave up after 3 attempts; next try on `<date>`:** its chain didn't finish 3 runs in a row. It retries a week later, changed or not, and again a week after each failed try, so an error that fires nightly isn't retried nightly.
+- **Skipped by you:** `awaywork skip <source:key>` (e.g. `github:acme/api#5`) holds an item, and any unit it joins, until `awaywork unskip` or the `--until` date. `plan --skipped skipped_by_you` lists it with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`.
+
+`run --unit` runs a unit anyway, unchanged, skipped or given up; a given-up one runs as its one try.
+
+Details:
+
+- An awaywork PR matches only rules whose `where` names `ours`, like the default `fix` on threads you left on it. That rule takes the unit even over a better-ranked linked item, and its draft stacks on the awaywork PR.
+- A GitHub issue's draft PR into the default branch says `Closes` it, which links them, so the issue waits with the draft.
+- awaywork's draft whose footer says it goes on there doesn't wait: the unit [continues](./workflows/questions.md#continue) on it.
+- A PR awaywork [pushed onto](./config/chains.md#push) waits while its head is awaywork's push, unless that was a [`sync`](./config/chains.md#sync)'s clean merge.
+- An attempt is one chain, finished when every step that ran was done and no publish left anything behind. A failure, an error, a `unit_minutes` timeout or unpushed commits don't finish it; a plan report then a failed implement is one failure.
+- A finished attempt clears the count; another skill starts a new one. Skipped, dry-run and aborted units don't count, nor do stops the item didn't or may not have caused (quota, session limit, window end, a watchdog stop for low memory or disk). Attempts live in `~/.local/state/awaywork/attempts.json`.
 
 ## Run one unit
 

@@ -18,6 +18,22 @@ Who sees the result, and whose thing it lands on:
 
 The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule in [Queue rules](./config/queue-rules.md).
 
+## Each `deliver`
+
+- **`draft_pr`:** the worker commits and writes `.away/out/pr.md` (first line the title), which later steps keep current. awaywork adds an `Awaywork: <run id>` trailer, pushes the new branch and opens one draft PR into that base. No `pr.md`, no publish. Never into someone else's PR or a fork's: there a chain that could commit is skipped with the reason; a report still works.
+- **`pr`:** a `draft_pr` that opens ready for review, pinging whoever a ready PR pings, code owners included. It stays a draft, saying why, when a step failed, stopped or never ran, it [asked questions](./workflows/questions.md#questions) or said [`continue`](./workflows/questions.md#continue), [`verify`](./config/repos.md#repos-and-instructions) failed, a [loop](./config/chains.md#loops) ended before its `until` held, or a [gate](./workflows/gates.md) fired.
+- **`report`:** no step commits; each writes `.away/out/report.md`, and the chain's reports, joined, go into the morning report.
+- **`pending_review`:** a `report` that also lands on the PR, anyone's or a fork's: the last report and the line comments in `.away/out/review.json` become your pending review at the commit the clone read, seen only by you until you submit it. If GitHub refuses a line comment (one off the diff, say), they all go in the body. When a step failed, stopped or never ran, or GitHub refuses the review (you have one pending there already, say), the report goes alone with the reason.
+- **`plan`:** a `report` whose step also writes `.away/out/plan.yml`: [Plans](./workflows/plans.md).
+- **`push`:** the commits and `pr.md`, pushed with the trailer onto your own open PR's branch as a fast-forward. The PR body isn't touched; `pr.md` goes into the morning report. No `pr.md`, no push. Under [`sync`](./config/chains.md#sync) the one commit is awaywork's merge of the PR's base; a worker runs only to resolve a [conflict](./config/chains.md#conflicts), without committing. It pushes only while ([`push`](./config/chains.md#push)):
+  - the PR is yours, open, in the repo, without auto-merge;
+  - its head is still where the clone started;
+  - its branch isn't on a fork, the default branch, protected, or someone else's open PR's.
+
+A PR's body gets its items' [`link`](./config/repos.md#linking-prs) lines and a footer naming awaywork, the run and the unit's items, which is how the next plan links it back.
+
+A step's one-word `status` and `verdict` files are in [Skills](./skills.md#write-your-own).
+
 ## Built in
 
 - **Ready PRs:** `deliver: pr`, a draft still when the chain went wrong, a step asked or said `continue`, or a [gate](./workflows/gates.md) fired. A draft a later run [finishes](./workflows/questions.md#continue) turns ready.
