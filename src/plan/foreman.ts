@@ -9,7 +9,7 @@ import { latestResult, planState } from '#tasks/plan-file'
 import { globToRegExp } from '#util/glob'
 import type { Attempts } from './attempts'
 import { chainUnits, landing } from './chain'
-import { holds, openedElsewhere, postsOn, refusal, stackTarget } from './holds'
+import { holdsOn, openedElsewhere, postsOn, refusal, stackTarget } from './holds'
 import {
   closestRule,
   dedupe,
@@ -247,7 +247,7 @@ export function planRun(input: {
             return post ? [{ item, answer: postAnswer(post) }] : []
           })[0]
         : undefined
-    const held = holds({
+    const held = holdsOn({
       items,
       rule,
       skips,

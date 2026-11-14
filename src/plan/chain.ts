@@ -26,7 +26,7 @@ export interface Landing {
   stackedOn?: string
 }
 
-export function landing(l: {
+export function landing(chain: {
   config: Config
   rule: Rule
   skills: SkillCatalog
@@ -38,22 +38,29 @@ export function landing(l: {
   onto?: TaskPr
   draft?: DraftLeft
 }): Landing {
-  const { rule, items, pr, draft } = l
-  const base = pr?.branch ?? l.onto?.branch ?? ''
+  const { rule, items, pr, draft } = chain
+  const base = pr?.branch ?? chain.onto?.branch ?? ''
   // A resumed task's draft stays stacked on the task below it while that one is open.
   const below = draft && items[0]?.task?.onto && items[0].task.parent.taskPrs?.[items[0].task.onto]
-  const stackedOn = l.onto?.url ?? (below && below.state === 'open' ? below.url : undefined)
+  const stackedOn = chain.onto?.url ?? (below && below.state === 'open' ? below.url : undefined)
   return {
-    repo: l.repo,
+    repo: chain.repo,
     pr,
-    committing: l.committing,
+    committing: chain.committing,
     deliver: rule.deliver === 'push' || rule.deliver === 'pr' ? rule.deliver : 'draft_pr',
     // A chain's name takes the type of its first committing step; the list's words keep it a valid ref.
-    branch: branchName(l.config, rule, l.repo, items[0] as Item, l.committing, l.skills),
+    branch: branchName(
+      chain.config,
+      rule,
+      chain.repo,
+      items[0] as Item,
+      chain.committing,
+      chain.skills,
+    ),
     base,
     foreign: pr ? !pr.mine : false,
     fork: pr?.fork ? { number: pr.number, head: pr.head } : undefined,
-    merging: resolveSkill(rule.skill, l.skills)?.meta.merge,
+    merging: resolveSkill(rule.skill, chain.skills)?.meta.merge,
     stackedOn,
   }
 }
@@ -67,7 +74,7 @@ export function chainUnits(
     allowances: Record<string, Allowance>
   },
   routed: Record<string, number>,
-  c: {
+  chain: {
     rule: Rule
     ruleIndex: number
     itemRules: number[]
@@ -85,15 +92,17 @@ export function chainUnits(
   },
 ): { units: PlannedUnit[]; counts: boolean } {
   const { config, allowances } = run
-  const { rule, items, oneOff, draft, left } = c
-  const { repo, pr, base, merging } = c.at
+  const { rule, items, oneOff, draft, left } = chain
+  const { repo, pr, base, merging } = chain.at
   // A skill commits unless it reports; `deliver: report`, `pending_review` and `plan` make every step report.
   const review = rule.deliver === 'pending_review'
   const planned = rule.deliver === 'plan'
   const reports = stepReports(rule, run.skills)
   // A post after your feedback, or a task's PR closed, waits for you whatever `wait` says.
   const again =
-    c.card?.state === 'feedback' || c.card?.state === 'replan' || c.posted?.answer === 'feedback'
+    chain.card?.state === 'feedback' ||
+    chain.card?.state === 'replan' ||
+    chain.posted?.answer === 'feedback'
   // A report that neither waits nor has gates of its own posts as a plain result, `wait: false` too.
   const decides = planned || (rule.deliver === 'report' && (rule.wait === true || !!rule.gates))
   const waits = decides ? again || (rule.wait ?? planned) : undefined
@@ -104,12 +113,12 @@ export function chainUnits(
     (rule.post ?? (config.store ? 'summary' : 'full')) === 'summary'
   const at = {
     base,
-    foreign: c.at.foreign,
+    foreign: chain.at.foreign,
     untrusted: pr ? !pr.trusted : false,
-    fork: c.at.fork,
+    fork: chain.at.fork,
     ...(merging && { merge: pr?.into }),
-    branch: draft ? base : c.at.branch,
-    ...(c.at.stackedOn && { stackedOn: c.at.stackedOn }),
+    branch: draft ? base : chain.at.branch,
+    ...(chain.at.stackedOn && { stackedOn: chain.at.stackedOn }),
     ...(draft &&
       pr && {
         resume: {
@@ -124,7 +133,7 @@ export function chainUnits(
   }
   const settings = settingsFor(config.repos, repo)
   const units: PlannedUnit[] = []
-  for (const { written, id, loop } of [{ written: rule, id: c.id }, ...c.steps]) {
+  for (const { written, id, loop } of [{ written: rule, id: chain.id }, ...chain.steps]) {
     const step = written === rule ? rule : inherit(rule, written)
     const skill = resolveSkill(step.skill, run.skills)
     const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
@@ -165,22 +174,22 @@ export function chainUnits(
           ? 'plan'
           : reports(step)
             ? 'report'
-            : c.at.deliver,
+            : chain.at.deliver,
       ...(planned && { planLimits: planLimits(config, run.queue, items[0] as Item, run.skills) }),
     }
     const unmet = provider && written === rule && quotaUnmet(rule.quota, allowances[provider])
     units.push({
       unit,
-      rule: c.ruleIndex,
-      itemRules: c.itemRules,
+      rule: chain.ruleIndex,
+      itemRules: chain.itemRules,
       origin: skill?.origin,
       provider,
       passed,
       ...(unmet && { quotaUnmet: unmet }),
-      ...(written !== rule && { chain: c.id }),
+      ...(written !== rule && { chain: chain.id }),
       ...(loop && { loop }),
-      ...(written === rule && c.after && { after: c.after.unit.id }),
-      ...(written === rule && c.waitsFor.length > 0 && { waitsFor: c.waitsFor }),
+      ...(written === rule && chain.after && { after: chain.after.unit.id }),
+      ...(written === rule && chain.waitsFor.length > 0 && { waitsFor: chain.waitsFor }),
     })
   }
   // A chain publishes once, so it counts once, when its first step runs.

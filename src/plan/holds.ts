@@ -28,8 +28,11 @@ export interface Hold {
   liftable?: boolean
 }
 
-/** Every hold on a group, in the order the plan checks them: the first one naming the unit can't lift holds it. */
-export function holds(g: {
+/**
+ * Every hold on a group, in the order the plan checks them: the first one naming the unit can't lift holds it.
+ * Its checks all run, so each must be pure and not throw.
+ */
+export function holdsOn(group: {
   items: Item[]
   rule: Rule
   skips: Record<string, Skip>
@@ -49,16 +52,16 @@ export function holds(g: {
   waitsFor: string[]
   units: PlannedUnit[]
 }): Hold[] {
-  const { items, rule, attempts, ours, draft, left, card, posted, stack } = g
+  const { items, rule, attempts, ours, draft, left, card, posted, stack } = group
   const item = items[0] as Item
   const out: Hold[] = []
   const skippedByUser = items
     .map((item) => `${item.source}:${item.key}`)
-    .find((key) => g.skips[key])
+    .find((key) => group.skips[key])
   if (skippedByUser)
     out.push({
       kind: 'skipped_by_you',
-      reason: describeSkip(skippedByUser, g.skips[skippedByUser] as Skip),
+      reason: describeSkip(skippedByUser, group.skips[skippedByUser] as Skip),
       url: pushedOnto(items, attempts)?.url,
       liftable: true,
     })
@@ -66,7 +69,7 @@ export function holds(g: {
   const unread = items.flatMap((i) => dependedPosts(i, rule)).find((c) => c?.pinned?.failed)
     ?.pinned?.failed
   if (unread) out.push({ kind: 'store_failed', reason: unread })
-  if (ours && !g.pickup && !draft && !g.waitedOn)
+  if (ours && !group.pickup && !draft && !group.waitedOn)
     out.push({
       kind: 'waiting_for_review',
       reason: `waiting for review: awaywork PR ${ours.url} is open`,
@@ -85,7 +88,7 @@ export function holds(g: {
   }
   const goesOn = left?.status === 'continue'
   // A soon run reacts to an item changing, and a `continue` isn't one.
-  if (goesOn && g.soon)
+  if (goesOn && group.soon)
     out.push({
       kind: 'continues_later',
       reason: `goes on from ${where} in the next window run`,
@@ -110,7 +113,7 @@ export function holds(g: {
   const unplanned =
     stack && !stack.pr && !stack.after
       ? stack.onto
-      : g.waitsFor.find((id) => !taskChain(g.units, item, id))
+      : group.waitsFor.find((id) => !taskChain(group.units, item, id))
   if (unplanned) {
     const taskDraft = item.task?.parent.taskPrs?.[unplanned]?.left
     out.push({
@@ -146,7 +149,7 @@ export function holds(g: {
       reason: `unchanged since run ${since.sort().at(-1)}`,
       liftable: true,
     })
-  const retries = items.map((i) => gaveUpUntil(i, rule.skill, attempts, g.now))
+  const retries = items.map((i) => gaveUpUntil(i, rule.skill, attempts, group.now))
   if (retries.every(Boolean))
     out.push({
       kind: 'gave_up',
