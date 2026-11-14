@@ -1,6 +1,6 @@
 # Security
 
-awaywork runs coding agents unattended with the developer's credentials, so its guardrails are its most important feature ([docs/guide/safety.md](docs/guide/safety.md)).
+awaywork runs coding agents unattended with the developer's credentials, so its guardrails are its most important feature ([docs/guide/safety/index.md](docs/guide/safety/index.md)).
 
 ## Reporting a vulnerability
 

@@ -22,7 +22,7 @@ The awaywork plugin adds the `/away` skill to Claude Code, which sets awaywork u
 
 With no config, `/away` sets awaywork up with you, whatever follows it, and writes the config only on your yes.
 
-It asks `awaywork config path` where the config goes and looks nowhere else. With [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) set that's the server's config, so there's nothing to set up.
+It asks `awaywork config path` where the config goes and looks nowhere else. With [`AWAYWORK_REMOTE`](./scheduling/laptop.md) set that's the server's config, so there's nothing to set up.
 
 First it looks around, without asking:
 
@@ -52,14 +52,14 @@ One config covers one account's work; another account gets its own setup later. 
 
 The next rounds:
 
-- **Repos,** from your sessions. Remotes off github.com are never guessed: an ssh alias (`git@github-work:widgets/art`) waits for you to name its repo, and Bitbucket Cloud is left out (setup writes no [`forge: bitbucket`](./configuration.md#bitbucket-and-jira)).
+- **Repos,** from your sessions. Remotes off github.com are never guessed: an ssh alias (`git@github-work:widgets/art`) waits for you to name its repo, and Bitbucket Cloud is left out (setup writes no [`forge: bitbucket`](./config/sources.md#bitbucket-and-jira)).
 - **Tracker:** an MCP server for one is a hint. Jira also needs your Cloud site, Atlassian email and whether the API token is scoped.
 - **Window:** 01:00–07:00 your time by default.
 - **Providers,** if several are ready: which goes first; the next takes over when its quota runs out.
 - **Your PRs:** fix red checks or review threads (awaywork's own drafts included), as draft PRs stacked on yours. Keeping them up to date with main is flagged as a widening: it pushes merges onto your PR, and a model resolves a conflict, which waits for your review.
 - **Review requests:** a report only you read, or your pending GitHub review, a widening.
 - **Tracker cards:** fix QA notes, implement in-progress cards, plan the sprint. A later round asks how to plan, in your tracker's names: plan then implement across repos, stopping only when a judge finds a product decision the card leaves open; wait on every plan; or plan reports only.
-- **Proof,** once the rules are drafted, when one implements: how a change is proven in each repo, its options built from the repo's own scripts and checks, never a tool it doesn't use. On an answer the skill writes [your proving skill and its gates](./workflows.md#proving-a-change) with you; "not now" writes nothing.
+- **Proof,** once the rules are drafted, when one implements: how a change is proven in each repo, its options built from the repo's own scripts and checks, never a tool it doesn't use. On an answer the skill writes [your proving skill and its gates](./workflows/proving.md) with you; "not now" writes nothing.
 - **Learn from my sessions:** whether to [suggest](./suggest.md) more rules. The option says what it would read and where that goes, and a yes is also suggest's consent for this run.
 
 Without a question tool (Claude Code, which `init` opens, has one), each round is one numbered message, each question with its default, answered in your own words.
@@ -70,7 +70,7 @@ Tokens never go through the chat. You run `awaywork secret LINEAR_API_KEY` (in C
 
 ### The draft
 
-`awaywork init --yes` renders the draft, `config.draft.yml` beside the config, after the round that picks repos and a window. The skill then edits in your repos, your tracker, the rules you picked with real status names, and the gh account and Claude login, pinned as `forge.github.user` and `config_dir` where a scheduled job wouldn't find them ([Which login](./configuration.md#which-login)). It fills in on the Config tab as you watch.
+`awaywork init --yes` renders the draft, `config.draft.yml` beside the config, after the round that picks repos and a window. The skill then edits in your repos, your tracker, the rules you picked with real status names, and the gh account and Claude login, pinned as `forge.github.user` and `config_dir` where a scheduled job wouldn't find them ([Which login](./config/providers.md#which-login)). It fills in on the Config tab as you watch.
 
 `awaywork plan --rules --json` shows what each rule takes now and the closest misses, since taking nothing today doesn't make a rule wrong. On your yes the draft becomes the config and `doctor` runs once:
 
@@ -163,7 +163,7 @@ Also:
 
 ### The Config tab
 
-Tab 5 is your config as it reads to a human: the draft while there is one, else the file. With no config yet (the tab stays blank until the draft is written), or a draft waiting, the pane opens here, and it's the only tab until a config exists. A config behind [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) isn't on this machine, so it gets no tab.
+Tab 5 is your config as it reads to a human: the draft while there is one, else the file. With no config yet (the tab stays blank until the draft is written), or a draft waiting, the pane opens here, and it's the only tab until a config exists. A config behind [`AWAYWORK_REMOTE`](./scheduling/laptop.md) isn't on this machine, so it gets no tab.
 
 ```text
 [...]
@@ -207,7 +207,7 @@ One row per rule: what it takes and what it does. `· 2` is how many items it ta
 - drafts rules on a copy and runs `awaywork plan --rules --json` on it: what each rule takes, what another rule takes first, and near misses with the condition they failed;
 - on your yes writes them, keeping your comments and layout, and runs `awaywork doctor --json`;
 - starts a tweak from the item (`awaywork plan --why <key>`) and shows before and after;
-- writes your repo's proving skill with you (`/away show me it works before I review`), like a custom source: the skill in your config's `skills/`, a script gate for each repo that you commit, a judge's instructions, and your store's routing ([Proving a change](./workflows.md#proving-a-change)).
+- writes your repo's proving skill with you (`/away show me it works before I review`), like a custom source: the skill in your config's `skills/`, a script gate for each repo that you commit, a judge's instructions, and your store's routing ([Proving a change](./workflows/proving.md)).
 
 It won't:
 

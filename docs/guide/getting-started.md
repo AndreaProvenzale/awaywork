@@ -8,7 +8,7 @@ description: Install awaywork, write a config, preview the next run with plan, r
 
 - Node 22 or later, and `git`.
 - [`gh`](https://cli.github.com) logged in (`gh auth login`). GitHub is both a source of work and where awaywork pushes branches and opens draft PRs.
-  - Code on Bitbucket Cloud instead? Atlassian's `twg` logged in and an SSH key, see [Bitbucket and Jira](./configuration.md#bitbucket-and-jira).
+  - Code on Bitbucket Cloud instead? Atlassian's `twg` logged in and an SSH key, see [Bitbucket and Jira](./config/sources.md#bitbucket-and-jira).
 - At least one agent CLI, installed and logged in with your subscription:
   - [Claude Code](https://code.claude.com): `claude` logged in, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
   - [Codex](https://developers.openai.com/codex): `codex login`.
@@ -62,7 +62,7 @@ queue:
     where: { type: pr, mine: true, checks: failing }
 ```
 
-With no [`queue`](./how-it-works.md#the-queue), nothing runs. GitHub issues need a rule of their own, e.g. `implement` for issues labelled `awaywork` (see [Configuration](./configuration.md)). awaywork reads the issues assigned to you, so assign yourself too: the label alone plans nothing, unless a [`search`](./how-it-works.md#items) reads it.
+With no [`queue`](./how-it-works.md#the-queue), nothing runs. GitHub issues need a rule of their own, e.g. `implement` for issues labelled `awaywork` (see [Configuration](./config/index.md)). awaywork reads the issues assigned to you, so assign yourself too: the label alone plans nothing, unless a [`search`](./how-it-works.md#items) reads it.
 
 Check it:
 
@@ -112,4 +112,4 @@ awaywork report                # browse the last run; piped, its morning report
 awaywork schedule install      # asks where; this machine is launchd, systemd or cron
 ```
 
-The job keeps `awaywork watch` running, which starts a run when a window opens and stops it when the window ends (01:00 to 07:00 by default). For GitHub Actions instead, pick it when asked or pass `--with github-actions`: see [Scheduling](./scheduling.md).
+The job keeps `awaywork watch` running, which starts a run when a window opens and stops it when the window ends (01:00 to 07:00 by default). For GitHub Actions instead, pick it when asked or pass `--with github-actions`: see [Scheduling](./scheduling/index.md).

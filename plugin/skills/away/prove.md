@@ -1,6 +1,6 @@
 # awaywork prove
 
-How a change is proven differs per repo, so awaywork ships no skill for it and you name no tool they don't already use. Write the repo's own with the developer: a skill that proves a change against the card and leaves the files that show it, a script gate that checks the files are there, a judge gate that checks they show what the card asks, and the store's routing for them. Docs: https://andreaprovenzale.github.io/awaywork/guide/workflows.md#proving-a-change
+How a change is proven differs per repo, so awaywork ships no skill for it and you name no tool they don't already use. Write the repo's own with the developer: a skill that proves a change against the card and leaves the files that show it, a script gate that checks the files are there, a judge gate that checks they show what the card asks, and the store's routing for them. Docs: https://andreaprovenzale.github.io/awaywork/guide/workflows/proving.md
 
 You come here on a draft of the config, never the config itself: [`setup.md`](setup.md)'s or [`suggest.md`](suggest.md)'s, or the copy [`queue.md`](queue.md)'s step 4 makes when the developer asks for proof, evidence or QA of what awaywork ships. No draft yet: go through `queue.md` first. The [ground rules](SKILL.md#ground-rules) hold: nothing is written unasked, real names only, widening shown on its own.
 
@@ -117,7 +117,7 @@ queue:
       shown: { skill: judge, instructions: [judges/evidence.md] }
 ```
 
-On a rule that reports, clear gates post the result on the item and go ahead; one that fires makes it wait for their reply, and on a plan's task holds the card's other tasks until then (https://andreaprovenzale.github.io/awaywork/guide/workflows.md#a-gate-on-a-report-task). On the rule that implements (same step) the gates run with the chain's commits, and one that fires puts its line on the PR's decision card. Either way it's a widening, `gates` on a report posting on the item: show it as [`queue.md`](queue.md#widening) says. The judge is one more model run per unit.
+On a rule that reports, clear gates post the result on the item and go ahead; one that fires makes it wait for their reply, and on a plan's task holds the card's other tasks until then (https://andreaprovenzale.github.io/awaywork/guide/workflows/tasks.md#a-gate-on-a-report-task). On the rule that implements (same step) the gates run with the chain's commits, and one that fires puts its line on the PR's decision card. Either way it's a widening, `gates` on a report posting on the item: show it as [`queue.md`](queue.md#widening) says. The judge is one more model run per unit.
 
 **The store's routing,** when the config has a `store`: its `put` gets each file's name under `.away/out/` as `kind`. With them, add to the script where each kind of file goes: screenshots and recordings where the store keeps bytes as put, `evidence.yml` and the report beside them, and `{"skip": true}` for a file too big to keep (a trace). A skip keeps a file out of the store, not off the item, and redacting what a recording or log may hold is the script's job. No store: the post is full, and the files stay in the run dir, where only a `notify` hook reaches them; say so, and offer a store as [`setup.md`](setup.md)'s step 5 writes one.
 

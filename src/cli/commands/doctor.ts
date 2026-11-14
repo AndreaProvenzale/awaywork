@@ -309,7 +309,7 @@ const tilde = (path: string) => {
 const CURSOR_KEYLESS =
   "CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file"
 
-const SAFETY = 'https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox'
+const SAFETY = 'https://andreaprovenzale.github.io/awaywork/guide/safety/isolation#not-a-sandbox'
 
 /**
  * twg's login per workspace, and one SSH push path that needs no passphrase: under launchd or cron

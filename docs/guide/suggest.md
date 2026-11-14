@@ -6,7 +6,7 @@ description: Let your coding agent read your recent sessions and PRs, with your 
 
 CI goes red, you paste the failure into your agent. A review lands, you ask it to address the comments. Monday, you ask it to go through last week's errors. You do each so often you'd never think to write a rule for it.
 
-`/away` notices for you, when you ask. It reads your recent agent sessions and forge history, finds the work you keep doing after the same kind of event or at the same time each week, and proposes queue rules, [routines](./configuration.md#routines) and fixes for corrections you keep typing, each shown against the items it would take tonight.
+`/away` notices for you, when you ask. It reads your recent agent sessions and forge history, finds the work you keep doing after the same kind of event or at the same time each week, and proposes queue rules, [routines](./config/sources.md#routines) and fixes for corrections you keep typing, each shown against the items it would take tonight.
 
 ## Run it
 
@@ -54,8 +54,8 @@ It joins sessions to forge events (a session half an hour after CI failed on tha
 | The same ask at the same time each week | A routine and a rule on `source: routines`, with its cost in units a week |
 | A correction every agent on the repo needs | A line in the repo's `AGENTS.md` (or `CLAUDE.md`), which helps your own sessions too |
 | A correction only awaywork's workers need | A line in your awaywork `instructions` |
-| An ask to show a change works, after an agent's edits | Your repo's own [proving skill](./workflows.md#proving-a-change) and its gates, written with you |
-| A correction already written down and still made | A command instead: a [`verify`](./configuration.md#repos-and-instructions) like `pnpm lint`, or a command [gate](./workflows.md#gates) |
+| An ask to show a change works, after an agent's edits | Your repo's own [proving skill](./workflows/proving.md) and its gates, written with you |
+| A correction already written down and still made | A command instead: a [`verify`](./config/repos.md#repos-and-instructions) like `pnpm lint`, or a command [gate](./workflows/gates.md) |
 
 A saved memory can be a correction you already wrote down, which awaywork's Claude Code workers never see: they start with auto-memory off and none of your user-level config (Codex workers do read `~/.codex/AGENTS.md` under `isolation: none`). It reads the memory index, types and descriptions first, and opens only your feedback and notes stating a rule about the repo, not progress logs. One that holds for the repo becomes an `AGENTS.md` or `instructions` line; one about you doesn't.
 

@@ -1,6 +1,6 @@
 # Contributing
 
-Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding agents alike. The config semantics every change keeps to are in the guides, [How it works](docs/guide/how-it-works.md), [Configuration](docs/guide/configuration.md) and [Workflows](docs/guide/workflows.md).
+Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding agents alike. The config semantics every change keeps to are in the guides, [How it works](docs/guide/how-it-works.md), [Configuration](docs/guide/config/index.md) and [Workflows](docs/guide/workflows/index.md).
 
 ## Where things live
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Makes the user repo code runs as on a GitHub-hosted runner: no sudo, docker or cron, no way into the
-# runner's home, nothing world-writable to plant in (docs/guide/safety.md). The action runs it, and so does CI.
+# runner's home, nothing world-writable to plant in (docs/guide/safety/isolation.md). The action runs it, and so does CI.
 set -euo pipefail
 
 # Without them, a link the worker makes could hand it a file of the runner's.

@@ -10,26 +10,90 @@ const description = 'A harness that runs your coding agents on your real tasks, 
 
 const sidebar: DefaultTheme.SidebarItem[] = [
   {
-    text: 'Guide',
+    text: 'Start',
+    collapsed: false,
     items: [
       { text: 'Getting started', link: '/guide/getting-started' },
       { text: 'How it works', link: '/guide/how-it-works' },
       { text: '/away in Claude Code', link: '/guide/away' },
-      { text: 'Plan, run, report', link: '/guide/running' },
-      { text: 'Configuration', link: '/guide/configuration' },
-      { text: 'Workflows', link: '/guide/workflows' },
-      { text: 'Chains', link: '/guide/chains' },
-      { text: 'Where results go', link: '/guide/results' },
-      { text: 'Custom sources', link: '/guide/custom-sources' },
-      { text: 'Skills', link: '/guide/skills' },
-      { text: 'Scheduling', link: '/guide/scheduling' },
-      { text: 'Safety', link: '/guide/safety' },
-      { text: 'For AI agents', link: '/guide/agents' },
+      { text: 'With an AI agent', link: '/guide/agents' },
       { text: 'Suggested rules', link: '/guide/suggest' },
     ],
   },
   {
+    text: 'Day to day',
+    collapsed: true,
+    items: [
+      { text: 'Plan, run, report', link: '/guide/running' },
+      { text: 'Where results go', link: '/guide/results' },
+      { text: 'Skills', link: '/guide/skills' },
+    ],
+  },
+  {
+    text: 'Configure',
+    collapsed: true,
+    items: [
+      { text: 'The config file', link: '/guide/config/' },
+      { text: 'Queue rules', link: '/guide/config/queue-rules' },
+      { text: 'Chains', link: '/guide/config/chains' },
+      { text: 'Providers and budget', link: '/guide/config/providers' },
+      { text: 'Sources', link: '/guide/config/sources' },
+      { text: 'Custom sources', link: '/guide/config/custom-sources' },
+      { text: 'Repos and branches', link: '/guide/config/repos' },
+      { text: 'MCP servers', link: '/guide/config/mcp' },
+    ],
+  },
+  {
+    text: 'Workflows',
+    collapsed: true,
+    items: [
+      { text: 'Overview', link: '/guide/workflows/' },
+      { text: 'Questions and continue', link: '/guide/workflows/questions' },
+      { text: 'Gates', link: '/guide/workflows/gates' },
+      { text: 'Plans', link: '/guide/workflows/plans' },
+      { text: 'Tasks', link: '/guide/workflows/tasks' },
+      { text: 'Posts that wait and threads', link: '/guide/workflows/posts' },
+      { text: 'Store', link: '/guide/workflows/store' },
+      { text: 'Proving a change', link: '/guide/workflows/proving' },
+    ],
+  },
+  {
+    text: 'Run it',
+    collapsed: true,
+    items: [
+      { text: 'Where to run', link: '/guide/scheduling/' },
+      { text: 'On your machine', link: '/guide/scheduling/machine' },
+      { text: 'In GitHub Actions', link: '/guide/scheduling/actions' },
+      { text: 'In a container', link: '/guide/scheduling/container' },
+      { text: 'From your laptop', link: '/guide/scheduling/laptop' },
+    ],
+  },
+  {
+    text: 'Safety',
+    collapsed: true,
+    items: [
+      { text: 'Overview', link: '/guide/safety/' },
+      { text: 'Isolation', link: '/guide/safety/isolation' },
+      { text: 'What awaywork publishes', link: '/guide/safety/publishes' },
+    ],
+  },
+  {
+    text: 'Examples',
+    collapsed: true,
+    items: [
+      { text: 'A full config', link: '/examples/full-config' },
+      { text: 'Morning report on your phone', link: '/examples/ntfy-report' },
+      { text: 'A Notion page per plan', link: '/examples/notion-plans' },
+      { text: 'Slack when a review is ready', link: '/examples/slack-reviews' },
+      { text: "Acting on a skill's output", link: '/examples/skill-output' },
+      { text: 'Chores', link: '/examples/chores' },
+      { text: 'Sentry errors', link: '/examples/sentry' },
+      { text: 'Markdown files as threads', link: '/examples/markdown-threads' },
+    ],
+  },
+  {
     text: 'Reference',
+    collapsed: true,
     items: [
       { text: 'CLI', link: '/reference/cli' },
       { text: 'Config', link: '/reference/config' },
@@ -37,6 +101,7 @@ const sidebar: DefaultTheme.SidebarItem[] = [
   },
   {
     text: 'Extend',
+    collapsed: true,
     items: [
       { text: 'Adding a provider', link: '/extend/providers' },
       { text: 'Adding a source', link: '/extend/sources' },
@@ -50,6 +115,12 @@ const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Sources', link: '/sources' },
     ],
   },
+]
+
+const nav: DefaultTheme.NavItem[] = [
+  { text: 'Guide', link: '/guide/getting-started' },
+  { text: 'Examples', link: '/examples/full-config' },
+  { text: 'Reference', link: '/reference/cli' },
 ]
 
 export default defineConfig({
@@ -85,11 +156,14 @@ export default defineConfig({
   ],
   themeConfig: {
     logo: { light: '/brand/mark.svg', dark: '/brand/mark-dark.svg', alt: '' },
-    nav: sidebar.map((group) => ({ text: group.text ?? '', link: group.items?.[0]?.link ?? '/' })),
+    nav,
     sidebar,
     search: { provider: 'local' },
     editLink: { pattern: `${repo}/edit/main/docs/:path` },
-    socialLinks: [{ icon: 'github', link: repo }],
+    socialLinks: [
+      { icon: 'github', link: repo },
+      { icon: 'npm', link: 'https://www.npmjs.com/package/awaywork' },
+    ],
   },
   async buildEnd({ srcDir, outDir }) {
     const pages = await Promise.all(
@@ -97,7 +171,7 @@ export default defineConfig({
         title: group.text,
         pages: await Promise.all(
           (group.items ?? []).map(async (item) => {
-            const file = `${item.link?.slice(1)}.md`
+            const file = `${item.link?.slice(1).replace(/\/$/, '/index')}.md`
             const text = await readFile(join(srcDir, file), 'utf8')
             await mkdir(dirname(join(outDir, file)), { recursive: true })
             await copyFile(join(srcDir, file), join(outDir, file))

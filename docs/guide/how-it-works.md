@@ -37,24 +37,24 @@ Workers make every model call but one: each step, each gate's judge and `sync`'s
 An item is one open thing of yours a source returns: a PR, an issue, a task. Rules match on:
 
 - `type` (`pr`, `issue` or `task`), `title` and `description`;
-- `approved`: the skill of awaywork's newest result on it that you approved or that [went ahead](./workflows.md#posts-that-wait);
-- `state`: `open`, or `merged` or `closed` for the [finished items](./configuration.md#finished-items) a rule asks for; `closed` is when it finished;
-- `planned`: it's a [task](./workflows.md#tasks) of a plan you approved;
+- `approved`: the skill of awaywork's newest result on it that you approved or that [went ahead](./workflows/posts.md#posts-that-wait);
+- `state`: `open`, or `merged` or `closed` for the [finished items](./config/queue-rules.md#finished-items) a rule asks for; `closed` is when it finished;
+- `planned`: it's a [task](./workflows/tasks.md) of a plan you approved;
 - the source's own fields:
 
 | Source | Items | Fields |
 | --- | --- | --- |
-| GitHub | Open PRs you authored, PRs awaiting your review, issues assigned to you, plus any extra `search` (e.g. `label:awaywork`, `mentions:@me`), in the repos [`repos`](./configuration.md#repos-and-instructions) lists; your merged and closed ones too when a rule asks | `repo`, `label`, `author`, `trusted`, `mine`, `ours`, `draft`, `checks`, `unresolved_threads`, `my_unresolved_threads`, `files`, `changed_lines`, `conflicts`, `behind`, `review_requested`, `created`, `updated` |
+| GitHub | Open PRs you authored, PRs awaiting your review, issues assigned to you, plus any extra `search` (e.g. `label:awaywork`, `mentions:@me`), in the repos [`repos`](./config/repos.md#repos-and-instructions) lists; your merged and closed ones too when a rule asks | `repo`, `label`, `author`, `trusted`, `mine`, `ours`, `draft`, `checks`, `unresolved_threads`, `my_unresolved_threads`, `files`, `changed_lines`, `conflicts`, `behind`, `review_requested`, `created`, `updated` |
 | Asana | Incomplete tasks assigned to you in a workspace, optionally some projects; completed ones too when a rule asks | `project`, `section`, `blocked` (a dependency is incomplete), `tags`, `repo` (from `repo_map`), `fields.<custom field>`, `created`, `updated`, `due` |
 | Linear | Issues assigned to you that are neither completed nor canceled; completed and canceled ones too when a rule asks | `team` (key), `status` (the workflow state), `labels`, `priority` (e.g. `High`), `blocked` (an open blocker), `project`, `repo` (from `repo_map`), `created`, `updated` |
 | Jira Cloud | Unresolved issues assigned to you, optionally narrowed by `jql`; resolved ones too when a rule asks | `project` (key), `status`, `labels`, `priority`, `blocked` (an open "is blocked by" link), `issuetype` (e.g. `Bug`), `repo` (from `repo_map`), `fields.<custom field>`, `created`, `updated` |
-| Routines | One task per [routine](./configuration.md#routines) in your config: its latest occurrence | `name`, `repo`, `created`, `updated` (both the occurrence) |
+| Routines | One task per [routine](./config/sources.md#routines) in your config: its latest occurrence | `name`, `repo`, `created`, `updated` (both the occurrence) |
 
 GitHub's fields that need a word:
 
 - `trusted`: the author is an owner, member or collaborator. `mine`: a PR you authored or an issue assigned to you. `ours`: awaywork opened it.
 - `checks`: `failing`, `pending` or `passing`.
-- `unresolved_threads`: those [shown to the agent](./safety.md#public-repos); `my_unresolved_threads`: the ones you started.
+- `unresolved_threads`: those [shown to the agent](./safety/index.md#public-repos); `my_unresolved_threads`: the ones you started.
 - `files`: the first 500 paths the PR touches; test with `matches`. `changed_lines`: additions plus deletions.
 - `conflicts`: it doesn't merge cleanly into its base; unset while GitHub works it out.
 - `behind`: commits on its base its branch lacks, on your own open PRs.
@@ -95,22 +95,22 @@ The section and status names are guesses; the [`/away` setup](./away.md#set-up) 
 
 ## Units
 
-A unit is the work on one feature: items that share a key or a linked PR (repo and branch), ranked at its best item's rule. An Asana task linked to your PR joins it. An awaywork PR links to the items its footer names; yours links by the key in its branch or title, or the source's [`link`](./configuration.md#linking-prs) line in its body.
+A unit is the work on one feature: items that share a key or a linked PR (repo and branch), ranked at its best item's rule. An Asana task linked to your PR joins it. An awaywork PR links to the items its footer names; yours links by the key in its branch or title, or the source's [`link`](./config/repos.md#linking-prs) line in its body.
 
 - It works in the linked PR's repo, else the item's `repo`; with neither it's skipped.
-- Units run one at a time, in queue order. Each is a chain: the rule's skill, then its [`then`](./chains.md#then) steps, in one clone, publishing once at the end. A [loop](./chains.md#loops) repeats steps; a [`when`](./chains.md#when) step runs only if its condition holds.
+- Units run one at a time, in queue order. Each is a chain: the rule's skill, then its [`then`](./config/chains.md#then) steps, in one clone, publishing once at the end. A [loop](./config/chains.md#loops) repeats steps; a [`when`](./config/chains.md#when) step runs only if its condition holds.
 - The first step gets the item's latest report in `.away/context/previous/report.md`, marked as from an earlier run; later steps get the step before. That's how an approved `implement` finds its plan, on a retry too: a failed `implement` with no report doesn't replace it.
-- A PR stacks only on the awaywork PR a rule took up, or on the PR of the [task](./workflows.md#the-feature-block) it waits on. Its body says to merge that first; with GitHub's [stacked PRs](https://gh.io/stacks) awaywork links them. Every other PR starts from the default branch or your PR's branch, so each can be merged, parked or closed alone.
-- Optional [caps](./configuration.md#windows-limits-and-budget) limit units per run, per repo and per rule; a chain counts once.
+- A PR stacks only on the awaywork PR a rule took up, or on the PR of the [task](./workflows/tasks.md#the-feature-block) it waits on. Its body says to merge that first; with GitHub's [stacked PRs](https://gh.io/stacks) awaywork links them. Every other PR starts from the default branch or your PR's branch, so each can be merged, parked or closed alone.
+- Optional [caps](./config/providers.md#windows-limits-and-budget) limit units per run, per repo and per rule; a chain counts once.
 
 ### Skipped units
 
 `awaywork plan` says why a unit makes no work this run:
 
 - **Waiting for review:** it links an open awaywork PR. awaywork doesn't add to work you haven't read.
-- **Waiting for your answer:** the item's newest comment is awaywork's [questions](./workflows.md#questions).
-- **Waiting for your approval:** of awaywork's [plan](./workflows.md#plans) on it, or of a report rule's result that [waits](./workflows.md#posts-that-wait).
-- **Unchanged since run `<id>`:** no item changed (`updated`, and for a [`sync`](./chains.md#sync) its base's head) since a worker last finished this skill on it, so a review isn't redone every run. A [`continue`](./workflows.md#continue) is exempt.
+- **Waiting for your answer:** the item's newest comment is awaywork's [questions](./workflows/questions.md#questions).
+- **Waiting for your approval:** of awaywork's [plan](./workflows/plans.md) on it, or of a report rule's result that [waits](./workflows/posts.md#posts-that-wait).
+- **Unchanged since run `<id>`:** no item changed (`updated`, and for a [`sync`](./config/chains.md#sync) its base's head) since a worker last finished this skill on it, so a review isn't redone every run. A [`continue`](./workflows/questions.md#continue) is exempt.
 - **Gave up after 3 attempts; next try on `<date>`:** its chain didn't finish 3 runs in a row. It retries a week later, changed or not, and again a week after each failed try, so an error that fires nightly isn't retried nightly.
 - **Skipped by you:** `awaywork skip <source:key>` (e.g. `github:acme/api#5`) holds an item, and any unit it joins, until `awaywork unskip` or the `--until` date. `plan --skipped skipped_by_you` lists it with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`.
 
@@ -120,8 +120,8 @@ Details:
 
 - An awaywork PR matches only rules whose `where` names `ours`, like the default `fix` on threads you left on it. That rule takes the unit even over a better-ranked linked item, and its draft stacks on the awaywork PR.
 - A GitHub issue's draft PR into the default branch says `Closes` it, which links them, so the issue waits with the draft.
-- awaywork's draft whose footer says it goes on there doesn't wait: the unit [continues](./workflows.md#continue) on it.
-- A PR awaywork [pushed onto](./chains.md#push) waits while its head is awaywork's push, unless that was a [`sync`](./chains.md#sync)'s clean merge.
+- awaywork's draft whose footer says it goes on there doesn't wait: the unit [continues](./workflows/questions.md#continue) on it.
+- A PR awaywork [pushed onto](./config/chains.md#push) waits while its head is awaywork's push, unless that was a [`sync`](./config/chains.md#sync)'s clean merge.
 - An attempt is one chain, finished when every step that ran was done and no publish left anything behind. A failure, an error, a `unit_minutes` timeout or unpushed commits don't finish it; a plan report then a failed implement is one failure.
 - A finished attempt clears the count; another skill starts a new one. Skipped, dry-run and aborted units don't count, nor do stops the item didn't or may not have caused (quota, session limit, window end, a watchdog stop for low memory or disk). Attempts live in `~/.local/state/awaywork/attempts.json`.
 
@@ -155,11 +155,11 @@ Each unit runs in a fresh clone, on a new branch cut from its base: the linked P
 - `.away/context/` holds the prefetched item: PR view, diff, unresolved threads and every check (a failed one with its log), or the issue or task with its comments.
 - Skills go where the agent looks: `.agents/skills/` for Codex, a plugin for Claude Code and Cursor.
 - The prompt: the fixed [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md), the skill, then your instructions (global, per repo, in-repo `.awaywork/instructions.md` unless someone else opened the PR, per rule).
-- No forge token, and no source's or other provider's secret ([Safety](./safety.md#what-the-agent-can-reach)); on a GitHub-hosted runner, a [user of its own](./safety.md#a-worker-user-on-github-hosted-runners).
+- No forge token, and no source's or other provider's secret ([Safety](./safety/index.md#what-the-agent-can-reach)); on a GitHub-hosted runner, a [user of its own](./safety/isolation.md#a-worker-user-on-github-hosted-runners).
 - A turn cap: 200, or `fallback.turns` without a quota reading. `limits.unit_minutes`, when set, caps wall-clock time (`stopped: time`).
 - A watchdog stops it below 1.5 GB of free memory or 2 GB of disk and kills what it left running. The floors are checked before each unit too: a short machine skips it and every later one while short (`disk below 2 GB`), spending no quota.
 - A fork's PR is fetched from `refs/pull/<number>/head`; the unit fails if that's no longer the head its source read.
-- A branch name taken on the remote gets a `-2` to `-10` suffix, unless awaywork already tried there ([Branch names](./configuration.md#branch-names)).
+- A branch name taken on the remote gets a `-2` to `-10` suffix, unless awaywork already tried there ([Branch names](./config/repos.md#branch-names)).
 
 ## Delivery
 
@@ -175,20 +175,20 @@ A rule's `deliver` says what its unit leaves. An opt-in one is never a skill's d
 | `push` | Commits fast-forwarded onto your own PR. Opt-in |
 
 - **`draft_pr`:** the worker commits and writes `.away/out/pr.md` (first line the title), which later steps keep current. awaywork adds an `Awaywork: <run id>` trailer, pushes the new branch and opens one draft PR into that base. No `pr.md`, no publish. Never into someone else's PR or a fork's: there a chain that could commit is skipped with the reason; a report still works.
-- **`pr`:** a `draft_pr` that opens ready for review, pinging whoever a ready PR pings, code owners included. It stays a draft, saying why, when a step failed, stopped or never ran, it [asked questions](./workflows.md#questions) or said [`continue`](./workflows.md#continue), [`verify`](./configuration.md#repos-and-instructions) failed, a [loop](./chains.md#loops) ended before its `until` held, or a [gate](./workflows.md#gates) fired.
+- **`pr`:** a `draft_pr` that opens ready for review, pinging whoever a ready PR pings, code owners included. It stays a draft, saying why, when a step failed, stopped or never ran, it [asked questions](./workflows/questions.md#questions) or said [`continue`](./workflows/questions.md#continue), [`verify`](./config/repos.md#repos-and-instructions) failed, a [loop](./config/chains.md#loops) ended before its `until` held, or a [gate](./workflows/gates.md) fired.
 - **`report`:** no step commits; each writes `.away/out/report.md`, and the chain's reports, joined, go into the morning report.
 - **`pending_review`:** a `report` that also lands on the PR, anyone's or a fork's: the last report and the line comments in `.away/out/review.json` become your pending review at the commit the clone read, seen only by you until you submit it. If GitHub refuses a line comment (one off the diff, say), they all go in the body. When a step failed, stopped or never ran, or GitHub refuses the review (you have one pending there already, say), the report goes alone with the reason.
-- **`plan`:** a `report` whose step also writes `.away/out/plan.yml`: [Plans](./workflows.md#plans).
-- **`push`:** the commits and `pr.md`, pushed with the trailer onto your own open PR's branch as a fast-forward. The PR body isn't touched; `pr.md` goes into the morning report. No `pr.md`, no push. Under [`sync`](./chains.md#sync) the one commit is awaywork's merge of the PR's base; a worker runs only to resolve a [conflict](./chains.md#conflicts), without committing. It pushes only while ([`push`](./chains.md#push)):
+- **`plan`:** a `report` whose step also writes `.away/out/plan.yml`: [Plans](./workflows/plans.md).
+- **`push`:** the commits and `pr.md`, pushed with the trailer onto your own open PR's branch as a fast-forward. The PR body isn't touched; `pr.md` goes into the morning report. No `pr.md`, no push. Under [`sync`](./config/chains.md#sync) the one commit is awaywork's merge of the PR's base; a worker runs only to resolve a [conflict](./config/chains.md#conflicts), without committing. It pushes only while ([`push`](./config/chains.md#push)):
   - the PR is yours, open, in the repo, without auto-merge;
   - its head is still where the clone started;
   - its branch isn't on a fork, the default branch, protected, or someone else's open PR's.
 
 A skill commits unless its metadata says it reports, as `review` and `plan` do; `deliver` says where the commits go, and a chain that committed nothing reports.
 
-A PR's body gets its items' [`link`](./configuration.md#linking-prs) lines and a footer naming awaywork, the run and the unit's items, which is how the next plan links it back.
+A PR's body gets its items' [`link`](./config/repos.md#linking-prs) lines and a footer naming awaywork, the run and the unit's items, which is how the next plan links it back.
 
 Each step also writes one word to a file in `.away/out/`:
 
-- `verdict`, if its skill defines verdicts (`approve`, say): the report shows it, and a [loop](./chains.md#loops) can end on it.
-- `status`, asked of every step: `done`, `ask` after writing [questions](./workflows.md#questions), or `continue` when it made progress and needs [another run](./workflows.md#continue). awaywork acts on `ask` and `continue`; `done` only lets a draft it goes on with turn ready. With no status file, awaywork reads what the step left, as always.
+- `verdict`, if its skill defines verdicts (`approve`, say): the report shows it, and a [loop](./config/chains.md#loops) can end on it.
+- `status`, asked of every step: `done`, `ask` after writing [questions](./workflows/questions.md#questions), or `continue` when it made progress and needs [another run](./workflows/questions.md#continue). awaywork acts on `ask` and `continue`; `done` only lets a draft it goes on with turn ready. With no status file, awaywork reads what the step left, as always.
