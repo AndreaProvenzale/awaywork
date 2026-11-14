@@ -8,8 +8,9 @@ import { parse } from 'yaml'
 import { ConfigError, configPath, loadConfig } from '#config/load'
 import { expandHome, loginCommand, type Pin, pinLogins } from '#config/logins'
 import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '#config/paths'
-import { type Config, canMatch } from '#config/schema'
+import type { Config } from '#config/schema'
 import { hasSkills, loadSkills, unknownSkillsWarning } from '#config/skills'
+import { canMatch } from '#config/validate/where'
 import {
   DOCKER_TIMEOUT_MS,
   dockerVersion,

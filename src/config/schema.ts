@@ -1,34 +1,15 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '#core/branch'
-import { builtinSkills } from '#core/skills'
-import type { Provider, Rule, Scalar, Source, Where, WhereValue } from '#core/types'
-import { ruleSteps, ruleThread } from '#plan/queue'
-import { repoListed, settingsFor } from '#plan/repos'
-import {
-  bounds,
-  DEFAULT_LOOKBACK,
-  isAge,
-  isMatch,
-  lookback,
-  matchesOpen,
-  matchesValue,
-  newerThan,
-  spanPattern,
-} from '#plan/where'
+import type { Provider, Rule, Source, Where } from '#core/types'
+import { spanPattern } from '#plan/where'
 import { headerSecret } from '#providers/codex'
 import { commandProviderConfig } from '#providers/command'
 import { providers } from '#providers/index'
 import { DAYS, time } from '#quota/window'
-import {
-  commandConfig,
-  contextCommand,
-  isCommand,
-  linkTemplate,
-  pollEvery,
-  pollSpan,
-} from '#sources/command'
-import { itemFields, sourceField, sourceFor, sources } from '#sources/index'
+import { commandConfig, contextCommand, linkTemplate, pollEvery, pollSpan } from '#sources/command'
+import { sources } from '#sources/index'
 import { refuseOwnKeys, routines } from '#sources/routines'
+import { validateConfig } from './validate/index'
 
 const percent = z
   .string()
@@ -58,9 +39,6 @@ export const removedKeys: Record<string, string> = {
   'providers.budget':
     'budget was removed: the top-level budget applies to every provider; a different budget takes a second config',
 }
-
-/** A built-in skill whose merge awaywork makes itself, like `sync`. */
-const merges = (skill: string) => !!builtinSkills[skill]?.merge
 
 const branch = z.string().superRefine((template, ctx) => {
   const problem = templateProblem(template)
@@ -100,7 +78,7 @@ const models = z
   .union([model, z.array(model).length(2)])
   .describe('A model, or two: a step that fails on the first runs once more on the second')
 
-type ProviderConfig = {
+export type ProviderConfig = {
   model?: string
   config_dir?: string
 } & Record<string, unknown>
@@ -664,640 +642,168 @@ const repoSettings = z.strictObject({
 // A bare key lists the repo with no settings.
 const repo = z.union([repoSettings, z.null().transform(() => repoSettings.parse({}))])
 
-export const configSchema = z
-  .strictObject({
-    extends: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        "A base config file this one goes on top of, relative to this file: maps merge, this file's keys winning, and a list replaces the base's; relative paths resolve against the file they're in. A base can't extend another",
-      ),
-    windows: z
-      .array(
-        z
-          .strictObject({
-            days: z
-              .array(z.enum(DAYS))
-              .min(1)
-              .optional()
-              .describe('Weekdays the window opens on; every day when unset'),
-            start: time.describe('When a scheduled run starts, local time'),
-            end: time.describe('No unit starts after this'),
-          })
-          .refine((w) => w.start !== w.end, 'start and end must differ'),
-      )
-      .default([{ start: '01:00', end: '07:00' }])
-      .describe(
-        'Local hours a scheduled run may start units in; each opening is one run; [] for none',
-      ),
-    watch: z
-      .strictObject({
-        every: pollSpan
-          .default('5m')
-          .describe(
-            "How often the daemon polls the sources of run: soon rules; a source's own every can make it less often",
-          ),
-        debug: z
-          .boolean()
-          .default(false)
-          .describe("Also write each run's full output to the daemon log"),
-      })
-      .prefault({})
-      .describe('awaywork watch, the daemon schedule install keeps running'),
-    limits: z
-      .strictObject({
-        units: units.optional().describe('At most this many units per run'),
-        units_per_repo: units.optional().describe('At most this many units per run in one repo'),
-        unit_minutes: z
-          .int()
-          .positive()
-          .optional()
-          .describe('Stop a worker after this many minutes'),
-      })
-      .prefault({})
-      .describe('Unit counts and time per run, for every provider'),
-    isolation: z
-      .enum(['none', 'user', 'container'])
-      .default('none')
-      .describe(
-        "Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image",
-      ),
-    budget: budget.prefault({}),
-    providers: z
-      .array(providerEntry)
-      .min(1)
-      .describe('Providers to use, a name or a map to override; order = routing preference'),
-    forge: forge
-      .prefault('github')
-      .describe(
-        'Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } }',
-      ),
-    sources: sourcesConfig,
-    branch: branch
-      .default(defaultBranch)
-      .describe(
-        'Branch name template; {key} or {title} is required, {type} is the conventional-commit type',
-      ),
-    repos: z
-      .record(z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'), repo)
-      .prefault({})
-      .describe(
-        'The repos awaywork works in: each key an owner/name or a * glob such as acme/*, with its settings or nothing. A repo takes the settings of every key naming it, globs in the order written and its own key last, a later one winning; an item in a repo no key names is skipped',
-      ),
-    gates: gates.describe(
-      "Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body",
+const configShape = z.strictObject({
+  extends: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "A base config file this one goes on top of, relative to this file: maps merge, this file's keys winning, and a list replaces the base's; relative paths resolve against the file they're in. A base can't extend another",
     ),
-    instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
-    skills: z
-      .array(z.string())
-      .default([])
-      .describe(
-        "Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
-      ),
-    mcp: z
-      .record(z.string(), mcpServer)
-      .default({})
-      .describe('MCP servers a rule or step names in its mcp'),
-    queue: z
-      .array(rule)
-      .optional()
-      .describe('Rules mapping items to skills; without any, nothing runs'),
-    notify: z
-      .strictObject({
-        command: z
-          .string()
-          .min(1)
-          .describe(
-            'Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS, _ITEM_URL, _ITEM_KEY and _SOURCE (one line per item), _REPO and, when there is one, _VERDICT, _PR_URL, _REPORT or _OUT_DIR for a unit',
-          ),
-        secrets: z
-          .array(z.string().min(1))
-          .default([])
-          .describe('Env vars the command needs; withheld from workers, listed in Actions'),
-      })
-      .optional()
-      .describe(
-        'Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged',
-      ),
-    store: z
-      .strictObject({
-        command: z
-          .string()
-          .min(1)
-          .describe(
-            'Shell command run like a custom source\'s, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or {"skip":true} to keep the file out of the store, or reads {"op":"get","url"} and prints the file\'s bytes',
-          ),
-        secrets: z
-          .array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'expected an env var name'))
-          .default([])
-          .describe('Env vars the command reads; withheld from workers, listed in Actions'),
-        get: z
-          .boolean()
-          .default(true)
-          .describe(
-            'false: the command only puts, and awaywork reads a file back with a plain HTTP GET of its URL',
-          ),
-        read: z
-          .strictObject({
-            max_mb: z
-              .number()
-              .positive()
-              .default(10)
-              .describe("At most this many MB of a unit's files come back; the rest stay links"),
-            files: z
-              .array(z.string().min(1))
-              .default([])
-              .describe(
-                'Globs of the file names that come back, e.g. ["*.md", "*.yml"]; default every file',
-              ),
-          })
-          .prefault({})
-          .describe("What comes back into a unit's context when it reads its item's thread"),
-      })
-      .optional()
-      .describe(
-        'Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back',
-      ),
-    keep_runs: span
-      .default('30d')
-      .describe(
-        "How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report",
-      ),
-  })
-  .superRefine((cfg, ctx) => {
-    if (cfg.isolation === 'container')
-      for (const name of Object.keys(cfg.repos))
-        if (!settingsFor(cfg.repos, name).image)
-          ctx.addIssue({
-            code: 'custom',
-            path: ['repos', name, 'image'],
-            message: 'required with isolation: container: the image its units run in',
-          })
-    const providerIds = cfg.providers.flatMap(Object.keys)
-    const commandIds = providerIds.filter((id) => !Object.hasOwn(providers, id))
-    if (commandIds.length > 0 && !cfg.limits.unit_minutes)
-      ctx.addIssue({
-        code: 'custom',
-        path: ['limits', 'unit_minutes'],
-        message: 'required with a command provider: it has no turn cap, so this bounds its unit',
-      })
-    cfg.providers.forEach((entry, i) => {
-      for (const [id, settings] of Object.entries(entry as Record<string, ProviderConfig>)) {
-        const provider = Object.hasOwn(providers, id) ? providers[id] : undefined
-        // Only a login awaywork lends to the worker reaches it; the rest stay in your folders.
-        if (settings?.config_dir && cfg.isolation !== 'none' && provider && !provider.login)
-          ctx.addIssue({
-            code: 'custom',
-            path: ['providers', i, id, 'config_dir'],
-            message: `not with isolation: ${cfg.isolation}, which can't reach your login folder; set ${provider.secrets.join(', ')} instead`,
-          })
-        if (!commandIds.includes(id)) continue
-        // `constructor` is the one such name Object.prototype already has.
-        if (!/^(?!constructor$)[a-z][a-z0-9-]*$/.test(id))
-          ctx.addIssue({
-            code: 'custom',
-            path: ['providers', i, id],
-            message: 'expected a lowercase name like opencode',
-          })
-      }
+  windows: z
+    .array(
+      z
+        .strictObject({
+          days: z
+            .array(z.enum(DAYS))
+            .min(1)
+            .optional()
+            .describe('Weekdays the window opens on; every day when unset'),
+          start: time.describe('When a scheduled run starts, local time'),
+          end: time.describe('No unit starts after this'),
+        })
+        .refine((w) => w.start !== w.end, 'start and end must differ'),
+    )
+    .default([{ start: '01:00', end: '07:00' }])
+    .describe(
+      'Local hours a scheduled run may start units in; each opening is one run; [] for none',
+    ),
+  watch: z
+    .strictObject({
+      every: pollSpan
+        .default('5m')
+        .describe(
+          "How often the daemon polls the sources of run: soon rules; a source's own every can make it less often",
+        ),
+      debug: z
+        .boolean()
+        .default(false)
+        .describe("Also write each run's full output to the daemon log"),
     })
-    for (const name of Object.keys(cfg.mcp))
-      if (!/^[a-z0-9][a-z0-9-]*$/.test(name))
-        ctx.addIssue({
-          code: 'custom',
-          path: ['mcp', name],
-          message: 'expected a lowercase name like sentry',
-        })
-    const sourceIds = Object.keys(cfg.sources)
-    const bitbucket = cfg.forge.id === 'bitbucket'
-    if (bitbucket && sourceIds.includes('github'))
-      ctx.addIssue({
-        code: 'custom',
-        path: ['sources', 'github'],
-        message: 'one forge per config: the github source reads GitHub, and forge is bitbucket',
-      })
-    if ((bitbucket || sourceIds.includes('github')) && Object.keys(cfg.repos).length === 0)
-      ctx.addIssue({
-        code: 'custom',
-        path: ['repos'],
-        message: `${bitbucket ? 'forge: bitbucket works in' : 'the github source reads'} the repos listed here: add one, e.g. acme/api or acme/*`,
-      })
-    for (const [id, source] of Object.entries(
-      cfg.sources as Record<string, Record<string, unknown>>,
-    )) {
-      const named =
-        id === routines.id
-          ? Object.entries(source).map(([name, r]) => [
-              name,
-              'repo',
-              (r as { repo?: unknown } | null)?.repo,
-            ])
-          : Object.entries(source?.repo_map ?? {}).map(([key, repo]) => ['repo_map', key, repo])
-      for (const [at, key, repo] of named) {
-        if (typeof repo !== 'string') continue
-        const problem = repo.includes('*')
-          ? `expected one repo like acme/api, not the pattern ${repo}: a * goes only in a key of repos`
-          : !repoListed(cfg.repos, repo) &&
-            `${repo} isn't in repos: awaywork works only in the repos listed there, so add it as a key`
-        if (problem)
-          ctx.addIssue({ code: 'custom', path: ['sources', id, at, key], message: problem })
-      }
-    }
-    for (const name of bitbucket ? Object.keys(cfg.repos) : [])
-      if (name.split('/')[0]?.includes('*'))
-        ctx.addIssue({
-          code: 'custom',
-          path: ['repos', name],
-          message: 'expected workspace/repo; * globs the repo, never the workspace',
-        })
-    providerIds.forEach((id, i) => {
-      if (providerIds.indexOf(id) !== i)
-        ctx.addIssue({ code: 'custom', path: ['providers', i], message: `"${id}" is listed twice` })
+    .prefault({})
+    .describe('awaywork watch, the daemon schedule install keeps running'),
+  limits: z
+    .strictObject({
+      units: units.optional().describe('At most this many units per run'),
+      units_per_repo: units.optional().describe('At most this many units per run in one repo'),
+      unit_minutes: z.int().positive().optional().describe('Stop a worker after this many minutes'),
     })
-    cfg.queue?.forEach((r, i) => {
-      const at = ['queue', i]
-      if (r.source && !sourceIds.includes(r.source))
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'source'],
-          message: `source "${r.source}" is not configured`,
-        })
-      if (bitbucket && r.deliver === 'push')
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'deliver'],
-          message:
-            "push isn't available on Bitbucket: twg reads neither branch restrictions nor auto-merge, so awaywork can't check them; use draft_pr",
-        })
-      if (bitbucket && r.deliver === 'pending_review')
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'deliver'],
-          message:
-            "pending_review isn't available on Bitbucket: awaywork leaves pending reviews on GitHub only; use report",
-        })
-      if (merges(r.skill) && r.deliver !== 'push')
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'deliver'],
-          message: `${r.skill} merges your PR's base and pushes the merge onto your PR: it needs deliver: push`,
-        })
-      if (merges(r.skill) && Array.isArray(r.then) && r.then.length > 0)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'then'],
-          message: `${r.skill} is awaywork's own merge, not a model's step: it takes no then`,
-        })
-      if (merges(r.skill) && r.quota)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'quota'],
-          message: `${r.skill} is awaywork's own merge, which only spends quota on a conflict: drop quota`,
-        })
-      if (r.plan_tasks !== undefined && r.deliver !== 'plan')
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'plan_tasks'],
-          message: 'plan_tasks needs deliver: plan: it caps the tasks of the plan the rule writes',
-        })
-      // A `then` that failed to parse is still raw here; its own issues say why.
-      const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
-      // Round ids (`<unit>-<skill>-<n>`) can't collide with plain steps', only with other rounds'.
-      const inLoop = (path: (string | number)[]) => path[2] === 'loop'
-      chain.forEach(({ step: s, at: path }, j) => {
-        const stepAt = [...at, ...path]
-        const earlier = chain.findIndex(
-          (c) => c.step.skill === s.skill && inLoop(c.at) === inLoop(path),
-        )
-        if (j > 0 && merges(s.skill))
-          ctx.addIssue({
-            code: 'custom',
-            path: [...stepAt, 'skill'],
-            message: `${s.skill} is awaywork's own merge, a rule of its own: not a then step`,
-          })
-        if (earlier < j)
-          ctx.addIssue({
-            code: 'custom',
-            path: [...stepAt, 'skill'],
-            message: inLoop(path)
-              ? `"${s.skill}" already runs in a loop of this chain`
-              : `"${s.skill}" already runs earlier in this chain`,
-          })
-        for (const p of s.provider ?? [])
-          if (!providerIds.includes(p))
-            ctx.addIssue({
-              code: 'custom',
-              path: [...stepAt, 'provider'],
-              message: `provider "${p}" is not configured`,
-            })
-        for (const name of s.mcp ?? [])
-          if (!Object.hasOwn(cfg.mcp, name))
-            ctx.addIssue({
-              code: 'custom',
-              path: [...stepAt, 'mcp'],
-              message: `MCP server "${name}" is not configured`,
-            })
-        for (const p of Object.keys(s.model ?? {}))
-          if (!providerIds.includes(p))
-            ctx.addIssue({
-              code: 'custom',
-              path: [...stepAt, 'model', p],
-              message: `provider "${p}" is not configured`,
-            })
-          else if (commandIds.includes(p))
-            ctx.addIssue({
-              code: 'custom',
-              path: [...stepAt, 'model', p],
-              message: `no model for the command provider "${p}": put it in its command`,
-            })
-        // A step that sets neither runs as the rule, already checked.
-        if (s !== r && s.mcp === undefined && s.provider === undefined) return
-        const mcp = s.mcp ?? r.mcp ?? []
-        const provider = s.provider ?? r.provider
-        const routed = provider.length > 0 ? provider : providerIds
-        const command = routed.find((p) => commandIds.includes(p))
-        if (mcp.length > 0 && command)
-          ctx.addIssue({
-            code: 'custom',
-            path: [...stepAt, s.mcp ? 'mcp' : 'provider'],
-            message: `the command provider "${command}" gets no MCP servers: route this step to another provider with \`provider\``,
-          })
-      })
-      const scope = r.source ? [r.source] : sourceIds
-      const finishedOnly = lookback(r.where) !== undefined && !matchesOpen(r.where)
-      if ((r.deliver === 'push' || r.deliver === 'pending_review') && finishedOnly)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'deliver'],
-          message: `${r.deliver} needs an open PR, and this rule matches only merged or closed items; use report, draft_pr or pr`,
-        })
-      if (r.deliver === 'plan' && finishedOnly)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'deliver'],
-          message:
-            'plan waits for your reply on an open item, and this rule matches only merged or closed items; use report',
-        })
-      // A rule whose posts go to a thread needs no source that writes.
-      const silent =
-        r.source &&
-        !ruleThread(r) &&
-        sourceIds.includes(r.source) &&
-        !sourceFor(r.source, cfg.sources[r.source])?.write
-      const threadable = !bitbucket && r.source !== routines.id ? ', or thread: github' : ''
-      if (r.deliver === 'plan' && silent)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'deliver'],
-          message: `plan posts on the item, and ${r.source} can't write to its items; use report${threadable}`,
-        })
-      if (r.thread === 'github' && bitbucket)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'thread'],
-          message:
-            "thread: github opens an issue in the item's repo, and this config's repos are on Bitbucket; a custom thread host can take its posts instead",
-        })
-      const host = ruleThread(r)
-      const custom = host && host !== 'github' ? cfg.sources[host] : undefined
-      if (host && host !== 'github' && !(isCommand(custom) && custom.thread))
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'thread'],
-          message: `thread is item, github or a custom source with thread: true, and ${host} isn't one`,
-        })
-      if (r.thread !== undefined && 'planned' in r.where)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'thread'],
-          message: "thread goes on the plan's rule: its tasks post where the plan did",
-        })
-      // A post waits by `wait` only as a plan's or a report's, a task's only when a gate fires, and the PR rules' PR is already the decision.
-      const posts = (r.deliver === 'plan' || r.deliver === 'report') && !('planned' in r.where)
-      if (r.wait !== undefined && !posts)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'wait'],
-          message:
-            'planned' in r.where
-              ? "wait goes on the plan's rule: a task's approval is the plan's"
-              : 'wait needs deliver: plan or report: a PR is already the decision',
-        })
-      const noDiff = r.deliver === 'plan' || r.deliver === 'report'
-      if (r.gates && r.deliver === 'pending_review')
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'gates'],
-          message:
-            'gates check commits or a post, and pending_review leaves neither: the review stays yours to submit',
-        })
-      if (r.post !== undefined && !posts)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'post'],
-          message: 'post needs deliver: plan or report: a PR body is always full',
-        })
-      if (
-        r.post !== undefined &&
-        posts &&
-        r.deliver === 'report' &&
-        r.wait !== true &&
-        !r.gates &&
-        r.on_done?.comment !== 'result'
-      )
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'post'],
-          message:
-            'post shapes a post, and this report posts nothing: add wait: true, gates or on_done: { comment: result }, or drop post',
-        })
-      if (r.post === 'summary' && !cfg.store)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'post'],
-          message: 'post: summary pins files in a store: add a top-level store, or drop post',
-        })
-      // A task posts where its plan did.
-      if (posts && r.deliver === 'report' && (r.wait || r.gates) && silent)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, r.wait ? 'wait' : 'gates'],
-          message: `a report that waits posts on the item, and ${r.source} can't write to its items${threadable && '; add thread: github'}`,
-        })
-      const shared = [cfg.gates, ...Object.values(cfg.repos).map((p) => p.gates)]
-      for (const [name, g] of Object.entries(r.gates ?? {})) {
-        if (g.changed && noDiff)
-          ctx.addIssue({
-            code: 'custom',
-            path: [...at, 'gates', name, 'changed'],
-            message: `a ${r.deliver} has no diff: changed needs commits, on a rule that opens a PR or pushes, or in a top-level or repo gate`,
-          })
-        if (shared.some((gates) => Object.hasOwn(gates, name)))
-          ctx.addIssue({
-            code: 'custom',
-            path: [...at, 'gates', name],
-            message: `a top-level or repo gate is named ${name} too: name this one otherwise`,
-          })
-      }
-      if (r.source === routines.id && r.on_done)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'on_done'],
-          message:
-            'a routine has no tracker to post a result on or move: drop on_done; its report stays in the run, and notify can send it on',
-        })
-      const takers = cfg.queue?.filter(
-        (q) => 'planned' in q.where && (!q.source || !r.source || q.source === r.source),
-      )
-      if (r.deliver === 'plan' && !takers?.length)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'deliver'],
-          message:
-            "plan's tasks need a rule to take them: add one whose where names planned, e.g. { skill: implement, where: { planned: true } }",
-        })
-      const taskDelivers = ['draft_pr', 'pr', 'report']
-      if ('planned' in r.where && r.deliver && !taskDelivers.includes(r.deliver))
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'deliver'],
-          message: `a plan's task opens its own PR, or reports on the card, and that's how awaywork knows it's done: deliver draft_pr, pr or report, not ${r.deliver}`,
-        })
-      if (r.deliver === 'plan' && r.on_done?.comment)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'on_done', 'comment'],
-          message:
-            "the plan comment is a plan rule's result, so a second comment would repeat it: use move alone",
-        })
-      // A task's PR is found by its branch, so the branch must stay put when a re-plan retitles the task.
-      const templates = r.branch
-        ? [r.branch]
-        : [cfg.branch, ...Object.values(cfg.repos).flatMap((p) => p.branch ?? [])]
-      const moving = 'planned' in r.where && templates.find((t) => /\{(title|type)\}/.test(t))
-      if (moving)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'branch'],
-          message: `a plan's task keeps its PR by its branch, which ${moving} renders from the task's title or skill too: set branch on this rule from {key} alone, e.g. away/{key}`,
-        })
-      const taskBranches = new Set(
-        cfg.queue
-          ?.filter((q) => 'planned' in q.where && (!q.source || !r.source || q.source === r.source))
-          .map((q) => q.branch),
-      )
-      if ('planned' in r.where && taskBranches.size > 1)
-        ctx.addIssue({
-          code: 'custom',
-          path: [...at, 'branch'],
-          message:
-            'a re-plan may hand a task another skill, and so another planned rule, which must find its PR on the same branch: set the same branch on every planned rule for its source, or on none',
-        })
-      checkWhere(r.where, [...at, 'where'], false, undefined)
-      function canFinish(state: WhereValue | undefined, where: Where): boolean {
-        const finished = (s: WhereValue) => ['merged', 'closed'].some((f) => matchesValue(s, f))
-        const entries = (where.any as Where[] | undefined) ?? []
-        return state === undefined
-          ? entries.some((w) => canFinish(w.state as WhereValue | undefined, w))
-          : finished(state)
-      }
-      function checkWhere(
-        where: Where,
-        path: (string | number)[],
-        outerBounded: boolean,
-        outerState: WhereValue | undefined,
-      ) {
-        const bounded = outerBounded || newerThan(where.closed as WhereValue) !== undefined
-        const state = (where.state as WhereValue | undefined) ?? outerState
-        for (const [key, value] of Object.entries(where)) {
-          if (key === 'any') {
-            for (const [i, w] of (value as Where[]).entries())
-              if (Object.keys(w).length === 0)
-                ctx.addIssue({
-                  code: 'custom',
-                  path: [...path, key, i],
-                  message: 'an empty entry matches everything',
-                })
-              else checkWhere(w, [...path, key, i], bounded, state)
-            continue
-          }
-          if (key === 'ours' && path.includes('any')) {
-            ctx.addIssue({
-              code: 'custom',
-              path: [...path, key],
-              message: 'ours only lifts the awaywork PR wait at the top of where',
-            })
-            continue
-          }
-          if (key === 'planned' && path.includes('any')) {
-            ctx.addIssue({
-              code: 'custom',
-              path: [...path, key],
-              message: "planned only takes a plan's tasks at the top of where",
-            })
-            continue
-          }
-          const v = value as WhereValue
-          if (key === 'approved' && whereValues(v).some((x) => typeof x === 'boolean')) {
-            ctx.addIssue({
-              code: 'custom',
-              path: [...path, key],
-              message: "approved names the approved post's skill now, e.g. approved: story",
-            })
-            continue
-          }
-          const field = itemFields[key] ?? fieldFor(cfg.sources, scope, key)
-          if (!field) {
-            ctx.addIssue({
-              code: 'custom',
-              path: [...path, key],
-              message: unknownKey(cfg.sources, scope, key),
-            })
-            continue
-          }
-          if (typeof v === 'object' && !Array.isArray(v) && isMatch(v)) {
-            if (!isText(field))
-              ctx.addIssue({
-                code: 'custom',
-                path: [...path, key],
-                message: 'matches needs a text field',
-              })
-            continue
-          }
-          if (typeof v === 'object' && !Array.isArray(v) && isAge(v)) {
-            if (!field.safeParse(new Date().toISOString()).success)
-              ctx.addIssue({
-                code: 'custom',
-                path: [...path, key],
-                message: 'older_than and newer_than need a date field',
-              })
-            else if (key === 'closed' && !canFinish(state, where))
-              ctx.addIssue({
-                code: 'custom',
-                path: [...path, key],
-                message: 'closed only matches merged or closed items; add state: [merged, closed]',
-              })
-            else if (key === 'closed' && 'older_than' in v && !bounded)
-              ctx.addIssue({
-                code: 'custom',
-                path: [...path, key],
-                message: `closed needs newer_than to bound how far back to read; without it, awaywork reads ${DEFAULT_LOOKBACK} back`,
-              })
-            continue
-          }
-          const hint = scope.includes('linear') ? "; Linear's workflow state is status" : ''
-          for (const scalar of whereValues(v))
-            if (!field.safeParse(scalar).success)
-              ctx.addIssue({
-                code: 'custom',
-                path: [...path, key],
-                message: `invalid value ${JSON.stringify(scalar)}${key === 'state' ? `: state is open, merged or closed${hint}` : ''}`,
-              })
-        }
-      }
+    .prefault({})
+    .describe('Unit counts and time per run, for every provider'),
+  isolation: z
+    .enum(['none', 'user', 'container'])
+    .default('none')
+    .describe(
+      "Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image",
+    ),
+  budget: budget.prefault({}),
+  providers: z
+    .array(providerEntry)
+    .min(1)
+    .describe('Providers to use, a name or a map to override; order = routing preference'),
+  forge: forge
+    .prefault('github')
+    .describe(
+      'Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } }',
+    ),
+  sources: sourcesConfig,
+  branch: branch
+    .default(defaultBranch)
+    .describe(
+      'Branch name template; {key} or {title} is required, {type} is the conventional-commit type',
+    ),
+  repos: z
+    .record(z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'), repo)
+    .prefault({})
+    .describe(
+      'The repos awaywork works in: each key an owner/name or a * glob such as acme/*, with its settings or nothing. A repo takes the settings of every key naming it, globs in the order written and its own key last, a later one winning; an item in a repo no key names is skipped',
+    ),
+  gates: gates.describe(
+    "Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body",
+  ),
+  instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
+  skills: z
+    .array(z.string())
+    .default([])
+    .describe(
+      "Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
+    ),
+  mcp: z
+    .record(z.string(), mcpServer)
+    .default({})
+    .describe('MCP servers a rule or step names in its mcp'),
+  queue: z
+    .array(rule)
+    .optional()
+    .describe('Rules mapping items to skills; without any, nothing runs'),
+  notify: z
+    .strictObject({
+      command: z
+        .string()
+        .min(1)
+        .describe(
+          'Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS, _ITEM_URL, _ITEM_KEY and _SOURCE (one line per item), _REPO and, when there is one, _VERDICT, _PR_URL, _REPORT or _OUT_DIR for a unit',
+        ),
+      secrets: z
+        .array(z.string().min(1))
+        .default([])
+        .describe('Env vars the command needs; withheld from workers, listed in Actions'),
     })
-  })
+    .optional()
+    .describe(
+      'Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged',
+    ),
+  store: z
+    .strictObject({
+      command: z
+        .string()
+        .min(1)
+        .describe(
+          'Shell command run like a custom source\'s, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or {"skip":true} to keep the file out of the store, or reads {"op":"get","url"} and prints the file\'s bytes',
+        ),
+      secrets: z
+        .array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'expected an env var name'))
+        .default([])
+        .describe('Env vars the command reads; withheld from workers, listed in Actions'),
+      get: z
+        .boolean()
+        .default(true)
+        .describe(
+          'false: the command only puts, and awaywork reads a file back with a plain HTTP GET of its URL',
+        ),
+      read: z
+        .strictObject({
+          max_mb: z
+            .number()
+            .positive()
+            .default(10)
+            .describe("At most this many MB of a unit's files come back; the rest stay links"),
+          files: z
+            .array(z.string().min(1))
+            .default([])
+            .describe(
+              'Globs of the file names that come back, e.g. ["*.md", "*.yml"]; default every file',
+            ),
+        })
+        .prefault({})
+        .describe("What comes back into a unit's context when it reads its item's thread"),
+    })
+    .optional()
+    .describe(
+      'Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back',
+    ),
+  keep_runs: span
+    .default('30d')
+    .describe(
+      "How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report",
+    ),
+})
+
+/** The config as its shapes parse it, before the cross-field checks and the transform. */
+export type ParsedConfig = z.output<typeof configShape>
+
+export const configSchema = configShape
+  .superRefine(validateConfig)
   .transform(({ providers: entries, ...cfg }) => ({
     ...cfg,
     // The github source reads the listed repos, on the forge's host.
@@ -1314,42 +820,4 @@ export type Config = z.output<typeof configSchema>
 const withScope = <S extends Record<string, unknown>>(sources: S, scope: object): S =>
   sources.github ? { ...sources, github: { ...sources.github, ...scope } } : sources
 
-type Sources = Record<string, unknown>
-
-const fieldsOf = (configured: Sources, id: string) => sourceFor(id, configured[id])?.fields ?? {}
-
-/** Whether source `id`'s items can match `where`: it has fields, and so items, and one for each key. */
-export function canMatch(configured: Sources, id: string, where: Where): boolean {
-  const fields = fieldsOf(configured, id)
-  const fits = (w: Where): boolean =>
-    Object.entries(w).every(([key, value]) =>
-      key === 'any'
-        ? (value as Where[]).some(fits)
-        : key in itemFields || !!sourceField(fields, key),
-    )
-  return Object.keys(fields).length > 0 && fits(where)
-}
-
-function fieldFor(configured: Sources, scope: string[], key: string): z.ZodType | undefined {
-  const matches = scope.flatMap((id) => sourceField(fieldsOf(configured, id), key) ?? [])
-  if (matches.length === 0) return undefined
-  return matches.length === 1 ? matches[0] : z.union(matches)
-}
-
-function whereValues(value: WhereValue): Scalar[] {
-  if (typeof value !== 'object' || Array.isArray(value)) return [value].flat()
-  if ('not' in value) return [value.not].flat()
-  return isAge(value) || isMatch(value) ? [] : bounds(value).map(([, bound]) => bound)
-}
-
-/** A field `matches` can test: a string, dates aside, or a union holding one. */
-function isText(field: z.core.$ZodType): boolean {
-  return field instanceof z.ZodString || (field instanceof z.ZodUnion && field.options.some(isText))
-}
-
-function unknownKey(configured: Sources, scope: string[], key: string): string {
-  const known = scope.map((id) => `${id}: ${Object.keys(fieldsOf(configured, id)).join(', ')}`)
-  const items = Object.keys(itemFields).join(', ')
-  return `unknown key "${key}"; use ${items} or a source field (${known.join('; ')})`
-}
 export type Budget = Config['budget']
