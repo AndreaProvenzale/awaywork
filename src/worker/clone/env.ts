@@ -44,6 +44,17 @@ export function commandEnv(
   }
 }
 
+/** With every secret withheld except the repo's own. */
+export function setupEnv(
+  env: NodeJS.ProcessEnv,
+  dir: string,
+  secrets: string[],
+  own: string[],
+): NodeJS.ProcessEnv {
+  const passed = own.filter((name) => env[name] !== undefined).map((name) => [name, env[name]])
+  return { ...commandEnv(env, dir, secrets), ...Object.fromEntries(passed) }
+}
+
 /** The env of the model and the checks: `commandEnv`'s without the credential plumbing, on awaywork's global git config and no system one. */
 export function workerEnv(
   env: NodeJS.ProcessEnv,

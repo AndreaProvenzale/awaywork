@@ -83,7 +83,6 @@ import {
   readStatus,
   readVerdict,
   type Snapshot,
-  setupEnv,
   snapshot,
 } from '#worker/chain/handoff'
 import { describeLoop, type OpenLoop } from '#worker/chain/loop'
@@ -97,7 +96,7 @@ import {
 } from '#worker/chain/merge'
 import type { ReplayState } from '#worker/chain/replay'
 import { configSecrets, fetchContexts } from '#worker/clone/context'
-import { gateEnv, workerEnv } from '#worker/clone/env'
+import { gateEnv, setupEnv, workerEnv } from '#worker/clone/env'
 import {
   copyOut,
   notSymlink,

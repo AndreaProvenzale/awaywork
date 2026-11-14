@@ -3,7 +3,6 @@ import { basename, dirname, join, relative, sep } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
 import { providers } from '#providers/index'
-import { commandEnv } from '#worker/clone/env'
 import { readOutput, refuseSymlinks, WORK_DIR } from '#worker/clone/files'
 import { git } from '#worker/clone/git'
 import { inClone } from '#worker/clone/workspace'
@@ -151,15 +150,4 @@ export async function discard(dir: string, start: string, saved: Snapshot): Prom
   await Promise.all(config.map((p) => rm(join(dir, p), { recursive: true, force: true })))
   await git(dir, 'read-tree', '-u', '--reset', saved.tree)
   await git(dir, 'read-tree', saved.staged)
-}
-
-/** With every secret withheld except the repo's own. */
-export function setupEnv(
-  env: NodeJS.ProcessEnv,
-  dir: string,
-  secrets: string[],
-  own: string[],
-): NodeJS.ProcessEnv {
-  const passed = own.filter((name) => env[name] !== undefined).map((name) => [name, env[name]])
-  return { ...commandEnv(env, dir, secrets), ...Object.fromEntries(passed) }
 }

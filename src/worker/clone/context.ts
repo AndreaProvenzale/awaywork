@@ -5,8 +5,8 @@ import { execa } from 'execa'
 import type { Config } from '#config/schema'
 import type { Item, Provider, Source } from '#core/types'
 import { slug } from '#plan/foreman'
-import { setupEnv } from '#worker/chain/handoff'
 import { runCommand } from '#worker/process/command'
+import { setupEnv } from './env'
 import { WORK_DIR } from './files'
 
 /** `dir` is the folder of the config file that set the command, set when the config loads. */
