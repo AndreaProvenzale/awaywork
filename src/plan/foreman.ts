@@ -1,42 +1,15 @@
 import type { Config } from '#config/schema'
-import { isValidRef } from '#core/branch'
-import { type Origin, resolveSkill, type SkillCatalog } from '#core/skills'
-import type {
-  Condition,
-  Deliver,
-  Gate,
-  Item,
-  Rule,
-  Step,
-  TaskPr,
-  ThenStep,
-  Unit,
-  Where,
-  WhereValue,
-} from '#core/types'
-import { awaitsAnswer } from '#posts/comments'
-import { postAnswer, reportPost, taskPost } from '#posts/posts'
+import type { Origin, SkillCatalog } from '#core/skills'
+import type { Condition, Item, Rule, Step, ThenStep, Unit, Where, WhereValue } from '#core/types'
+import { postAnswer, reportPost } from '#posts/posts'
 import type { Moved } from '#posts/report'
-import { type Allowance, quotaFacts, route } from '#quota/budget'
-import {
-  branchName,
-  committingStep,
-  expandPlans,
-  gatesNeverRun,
-  planLimits,
-  stepReports,
-} from '#tasks/fanout'
-import { elsewhere, latestResult, planState, planThread } from '#tasks/plan-file'
+import type { Allowance } from '#quota/budget'
+import { committingStep, expandPlans, planLimits } from '#tasks/fanout'
+import { latestResult, planState } from '#tasks/plan-file'
 import { globToRegExp } from '#util/glob'
-import {
-  type Attempts,
-  byHand,
-  gaveUpUntil,
-  MAX_ATTEMPTS,
-  pushedOnto,
-  unchangedSince,
-} from './attempts'
-import { holds } from './condition'
+import type { Attempts } from './attempts'
+import { chainUnits, landing } from './chain'
+import { holds, openedElsewhere, postsOn, refusal, stackTarget } from './holds'
 import {
   closestRule,
   dedupe,
@@ -49,8 +22,7 @@ import {
   ruleFor,
   waitsOn,
 } from './queue'
-import { repoListed, settingsFor } from './repos'
-import { describeSkip, type Skip } from './skips'
+import type { Skip } from './skips'
 import {
   describeComparison,
   failedIn,
@@ -60,6 +32,8 @@ import {
   TOP,
   within,
 } from './where'
+
+export { taskChain } from './holds'
 
 export interface PlannedUnit {
   unit: Unit
@@ -224,10 +198,7 @@ export function planRun(input: {
       .map((item) => ({ item, ...noRuleReason(item, queue) })),
   ]
   const units: PlannedUnit[] = []
-  const routed: Record<string, number> = {}
-  const perRepo: Record<string, number> = {}
-  const perRule: Record<number, number> = {}
-  let counted = 0
+  const caps: Caps = { routed: {}, perRepo: {}, perRule: {}, counted: 0 }
 
   // A post that waits holds its card for its rule only: the card's linked items rank on their own.
   const waiting = (e: Ranked) => waitsOn(rules[e.rule] as Rule, e.item)
@@ -246,117 +217,28 @@ export function planRun(input: {
     if (only.units && !only.units.includes(slug(items[0]?.key ?? ''))) continue
     const skip = (kind: SkipKind, reason: string, url?: string) =>
       skipped.push(...items.map((item) => ({ item, kind, reason, ...(url && { url }) })))
-    const limits = (item: Item) => planLimits(config, queue, item, input.skills)
     const card =
       rule.deliver === 'plan'
         ? items.flatMap((item) => {
-            const state = planState(item, limits(item))
+            const state = planState(item, planLimits(config, queue, item, input.skills))
             return state ? [{ item, ...state }] : []
           })[0]
         : undefined
     const id = slug(items[0]?.key ?? '')
-    const steps = thenSteps(rule, id)
     // An approved plan runs as its tasks, so naming its card lifts nothing.
     const named =
       name !== undefined && card?.state !== 'approved' && namesChain(id, rule, items, name)
-    let lifted = !!items[0] && namedTasks.includes(items[0])
-    // True when it stays held; a unit you name goes past, taking no room under the caps a run without the name would have left.
-    const hold = (kind: SkipKind, reason: string, url?: string) => {
-      if (named) lifted = true
-      else skip(kind, reason, url)
-      return !named
-    }
-    const attempts = input.attempts ?? {}
-    const skippedByUser = items
-      .map((item) => `${item.source}:${item.key}`)
-      .find((key) => skips[key])
-    if (
-      skippedByUser &&
-      hold(
-        'skipped_by_you',
-        describeSkip(skippedByUser, skips[skippedByUser] as Skip),
-        pushedOnto(items, attempts)?.url,
-      )
-    )
-      continue
-    // A post the unit depends on that awaywork couldn't read back decides nothing yet: no attempt counts.
-    const unread = items.flatMap((i) => dependedPosts(i, rule)).find((c) => c?.pinned?.failed)
-      ?.pinned?.failed
-    if (unread) {
-      skip('store_failed', unread)
-      continue
-    }
     const prs = items.flatMap((i) => i.linkedPrs)
     // awaywork's own draft for these items, which it left for a later run.
     const keys = items.map((i) => `${i.source}:${i.key}`)
     // A one-off opens only a new branch's draft, so it never goes on with one.
     const draft =
       !oneOff && !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
-    if (ours && !pickup && !draft && !found.some(waiting)) {
-      skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
-      continue
-    }
     // What an earlier run left for this one: its draft, else a report's `continue` result, which goes on though its items didn't change.
     const result = draft ? undefined : latestResult(items[0] as Item)
     const left = draft ?? (result?.status === 'continue' ? result : undefined)
-    const where = (draft && ours?.url) || (items[0] as Item).url
-    const stop = left && byHand(left, { head: ours?.head })
-    if (left && stop) {
-      const what = draft ? `awaywork's draft ${where}` : "awaywork's result"
-      const or = draft ? ', or mark it ready' : ''
-      skip(stop.kind, `${what} says ${left.status}, but ${stop.why}: finish it by hand${or}`, where)
-      continue
-    }
-    const goesOn = left?.status === 'continue'
-    // A soon run reacts to an item changing, and a `continue` isn't one.
-    if (goesOn && only.soon) {
-      skip('continues_later', `goes on from ${where} in the next window run`, where)
-      continue
-    }
-    const pushed = pushedOnto(items, attempts)
-    if (
-      pushed &&
-      hold(
-        'waiting_for_review',
-        `waiting for review: awaywork pushed onto your PR ${pushed.url}`,
-        pushed.url,
-      )
-    )
-      continue
-    // Read off the item, not attempts, so a runner without state waits too, and awaywork's comment doesn't count as a change; a task's questions wait on its card.
-    const asked = items.find((i) => !i.task && awaitsAnswer(i))
-    if (asked) {
-      skip('waiting_for_answer', `waiting for your answer on ${postsOn(asked)}`, postsOn(asked))
-      continue
-    }
     const stack = prs.length === 0 ? stackTarget(items[0] as Item, units) : undefined
     const waitsFor = prs.length === 0 ? openedElsewhere(items[0] as Item) : []
-    const unplanned =
-      stack && !stack.pr && !stack.after
-        ? stack.onto
-        : waitsFor.find((id) => !taskChain(units, items[0] as Item, id))
-    if (unplanned) {
-      const taskDraft = items[0]?.task?.parent.taskPrs?.[unplanned]?.left
-      skip(
-        'waiting_for_task',
-        `waiting for task ${unplanned}'s ${taskDraft ? `draft, which says ${taskDraft.status}` : 'PR to open'}`,
-      )
-      continue
-    }
-    const ontoPr = stack?.pr
-    const after = stack?.after
-    if (card?.state === 'waiting') {
-      skip(
-        'waiting_for_approval',
-        `waiting for your approval of the plan on ${postsOn(card.item)}`,
-        postsOn(card.item),
-      )
-      continue
-    }
-    if (card?.state === 'invalid') {
-      skip('invalid_plan', `plan refused: ${card.problem}`, postsOn(card.item))
-      continue
-    }
     // A report's post that waits holds its rule, whatever else changed on the card.
     const posted =
       rule.deliver === 'report' && !items[0]?.task
@@ -365,41 +247,32 @@ export function planRun(input: {
             return post ? [{ item, answer: postAnswer(post) }] : []
           })[0]
         : undefined
-    if (posted?.answer === 'waiting') {
-      skip(
-        'waiting_for_approval',
-        `waiting for your approval of ${rule.skill}'s result on ${postsOn(posted.item)}`,
-        postsOn(posted.item),
-      )
+    const held = holds({
+      items,
+      rule,
+      skips,
+      attempts: input.attempts ?? {},
+      now,
+      soon: !!only.soon,
+      ours,
+      pickup: !!pickup,
+      waitedOn: found.some(waiting),
+      draft,
+      left,
+      card,
+      posted,
+      stack,
+      waitsFor,
+      units,
+    })
+    const hold = held.find((h) => !(named && h.liftable))
+    if (hold) {
+      skip(hold.kind, hold.reason, hold.url)
       continue
     }
-    // Closing a task's PR doesn't touch the card, nor editing a pinned file: its re-plan is due all the same.
-    const replan = card?.state === 'replan'
-    const stale = items.some((i) => rulePost(i, rule)?.pinned?.stale)
-    const since = items.map((item) => unchangedSince(item, rule.skill, attempts))
-    if (
-      since.every(Boolean) &&
-      !goesOn &&
-      !replan &&
-      !stale &&
-      hold('unchanged', `unchanged since run ${since.sort().at(-1)}`)
-    )
-      continue
-    const retries = items.map((i) => gaveUpUntil(i, rule.skill, attempts, now))
-    if (
-      retries.every(Boolean) &&
-      hold(
-        'gave_up',
-        `gave up after ${MAX_ATTEMPTS} attempts; next try on ${new Date(Math.min(...retries.map(Number))).toLocaleDateString('sv-SE')}`,
-      )
-    )
-      continue
-    // A skill commits unless it reports; `deliver: report`, `pending_review` and `plan` make every step report.
-    const review = rule.deliver === 'pending_review'
-    const planned = rule.deliver === 'plan'
-    const reports = stepReports(rule, input.skills)
+    // A unit you name goes past its holds, taking no room under the caps a run without the name would have left.
+    const lifted = held.length > 0 || (!!items[0] && namedTasks.includes(items[0]))
     const committing = committingStep(rule, input.skills)
-    const deliver = rule.deliver === 'push' || rule.deliver === 'pr' ? rule.deliver : 'draft_pr'
     const pr = (draft && ours) || (committing ? prs.find((p) => p.mine) : undefined) || prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
@@ -407,172 +280,45 @@ export function planRun(input: {
       continue
     }
     if (onlyRepo && !onlyRepo.test(repo)) continue
-    // Its thread opens in the repo an item names, so that one is listed too.
-    const unlisted = [repo, ...items.map((i) => i.fields.repo)].find(
-      (r) => typeof r === 'string' && !repoListed(config.repos, r),
-    )
-    if (unlisted) {
-      skip(
-        'unlisted_repo',
-        `${unlisted} isn't in repos: awaywork works only in the repos listed there`,
-      )
-      continue
-    }
-    if (review && !pr) {
-      skip('refused_delivery', 'deliver pending_review: no pull request to review')
-      continue
-    }
-    // A declared gate never stays off unsaid: one on a chain that only reports runs under deliver: report alone.
-    const ungated = gatesNeverRun(rule, input.skills)
-    if (ungated) {
-      skip('refused_delivery', ungated)
-      continue
-    }
-    const template = rule.branch ?? settingsFor(config.repos, repo).branch ?? config.branch
-    // A chain's name takes the type of its first committing step; the list's words keep it a valid ref.
-    const branch = branchName(config, rule, repo, items[0] as Item, committing, input.skills)
-    if (!isValidRef(branch)) {
-      skip('invalid_branch', `branch template ${template} renders an invalid name "${branch}"`)
-      continue
-    }
-    const base = pr?.branch ?? ontoPr?.branch ?? ''
-    const foreign = pr ? !pr.mine : false
-    const fork = pr?.fork ? { number: pr.number, head: pr.head } : undefined
-    // A merging skill named otherwise than the built-in, which the config can't check.
-    const merging = resolveSkill(rule.skill, input.skills)?.meta.merge
-    if (merging && (rule.deliver !== 'push' || rule.then?.length)) {
-      skip(
-        'refused_delivery',
-        `${rule.skill} merges your PR's base: it needs deliver: push, no then`,
-      )
-      continue
-    }
-    const refused = committing && deliveryRefusal(deliver, base, foreign, !!fork)
+    const at = landing({
+      config,
+      rule,
+      skills: input.skills,
+      items,
+      repo,
+      pr,
+      committing,
+      onto: stack?.pr,
+      draft,
+    })
+    const refused = refusal(config, rule, input.skills, items, at)
     if (refused) {
-      skip(
-        'refused_delivery',
-        committing === rule ? refused : `${refused}, and ${committing.skill} commits`,
-      )
+      skip(refused.kind, refused.reason)
       continue
     }
-    if (merging && !pr?.into) {
-      skip('refused_delivery', `${rule.skill}: ${pr?.url} names no base branch to merge`)
-      continue
-    }
-    const overCap = () => {
-      const cap = [
-        { name: 'limits.units', max: config.limits.units, count: counted },
-        {
-          name: 'limits.units_per_repo',
-          max: config.limits.units_per_repo,
-          count: perRepo[repo] ?? 0,
-        },
-        { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: perRule[ruleIndex] ?? 0 },
-      ].find((c) => c.max !== undefined && c.count >= c.max)
-      return cap && `over the cap: ${cap.name} is ${cap.max}`
-    }
-    const capped = overCap()
+    const capped = overCap(caps, config, rule, ruleIndex, repo)
     if (capped && !named) {
       skip('over_cap', capped)
       continue
     }
-
-    // A post after your feedback, or a task's PR closed, waits for you whatever `wait` says.
-    const again = card?.state === 'feedback' || replan || posted?.answer === 'feedback'
-    // A report that neither waits nor has gates of its own posts as a plain result, `wait: false` too.
-    const decides = planned || (rule.deliver === 'report' && (rule.wait === true || !!rule.gates))
-    const waits = decides ? again || (rule.wait ?? planned) : undefined
-    // Only a post reads the step's summary: a report rule posts when it decides or comments its result.
-    const lean =
-      (decides || (rule.deliver === 'report' && rule.on_done?.comment === 'result')) &&
-      !items[0]?.task &&
-      (rule.post ?? (config.store ? 'summary' : 'full')) === 'summary'
-    // A resumed task's draft stays stacked on the task below it while that one is open.
-    const below =
-      draft && items[0]?.task?.onto && items[0].task.parent.taskPrs?.[items[0].task.onto]
-    const stackedOn = ontoPr?.url ?? (below && below.state === 'open' ? below.url : undefined)
-    const at = {
-      base,
-      foreign,
-      untrusted: pr ? !pr.trusted : false,
-      fork,
-      ...(merging && { merge: pr?.into }),
-      branch: draft ? base : branch,
-      ...(stackedOn && { stackedOn }),
-      ...(draft &&
-        pr && {
-          resume: {
-            url: pr.url,
-            number: pr.number,
-            from: draft.from,
-            head: draft.head,
-            status: draft.status,
-          },
-        }),
-      ...(left && { continued: left.continued }),
-    }
-    const add = (written: ThenStep, unitId: string, loop?: LoopRound) => {
-      const step = written === rule ? rule : inherit(rule, written)
-      const skill = resolveSkill(step.skill, input.skills)
-      const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
-      // Every step is routed, as the run does, so the plan holds fallback units for all of them; a merge takes a provider only to resolve conflicts the source read.
-      const routes = !at.merge || items.some((i) => i.fields.conflicts === true)
-      // A one-off runs alone, so the rule units planned before it take no fallback unit from it.
-      const { provider, passed } = routes
-        ? route(providers, allowances, oneOff ? {} : routed)
-        : { passed: [] }
-      if (provider) routed[provider] = (routed[provider] ?? 0) + 1
-      const settings = settingsFor(config.repos, repo)
-      const unit: Unit = {
-        ...at,
-        id: unitId,
-        verify: settings.verify,
-        // Gates check what a model wrote, and a merge with no model has nothing of its; the top-level and repo ones need commits, so a plan or report takes its rule's own only.
-        gates: decides
-          ? gatesOf(rule.gates)
-          : at.merge && !provider
-            ? undefined
-            : gatesOf(config.gates, settings.gates, rule.gates),
-        ...(waits !== undefined && { waits }),
-        ...(lean && { lean }),
-        ...(oneOff && { oneOff }),
-        items,
-        repo,
-        rule: step,
-        skill: step.skill,
-        skills: [...config.skills, ...step.skills],
-        providers,
-        instructions: [
-          ...config.instructions,
-          ...(settings.instructions ? [settings.instructions] : []),
-          ...step.instructions,
-        ],
-        deliver: review ? 'pending_review' : planned ? 'plan' : reports(step) ? 'report' : deliver,
-        ...(planned && { planLimits: limits(items[0] as Item) }),
-      }
-      const unmet = provider && written === rule && quotaUnmet(rule.quota, allowances[provider])
-      units.push({
-        unit,
-        rule: ruleIndex,
-        itemRules: group.map((e) => e.rule),
-        origin: skill?.origin,
-        provider,
-        passed,
-        ...(unmet && { quotaUnmet: unmet }),
-        ...(written !== rule && { chain: id }),
-        ...(loop && { loop }),
-        ...(written === rule && after && { after: after.unit.id }),
-        ...(written === rule && waitsFor.length > 0 && { waitsFor }),
-      })
-      return !!provider || !!at.merge
-    }
-    // A chain publishes once, so it counts once, when its first step runs.
-    if (add(rule, id) && !capped && !lifted) {
-      counted++
-      perRepo[repo] = (perRepo[repo] ?? 0) + 1
-      perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
-    }
-    for (const step of steps) add(step.written, step.id, step.loop)
+    const chain = chainUnits({ config, queue, skills: input.skills, allowances }, caps.routed, {
+      rule,
+      ruleIndex,
+      itemRules: group.map((e) => e.rule),
+      items,
+      id,
+      steps: thenSteps(rule, id),
+      oneOff,
+      at,
+      draft,
+      left,
+      card,
+      posted,
+      after: stack?.after,
+      waitsFor,
+    })
+    units.push(...chain.units)
+    if (chain.counts && !capped && !lifted) take(caps, repo, ruleIndex)
   }
   return { queue, units, skipped, allowances }
 }
@@ -604,57 +350,38 @@ function thenSteps(rule: Rule, id: string) {
   )
 }
 
-/** The rule's own post on the item: its plan, a task's newest result, or its skill's newest result. */
-const rulePost = (i: Item, rule: Rule) =>
-  i.task
-    ? taskPost(i, i.task.id)
-    : rule.deliver === 'plan'
-      ? planThread(i)?.plan
-      : reportPost(i, rule.skill)?.post
-
-/** The posts a unit of the rule on the item stands on: the rule's own, a task's plan on its card, and the result `approved` names. */
-const dependedPosts = (i: Item, rule: Rule) => [
-  rulePost(i, rule),
-  i.task && planThread(i)?.plan,
-  typeof i.fields.approved === 'string' ? reportPost(i, i.fields.approved)?.post : undefined,
-]
-
-/** Where a task after another's `opened` starts: on that task's open PR, else after its chain earlier in this run. */
-function stackTarget(
-  item: Item,
-  units: PlannedUnit[],
-): { onto: string; pr?: TaskPr; after?: PlannedUnit } | undefined {
-  const { task } = item
-  if (!task?.onto) return undefined
-  const pr = task.parent.taskPrs?.[task.onto]
-  // A draft left for a later run holds half-done work: it stacks only once that run finished it.
-  if (pr && !pr.left) return { onto: task.onto, pr }
-  const after = taskChain(units, item, task.onto)
-  return { onto: task.onto, ...(after && { after }) }
+/** What the units planned so far took under the run's caps, and how many of them each provider was routed. */
+interface Caps {
+  routed: Record<string, number>
+  perRepo: Record<string, number>
+  perRule: Record<number, number>
+  counted: number
 }
 
-/** The chain planned so far for task `id` of the card `item` is a task of. */
-export const taskChain = (units: PlannedUnit[], item: Item, id: string) =>
-  units.find(
-    (u) =>
-      !u.chain &&
-      u.unit.items.some(
-        (i) => i.source === item.source && i.key === `${item.task?.parent.key}/${id}`,
-      ),
-  )
+/** The first cap a chain of the rule in the repo would go over, as why it's skipped. */
+function overCap(
+  caps: Caps,
+  config: Config,
+  rule: Rule,
+  ruleIndex: number,
+  repo: string,
+): string | undefined {
+  const cap = [
+    { name: 'limits.units', max: config.limits.units, count: caps.counted },
+    {
+      name: 'limits.units_per_repo',
+      max: config.limits.units_per_repo,
+      count: caps.perRepo[repo] ?? 0,
+    },
+    { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: caps.perRule[ruleIndex] ?? 0 },
+  ].find((c) => c.max !== undefined && c.count >= c.max)
+  return cap && `over the cap: ${cap.name} is ${cap.max}`
+}
 
-/** A task's `opened` tasks in other repos that have no PR yet: it waits for them without stacking. */
-function openedElsewhere(item: Item): string[] {
-  const task = item.task
-  const own = task?.plan.find((t) => t.id === task.id)
-  if (!task || !own) return []
-  return elsewhere(own, task.plan)
-    .filter(
-      (t) =>
-        own.after[t.id] === 'opened' &&
-        (task.parent.taskPrs?.[t.id]?.left ?? !task.parent.taskPrs?.[t.id]),
-    )
-    .map((t) => t.id)
+function take(caps: Caps, repo: string, ruleIndex: number) {
+  caps.counted++
+  caps.perRepo[repo] = (caps.perRepo[repo] ?? 0) + 1
+  caps.perRule[ruleIndex] = (caps.perRule[ruleIndex] ?? 0) + 1
 }
 
 /** Each card's tasks back to back, where the first of them ranks, in the order `order` lists them: a task runs right after the one whose PR it stacks on. */
@@ -672,58 +399,11 @@ function inBlocks(groups: Ranked[][], order: Item[]): Ranked[][] {
   return out
 }
 
-/** The top-level gates with the repo's and the rule's own, or a plan or report rule's alone: each level adds gates, and on a shared name a repo's globs, command and skill join the top-level ones. */
-function gatesOf(...levels: (Rule['gates'] | undefined)[]): Record<string, Gate> | undefined {
-  const gates = new Map<string, Gate>()
-  for (const [name, g] of levels.flatMap((level) => Object.entries(level ?? {}))) {
-    const gate = gates.get(name) ?? { changed: [], commands: [], skills: [], instructions: [] }
-    gate.changed.push(...(g.changed ?? []))
-    if (g.command) gate.commands.push(g.command)
-    if (g.skill) gate.skills.push(g.skill)
-    gate.instructions.push(...(g.instructions ?? []))
-    gates.set(name, gate)
-  }
-  return gates.size ? Object.fromEntries(gates) : undefined
-}
-
-function quotaUnmet(quota: Condition | undefined, a: Allowance | undefined): string | undefined {
-  if (!quota || !a) return undefined
-  if (a.kind === 'fallback') return 'no quota reading'
-  return holds(quota, quotaFacts(a)) ? undefined : "doesn't hold on the probe"
-}
-
 /** The model a rule sets for a provider on this attempt: the list's entry for it. */
 export function modelFor(models: Step['model'], provider: string, attempt = 0): string | undefined {
   const set = models?.[provider]
   return Array.isArray(set) ? set[attempt] : set
 }
-
-/** A step with the rule's provider, model, skills, MCP servers and instructions where it sets none. */
-function inherit(rule: Rule, step: ThenStep): Step {
-  return {
-    ...step,
-    provider: step.provider ?? rule.provider,
-    model: step.model ?? rule.model,
-    skills: step.skills ?? rule.skills,
-    mcp: step.mcp ?? rule.mcp,
-    instructions: step.instructions ?? rule.instructions,
-  }
-}
-
-/** Why a chain can't publish commits onto its base: only onto the developer's own PR in the repo. */
-function deliveryRefusal(
-  deliver: Exclude<Deliver, 'report' | 'pending_review' | 'plan'>,
-  base: string,
-  foreign: boolean,
-  fork: boolean,
-): string | undefined {
-  if (deliver === 'push' && !base) return 'deliver push: no PR of yours to push onto'
-  if (foreign) return `deliver ${deliver}: ${base} is someone else's PR`
-  if (fork) return `deliver ${deliver}: ${base} is on a fork`
-}
-
-/** Where you answer awaywork's posts on the item: its thread issue, else the item. */
-const postsOn = (item: Item): string => item.thread?.url ?? item.url
 
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`, or the last report rule done with it. */
 export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
