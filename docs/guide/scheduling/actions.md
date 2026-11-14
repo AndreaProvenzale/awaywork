@@ -40,7 +40,7 @@ The workflow calls awaywork's action at the release you generated it with, `Andr
 It commits as the token's user through env, not git config, appends the morning report to the job summary and uploads the run as an [artifact](#reports-from-the-runner). A [custom source](../config/custom-sources.md)'s `setup` runs as its own step first, in the config's folder, without secrets.
 
 - `GITHUB_TOKEN` is read-only (`permissions: contents: read`), checkout keeps no credential (`persist-credentials: false`), and only the action's step gets secrets.
-- Every step inside the action sees them, hence the pin: new action code meets your secrets only when you rerun install. Pin `uses:` to the release's SHA for tighter.
+- Every step inside the action sees them, hence the pin: new action code meets your secrets only when you rerun install. Pin `uses:` to the release's SHA for tighter. The hosted runner's two install steps are the exception: npm's and the `scripts`' installers get only `PATH`, `HOME` and `USER`. That stops a careless leak, not a hostile installer, which has sudo before `awaywork run`.
 - To upgrade, upgrade awaywork and rerun `schedule install --with github-actions`; by hand, change `uses:` and `version` together. A workflow from before the action runs its steps inline; `doctor` warns.
 - Rerun install after config or skill changes. A matching file is up to date; one that differs shows the diff and is replaced only on your yes. Without a terminal it keeps the repo's copy, prints the diff and exits 1. The skills folder is replaced whole, dropping repo-only skills; with no skills of yours, the repo's stay.
 

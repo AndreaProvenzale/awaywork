@@ -41,10 +41,11 @@ runs:
       with:
         node-version: 22
         package-manager-cache: false
+    # Only PATH, HOME and USER: vendor install scripts get none of the job's secrets.
     - name: Install
       if: runner.environment == 'github-hosted'
       shell: bash
-      run: npm install -g "awaywork@$VERSION" $PACKAGES
+      run: env -i PATH="$PATH" HOME="$HOME" USER="$USER" npm install -g "awaywork@$VERSION" $PACKAGES
       env:
         VERSION: ${{ inputs.version }}
         PACKAGES: ${{ inputs.packages }}
@@ -52,7 +53,7 @@ runs:
     - name: Install by script
       if: runner.environment == 'github-hosted'
       shell: bash
-      run: bash -eo pipefail -c "$SCRIPTS"
+      run: env -i PATH="$PATH" HOME="$HOME" USER="$USER" bash -eo pipefail -c "$SCRIPTS"
       env:
         SCRIPTS: ${{ inputs.scripts }}
     # The machine's own installs and logins stay as they are; this folder is emptied every job.
