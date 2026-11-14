@@ -14,7 +14,7 @@ import { commentKind, markComment, planComment, resultComment } from '#posts/com
 import { formatReport } from '#posts/report'
 import { linkPlanTasks } from '#posts/threads'
 import { allowance } from '#quota/budget'
-import { runUnits } from '#worker/units'
+import { runUnits } from '#worker/units/run'
 import { cardAndPr, fakeItem, githubPr, issue, yours } from './fakes/items'
 import { fakeProvider } from './fakes/provider'
 import { fakeSource } from './fakes/source'

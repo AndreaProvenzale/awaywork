@@ -13,7 +13,7 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 | `src/quota/` | The budget, and the `windows` a scheduled run starts and stops in |
 | `src/sources/`, `src/providers/` | One adapter per file, plus the registry in `index.ts` |
 | `src/forge/` | GitHub through `gh`: clone, find PRs, push, draft PRs |
-| `src/worker/` | A unit's run, by job: `clone/` (the workspace, its files, git, env, context, the worker prompt), `process/` (the worker run, the watchdog, commands, checks), `chain/` (hand-offs, merges, replay, loops), `deliver/` (publishing, slices, gates, reviews); `units.ts` drives them |
+| `src/worker/` | A unit's run, by job: `clone/` (the workspace, its files, git, env, context, the worker prompt), `process/` (the worker run, the watchdog, commands, checks), `chain/` (a chain's steps, its state, judges, hand-offs, merges, replay, loops), `deliver/` (publishing, slices, gates, reviews); `units/` drives them: the run's chains, what each starts from, its writes to items and its results |
 | `src/run/` | A run (`execute.ts`), the `watch` daemon, the remote, and the run lock, retention, stats and notifications around them |
 | `src/format/` | What gets printed for people to read, in the terminal or in a run's files: plans, reports, skips, rules, JSON |
 | `src/cli/` | The CLI: `index.ts`, one file per command in `commands/`, prompts and the browsable views in `tui/`; nothing outside it imports it |

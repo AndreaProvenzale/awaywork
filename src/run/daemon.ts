@@ -34,7 +34,7 @@ import { holdAwake } from '#scheduler/wake'
 import { readJson } from '#util/json'
 import { counted } from '#util/text'
 import { maskSecrets } from '#worker/process/command'
-import { namedChains } from '#worker/units'
+import { namedChains } from '#worker/units/run'
 import {
   executeRun,
   newRunId,
