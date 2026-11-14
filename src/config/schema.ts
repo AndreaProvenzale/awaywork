@@ -800,7 +800,7 @@ const configShape = z.strictObject({
 })
 
 /** The config as its shapes parse it, before the cross-field checks and the transform. */
-export type ParsedConfig = z.output<typeof configShape>
+export type ConfigShape = z.output<typeof configShape>
 
 export const configSchema = configShape
   .superRefine(validateConfig)

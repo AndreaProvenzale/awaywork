@@ -1,12 +1,12 @@
 import type { z } from 'zod'
-import type { ParsedConfig, ProviderConfig } from '#config/schema'
+import type { ConfigShape, ProviderConfig } from '#config/schema'
 import { repoListed, settingsFor } from '#plan/repos'
 import { providers } from '#providers/index'
 import { routines } from '#sources/routines'
 import { checkRule } from './rule'
 
 /** The config's cross-field checks, in the order their issues are reported. */
-export function validateConfig(cfg: ParsedConfig, ctx: z.RefinementCtx): void {
+export function validateConfig(cfg: ConfigShape, ctx: z.RefinementCtx): void {
   checkContainerImages(cfg, ctx)
   const providerIds = cfg.providers.flatMap(Object.keys)
   const commandIds = providerIds.filter((id) => !Object.hasOwn(providers, id))
@@ -23,7 +23,7 @@ export function validateConfig(cfg: ParsedConfig, ctx: z.RefinementCtx): void {
 }
 
 /** Under isolation: container, every repo names its image. */
-function checkContainerImages(cfg: ParsedConfig, ctx: z.RefinementCtx) {
+function checkContainerImages(cfg: ConfigShape, ctx: z.RefinementCtx) {
   if (cfg.isolation === 'container')
     for (const name of Object.keys(cfg.repos))
       if (!settingsFor(cfg.repos, name).image)
@@ -35,7 +35,7 @@ function checkContainerImages(cfg: ParsedConfig, ctx: z.RefinementCtx) {
 }
 
 /** A command provider's unit_minutes and name, and a login folder isolation can reach. */
-function checkProviders(cfg: ParsedConfig, ctx: z.RefinementCtx, commandIds: string[]) {
+function checkProviders(cfg: ConfigShape, ctx: z.RefinementCtx, commandIds: string[]) {
   if (commandIds.length > 0 && !cfg.limits.unit_minutes)
     ctx.addIssue({
       code: 'custom',
@@ -64,7 +64,7 @@ function checkProviders(cfg: ParsedConfig, ctx: z.RefinementCtx, commandIds: str
   })
 }
 
-function checkMcpNames(cfg: ParsedConfig, ctx: z.RefinementCtx) {
+function checkMcpNames(cfg: ConfigShape, ctx: z.RefinementCtx) {
   for (const name of Object.keys(cfg.mcp))
     if (!/^[a-z0-9][a-z0-9-]*$/.test(name))
       ctx.addIssue({
@@ -76,7 +76,7 @@ function checkMcpNames(cfg: ParsedConfig, ctx: z.RefinementCtx) {
 
 /** One forge per config, the repos it needs, and the repos sources name listed in them. */
 function checkSourcesAndForge(
-  cfg: ParsedConfig,
+  cfg: ConfigShape,
   ctx: z.RefinementCtx,
   sourceIds: string[],
   bitbucket: boolean,

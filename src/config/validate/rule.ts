@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import type { ParsedConfig } from '#config/schema'
+import type { ConfigShape } from '#config/schema'
 import { builtinSkills } from '#core/skills'
 import type { Rule } from '#core/types'
 import { ruleSteps, ruleThread } from '#plan/queue'
@@ -17,14 +17,12 @@ type Known = {
   bitbucket: boolean
 }
 
-type Path = (string | number)[]
-
 /** A built-in skill whose merge awaywork makes itself, like `sync`. */
 const merges = (skill: string) => !!builtinSkills[skill]?.merge
 
 /** Rule `i` of the queue, its checks in the order their issues are reported. */
 export function checkRule(
-  cfg: ParsedConfig,
+  cfg: ConfigShape,
   ctx: z.RefinementCtx,
   r: Rule,
   i: number,
@@ -54,7 +52,12 @@ export function checkRule(
 }
 
 /** The deliver Bitbucket or a merge skill rules out, and plan_tasks without deliver: plan. */
-function checkDeliver(ctx: z.RefinementCtx, r: Rule, at: Path, { bitbucket }: Known) {
+function checkDeliver(
+  ctx: z.RefinementCtx,
+  r: Rule,
+  at: (string | number)[],
+  { bitbucket }: Known,
+) {
   if (bitbucket && r.deliver === 'push')
     ctx.addIssue({
       code: 'custom',
@@ -97,10 +100,10 @@ function checkDeliver(ctx: z.RefinementCtx, r: Rule, at: Path, { bitbucket }: Kn
 
 /** Each step of the rule's chain: not a merge, not run twice, routed to providers and MCP servers it has. */
 function checkChain(
-  cfg: ParsedConfig,
+  cfg: ConfigShape,
   ctx: z.RefinementCtx,
   r: Rule,
-  at: Path,
+  at: (string | number)[],
   { providerIds, commandIds }: Known,
 ) {
   // A `then` that failed to parse is still raw here; its own issues say why.
@@ -170,10 +173,10 @@ function checkChain(
 
 /** Where the rule's output goes: an open item, a source that writes or a thread, and wait and post. */
 function checkPosts(
-  cfg: ParsedConfig,
+  cfg: ConfigShape,
   ctx: z.RefinementCtx,
   r: Rule,
-  at: Path,
+  at: (string | number)[],
   { sourceIds, bitbucket }: Known,
 ) {
   const finishedOnly = lookback(r.where) !== undefined && !matchesOpen(r.where)
@@ -278,7 +281,7 @@ function checkPosts(
 }
 
 /** The rule's own gates: changed only with a diff, and no name a shared gate has. */
-function checkRuleGates(cfg: ParsedConfig, ctx: z.RefinementCtx, r: Rule, at: Path) {
+function checkRuleGates(cfg: ConfigShape, ctx: z.RefinementCtx, r: Rule, at: (string | number)[]) {
   const noDiff = r.deliver === 'plan' || r.deliver === 'report'
   const shared = [cfg.gates, ...Object.values(cfg.repos).map((p) => p.gates)]
   for (const [name, g] of Object.entries(r.gates ?? {})) {
@@ -298,7 +301,7 @@ function checkRuleGates(cfg: ParsedConfig, ctx: z.RefinementCtx, r: Rule, at: Pa
 }
 
 /** A plan's tasks: a rule to take them, a deliver that finishes them, and a branch that stays put. */
-function checkTasks(cfg: ParsedConfig, ctx: z.RefinementCtx, r: Rule, at: Path) {
+function checkTasks(cfg: ConfigShape, ctx: z.RefinementCtx, r: Rule, at: (string | number)[]) {
   const takers = cfg.queue?.filter(
     (q) => 'planned' in q.where && (!q.source || !r.source || q.source === r.source),
   )

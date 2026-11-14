@@ -1,12 +1,12 @@
 import { z } from 'zod'
-import type { ParsedConfig } from '#config/schema'
+import type { ConfigShape } from '#config/schema'
 import type { Rule, Scalar, Where, WhereValue } from '#core/types'
 import { bounds, DEFAULT_LOOKBACK, isAge, isMatch, matchesValue, newerThan } from '#plan/where'
 import { itemFields, sourceField, sourceFor } from '#sources/index'
 
 /** A rule's where: keys its sources know, values their fields take, and how far back closed reads. */
 export function checkRuleWhere(
-  cfg: ParsedConfig,
+  cfg: ConfigShape,
   ctx: z.RefinementCtx,
   r: Rule,
   at: (string | number)[],
