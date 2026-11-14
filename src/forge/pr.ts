@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import type { CheckState, Item } from '#core/types'
+import type { CheckResult, CheckState, Item } from '#core/types'
 import { footer, footerItems, type Left, type Pin } from '#posts/footer'
 
 /**
@@ -44,11 +44,11 @@ export async function prText(
 const WORSE: CheckState[] = ['passed', 'pending', 'failing']
 
 /** Checks by name; a name reported twice takes its worse state. */
-export function byName(checks: [string, CheckState][]): Record<string, CheckState> {
-  const out: Record<string, CheckState> = {}
-  for (const [name, state] of checks) {
+export function byName(checks: [string, CheckResult][]): Record<string, CheckResult> {
+  const out: Record<string, CheckResult> = {}
+  for (const [name, result] of checks) {
     const was = out[name]
-    out[name] = was && WORSE.indexOf(was) > WORSE.indexOf(state) ? was : state
+    out[name] = was && WORSE.indexOf(was.state) > WORSE.indexOf(result.state) ? was : result
   }
   return out
 }

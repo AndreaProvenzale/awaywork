@@ -287,10 +287,10 @@ Skipped 2: 1 fanned_out, 1 waiting_for_task
   ENG-2101/web: waiting for api's check Vercel Preview (pending)
 ```
 
-The check reads `pending`, `failing`, `not reported` (no check by that name: check the spelling) or `no PR yet`. A failing one keeps waiting: a [`fix`](../config/queue-rules.md) rule may fix it, or you re-plan. It never passes in the run that opened the PR, so `web` runs the first run after the preview is up, cut from `acme/web`'s default branch with `api`'s `openapi.yaml`, shown as `after api's check Vercel Preview (passed)`.
+The check reads `pending`, `failing`, `not reported` (no check by that name: check the spelling) or `no PR yet`. A failing one keeps waiting: a [`fix`](../config/queue-rules.md) rule may fix it, or you re-plan. It never passes in the run that opened the PR, so `web` runs the first run after the preview is up, cut from `acme/web`'s default branch with `api`'s `openapi.yaml`, shown as `after api's check Vercel Preview (passed)`. While the PR is open, its `item.md` plan has the check's link too, `after api's check Vercel Preview (passed, https://…)`, which is whatever reported the check: a skill that opens it names the host it must be on.
 
 Details:
 
 - In the same repo a check's name stacks like `opened` and counts toward the [one chain](#stacking-details); in another repo it only waits and gets what the task ships.
-- awaywork reads a PR's checks only when a task names one, so other plans cost no extra calls; a failed read skips the card. `plan --json` has them under `taskPrs.api.checks`.
+- awaywork reads a PR's checks only when a task names one, so other plans cost no extra calls; a failed read skips the card. `plan --json` has them under `taskPrs.api.checks`, each with its `state` and `url`.
 - On Bitbucket, checks are the build statuses on the PR's head commit, by name, via `twg bb prs get --statuses`: `SUCCESSFUL` passes, `INPROGRESS` is pending, `FAILED` and `STOPPED` are failing. A name carrying a build number never matches.

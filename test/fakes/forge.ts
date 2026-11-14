@@ -1,4 +1,4 @@
-import type { BranchPr, CheckState, Forge, Item, PrRef, Review } from '#core/types'
+import type { BranchPr, CheckResult, Forge, Item, PrRef, Review } from '#core/types'
 
 export function fakeForge(prs: PrRef[] = []): Forge & {
   branches: Set<string>
@@ -9,7 +9,7 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
   tips: Record<string, string>
   files: Record<string, string>
   /** By `repo#number`. */
-  states: Record<string, Record<string, CheckState>>
+  states: Record<string, Record<string, CheckResult>>
 } {
   const branches = new Set<string>()
   const fastForwards: string[] = []
@@ -18,7 +18,7 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
   const heads: Record<string, ({ url: string; body: string } & Partial<BranchPr>)[]> = {}
   const tips: Record<string, string> = {}
   const files: Record<string, string> = {}
-  const states: Record<string, Record<string, CheckState>> = {}
+  const states: Record<string, Record<string, CheckResult>> = {}
   return {
     branches,
     fastForwards,

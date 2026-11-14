@@ -27,7 +27,7 @@ Their answer has to give a command a worker can run. The harness, which no skill
 Where the preview's URL comes from, to write into the skill:
 
 - On a PR rule, `.away/context/<item>/checks.md` lists every check of the PR, the ones that didn't fail under `## Not failing`, one line each: name, state, link. The skill names the check and the host its link must be on, since on a public repo anyone can report a check.
-- A plan's task gets the card, not the PR: no `checks.md`. The skill builds the URL from the branch its own was cut from, which its prompt names, when the host has a stable address per branch; ask the developer for the pattern. No such address: use the PR rule.
+- A plan's task gets the card, not the PR: no `checks.md`. Its `.away/context/<item>/item.md` plan names the check the task waits on with its state and link, while that PR is open: `after app's check Vercel Preview (passed, <link>)`. The skill reads the link there, and names the host it must be on, as for `checks.md`.
 
 ## 3. The manifest
 
@@ -78,7 +78,7 @@ metadata:
 The unit proves work another step did. The card is in its context: its acceptance criteria are what you prove, not what the code seems to do.
 
 1. List the criteria, one line each, in the card's words.
-2. <Where the change runs: the preview's URL, from `checks.md` or the branch, and the host it must be on.>
+2. <Where the change runs: the preview's URL, from `checks.md` or `item.md`'s plan, and the host it must be on.>
 3. For each criterion, <their command>, and save what shows it in `.away/out/`: <the files their command leaves>.
 4. Write `.away/out/evidence.yml`: <the manifest above, with one made-up entry, and its grammar, line for line>.
 5. In `report.md`, per criterion: the command you ran, what it showed, and the file. A criterion you couldn't prove gets `files: []`, a one-line `gap`, and why.

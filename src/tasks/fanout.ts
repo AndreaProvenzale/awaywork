@@ -345,7 +345,7 @@ export function unpassed(pr: TaskPr | undefined, name: string): string | undefin
   if (!pr) return 'no PR yet'
   if (pr.state === 'merged') return undefined
   if (pr.left) return `its draft says ${pr.left.status}`
-  const state = pr.checks?.[name] ?? 'not reported'
+  const state = pr.checks?.[name]?.state ?? 'not reported'
   return state === 'passed' ? undefined : state
 }
 
@@ -356,9 +356,12 @@ export function taskMarkdown(item: Item): string {
   const card = task.parent
   const home = cardRepo(card)
   const listed = task.plan.map((t) => {
-    const after = Object.entries(t.after).map(([id, when]) =>
-      isCheck(when) ? `${id}'s check ${when}` : `${id} ${when}`,
-    )
+    const after = Object.entries(t.after).map(([id, when]) => {
+      if (!isCheck(when)) return `${id} ${when}`
+      const check = card.taskPrs?.[id]?.checks?.[when]
+      const stands = check ? ` (${[check.state, check.url].filter(Boolean).join(', ')})` : ''
+      return `${id}'s check ${when}${stands}`
+    })
     const repo = t.repo && t.repo !== home ? ` in ${t.repo}` : ''
     return `- \`${t.id}\`: ${t.title}${repo}${t.id === task.id ? ' (this task)' : ''}${after.length ? `, after ${after.join(', ')}` : ''}`
   })

@@ -6,7 +6,7 @@ description: A skill of your own shows the change does what the card asks, and g
 
 How a change is proven differs per repo: an end-to-end run against the PR's preview, a flow on a simulator, a curl script, a seeded query (Playwright, Maestro and friends). So awaywork ships no skill for it and reads no proof format. You write your repo's skill, or [`/away`](../away.md#the-skill) writes it with you, and the pieces above carry it: a [report task](./tasks.md#report-tasks) that [waits on the preview](./tasks.md#waiting-on-a-check), [gates](./tasks.md#a-gate-on-a-report-task) on what it left, the [store](./store.md) for the files.
 
-The example: `acme/web` gets a preview per PR, at a stable address per branch, and its `pnpm smoke <url> <flow>` drives one flow there, saving a screenshot per step.
+The example: `acme/web` gets a preview per PR, reported as the `Vercel Preview` check, and its `pnpm smoke <url> <flow>` drives one flow there, saving a screenshot per step.
 
 The skill is yours, `skills/prove/SKILL.md` beside your config, never the repo's:
 
@@ -23,7 +23,7 @@ metadata:
 The unit proves work another step did. The card is in its context: its acceptance criteria are what you prove, not what the code seems to do.
 
 1. List the criteria, one line each, in the card's words.
-2. The change runs at `https://<branch>.preview.acme.dev`, `<branch>` being the branch yours was cut from, each `/` a `-`. Open no other host.
+2. The change runs at the link of the check your task waits on, in `item.md`'s plan: `after app's check Vercel Preview (passed, <link>)`. Open it only when its host ends in `.vercel.app`, and open no other host.
 3. For each criterion, run `pnpm smoke <url> <flow>` with the flow in `smoke/` that covers it, and copy the screenshots that show it from `smoke/out/` to `.away/out/`.
 4. Write `.away/out/evidence.yml`: `criteria:` alone on the first line, then one entry per criterion, in these lines and no others, each text on its one line:
 
@@ -154,7 +154,7 @@ Other shapes:
 Details:
 
 - The [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md) lets a worker run no dev server, build, `docker` or background command, and gives it no forge access: the skill proves against something deployed, or with a command that needs nothing started. A script that boots the app is still a dev server: a repo whose proof needs the app running and has no preview can't be proven by a worker.
-- A plan's task gets the card, not the PR, so no `checks.md`: hence the address built from the branch. Without a stable one per branch, use the PR rule.
+- A plan's task gets the card, not the PR, so no `checks.md`: its `item.md` plan names the check it waits on with its link, while that PR is open.
 - A check's name and link are whatever reported them, on a public repo anyone: the skill names the host it opens.
 - The gate fires until the script is on the default branch where the clone started: as cloned, or, on an awaywork PR or a task stacked on one, where that PR left it. In neither that commit nor the clone, the command runs and fails: `- proof: Command failed with exit code 127: 'sh scripts/evidence-gate.sh'`. Added or edited on the PR's own branch, it isn't run: ``- proof: `scripts/evidence-gate.sh` changed, not run``.
 - The gates go on every rule that uses the skill. A judge is one more model run per unit.

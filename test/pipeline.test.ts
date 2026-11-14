@@ -426,7 +426,7 @@ describe('a feature card through the whole pipeline', () => {
   }, 30_000)
 
   it('runs app once CI passed, in acme/web with what api ships: it says continue, so its draft records it and qa waits', async () => {
-    origins.forge.states['acme/api#11'] = { CI: 'passed' }
+    origins.forge.states['acme/api#11'] = { CI: { state: 'passed' } }
     const run = await soonRun()
     expect(run.for).toBe('acme-api-1-app, acme-api-1-qa')
     expect(run.steps).toEqual(['app implement'])
