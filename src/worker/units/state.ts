@@ -39,20 +39,20 @@ export interface RunInput {
 }
 
 /** What a run's chains share: its input, secrets and store, the routing as windows fill, the clones' checks, and what earlier chains left. */
-export interface Run extends ReturnType<typeof createChecks> {
-  input: RunInput
-  event: (line: string) => void
-  secrets: string[]
-  store: Store | undefined
-  root: string
-  allowances: Record<string, Allowance>
-  routed: Record<string, number>
-  quotas: Record<string, Quota>
-  publisher: Omit<Publisher, 'judge' | 'pin'>
+export interface Run extends Readonly<ReturnType<typeof createChecks>> {
+  readonly input: RunInput
+  readonly event: (line: string) => void
+  readonly secrets: string[]
+  readonly store: Store | undefined
+  readonly root: string
+  readonly allowances: Record<string, Allowance>
+  readonly routed: Record<string, number>
+  readonly quotas: Record<string, Quota>
+  readonly publisher: Omit<Publisher, 'judge' | 'pin'>
   // The PR each chain opened first, the chains a step ran in, and those whose draft waits for a later run, by id: a task's chain stacks on its dependency's.
-  opened: Record<string, { repo: string; branch: string; url: string; head: string }>
-  started: Set<string>
-  held: Map<string, Held['status']>
+  readonly opened: Record<string, { repo: string; branch: string; url: string; head: string }>
+  readonly started: Set<string>
+  readonly held: Map<string, Held['status']>
   // The post of a task that waits for you, by card: one waits at a time, so none of its other tasks runs after it.
-  waiting: Map<string, string>
+  readonly waiting: Map<string, string>
 }

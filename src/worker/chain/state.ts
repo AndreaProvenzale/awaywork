@@ -22,27 +22,27 @@ interface Retry {
 
 /** A chain as it runs: its steps, the clone they share, and what they left so far. */
 export interface ChainState {
-  chain: PlannedUnit[]
-  done: UnitResult[]
-  first: PlannedUnit
-  base: string
-  deliver: Deliver
-  opensPr: boolean
-  resume: Unit['resume']
-  before: number
-  pickedUp: string | undefined
-  shape: Pick<Unit, 'base' | 'branch' | 'stackedOn' | 'resume'>
+  readonly chain: PlannedUnit[]
+  readonly done: UnitResult[]
+  readonly first: PlannedUnit
+  readonly base: string
+  readonly deliver: Deliver
+  readonly opensPr: boolean
+  readonly resume: Unit['resume']
+  readonly before: number
+  readonly pickedUp: string | undefined
+  readonly shape: Pick<Unit, 'base' | 'branch' | 'stackedOn' | 'resume'>
   // `changed` diffs from where the chain started, the awaywork PR it took up, else the default branch, as cloned.
   since: string
-  dir: string
-  chainDir: string
-  steps: string | undefined
-  loops: Record<number, OpenLoop>
-  reports: StepReport[]
-  shipped: Shipped[]
-  pinned: Record<string, string>
-  onDone: Rule['on_done']
-  ownGates: Unit['gates']
+  readonly dir: string
+  readonly chainDir: string
+  readonly steps: string | undefined
+  readonly loops: Record<number, OpenLoop>
+  readonly reports: StepReport[]
+  readonly shipped: Shipped[]
+  readonly pinned: Record<string, string>
+  readonly onDone: Rule['on_done']
+  readonly ownGates: Unit['gates']
   cloned?: string
   // What gates compare their scripts with: an awaywork PR's commits are a worker's, so where it left the default branch.
   original?: string
@@ -71,7 +71,7 @@ export interface ChainState {
   // The chain's first step, once it published the chain.
   publishedBy?: UnitResult
   // What didn't go to the store or come back from it.
-  storeNotes: string[]
+  readonly storeNotes: string[]
 }
 
 /** A chain's state before its first step: its shape, from its first unit, and where its clone goes. */
@@ -133,7 +133,7 @@ export async function startChain(
   }
 }
 
-// What a step's status file left for a later run, `ask` or `continue`, and why no later run goes on with its draft, if none will.
+/** What a step's status file left for a later run, `ask` or `continue`, and why no later run goes on with its draft, if none will. */
 export function leave(
   run: Run,
   { first, before, opensPr }: ChainState,

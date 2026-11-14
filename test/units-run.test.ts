@@ -246,10 +246,12 @@ it('prepares workspaces without running a worker or context command on a dry run
     shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   }
-  const report = await runUnits({ ...input, only: 'acme-api-2' })
+  const events: string[] = []
+  const report = await runUnits({ ...input, only: 'acme-api-2', event: (l) => events.push(l) })
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-2', 'prepared'],
   ])
+  expect(events).toEqual(['acme-api-2: fix on claude'])
   expect(existsSync(join(root, 'run/work/acme-api-2/.away/prompt.md'))).toBe(true)
   expect(existsSync(fetched)).toBe(false)
   for (const only of ['acme/api#2', 'ACME-API-2', 'api#2', 'github:acme/api#2']) {
@@ -615,6 +617,7 @@ repos:
   const setups: string[] = []
   const contexts: string[] = []
   const workerEnvs: NodeJS.ProcessEnv[] = []
+  const events: string[] = []
   const report = await runUnits({
     config,
     configDir: root,
@@ -646,12 +649,17 @@ repos:
       },
       log: () => {},
     },
+    event: (line) => events.push(line),
     watch: () => ({ stop: async () => {} }),
     shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
   expect(setups).toEqual(['npm,,/agent.sock\n', ',,/agent.sock\n', 'not run'])
+  expect(events.filter((l) => l.startsWith('acme-api-2:'))).toEqual([
+    'acme-api-2: review on claude',
+    expect.stringMatching(/^acme-api-2: skipped, setup failed: .*code 3/),
+  ])
   expect(contexts).toEqual(['acme/api#1\n', 'acme/api#3\n', 'acme/api#4\n'])
   expect(workerEnvs[0]).not.toHaveProperty('NPM_TOKEN')
   expect(workerEnvs[0]).not.toHaveProperty('SSH_AUTH_SOCK')
