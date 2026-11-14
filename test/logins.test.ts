@@ -330,6 +330,7 @@ describe('the login doctor names', () => {
       env,
       ask,
       async () => {},
+      async () => '',
     )
     expect(unset).toEqual(['GH_TOKEN'])
     expect(asked).toEqual(['Set the CLAUDE_CODE_OAUTH_TOKEN repository secret from your env?'])

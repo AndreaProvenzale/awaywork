@@ -18,7 +18,7 @@ import {
 import type { Config } from '#config/schema'
 import { hasSkills } from '#config/skills'
 import type { Ask, Provider } from '#core/types'
-import { type Exec, exec, gitRoot } from '#forge/gh'
+import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
 import { providerFor } from '#providers/index'
 import { describeWindow, startsOf, type Window } from '#quota/window'
 import { stopWatch, watchStatus } from '#run/daemon'
@@ -426,10 +426,18 @@ export async function installWorkflow(
         "`runs-on: self-hosted` matches any self-hosted runner the repo can use, an organization's too; give yours a label of its own and add it, as in `runs-on: [self-hosted, alice-mac]`",
       )
     const secrets = secretsOf(loaded, used)
+    if (io.interactive && secrets.some((name) => fromEnv(io.env, name))) {
+      const refused = await secretsRefused(io.run, loaded.forge.host)
+      if (refused) {
+        console.error(refused)
+        process.exitCode = 1
+        return
+      }
+    }
     const text = workflow({ ...base, config: REPO_CONFIG, secrets })
     const changed = await syncRepo(root, { [WORKFLOW]: text }, path, REPO_CONFIG, confirmer(io))
     const unset = io.interactive
-      ? await offerSecrets(secrets, io.env, io.ask, io.setSecret).catch((e) => {
+      ? await offerSecrets(secrets, io.env, io.ask, io.setSecret, io.run).catch((e) => {
           if (e instanceof Cancelled) return secrets
           throw e
         })
@@ -584,6 +592,32 @@ async function sync(
   }
 }
 
+const ghLogin = (run: Exec, env?: Record<string, string>) =>
+  run('gh', ['api', 'user', '--jq', '.login'], env).then(
+    (login) => login.trim(),
+    () => '',
+  )
+
+/** Why the account gh acts as can't set the current repo's secrets, with the fix; undefined when it can. */
+async function secretsRefused(run: Exec, host?: string): Promise<string | undefined> {
+  const login = await ghLogin(onHost(run, host))
+  if (!login)
+    return "gh isn't logged in, so it can't set the repo's secrets; log in with `gh auth login`"
+  const repo: { nameWithOwner?: string; viewerPermission?: string } = await run('gh', [
+    'repo',
+    'view',
+    '--json',
+    'nameWithOwner,viewerPermission',
+  ]).then(JSON.parse, () => ({}))
+  // Setting a repo's secrets takes write access.
+  if (['ADMIN', 'MAINTAIN', 'WRITE'].includes(repo.viewerPermission ?? '')) return
+  return `gh acts as ${login}, who can't set ${repo.nameWithOwner ?? 'this repo'}'s secrets; switch with \`gh auth switch --user <other>\`, or run \`GH_TOKEN=$(gh auth token --user <other>) awaywork schedule install\``
+}
+
+/** A secret's value in the env; a token awaywork pinned from gh is gh's login, not one you put there. */
+const fromEnv = (env: NodeJS.ProcessEnv, name: string) =>
+  pinned(env, name) ? undefined : env[name]
+
 /**
  * Offers to set each secret whose value is in the env, the env file included;
  * returns the names left unset. Values are never printed.
@@ -593,12 +627,17 @@ export async function offerSecrets(
   env: NodeJS.ProcessEnv,
   ask: Ask,
   set: Io['setSecret'],
+  run: Exec,
 ): Promise<string[]> {
   const unset = []
   for (const name of names) {
-    // A token awaywork pinned from gh is gh's login, not one you put in your env.
-    const value = pinned(env, name) ? undefined : env[name]
-    if (value && (await ask.confirm(`Set the ${name} repository secret from your env?`))) {
+    const value = fromEnv(env, name)
+    if (
+      value &&
+      (await ask.confirm(
+        `Set the ${name} repository secret from your env${await owner(name, value, run)}?`,
+      ))
+    ) {
       try {
         await set(name, value)
         ask.note(`Set ${name}`)
@@ -610,4 +649,11 @@ export async function offerSecrets(
     unset.push(name)
   }
   return unset
+}
+
+/** E.g. ` (alice's token)` for GH_TOKEN, looked up with that token; '' for any other secret. */
+async function owner(name: string, value: string, run: Exec): Promise<string> {
+  if (name !== 'GH_TOKEN') return ''
+  const login = await ghLogin(run, { GH_TOKEN: value })
+  return login ? ` (${login}'s token)` : " (a token gh can't look up the owner of)"
 }
