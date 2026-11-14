@@ -1,4 +1,4 @@
-# The /away pane in Claude Code, on the made-up runs render.sh leaves. Bare /away opens it without a model call.
+# The /away pane in Claude Code, on the made-up runs render.sh leaves, then its Config tab. Bare /away opens it without a model call.
 
 Set Shell bash
 Set FontSize 15
@@ -15,4 +15,14 @@ Sleep 6s
 Show
 Sleep 1s
 Screenshot docs/public/demo/away-pane.png
+Sleep 500ms
+
+Hide
+Type "5"
+Sleep 4s
+Down
+Sleep 1s
+Show
+Sleep 1s
+Screenshot docs/public/demo/away-config.png
 Sleep 500ms
