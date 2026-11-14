@@ -21,7 +21,7 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 | `src/util/` | Generic helpers several folders share: JSON, text, globs, process groups. They import only `node:` and npm packages and know nothing of awaywork; Biome refuses an import from the rest of `src/` |
 | `src/scheduler/` | launchd, systemd, cron and Actions |
 | `harness.md`, `skills/` | The fixed worker prompt and the built-in skills |
-| `plugin/` | The Claude Code plugin: the `away` skill, and the `/away` pane in `hooks/register.tsx` |
+| `plugin/` | The Claude Code plugin: the `away` skill, and the `/away` pane in `hooks/` |
 | `test/contracts/`, `test/fakes/` | Shared contract suites and the fakes they run against |
 
 Imports carry no extension: `./x` for a file in the same folder or below it, the `#folder/file` alias (`#plan/foreman`) for any other file in `src/`, from tests and scripts too.
