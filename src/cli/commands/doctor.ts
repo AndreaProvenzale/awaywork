@@ -201,8 +201,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     if (isCommand(cfg) && /(^|\s)(~|\$HOME)\//.test(cfg.command))
       report('warn', id, 'the command reads your home folder, which GitHub Actions lacks')
   }
-  if (!config.queue?.length) report('warn', 'queue', NO_QUEUE)
   const { queue, catalog } = await readSetup(config, skillsDirOf(path))
+  if (!queue.length) report('warn', 'queue', NO_QUEUE)
   queue.forEach((rule, i) => {
     const ungated = gatesNeverRun(rule, catalog)
     if (ungated) report('warn', `rule #${i + 1} gates`, `its items are all skipped: ${ungated}`)
