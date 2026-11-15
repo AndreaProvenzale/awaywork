@@ -740,6 +740,36 @@ queue:
     ])
   })
 
+  it("counts a chain under the caps by its first step's route", () => {
+    const config = parseConfig(`
+limits: { units: 1 }
+providers: [claude: {}, codex: {}]
+repos: { acme/*: {} }
+sources: { github: {} }
+queue:
+  - { skill: implement, where: { type: issue }, provider: [claude], then: [{ skill: review, provider: [codex] }] }
+`)
+    const inRepo = (n: number) =>
+      fakeItem({
+        source: 'github',
+        key: `acme/api#${n}`,
+        type: 'issue',
+        fields: { repo: 'acme/api' },
+      })
+    const result = planRun({
+      config,
+      items: [inRepo(1), inRepo(2)],
+      allowances: { claude: allowance(config.budget, week(0.1), now, config.windows) },
+      skills: { builtin: builtinSkills },
+      now,
+    })
+    expect(result.units.map((u) => [u.unit.id, u.provider])).toEqual([
+      ['acme-api-1', 'claude'],
+      ['acme-api-1-review', undefined],
+    ])
+    expect(result.skipped.map((s) => [s.item.key, s.kind])).toEqual([['acme/api#2', 'over_cap']])
+  })
+
   it('holds no cap against the unit --unit names, by any of its names, and still caps the rest', () => {
     const yaml = `
 limits: { units: 4, units_per_repo: 2 }

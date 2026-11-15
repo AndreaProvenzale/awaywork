@@ -181,6 +181,33 @@ describe('the allowlist', () => {
     ])
   })
 
+  it('leaves out an unlisted repo --repo filters out, before saying it is unlisted', () => {
+    const plan = planRun({
+      config: tracker('{ acme/api: }'),
+      items: [card('acme/api'), card('other/unlisted')],
+      allowances: {},
+      skills: { builtin: builtinSkills },
+      only: { repo: 'acme/api' },
+    })
+    expect(plan.units.map((u) => u.unit.id)).toEqual(['eng-8'])
+    expect(plan.skipped).toEqual([])
+  })
+
+  it('says a repo is unlisted before a pending_review has no PR to review', () => {
+    const plan = planRun({
+      config: parseConfig(
+        config(
+          'repos: { acme/api: }',
+          "{ tracker: { command: 'echo []' } }\nqueue: [{ skill: review, deliver: pending_review }]",
+        ),
+      ),
+      items: [card('other/unlisted')],
+      allowances: {},
+      skills: { builtin: builtinSkills },
+    })
+    expect(plan.skipped.map((s) => [s.item.key, s.kind])).toEqual([['ENG-14', 'unlisted_repo']])
+  })
+
   it('opens, comments on and closes a thread issue only in a repo a key names', async () => {
     const run = recorded([])
     const threads = githubThreads(run, undefined, { 'acme/*': {} })
