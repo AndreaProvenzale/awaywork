@@ -1,6 +1,6 @@
 {
   "name": "awaywork",
-  "version": "0.1.0-rc.3",
+  "version": "0.1.0-rc.4",
   "description": "A harness that runs your coding agents on your real tasks, under rules you set",
   "keywords": [
     "claude-code",
