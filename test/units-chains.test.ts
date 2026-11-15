@@ -572,6 +572,35 @@ it('ends a loop interrupted between rounds, and retries its chain without counti
   expect(recordAttempts({}, report)).toEqual({})
 })
 
+it('publishes nothing from a chain interrupted after its last step ended, judging none of its gates', async () => {
+  const stop = new AbortController()
+  const lines: string[] = []
+  const { report, opened } = await loopRun(
+    'gates: { risk: { skill: judge } }\nqueue: [{ skill: implement }]',
+    [issue(1)],
+    looper({}),
+    {
+      signal: stop.signal,
+      ctx: {
+        env: {},
+        log: (line) => {
+          lines.push(line)
+          if (line === 'acme-api-1: done') stop.abort()
+        },
+      },
+    },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([['acme-api-1', 'done']])
+  expect(report.results[0]?.outcome).toEqual({
+    kind: 'none',
+    reason: 'interrupted',
+    unpublished: true,
+  })
+  expect(opened).toEqual([])
+  expect(lines).toEqual(['acme-api-1: implement on claude', 'acme-api-1: done'])
+})
+
 it("reads a loop's last verdict in the when of the step after it", async () => {
   const { report } = await loopRun(
     `queue:

@@ -10,7 +10,7 @@ import type { Item, Provider, PrRef, Source } from '#core/types'
 import { planRun } from '#plan/foreman'
 import { formatReport } from '#posts/report'
 import { type Allowance, allowance } from '#quota/budget'
-import { runUnits } from '#worker/units'
+import { runUnits } from '#worker/units/run'
 import { withRepos } from './fakes/acme'
 import { githubPr, issue } from './fakes/items'
 import { fakeProvider } from './fakes/provider'
@@ -503,6 +503,28 @@ it('compares the gate scripts of an awaywork PR a rule took up with where it lef
   )
   expect(outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
   expect(opened[0]?.body).toContain('- routes: `scripts/gate.sh` changed, not run\n')
+})
+
+it('reads the attributes of an awaywork PR a rule took up, for its judge, from where it left the default branch', async () => {
+  const items = async (origin: string) => {
+    await git(origin, 'checkout', '-q', '-b', 'away/acme-api-5')
+    await commitFile(origin, '.gitattributes', '* -diff\n')
+    await git(origin, 'checkout', '-q', 'main')
+    const pr = githubPr(9, { ours: true })
+    const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
+    return [{ ...pr, linkedPrs: [link] }]
+  }
+  let source: string | undefined
+  const { origin } = await gated(
+    `${riskGate}\nqueue: [{ skill: fix, where: { type: pr, ours: true }, deliver: pr }]`,
+    async (dir, skill, env) => {
+      if (skill !== 'judge') return commitFile(dir, 'src/app.ts', 'x')
+      source = env.GIT_ATTR_SOURCE
+      return verdict('clear')(dir)
+    },
+    { items },
+  )
+  expect(source).toBe((await git(origin, 'rev-parse', 'main')).stdout)
 })
 
 it('diffs a when: { changed } from where the chain started as cloned, wherever the worker moves origin', async () => {

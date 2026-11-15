@@ -26,7 +26,7 @@ import {
   planState,
   planYaml,
 } from '#tasks/plan-file'
-import { runUnits } from '#worker/units'
+import { runUnits } from '#worker/units/run'
 import { fakeForge } from './fakes/forge'
 import { fakeItem } from './fakes/items'
 import { originsForge } from './fakes/origins'

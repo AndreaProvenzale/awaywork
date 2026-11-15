@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -13,7 +13,7 @@ import { planRun } from '#plan/foreman'
 import { formatReport } from '#posts/report'
 import { type Allowance, allowance } from '#quota/budget'
 import { unitStats } from '#run/stats'
-import { runUnits } from '#worker/units'
+import { runUnits } from '#worker/units/run'
 import { withRepos } from './fakes/acme'
 import { fakeForge } from './fakes/forge'
 import { githubPr } from './fakes/items'
@@ -24,10 +24,11 @@ const retryRule = '{ skill: fix, where: { checks: failing }, model: { claude: [s
 
 /**
  * Runs one PR's rule with a provider that does `act(skill, model)`: a failing run first leaves partial
- * work behind (`burn` also uses quota), and `leave` succeeds but leaves an uncommitted file and an extra `out/` file.
+ * work behind (`burn` also uses quota), and `leave` succeeds but leaves an uncommitted file and an extra `out/` file;
+ * `swap` fails with a report, its `.away/out` swapped for a symlink.
  */
 async function retried(
-  act: (skill: string, model?: string) => 'ok' | 'fail' | 'burn' | 'quota' | 'leave',
+  act: (skill: string, model?: string) => 'ok' | 'fail' | 'burn' | 'quota' | 'leave' | 'swap',
   rule = retryRule,
   claude?: Allowance,
   repos = '',
@@ -77,6 +78,14 @@ async function retried(
         await rm(join(job.dir, 'gen.txt'), { force: true })
         await rm(join(job.dir, '.away/out/notes.md'), { force: true })
         await writeFile(join(job.dir, '.away/out/pr.md'), 'Half a fix')
+        yield { type: 'done', ok: false, turns: 3 }
+        return
+      }
+      if (does === 'swap') {
+        const elsewhere = await mkdtemp(join(tmpdir(), 'awaywork-out-'))
+        await writeFile(join(elsewhere, 'report.md'), 'Half a review.')
+        await rm(join(job.dir, '.away/out'), { recursive: true })
+        await symlink(elsewhere, join(job.dir, '.away/out'))
         yield { type: 'done', ok: false, turns: 3 }
         return
       }
@@ -226,6 +235,18 @@ it('keeps the failed attempt as without a list, and claims no retry, when the re
   })
   expect(await readFile(join(units, 'out', 'pr.md'), 'utf8')).toBe('Half a fix')
   expect(await readFile(join(plain.units, 'out', 'pr.md'), 'utf8')).toBe('Half a fix')
+})
+
+it("ends the chain and keeps the failed attempt's report when its clone can't be handed off", async () => {
+  const { tried, report } = await retried(
+    (_, model) => (model === 'sonnet' ? 'swap' : 'ok'),
+    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] }, then: review }',
+  )
+  expect(tried).toEqual(['fix sonnet'])
+  expect(report.results.map((u) => [u.status, u.retried, u.reported, u.reason])).toEqual([
+    ['error', undefined, true, '.away/out in the clone is a symlink'],
+    ['skipped', undefined, undefined, 'acme-api-1 error: .away/out in the clone is a symlink'],
+  ])
 })
 
 it('retries from the clone exactly as the step found it, keeping what setup and earlier steps left', async () => {
