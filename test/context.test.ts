@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
-import { fetchContexts } from '#worker/context'
+import { fetchContexts } from '#worker/clone/context'
 import { fakeItem } from './fakes/items'
 
 const item = fakeItem({ source: 'github', key: 'ACME-1', url: 'https://x/1', title: 'Crash' })

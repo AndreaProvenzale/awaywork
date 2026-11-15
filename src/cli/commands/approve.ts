@@ -5,10 +5,10 @@ import type { Ctx, Forge, Item, Source } from '#core/types'
 import { forgeFor } from '#forge/index'
 import { approveReply, commentTask, postState } from '#posts/comments'
 import { decisionPost, taskResults } from '#posts/posts'
+import { checkPins } from '#posts/store'
 import { linkThreads, threadHosts } from '#posts/threads'
 import { sourceFor, writeItem } from '#sources/index'
 import { cardTasks, planThread } from '#tasks/plan-file'
-import { checkPins } from '#worker/store'
 import { checkKey, printOutcome } from './skip'
 
 export function approveCommand(program: Command): void {

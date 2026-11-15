@@ -6,9 +6,8 @@ import { bin } from '#config/paths'
 import type { Forge, Unit } from '#core/types'
 import { type Left, type Pin, trailerKey } from '#posts/footer'
 import { counted } from '#util/text'
-import { readOutput, refuseSymlinks, writeOutput } from './safe-files'
-import type { Held } from './slices'
-import { outputFile, WORK_DIR } from './work-dir'
+import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from '#worker/clone/files'
+import type { Held } from './slice'
 
 export type Outcome =
   | {

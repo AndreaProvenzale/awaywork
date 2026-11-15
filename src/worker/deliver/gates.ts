@@ -4,12 +4,11 @@ import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
 import type { Unit } from '#core/types'
-import { changedPaths, git, head } from './checks'
-import { readOutput, refuseSymlinks } from './safe-files'
-import type { Publisher } from './slices'
-import { discard, readVerdict, snapshot } from './steps'
-import { outputFile, WORK_DIR } from './work-dir'
-import { inClone } from './workspace'
+import { discard, readVerdict, snapshot } from '#worker/chain/handoff'
+import { outputFile, readOutput, refuseSymlinks, WORK_DIR } from '#worker/clone/files'
+import { changedPaths, git, head } from '#worker/clone/git'
+import { inClone } from '#worker/clone/workspace'
+import type { Publisher } from './slice'
 
 const SHOWN_PATHS = 3
 const LINE_CHARS = 300

@@ -60,7 +60,9 @@ import {
   summaryOf,
   type UnitResult,
 } from '#posts/report'
+import { type Kind, outFiles, putFiles, readBack, type Store } from '#posts/store'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '#quota/budget'
+import { notifyUnit } from '#run/notify'
 import { type Threads, threaded, unwritable, writeItem } from '#sources/index'
 import {
   checkPlan,
@@ -72,26 +74,6 @@ import {
   planYaml,
 } from '#tasks/plan-file'
 import { counted } from '#util/text'
-import { commitsSince, createChecks, git, head, untilHolds } from './checks'
-import { fetchContexts } from './context'
-import { gateEnv, workerEnv } from './env'
-import { notifyUnit } from './notify'
-import type { Outcome } from './publish'
-import type { ReplayState } from './replay'
-import { runWorker, type WorkerOptions } from './run'
-import { copyOut, notSymlink, readOutput, refuseSymlinks, writeOutput } from './safe-files'
-import { configSecrets } from './secrets'
-import { maskSecrets, runSetup } from './setup'
-import {
-  describeLoop,
-  freeBranch,
-  type Held,
-  type OpenLoop,
-  type Publisher,
-  prependSection,
-  publishSlice,
-  type StepReport,
-} from './slices'
 import {
   discard,
   handOff,
@@ -101,10 +83,9 @@ import {
   readStatus,
   readVerdict,
   type Snapshot,
-  setupEnv,
   snapshot,
-} from './steps'
-import { type Kind, outFiles, putFiles, readBack, type Store } from './store'
+} from '#worker/chain/handoff'
+import { describeLoop, type OpenLoop } from '#worker/chain/loop'
 import {
   concludeMerge,
   conflictsFile,
@@ -112,10 +93,40 @@ import {
   type Merge,
   mergeBase,
   type Resolving,
-} from './sync'
-import { shortage } from './watchdog'
-import { outputFile, reportsOnly, WORK_DIR } from './work-dir'
-import { type Previous, prepareWorkspace, revealHidden, type Shipped } from './workspace'
+} from '#worker/chain/merge'
+import type { ReplayState } from '#worker/chain/replay'
+import { configSecrets, fetchContexts } from '#worker/clone/context'
+import { gateEnv, setupEnv, workerEnv } from '#worker/clone/env'
+import {
+  copyOut,
+  notSymlink,
+  outputFile,
+  readOutput,
+  refuseSymlinks,
+  reportsOnly,
+  WORK_DIR,
+  writeOutput,
+} from '#worker/clone/files'
+import { commitsSince, git, head } from '#worker/clone/git'
+import {
+  type Previous,
+  prepareWorkspace,
+  revealHidden,
+  type Shipped,
+} from '#worker/clone/workspace'
+import type { Outcome } from '#worker/deliver/publish'
+import {
+  freeBranch,
+  type Held,
+  type Publisher,
+  prependSection,
+  publishSlice,
+  type StepReport,
+} from '#worker/deliver/slice'
+import { createChecks, untilHolds } from '#worker/process/checks'
+import { maskSecrets, runSetup } from '#worker/process/command'
+import { shortage } from '#worker/process/watchdog'
+import { runWorker, type WorkerOptions } from '#worker/process/worker'
 
 export interface RunInput {
   config: Config

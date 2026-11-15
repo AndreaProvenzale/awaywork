@@ -19,12 +19,10 @@ import type { Ctx, Forge, Item, Provider, Source, Unit } from '#core/types'
 import { type LoopRound, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
 import { taskMarkdown } from '#tasks/fanout'
+import type { Judged } from '#worker/deliver/gates'
 import { gitConfigFile, gitEntries, writeConfigFile } from './env'
-import type { Judged } from './gates'
-import { assemblePrompt } from './prompt'
-import { readOutput, refuseSymlinks, writeOutput } from './safe-files'
-import { unitSection } from './unit-section'
-import { outputFile, WORK_DIR } from './work-dir'
+import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './files'
+import { assemblePrompt, unitSection } from './prompt'
 
 /** Where a repo keeps skills for Claude Code, Codex and Cursor, searched for extra skills after the built-ins. */
 const repoSkillDirs = ['.claude/skills', '.agents/skills', '.cursor/skills']

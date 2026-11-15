@@ -23,7 +23,7 @@ import {
 } from '#run/daemon'
 import { warningLine } from '#run/execute'
 import { noBoxToken, sshFailure, tokenRefused } from '#run/remote'
-import type { Outcome } from '#worker/publish'
+import type { Outcome } from '#worker/deliver/publish'
 
 const command = (line: string, text: string) => `$ ${line}\n${text}`
 const MINUTE = 60_000

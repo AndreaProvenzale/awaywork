@@ -22,8 +22,8 @@ import type { RunReport, UnitResult } from '#posts/report'
 import { allowance } from '#quota/budget'
 import { threadTitle } from '#sources/github'
 import { taskMarkdown } from '#tasks/fanout'
-import { gatesSection } from '#worker/gates'
-import { continueLine } from '#worker/slices'
+import { gatesSection } from '#worker/deliver/gates'
+import { continueLine } from '#worker/deliver/slice'
 
 const style: Style = (format, text) => styleText(format, text)
 const now = Date.parse('2026-10-27T00:00:00Z')

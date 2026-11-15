@@ -5,7 +5,7 @@ import { execa } from 'execa'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { bin } from '#config/paths'
 import type { PrRef, Unit } from '#core/types'
-import { publish } from '#worker/publish'
+import { publish } from '#worker/deliver/publish'
 import { fakeForge } from './fakes/forge'
 import { fakeItem } from './fakes/items'
 

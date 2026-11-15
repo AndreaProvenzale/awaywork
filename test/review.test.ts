@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Unit } from '#core/types'
-import { leaveReview, parseComments } from '#worker/review'
+import { leaveReview, parseComments } from '#worker/deliver/review'
 import { fakeForge } from './fakes/forge'
 import { githubPr } from './fakes/items'
 

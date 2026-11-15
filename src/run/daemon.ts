@@ -33,7 +33,7 @@ import { firstOpening, windowEnd, windowRun } from '#quota/window'
 import { holdAwake } from '#scheduler/wake'
 import { readJson } from '#util/json'
 import { counted } from '#util/text'
-import { maskSecrets } from '#worker/setup'
+import { maskSecrets } from '#worker/process/command'
 import { namedChains } from '#worker/units'
 import {
   executeRun,
