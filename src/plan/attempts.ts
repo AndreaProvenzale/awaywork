@@ -199,13 +199,21 @@ export const GITHUB_ONLY = 'awaywork goes on with its own draft on GitHub only'
 /** Someone else's edit could forge the footer. */
 export const NOT_YOURS = 'someone else opened or edited it last'
 
+/** What an earlier run left for this one: its draft's footer, or a report's `continue` result. */
+export interface Leftover {
+  status: string
+  continued: number
+  head?: string
+  refused?: string
+}
+
 /**
  * Why awaywork won't go on with a draft a step `left` with `continue` or `ask`, or nothing when it will: it goes on only
  * by fast-forwarding its own GitHub draft, its head still the one awaywork left, the PR opened
  * by you and its body last edited by you (no `refused`), under `MAX_ATTEMPTS` continues. Otherwise the draft is yours.
  */
 export function byHand(
-  left: { continued: number; head?: string; refused?: string },
+  left: Pick<Leftover, 'continued' | 'head' | 'refused'>,
   now: { head?: string } = {},
 ): { kind: 'waiting_for_review' | 'draft_moved' | 'continue_cap'; why: string } | undefined {
   if (left.refused) return { kind: 'waiting_for_review', why: left.refused }

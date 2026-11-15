@@ -497,3 +497,6 @@ export interface Gate {
 }
 
 export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push' | 'pending_review' | 'plan'
+
+/** The deliveries that publish commits. */
+export type Publishes = Extract<Deliver, 'push' | 'pr' | 'draft_pr'>

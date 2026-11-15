@@ -1,30 +1,72 @@
-import type { Config } from '#config/schema'
 import { isValidRef } from '#core/branch'
-import type { SkillCatalog } from '#core/skills'
-import type { Deliver, Item, PrRef, Rule, TaskPr } from '#core/types'
+import type { Item, PrRef, Rule, TaskPr } from '#core/types'
 import { awaitsAnswer } from '#posts/comments'
 import type { DraftLeft } from '#posts/footer'
 import { reportPost, taskPost } from '#posts/posts'
 import { gatesNeverRun } from '#tasks/fanout'
 import { elsewhere, type PlanState, planThread } from '#tasks/plan-file'
 import {
-  type Attempts,
   byHand,
   gaveUpUntil,
+  type Leftover,
   MAX_ATTEMPTS,
   pushedOnto,
   unchangedSince,
 } from './attempts'
 import type { Landing } from './chain'
-import type { PlannedUnit, SkipKind } from './foreman'
+import type { ChainStep, PlannedUnit, PlanRun, SkipReason } from './foreman'
 import { repoListed, settingsFor } from './repos'
 import { describeSkip, type Skip } from './skips'
 
+/** A plan rule's item with a plan on it, and where that plan stands. */
+export type Card = { item: Item } & PlanState
+
+/** A report's post on an item, and your answer to it. */
+export interface Posted {
+  item: Item
+  answer: string
+}
+
+/** Where a task after another's `opened` starts: that task's open PR, else its chain earlier in this run. */
+export interface StackTarget {
+  onto: string
+  pr?: TaskPr
+  after?: PlannedUnit
+}
+
+/** The items one chain takes, the rule taking them, and what earlier runs left on them: read once per group. */
+export interface Group {
+  items: Item[]
+  /** The item that names the unit: awaywork's PR when the rule took it up, else the first. */
+  lead: Item
+  rule: Rule
+  ruleIndex: number
+  /** Each item's own rule, by index. */
+  itemRules: number[]
+  id: string
+  /** Picked with `run --skill`: its rule is the one-off past the queue. */
+  oneOff: boolean
+  /** The PRs its items link. */
+  prs: PrRef[]
+  /** awaywork's PR among the items' links, and whether one of the items is it. */
+  ours?: PrRef
+  pickup: boolean
+  /** Whether a post of the group's rule waits on one of its items. */
+  waitedOn: boolean
+  /** awaywork's own draft for these items, which it left for a later run. */
+  draft?: DraftLeft
+  left?: Leftover
+  card?: Card
+  posted?: Posted
+  stack?: StackTarget
+  /** Its `opened` tasks in other repos with no PR yet. */
+  waitsFor: string[]
+  /** Its rule's `then` steps. */
+  steps: ChainStep[]
+}
+
 /** Why a group makes no unit; a unit you name goes past a `liftable` one. */
-export interface Hold {
-  kind: SkipKind
-  reason: string
-  url?: string
+export interface Hold extends SkipReason {
   liftable?: boolean
 }
 
@@ -32,36 +74,17 @@ export interface Hold {
  * Every hold on a group, in the order the plan checks them: the first one naming the unit can't lift holds it.
  * Its checks all run, so each must be pure and not throw.
  */
-export function holdsOn(group: {
-  items: Item[]
-  rule: Rule
-  skips: Record<string, Skip>
-  attempts: Attempts
-  now: number
-  soon: boolean
-  /** awaywork's PR among the items' links, and whether one of the items is it. */
-  ours?: PrRef
-  pickup: boolean
-  /** Whether a post of the group's rule waits on one of its items. */
-  waitedOn: boolean
-  draft?: DraftLeft
-  left?: { status: string; continued: number; head?: string; refused?: string }
-  card?: { item: Item } & PlanState
-  posted?: { item: Item; answer: string }
-  stack?: { onto: string; pr?: TaskPr; after?: PlannedUnit }
-  waitsFor: string[]
-  units: PlannedUnit[]
-}): Hold[] {
-  const { items, rule, attempts, ours, draft, left, card, posted, stack } = group
-  const item = items[0] as Item
+export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[] {
+  const { items, lead: item, rule, ours, draft, left, card, posted, stack } = group
+  const { attempts } = run
   const out: Hold[] = []
   const skippedByUser = items
     .map((item) => `${item.source}:${item.key}`)
-    .find((key) => group.skips[key])
+    .find((key) => run.skips[key])
   if (skippedByUser)
     out.push({
       kind: 'skipped_by_you',
-      reason: describeSkip(skippedByUser, group.skips[skippedByUser] as Skip),
+      reason: describeSkip(skippedByUser, run.skips[skippedByUser] as Skip),
       url: pushedOnto(items, attempts)?.url,
       liftable: true,
     })
@@ -88,7 +111,7 @@ export function holdsOn(group: {
   }
   const goesOn = left?.status === 'continue'
   // A soon run reacts to an item changing, and a `continue` isn't one.
-  if (goesOn && group.soon)
+  if (goesOn && run.soon)
     out.push({
       kind: 'continues_later',
       reason: `goes on from ${where} in the next window run`,
@@ -113,7 +136,7 @@ export function holdsOn(group: {
   const unplanned =
     stack && !stack.pr && !stack.after
       ? stack.onto
-      : group.waitsFor.find((id) => !taskChain(group.units, item, id))
+      : group.waitsFor.find((id) => !taskChain(units, item, id))
   if (unplanned) {
     const taskDraft = item.task?.parent.taskPrs?.[unplanned]?.left
     out.push({
@@ -149,7 +172,7 @@ export function holdsOn(group: {
       reason: `unchanged since run ${since.sort().at(-1)}`,
       liftable: true,
     })
-  const retries = items.map((i) => gaveUpUntil(i, rule.skill, attempts, group.now))
+  const retries = items.map((i) => gaveUpUntil(i, rule.skill, attempts, run.now))
   if (retries.every(Boolean))
     out.push({
       kind: 'gave_up',
@@ -160,13 +183,9 @@ export function holdsOn(group: {
 }
 
 /** Why the chain can't deliver where it lands, the first the plan checks. */
-export function refusal(
-  config: Config,
-  rule: Rule,
-  skills: SkillCatalog,
-  items: Item[],
-  at: Landing,
-): Hold | undefined {
+export function refusal(run: PlanRun, group: Group, at: Landing): Hold | undefined {
+  const { config, skills } = run
+  const { rule, items } = group
   const { repo, pr, committing, merging } = at
   // Its thread opens in the repo an item names, so that one is listed too.
   const unlisted = [repo, ...items.map((i) => i.fields.repo)].find(
@@ -194,7 +213,7 @@ export function refusal(
       kind: 'refused_delivery',
       reason: `${rule.skill} merges your PR's base: it needs deliver: push, no then`,
     }
-  const refused = committing && deliveryRefusal(at.deliver, at.base, at.foreign, !!at.fork)
+  const refused = committing && deliveryRefusal(at)
   if (refused)
     return {
       kind: 'refused_delivery',
@@ -208,12 +227,12 @@ export function refusal(
 }
 
 /** Why a chain can't publish commits onto its base: only onto the developer's own PR in the repo. */
-function deliveryRefusal(
-  deliver: Exclude<Deliver, 'report' | 'pending_review' | 'plan'>,
-  base: string,
-  foreign: boolean,
-  fork: boolean,
-): string | undefined {
+function deliveryRefusal({
+  deliver,
+  base,
+  foreign,
+  fork,
+}: Pick<Landing, 'deliver' | 'base' | 'foreign' | 'fork'>): string | undefined {
   if (deliver === 'push' && !base) return 'deliver push: no PR of yours to push onto'
   if (foreign) return `deliver ${deliver}: ${base} is someone else's PR`
   if (fork) return `deliver ${deliver}: ${base} is on a fork`
@@ -235,10 +254,7 @@ const dependedPosts = (i: Item, rule: Rule) => [
 ]
 
 /** Where a task after another's `opened` starts: on that task's open PR, else after its chain earlier in this run. */
-export function stackTarget(
-  item: Item,
-  units: PlannedUnit[],
-): { onto: string; pr?: TaskPr; after?: PlannedUnit } | undefined {
+export function stackTarget(item: Item, units: PlannedUnit[]): StackTarget | undefined {
   const { task } = item
   if (!task?.onto) return undefined
   const pr = task.parent.taskPrs?.[task.onto]
