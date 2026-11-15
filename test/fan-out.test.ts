@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { approveItem } from '#cli/commands/approve'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Provider, Source, TaskPr, Unit, Write } from '#core/types'
 import { linksItem, prText } from '#forge/pr'
@@ -105,7 +106,7 @@ const pr = (id: string, state: TaskPr['state'], closedAt?: string): TaskPr => ({
 
 const allowances = { claude: allowance(config.budget, null, 0, config.windows) }
 const plan = (items: Item[], cfg = config, attempts: Attempts = {}) =>
-  planRun({ config: cfg, items, allowances, skills: { builtin: builtinSkills }, attempts })
+  planRun({ setup: setupOf(cfg, { builtin: builtinSkills }), items, allowances, attempts })
 const skips = (p: ReturnType<typeof plan>) => p.skipped.map((s) => [s.item.key, s.kind, s.reason])
 const units = (p: ReturnType<typeof plan>) => p.units.map((u) => [u.unit.id, u.unit.branch])
 
@@ -751,10 +752,9 @@ describe('a task that goes on in a later run', () => {
 `)
     const run = (taskPrs: Record<string, TaskPr>) =>
       planRun({
-        config: soon,
+        setup: setupOf(soon, { builtin: builtinSkills }),
         items: [approved(taskPrs)],
         allowances,
-        skills: { builtin: builtinSkills },
         only: { soon: true },
       })
     expect(skips(run({ api: draftOf('continue') }))).toContainEqual([
@@ -867,7 +867,7 @@ describe("a task's PR", () => {
       taskPrs: undefined,
     }
     const lines: string[] = []
-    await linkPlanTasks([parent], config, { builtin: builtinSkills }, forge, {
+    await linkPlanTasks(setupOf(config, { builtin: builtinSkills }), [parent], forge, {
       env: {},
       log: (l) => lines.push(l),
     })
@@ -878,7 +878,7 @@ describe("a task's PR", () => {
     expect(Object.keys(parent.taskPrs ?? {})).toEqual(['api', 'old'])
     const failing = { ...forge, prsOn: async () => Promise.reject(new Error('502')) }
     const unread = { ...parent, taskPrs: undefined }
-    await linkPlanTasks([unread], config, { builtin: builtinSkills }, failing, {
+    await linkPlanTasks(setupOf(config, { builtin: builtinSkills }), [unread], failing, {
       env: {},
       log: (l) => lines.push(l),
     })
@@ -897,10 +897,10 @@ describe("a task's PR", () => {
       },
     }
     const first = { ...card([planned()]), taskPrs: undefined }
-    await linkPlanTasks([first], config, { builtin: builtinSkills }, counting, ctx)
+    await linkPlanTasks(setupOf(config, { builtin: builtinSkills }), [first], counting, ctx)
     expect([calls, first.taskPrs]).toEqual([0, undefined])
     const answered = { ...card([planned(), yours('Split web.', 2)]), taskPrs: undefined }
-    await linkPlanTasks([answered], config, { builtin: builtinSkills }, counting, ctx)
+    await linkPlanTasks(setupOf(config, { builtin: builtinSkills }), [answered], counting, ctx)
     expect([calls, answered.taskPrs]).toEqual([2, {}])
   })
 })
@@ -989,7 +989,7 @@ it('fans out, merges one task, re-plans on the closed one, and needs you once al
   const round = async (n: number) => {
     const [read] = await source.items({}, ctx)
     const cardNow = { ...(read as Item) }
-    await linkPlanTasks([cardNow], config, { builtin: builtinSkills }, forge, ctx)
+    await linkPlanTasks(setupOf(config, { builtin: builtinSkills }), [cardNow], forge, ctx)
     const planned = plan([cardNow], config, attempts)
     const report = await runUnits({
       config,
@@ -1162,10 +1162,9 @@ describe('a card carrying a plan', () => {
 
   it('runs none of its tasks while you skip the card', () => {
     const skipped = planRun({
-      config,
+      setup: setupOf(config, { builtin: builtinSkills }),
       items: [approved()],
       allowances,
-      skills: { builtin: builtinSkills },
       skips: { 'github:acme/api#1': { reason: 'not now' } },
     })
     expect(skipped.units).toEqual([])
@@ -1199,7 +1198,7 @@ describe('a card carrying a plan', () => {
     }
     const round = async (n: number) => {
       const cardNow = { ...item }
-      await linkPlanTasks([cardNow], sticky, { builtin: builtinSkills }, forge, ctx)
+      await linkPlanTasks(setupOf(sticky, { builtin: builtinSkills }), [cardNow], forge, ctx)
       const planned = plan([cardNow], sticky)
       const report = await runUnits({
         config: sticky,

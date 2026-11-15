@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Rule } from '#core/types'
 import { reportJson } from '#format/json'
@@ -124,10 +125,9 @@ queue:
       config.providers.map((p) => [p.id, allowance(config.budget, quota, now, config.windows)]),
     )
     const plan = planRun({
-      config,
+      setup: setupOf(config, { builtin: builtinSkills }),
       items: [githubPr(1, { checks: 'failing' })],
       allowances,
-      skills: { builtin: builtinSkills },
     })
     expect(formatPlan(plan)).toContain(
       "     quota: the window resets within 1 run (doesn't hold on the probe)",
@@ -149,13 +149,12 @@ queue: [{ skill: fix, where: { checks: failing } }]
 `)
     const secret = { description: 'PRIVATE', comments: [{ author: 'a', body: 'PRIVATE', at: '' }] }
     const plan = planRun({
-      config,
+      setup: setupOf(config, { builtin: builtinSkills }),
       items: [
         { ...githubPr(1, { checks: 'failing' }), ...secret },
         { ...githubPr(2), ...secret },
       ],
       allowances: {},
-      skills: { builtin: builtinSkills },
     })
     const report: RunReport = {
       runId: '20261015-220000',
@@ -429,10 +428,9 @@ queue: [{ skill: fix }]
     }
     const task = { ...asanaTask(7, { repo: 'acme/api' }), key: 'API-1' }
     const plan = planRun({
-      config,
+      setup: setupOf(config, { builtin: builtinSkills }),
       items: [githubPr(1), labs, task],
       allowances: {},
-      skills: { builtin: builtinSkills },
     })
     const keys = (name: string) => namedItems(plan, name).map((i) => i.key)
     expect(keys('API-1')).toEqual(['API-1'])

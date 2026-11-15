@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { ConfigError, parseConfig } from '#config/load'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import { formatWhy } from '#format/why'
 import type { Attempts } from '#plan/attempts'
@@ -198,10 +199,9 @@ describe('a routine in the plan', () => {
       log: () => {},
     })
     const plan = planRun({
-      config: cfg,
+      setup: setupOf(cfg, { builtin: builtinSkills }),
       items,
       allowances: {},
-      skills: { builtin: builtinSkills },
       attempts,
     })
     return {

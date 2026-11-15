@@ -5,6 +5,7 @@ import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Provider, PrRef, Source } from '#core/types'
 import { planRun } from '#plan/foreman'
@@ -37,10 +38,9 @@ queue:
   - { skill: implement, deliver: ${deliver} }
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -168,10 +168,9 @@ repos: { acme/api: {} }
 queue: [${queue}]
 `)
     const { skipped, units } = planRun({
-      config,
+      setup: setupOf(config, { user, builtin: builtinSkills }),
       items: [issue(1)],
       allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-      skills: { user, builtin: builtinSkills },
     })
     return {
       skipped: skipped.map((s) => [s.kind, s.reason]),
@@ -252,10 +251,9 @@ gates: { ids: { changed: '*.txt' } }
 queue: [{ skill: fix, deliver: push }]
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -322,10 +320,9 @@ async function gated(
     ]),
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: await items(origin),
     allowances,
-    skills: { builtin: builtinSkills },
   })
   const runs: string[] = []
   const worker = (id: string): Provider => ({

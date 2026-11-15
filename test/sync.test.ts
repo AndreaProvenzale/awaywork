@@ -5,6 +5,7 @@ import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Provider, Source } from '#core/types'
 import { formatWhy } from '#format/why'
@@ -154,10 +155,9 @@ async function sync(
   worker = noWorker,
 ) {
   const plan = planRun({
-    config: settings,
+    setup: setupOf(settings, { builtin: builtinSkills }),
     items: [item],
     allowances: { claude: allowance(settings.budget, null, 0, settings.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config: settings,
@@ -181,10 +181,9 @@ describe('sync', () => {
   it('plans a merge with no provider and no gates, but on a conflict read, and skips a PR whose base it can not read', () => {
     const plan = (item: Item) =>
       planRun({
-        config,
+        setup: setupOf(config, { builtin: builtinSkills }),
         items: [item],
         allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-        skills: { builtin: builtinSkills },
       }).units.map((p) => [p.unit.merge, p.unit.deliver, p.provider, p.unit.gates])
     expect(plan(pr())).toEqual([['main', 'push', undefined, undefined]])
     expect(plan(pr({ conflicts: undefined }))).toEqual([['main', 'push', undefined, undefined]])
@@ -197,7 +196,7 @@ describe('sync', () => {
       ],
     ])
     const why = (item: Item) =>
-      formatWhy(planRun({ config, items: [item], allowances: {}, skills }), item)
+      formatWhy(planRun({ setup: setupOf(config, skills), items: [item], allowances: {} }), item)
     expect(why(pr())).toContain('provider  none, awaywork merges')
     // With no quota left, the run merges what's clean and skips a conflict.
     expect(why(pr({ conflicts: true }))).toContain(
@@ -205,10 +204,9 @@ describe('sync', () => {
     )
     const unread = { ...pr(), linkedPrs: pr().linkedPrs.map(({ into: _, ...p }) => p) }
     const skipped = planRun({
-      config,
+      setup: setupOf(config, { builtin: builtinSkills }),
       items: [unread],
       allowances: {},
-      skills: { builtin: builtinSkills },
     }).skipped
     expect(skipped.map((s) => [s.kind, s.reason])).toEqual([
       [
@@ -226,10 +224,9 @@ sources: { github: {} }
 queue: [{ skill: catch-up, where: { type: pr } }]
 `)
     const { skipped } = planRun({
-      config: own,
+      setup: setupOf(own, { user: { 'catch-up': { merge: true } }, builtin: builtinSkills }),
       items: [pr()],
       allowances: {},
-      skills: { user: { 'catch-up': { merge: true } }, builtin: builtinSkills },
     })
     expect(skipped.map((s) => s.reason)).toEqual([
       "catch-up merges your PR's base: it needs deliver: push, no then",

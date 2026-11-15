@@ -11,6 +11,7 @@ import {
 } from '#cli/tui/triage'
 import { parseConfig } from '#config/load'
 import { runsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, PrRef } from '#core/types'
 import { formatPlan } from '#format/plan'
@@ -116,10 +117,9 @@ const items = [
 function plan(claude: Allowance, present: boolean): RunPlan {
   const skills = { builtin: builtinSkills }
   const planned = planRun({
-    config,
+    setup: setupOf(config, skills),
     items,
     allowances: { claude },
-    skills,
     now: startedAt.getTime(),
   })
   return { ...planned, present }

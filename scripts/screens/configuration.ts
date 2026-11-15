@@ -16,6 +16,7 @@ import {
 import { type Discoveries, formatDiscoveries } from '#cli/commands/sources'
 import { loadConfig, parseConfig } from '#config/load'
 import { loginCommand, type Pin } from '#config/logins'
+import { setupOf } from '#config/skills'
 import { sudoersLines, WORKER } from '#core/isolation'
 import { builtinSkills } from '#core/skills'
 import type { Item } from '#core/types'
@@ -46,7 +47,7 @@ const item = (overrides: Partial<Item> & Pick<Item, 'source' | 'key' | 'url'>): 
 })
 
 const plan = (yaml: string, items: Item[]) =>
-  planRun({ config: parseConfig(yaml), items, allowances: {}, skills: { builtin: builtinSkills } })
+  planRun({ setup: setupOf(parseConfig(yaml), { builtin: builtinSkills }), items, allowances: {} })
 
 const doctorLine = (c: Check) => checkLine(c, true)
 const asCheck = ([status, what, detail]: [Check['status'], string, string]): Check => ({

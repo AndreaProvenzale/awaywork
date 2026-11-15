@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Provider, PrRef, Source } from '#core/types'
 import { formatPlan } from '#format/plan'
@@ -40,10 +41,9 @@ it("starts each of a repo's draft PRs from the default branch, not on this run's
     'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: implement }]',
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1), issue(2), githubPr(4), issue(3)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -93,10 +93,9 @@ sources: { github: {} }
 queue: [{ skill: implement, then: review }]
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1), issue(2)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   await runUnits({
     config,
@@ -153,10 +152,9 @@ queue:
   - { skill: implement }
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1), githubPr(4), issue(3)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   await runUnits({
     config,
@@ -198,10 +196,9 @@ repos:
     secrets: [NPM_TOKEN]
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const prompts: string[] = []
   const report = await runUnits({
@@ -283,10 +280,9 @@ queue:
     then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   expect(formatPlan(plan)).toMatch(/api#1 .* push +PR 1\n/)
   const verdicts = { 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'approve' }
@@ -331,10 +327,9 @@ sources: { github: {} }
 queue: [{ skill: fix, deliver: push, then: review }]
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const blank: Provider = {
     ...committer,
@@ -381,10 +376,9 @@ sources: { github: {} }
 queue: [{ skill: fix, deliver: push }]
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const summarizer: Provider = {
     ...committer,
@@ -421,10 +415,9 @@ it("lists a slice's PR body and sums it up when its publish fails", async () => 
     'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: implement }]',
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -467,10 +460,9 @@ sources: { github: {} }
 queue: [{ skill: fix, deliver: push }]
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const meanwhile: Provider = {
     ...committer,
@@ -522,10 +514,9 @@ repos:
     secrets: [NPM_TOKEN]
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1), issue(2)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   await runUnits({
     config,
@@ -574,10 +565,9 @@ queue:
       - plan
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1)],
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const prompts: string[] = []
   const provider = looper({ 'acme-api-1-review-2': 'approve' })
@@ -652,10 +642,9 @@ it('skips a unit awaywork tried on a suffixed branch, one with every name taken,
     'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: implement }]',
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1), issue(3), issue(5), issue(7), issue(11), issue(9)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -712,10 +701,9 @@ repos:
   const pr = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
   const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [{ ...pr, linkedPrs: [link] }],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   await runUnits({
     config,
@@ -785,10 +773,9 @@ queue:
   const pr = githubPr(9, { ours: true })
   const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [{ ...pr, linkedPrs: [link] }],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,

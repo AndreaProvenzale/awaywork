@@ -6,6 +6,7 @@ import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Provider, Source } from '#core/types'
 import { recordAttempts } from '#plan/attempts'
@@ -112,10 +113,9 @@ ${withRepos(repos)}
     claude: claude ?? allowance(config.budget, quota(0.36), now, config.windows),
   }
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1, { checks: 'failing', updated: '2026-09-01T00:00:00Z' })],
     allowances,
-    skills: { builtin: builtinSkills },
   })
   const runDir = join(root, 'run')
   const report = await runUnits({

@@ -5,6 +5,7 @@ import { expect, it } from 'vitest'
 import { approveItem } from '#cli/commands/approve'
 import { parseConfig } from '#config/load'
 import { builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Forge, Item, Provider, Source, Write } from '#core/types'
 import { summarize } from '#format/report'
@@ -424,12 +425,11 @@ queue:
   const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
   let attempts: Attempts = {}
   const round = async (yaml: string, n: number) => {
-    await linkPlanTasks([card], config, { builtin: builtinSkills }, forge, ctx)
+    await linkPlanTasks(setupOf(config, { builtin: builtinSkills }), [card], forge, ctx)
     const plan = planRun({
-      config,
+      setup: setupOf(config, { builtin: builtinSkills }),
       items: [card],
       allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-      skills: { builtin: builtinSkills },
       attempts,
     })
     const report = await runUnits({

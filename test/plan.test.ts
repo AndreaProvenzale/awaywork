@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { ruleNumber } from '#cli/commands/plan'
 import { parseConfig } from '#config/load'
+import { setupOf } from '#config/skills'
 import { renderBranch, templateProblem } from '#core/branch'
 import { builtinSkills, type SkillCatalog } from '#core/skills'
 import type { Item, PrRef, Quota, Rule } from '#core/types'
@@ -64,10 +65,9 @@ function plan(
   for (const p of config.providers)
     allowances[p.id] = allowance(config.budget, quotas[p.id] ?? null, now, config.windows)
   return planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills, ...skills }),
     items,
     allowances,
-    skills: { builtin: builtinSkills, ...skills },
     attempts,
     now: time,
     only,
@@ -167,10 +167,9 @@ queue:
     )
     const ids = (only: { repo?: string; rule?: number }) =>
       planRun({
-        config,
+        setup: setupOf(config, { builtin: builtinSkills }),
         items,
         allowances,
-        skills: { builtin: builtinSkills },
         now,
         only,
       }).units.map((u) => u.unit.id)
@@ -297,7 +296,7 @@ queue: [{ skill: fix, where: { checks: failing } }]
     )
     const items = [githubPr(1, { checks: 'failing' })]
     const result = {
-      ...planRun({ config, items, allowances, skills: { builtin: builtinSkills } }),
+      ...planRun({ setup: setupOf(config, { builtin: builtinSkills }), items, allowances }),
       present: true,
     }
     expect(result.units[0]?.passed).toEqual(['codex sits out a present run (no quota reading)'])
@@ -757,10 +756,9 @@ queue:
         fields: { repo: 'acme/api' },
       })
     const result = planRun({
-      config,
+      setup: setupOf(config, { builtin: builtinSkills }),
       items: [inRepo(1), inRepo(2)],
       allowances: { claude: allowance(config.budget, week(0.1), now, config.windows) },
-      skills: { builtin: builtinSkills },
       now,
     })
     expect(result.units.map((u) => [u.unit.id, u.provider])).toEqual([
@@ -1204,10 +1202,9 @@ queue: [{ skill: fix, deliver: push }]`
     ])
     expect(held.skipped[0]?.url).toBe('https://github.com/acme/api/pull/1')
     const skipped = planRun({
-      config: parseConfig(yaml),
+      setup: setupOf(parseConfig(yaml), { builtin: builtinSkills }),
       items: [at('def5678', pushedAt)],
       allowances: {},
-      skills: { builtin: builtinSkills },
       skips: { 'github:acme/api#1': {} },
       attempts,
     })
@@ -1315,10 +1312,9 @@ queue: [{ skill: fix, where: { mine: true, ours: true, my_unresolved_threads: { 
     const yaml =
       'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {}, asana: { workspace: "1" } }\nqueue: [{ skill: fix, where: { type: [pr, task] } }]'
     const result = planRun({
-      config: parseConfig(yaml),
+      setup: setupOf(parseConfig(yaml), { builtin: builtinSkills }),
       items: [pr, task, issue],
       allowances: {},
-      skills: { builtin: builtinSkills },
       skips: { 'asana:T-7': { reason: 'blocked on design' }, 'linear:acme/api#1': {} },
     })
     expect(result.units).toEqual([])

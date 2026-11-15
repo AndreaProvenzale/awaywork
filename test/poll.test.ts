@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Rule } from '#core/types'
 import { formatPlan } from '#format/plan'
@@ -48,10 +49,9 @@ const issue = (n: number, updated: string, comments: Item['comments'] = []) =>
 /** A poll's plan: the soon rules only, no provider read. */
 const poll = (items: Item[], attempts: Attempts = {}) =>
   planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items,
     allowances: {},
-    skills: { builtin: builtinSkills },
     attempts,
     only: { soon: true },
   })
@@ -123,10 +123,9 @@ queue:
       const items = await routines.items(cfg, { env: {}, log: () => {} })
       vi.useRealTimers()
       const plan = planRun({
-        config: routineConfig,
+        setup: setupOf(routineConfig, { builtin: builtinSkills }),
         items,
         allowances: {},
-        skills: { builtin: builtinSkills },
         attempts,
         only: { soon: true },
       })

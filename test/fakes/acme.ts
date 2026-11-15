@@ -1,4 +1,5 @@
 import { parseConfig } from '#config/load'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import { type PlannedUnit, planRun, type Skipped } from '#plan/foreman'
 import type { RunReport } from '#posts/report'
@@ -21,7 +22,7 @@ queue:
   - { skill: implement, where: { type: task } }
 `)
   return planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [
       githubPr(1, { checks: 'failing' }),
       githubPr(2, { checks: 'failing' }),
@@ -29,7 +30,6 @@ queue:
       asanaTask(4),
     ],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
 }
 

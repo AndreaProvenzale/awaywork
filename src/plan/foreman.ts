@@ -1,5 +1,5 @@
-import type { Config } from '#config/schema'
-import type { Origin, SkillCatalog } from '#core/skills'
+import type { Setup } from '#config/skills'
+import type { Origin } from '#core/skills'
 import type { Condition, Item, Rule, Step, ThenStep, Unit, Where, WhereValue } from '#core/types'
 import { postAnswer, reportPost } from '#posts/posts'
 import type { Moved } from '#posts/report'
@@ -133,10 +133,7 @@ export interface Skipped extends SkipReason {
 }
 
 /** What every group of a run is planned against, built once in `planRun`. */
-export interface PlanRun {
-  config: Config
-  queue: Rule[]
-  skills: SkillCatalog
+export interface PlanRun extends Setup {
   allowances: Record<string, Allowance>
   skips: Record<string, Skip>
   attempts: Attempts
@@ -161,10 +158,9 @@ export interface RunPlan {
 
 /** Match, dedupe and route this run's items; no I/O. */
 export function planRun(input: {
-  config: Config
+  setup: Setup
   items: Item[]
   allowances: Record<string, Allowance>
-  skills: SkillCatalog
   skips?: Record<string, Skip>
   /** Earlier attempts: a unit none of whose items changed since its skill last finished, or failed 3 times within the week, is skipped. */
   attempts?: Attempts
@@ -180,16 +176,16 @@ export function planRun(input: {
     skill?: string
   }
 }): RunPlan {
-  const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
+  const { setup, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
-  const queue = config.queue ?? []
-  const expanded = expandPlans(input.items, config, queue, input.skills, skips)
+  const { queue } = setup
+  const expanded = expandPlans(setup, input.items, skips)
   const name = only.named
   // A task you name of a card you skipped runs; the card and its other tasks stay skipped.
   const namedTasks =
     name === undefined
       ? []
-      : expandPlans(input.items, config, queue, input.skills).items.filter((item) => {
+      : expandPlans(setup, input.items).items.filter((item) => {
           const card = item.task?.parent
           const taking = queue[ruleFor(queue, item)]
           return (
@@ -219,9 +215,7 @@ export function planRun(input: {
   const units: PlannedUnit[] = []
   const caps: Caps = { routed: {}, perRepo: {}, perRule: {}, counted: 0 }
   const run: PlanRun = {
-    config,
-    queue,
-    skills: input.skills,
+    ...setup,
     allowances,
     skips,
     attempts: input.attempts ?? {},
@@ -251,7 +245,7 @@ export function planRun(input: {
     }
     // A unit you name goes past its holds, taking no room under the caps a run without the name would have left.
     const lifted = held.length > 0 || namedTasks.includes(lead)
-    const committing = committingStep(rule, run.skills)
+    const committing = committingStep(rule, run.catalog)
     const pr = (draft && ours) || (committing ? prs.find((p) => p.mine) : undefined) || prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
@@ -297,7 +291,7 @@ function readGroup(
   const card =
     rule.deliver === 'plan'
       ? items.flatMap((item) => {
-          const state = planState(item, planLimits(run.config, run.queue, item, run.skills))
+          const state = planState(item, planLimits(run, item))
           return state ? [{ item, ...state }] : []
         })[0]
       : undefined

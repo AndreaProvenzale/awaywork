@@ -6,6 +6,7 @@ import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Provider, Source, TaskPr, Write } from '#core/types'
 import { planJson } from '#format/json'
@@ -95,7 +96,7 @@ const pr = (id: string, repo: string, state: TaskPr['state'], number = 12): Task
 
 const allowances = { claude: allowance(config.budget, null, 0, config.windows) }
 const plan = (items: Item[], cfg = config, attempts: Attempts = {}) =>
-  planRun({ config: cfg, items, allowances, skills, attempts })
+  planRun({ setup: setupOf(cfg, skills), items, allowances, attempts })
 const shape = (p: ReturnType<typeof plan>) =>
   p.units.map((u) => [
     u.unit.id,
@@ -118,7 +119,7 @@ describe('repos in a plan', () => {
   }
 
   it("takes the card's repo or one a `repos` key names, and refuses others", () => {
-    expect(planLimits(config, config.queue ?? [], card(crossRepo), skills).repos).toEqual([
+    expect(planLimits(setupOf(config, skills), card(crossRepo)).repos).toEqual([
       'acme/*',
       'other/docs',
     ])
@@ -207,11 +208,7 @@ describe('tasks in other repos', () => {
       '- `web`: Export button in acme/web (this task), after api opened',
     )
     expect(
-      taskBranches([card(crossRepo)], config, config.queue ?? [], skills).map((t) => [
-        t.id,
-        t.repo,
-        t.branch,
-      ]),
+      taskBranches(setupOf(config, skills), [card(crossRepo)]).map((t) => [t.id, t.repo, t.branch]),
     ).toEqual([
       ['api', 'acme/backend', 'away/acme-backend-1-api'],
       ['web', 'acme/web', 'away/acme-backend-1-web'],
@@ -412,7 +409,7 @@ describe('a cross-repo feature run by run', () => {
     const run = async () => {
       const n = ++runs
       const cardNow = { ...item }
-      await linkPlanTasks([cardNow], cfg, skills, origins.forge, ctx)
+      await linkPlanTasks(setupOf(cfg, skills), [cardNow], origins.forge, ctx)
       const report = await runUnits({
         config: cfg,
         configDir: root,

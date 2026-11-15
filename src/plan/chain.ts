@@ -23,7 +23,6 @@ export function landing(
   group: Group,
   chain: Pick<Landing, 'repo' | 'pr' | 'committing'>,
 ): Landing {
-  const { config, skills } = run
   const { rule, lead, draft } = group
   const { repo, pr, committing } = chain
   // The open PR of the task it stacks on.
@@ -38,11 +37,11 @@ export function landing(
     committing,
     deliver: rule.deliver === 'push' || rule.deliver === 'pr' ? rule.deliver : 'draft_pr',
     // A chain's name takes the type of its first committing step; the list's words keep it a valid ref.
-    branch: branchName(config, rule, repo, lead, committing, skills),
+    branch: branchName(run, rule, repo, lead, committing),
     base,
     foreign: pr ? !pr.mine : false,
     fork: pr?.fork ? { number: pr.number, head: pr.head } : undefined,
-    merging: resolveSkill(rule.skill, skills)?.meta.merge,
+    merging: resolveSkill(rule.skill, run.catalog)?.meta.merge,
     stackedOn,
   }
 }
@@ -61,7 +60,7 @@ export function chainUnits(
   // A skill commits unless it reports; `deliver: report`, `pending_review` and `plan` make every step report.
   const review = rule.deliver === 'pending_review'
   const planned = rule.deliver === 'plan'
-  const reports = stepReports(rule, run.skills)
+  const reports = stepReports(rule, run.catalog)
   // A post after your feedback, or a task's PR closed, waits for you whatever `wait` says.
   const again =
     group.card?.state === 'feedback' ||
@@ -99,7 +98,7 @@ export function chainUnits(
   const units: PlannedUnit[] = []
   for (const { written, id, loop } of [{ written: rule, id: group.id }, ...group.steps]) {
     const step = written === rule ? rule : inherit(rule, written)
-    const skill = resolveSkill(step.skill, run.skills)
+    const skill = resolveSkill(step.skill, run.catalog)
     const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
     // Every step is routed, as the run does, so the plan holds fallback units for all of them; a merge takes a provider only to resolve conflicts the source read.
     const routes = !at.merge || items.some((i) => i.fields.conflicts === true)
@@ -139,7 +138,7 @@ export function chainUnits(
           : reports(step)
             ? 'report'
             : landed.deliver,
-      ...(planned && { planLimits: planLimits(config, run.queue, lead, run.skills) }),
+      ...(planned && { planLimits: planLimits(run, lead) }),
     }
     const unmet = provider && written === rule && quotaUnmet(rule.quota, allowances[provider])
     units.push({

@@ -16,6 +16,7 @@ import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
 import { type ConfigError, parseConfig } from '#config/load'
 import { bin } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Gate, Unit } from '#core/types'
 import { planRun } from '#plan/foreman'
@@ -81,10 +82,9 @@ queue: [{ skill: implement }]
   const issue = (repo: string) =>
     fakeItem({ source: 'github', key: `${repo}#1`, type: 'issue', fields: { repo } })
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue('acme/api'), issue('acme/web')],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const gatesOf = (repo: string) => plan.units.find((p) => p.unit.repo === repo)?.unit.gates
   expect(gatesOf('acme/api')).toEqual({

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Provider } from '#core/types'
 import { summarize } from '#format/report'
@@ -365,10 +366,9 @@ queue:
   - { skill: implement, deliver: pr }
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [item],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   await meanwhile?.(origin, readied)
   const runDir = join(root, 'run')

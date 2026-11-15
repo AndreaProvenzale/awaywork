@@ -1,5 +1,6 @@
 import { styleText } from 'node:util'
 import { parseConfig } from '#config/load'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item } from '#core/types'
 import { listedUnits, planUnitLines } from '#format/plan'
@@ -53,10 +54,9 @@ sources: { github: {} }
 ${queue}`)
   const fallback = () => allowance(config.budget, null, now, config.windows)
   return planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills, user: { docs: {} } }),
     items,
     allowances: { claude: fallback(), codex: fallback() },
-    skills: { builtin: builtinSkills, user: { docs: {} } },
     now,
   })
 }

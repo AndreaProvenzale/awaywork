@@ -1,5 +1,5 @@
 import type { Config } from '#config/schema'
-import type { SkillCatalog } from '#core/skills'
+import type { Setup } from '#config/skills'
 import type { Ctx, Forge, Item, Thread } from '#core/types'
 import type { OnProgress } from '#plan/probe'
 import { ruleThread } from '#plan/queue'
@@ -128,15 +128,13 @@ function movedTo(item: Item, to: string): Item {
 
 /** Each task an awaywork plan on a card names gets its PR, open, merged or closed: the one on its branch whose footer names it. */
 export async function linkPlanTasks(
+  setup: Setup,
   items: Item[],
-  config: Config,
-  skills: SkillCatalog,
   forge: Forge,
   ctx: Ctx,
   onProgress?: OnProgress,
 ): Promise<void> {
-  const queue = config.queue ?? []
-  const tasks = taskBranches(items, config, queue, skills)
+  const tasks = taskBranches(setup, items)
   const failed = new Set<Item>()
   for (const [i, task] of tasks.entries()) {
     onProgress?.({ name: 'reading task PRs', state: 'running', detail: `${i}/${tasks.length}` })

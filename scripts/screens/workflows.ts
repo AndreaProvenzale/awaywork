@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { approveItem } from '#cli/commands/approve'
 import { parseConfig } from '#config/load'
 import type { Config } from '#config/schema'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, PrRef, Source, TaskPr } from '#core/types'
 import { listedUnits, planUnitLines } from '#format/plan'
@@ -44,7 +45,7 @@ function plan(config: Config, items: Item[]): RunPlan {
   const allowances = Object.fromEntries(
     config.providers.map((p) => [p.id, allowance(config.budget, null, now, config.windows)]),
   )
-  return planRun({ config, items, allowances, skills, now })
+  return planRun({ setup: setupOf(config, skills), items, allowances, now })
 }
 
 type Named = Partial<Item> & Pick<Item, 'source' | 'key' | 'title' | 'url'>

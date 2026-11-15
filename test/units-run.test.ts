@@ -6,6 +6,7 @@ import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Provider, Source } from '#core/types'
 import { formatRun, summarize } from '#format/report'
@@ -64,7 +65,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   // 03:00 local, inside the 01:00-07:00 window, 3 days before the reset: this run and 3 more.
   const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const allowances = { claude: allowance(config.budget, quota(0.36), now, config.windows) }
-  const plan = planRun({ config, items, allowances, skills: { builtin: builtinSkills } })
+  const plan = planRun({ setup: setupOf(config, { builtin: builtinSkills }), items, allowances })
   const runDir = join(root, 'run')
 
   const tried = `awaywork tried this in https://github.com/acme/api/pull/7; delete away/acme-api-3 to run it again`
@@ -227,10 +228,9 @@ it('prepares workspaces without running a worker or context command on a dry run
     `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: { context: { command: 'echo > ${fetched}' } } }\nqueue: [{ skill: fix }]`,
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1), githubPr(2)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const input = {
     config,
@@ -282,10 +282,9 @@ it('names a unit by its exact id, key, source:key or ref only, and refuses a nam
     fields: { repo: 'acme/api' },
   })
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1), labs, task],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const named = (name: string) => namedChains(plan, name).map((p) => p.unit.id)
   expect(named('API-1')).toEqual(['api-1'])
@@ -310,10 +309,9 @@ it('prepares every step of a chain named by one of its steps, in one clone, on a
     'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix, then: review }]',
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -353,10 +351,9 @@ it('stops a unit still running at the window end and publishes what it left', as
     'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix }]',
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1), githubPr(2)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   vi.useFakeTimers({ toFake: ['Date'] })
   const until = new Date(Date.now() + 100)
@@ -421,10 +418,9 @@ it('ends the run before a unit when the machine is short, launching no worker an
     'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix }]',
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [1, 2, 3].map((n) => githubPr(n, { updated: '2026-01-01T00:00:00Z' })),
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   let runs = 0
   const checked: string[] = []
@@ -493,10 +489,9 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
       fields: { repo: 'acme/api' },
     })
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(5), issue(6)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const seen: { prompt: string; files: string[]; diff?: string }[] = []
   const chained: Provider = {
@@ -604,7 +599,7 @@ repos:
     secrets: [NPM_TOKEN]
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [
       githubPr(1),
       githubPr(2),
@@ -612,7 +607,6 @@ repos:
       githubPr(4, { mine: false, trusted: false }),
     ],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const setups: string[] = []
   const contexts: string[] = []
@@ -702,7 +696,7 @@ queue:
   - { skill: review, mcp: [sentry, jira] }
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [
       githubPr(1, { checks: 'failing' }),
       githubPr(2),
@@ -710,7 +704,6 @@ queue:
       githubPr(4, { mine: false }),
     ],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const jobs: { unit: string; mcp: string[]; env: string[] }[] = []
   await runUnits({
@@ -780,10 +773,9 @@ it('stops a unit at unit_minutes', async () => {
     'limits: { unit_minutes: 5 }\nproviders: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\nqueue: [{ skill: fix }]',
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const hung: Provider = {
     ...fakeProvider('claude'),

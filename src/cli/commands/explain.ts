@@ -77,10 +77,10 @@ const delivers: Record<string, string> = {
 }
 
 /** What a rule leaves, as the run decides it: a rule with no committing step reports, one the plan always skips nothing. */
-function leaves(r: Rule, skills: SkillCatalog): string {
-  if (gatesNeverRun(r, skills)) return 'nothing'
+function leaves(r: Rule, catalog: SkillCatalog): string {
+  if (gatesNeverRun(r, catalog)) return 'nothing'
   const own = r.deliver === 'pending_review' || r.deliver === 'plan'
-  const deliver = own || committingStep(r, skills) ? (r.deliver ?? 'draft_pr') : 'report'
+  const deliver = own || committingStep(r, catalog) ? (r.deliver ?? 'draft_pr') : 'report'
   return delivers[deliver] ?? deliver
 }
 
@@ -101,7 +101,7 @@ function ruleLines(text: string): (number | undefined)[] {
 }
 
 /** What a config says, as the `/away` pane draws it: local, no source or provider is read. */
-export function explainConfig(text: string, path: string, skills: SkillCatalog) {
+export function explainConfig(text: string, path: string, catalog: SkillCatalog) {
   let config: ReturnType<typeof parseConfig>
   try {
     config = parseConfig(text, path)
@@ -128,7 +128,7 @@ export function explainConfig(text: string, path: string, skills: SkillCatalog) 
           ? { loop: s.loop.map((l) => l.skill), until: until(s.until), max: s.max }
           : { skill: s.skill },
       ),
-      leaves: leaves(r, skills),
+      leaves: leaves(r, catalog),
       // Whether this rule's post can stop for you: a plan's, its own `wait`, or a gate of its own that fires.
       waits:
         (r.deliver === 'plan' && r.wait !== false) ||
