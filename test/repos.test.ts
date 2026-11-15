@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import { planRun } from '#plan/foreman'
 import { repoListed, settingsFor } from '#plan/repos'
@@ -141,10 +142,9 @@ describe('the allowlist', () => {
 
   it("skips a custom source's item whose repo no key names, saying so", () => {
     const plan = planRun({
-      config: tracker('{ acme/api: }'),
+      setup: setupOf(tracker('{ acme/api: }'), { builtin: builtinSkills }),
       items: [card('acme/api'), card('acme/billing')],
       allowances: {},
-      skills: { builtin: builtinSkills },
     })
     expect(plan.units.map((u) => u.unit.repo)).toEqual(['acme/api'])
     expect(plan.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
@@ -166,10 +166,9 @@ describe('the allowlist', () => {
       fields: { repo: 'other/unlisted' },
     })
     const plan = planRun({
-      config: tracker('{ acme/api: }', ', thread: github'),
+      setup: setupOf(tracker('{ acme/api: }', ', thread: github'), { builtin: builtinSkills }),
       items: [item],
       allowances: {},
-      skills: { builtin: builtinSkills },
     })
     expect(plan.units).toEqual([])
     expect(plan.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
@@ -183,10 +182,9 @@ describe('the allowlist', () => {
 
   it('leaves out an unlisted repo --repo filters out, before saying it is unlisted', () => {
     const plan = planRun({
-      config: tracker('{ acme/api: }'),
+      setup: setupOf(tracker('{ acme/api: }'), { builtin: builtinSkills }),
       items: [card('acme/api'), card('other/unlisted')],
       allowances: {},
-      skills: { builtin: builtinSkills },
       only: { repo: 'acme/api' },
     })
     expect(plan.units.map((u) => u.unit.id)).toEqual(['eng-8'])
@@ -195,15 +193,17 @@ describe('the allowlist', () => {
 
   it('says a repo is unlisted before a pending_review has no PR to review', () => {
     const plan = planRun({
-      config: parseConfig(
-        config(
-          'repos: { acme/api: }',
-          "{ tracker: { command: 'echo []' } }\nqueue: [{ skill: review, deliver: pending_review }]",
+      setup: setupOf(
+        parseConfig(
+          config(
+            'repos: { acme/api: }',
+            "{ tracker: { command: 'echo []' } }\nqueue: [{ skill: review, deliver: pending_review }]",
+          ),
         ),
+        { builtin: builtinSkills },
       ),
       items: [card('other/unlisted')],
       allowances: {},
-      skills: { builtin: builtinSkills },
     })
     expect(plan.skipped.map((s) => [s.item.key, s.kind])).toEqual([['ENG-14', 'unlisted_repo']])
   })
@@ -257,9 +257,12 @@ describe('the allowlist', () => {
 
   it('lets a plan task name only a repo a key names', () => {
     const globbed = tracker('{ acme/*: , other/docs: }')
-    const limits = planLimits(globbed, globbed.queue ?? [], card('acme/api'), {
-      builtin: builtinSkills,
-    })
+    const limits = planLimits(
+      setupOf(globbed, {
+        builtin: builtinSkills,
+      }),
+      card('acme/api'),
+    )
     expect(limits.repos).toEqual(['acme/*', 'other/docs'])
     const problem = (repo: string) => {
       const checked = checkPlan(`tasks:\n  - { id: a, title: A, repo: ${repo} }\n`, limits)

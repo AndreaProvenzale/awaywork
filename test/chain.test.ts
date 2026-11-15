@@ -17,6 +17,7 @@ import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { asWorker, contain, containerize, isolate, lostToWorker } from '#core/isolation'
 import { launch } from '#core/launch'
 import { builtinSkills } from '#core/skills'
@@ -200,10 +201,9 @@ async function run(
   const logged: string[] = []
   const config = parseConfig(`providers: [claude: {}]\nsources: { github: {} }\n${withRepos(yaml)}`)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items,
     allowances: { claude: allowance(config.budget, quota, week, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Source } from '#core/types'
 import { formatPlan } from '#format/plan'
@@ -32,10 +33,9 @@ queue:
 `)
   const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1)],
     allowances: { claude: allowance(config.budget, quota(0.36), now, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const verdicts = { 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'approve' }
   const prompts: string[] = []
@@ -126,10 +126,9 @@ queue:
     then: { loop: [review, fix], until: { verdict: approve }, max: 3 }
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -176,10 +175,9 @@ queue:
 `)
   const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1), githubPr(4)],
     allowances: { claude: allowance(config.budget, quota(0.36), now, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const verdicts = {
     'acme-api-1-review-1': 'changes',
@@ -236,10 +234,9 @@ queue:
     then: { loop: [review, fix], until: { command: '${command}' }, max: 3 }
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1)],
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const seen: Record<string, string[]> = {}
   const prompts: string[] = []
@@ -303,10 +300,9 @@ queue:
     then: { loop: fix, until: { command: 'echo 3 tests failed; false' }, max: 1 }
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1)],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -352,13 +348,12 @@ queue:
   - { skill: implement, where: { title: { matches: two } }, quota: { headroom: 10% } }
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [
       { ...issue(1), title: 'one' },
       { ...issue(2), title: 'two' },
     ],
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const logged: string[] = []
   const report = await runUnits({
@@ -401,10 +396,9 @@ queue:
 `)
   const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [item],
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -450,10 +444,9 @@ queue:
 `)
   const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
   const plan = planRun({
-    config,
+    setup: setupOf(config, { user: { triage: {} }, builtin: builtinSkills }),
     items: [item, githubPr(4, { mine: false, trusted: false, updated: '2026-01-01T00:00:00Z' })],
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
-    skills: { user: { triage: {} }, builtin: builtinSkills },
   })
   const seen: Record<string, string[]> = {}
   const report = await runUnits({
@@ -524,10 +517,9 @@ queue:
       max: 2
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [issue(1)],
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const verdicts = { 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'comments' }
   const report = await runUnits({

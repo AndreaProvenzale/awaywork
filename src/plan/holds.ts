@@ -184,7 +184,7 @@ export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[
 
 /** Why the chain can't deliver where it lands, the first the plan checks. */
 export function refusal(run: PlanRun, group: Group, at: Landing): Hold | undefined {
-  const { config, skills } = run
+  const { config, catalog } = run
   const { rule, items } = group
   const { repo, pr, committing, merging } = at
   // Its thread opens in the repo an item names, so that one is listed too.
@@ -199,7 +199,7 @@ export function refusal(run: PlanRun, group: Group, at: Landing): Hold | undefin
   if (rule.deliver === 'pending_review' && !pr)
     return { kind: 'refused_delivery', reason: 'deliver pending_review: no pull request to review' }
   // A declared gate never stays off unsaid: one on a chain that only reports runs under deliver: report alone.
-  const ungated = gatesNeverRun(rule, skills)
+  const ungated = gatesNeverRun(rule, catalog)
   if (ungated) return { kind: 'refused_delivery', reason: ungated }
   if (!isValidRef(at.branch)) {
     const template = rule.branch ?? settingsFor(config.repos, repo).branch ?? config.branch

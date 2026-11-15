@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Forge, Item, Provider, Quota, Source, Write } from '#core/types'
 import { planRun } from '#plan/foreman'
@@ -178,10 +179,9 @@ export async function loopRun(
 sources: { github: {} }
 ${withRepos(yaml)}`)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items,
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
     config,
@@ -223,10 +223,9 @@ queue:
 ${queue}
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items,
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
     only,
   })
   const writes: [string, Write][] = []

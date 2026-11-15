@@ -6,8 +6,8 @@ import { dirname, join } from 'node:path'
 import { styleText } from 'node:util'
 import { attemptsPath, runsDir, skillsDirOf } from '#config/paths'
 import type { Config } from '#config/schema'
-import { loadSkills } from '#config/skills'
-import { builtinSkills, pickRefusal, resolveSkill } from '#core/skills'
+import { readCatalog } from '#config/skills'
+import { pickRefusal, resolveSkill } from '#core/skills'
 import { forgeFor } from '#forge/index'
 import { reportJson } from '#format/json'
 import { formatPlan, listedUnits } from '#format/plan'
@@ -289,8 +289,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
 
 /** Why `--skill` can't name this skill: it's unknown, or a rule or a gate is what runs it. */
 export async function skillRefusal(name: string, userSkillsDir: string) {
-  const catalog = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
-  return pickRefusal(name, resolveSkill(name, catalog)?.meta)
+  return pickRefusal(name, resolveSkill(name, await readCatalog(userSkillsDir))?.meta)
 }
 
 /** Why `--skill` can't take what `name` names: a rule does, or the planner refused the one-off; undefined when it can, or when `name` names nothing it can tell. */

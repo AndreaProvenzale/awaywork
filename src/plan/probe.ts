@@ -1,7 +1,6 @@
 import { attemptsPath, skipsPath } from '#config/paths'
 import type { Config } from '#config/schema'
-import { loadSkills } from '#config/skills'
-import { builtinSkills } from '#core/skills'
+import { readSetup } from '#config/skills'
 import type { Ctx, Forge, Item, Rule, Source } from '#core/types'
 import { forgeFor } from '#forge/index'
 import { clip } from '#format/terminal'
@@ -113,15 +112,14 @@ export async function probeAndPlan(
     )
   }
 
-  const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
-  await linkPlanTasks(items, config, skills, forge, ctx, onProgress)
+  const setup = await readSetup(config, userSkillsDir)
+  await linkPlanTasks(setup, items, forge, ctx, onProgress)
   const attempts = await loadAttempts(attemptsPath)
   const skips = activeSkips(await loadSkips(skipsPath), Date.now())
   const planned = planRun({
-    config,
+    setup,
     items,
     allowances,
-    skills,
     attempts,
     skips,
     only: {

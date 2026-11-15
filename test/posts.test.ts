@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
+import { setupOf } from '#config/skills'
 import type { Item } from '#core/types'
 import { planRun } from '#plan/foreman'
 import {
@@ -138,12 +139,11 @@ queue:
 `)
   const plan = (item: Item) =>
     planRun({
-      config,
+      setup: setupOf(config, {}),
       items: [
         { ...item, fields: { ...item.fields, repo: 'acme/web', approved: approvedSkill(item) } },
       ],
       allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-      skills: {},
     })
   const units = (p: ReturnType<typeof plan>) =>
     p.units.map((u) => [u.unit.skill, u.unit.waits, Object.keys(u.unit.gates ?? {})])
@@ -197,10 +197,9 @@ sources: { asana: { workspace: '1' }, github: {} }
 queue:
 ${queue}`)
     const p = planRun({
-      config,
+      setup: setupOf(config, {}),
       items,
       allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-      skills: {},
     })
     return {
       units: p.units.map((u) => [u.unit.skill, u.unit.items.map((i) => i.key)]),
@@ -265,10 +264,9 @@ sources: { tracker: { command: 'echo []', write: 'cat' } }
 queue: [{ skill: story, deliver: report, wait: false, on_done: { comment: result } }]
 `)
   const plan = planRun({
-    config,
+    setup: setupOf(config, {}),
     items: [{ ...card(), fields: { repo: 'acme/web' } }],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: {},
   })
   expect(plan.units.map((u) => u.unit.waits)).toEqual([undefined])
 })

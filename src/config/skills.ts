@@ -1,9 +1,40 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { builtinSkills, parseSkill, resolveSkill, type SkillMeta } from '#core/skills'
+import {
+  builtinSkills,
+  parseSkill,
+  resolveSkill,
+  type SkillCatalog,
+  type SkillMeta,
+} from '#core/skills'
+import type { Rule } from '#core/types'
 import { ruleSteps } from '#plan/queue'
 import type { Config } from './schema'
+
+/** What the config and the skills beside it say; read once, passed wherever rules are read. */
+export interface Setup {
+  config: Config
+  queue: Rule[]
+  catalog: SkillCatalog
+}
+
+/** The setup of a config whose skills are already read. */
+export const setupOf = (config: Config, catalog: SkillCatalog): Setup => ({
+  config,
+  queue: config.queue ?? [],
+  catalog,
+})
+
+/** The config with the user's skills in `dir` and the built-in ones. */
+export async function readSetup(config: Config, dir: string): Promise<Setup> {
+  return setupOf(config, await readCatalog(dir))
+}
+
+/** The user's skills in `dir` and the built-in ones. */
+export async function readCatalog(dir: string): Promise<SkillCatalog> {
+  return { user: await loadSkills(dir), builtin: builtinSkills }
+}
 
 /** Skills in a directory, one folder with a SKILL.md each, linked ones included; a missing directory has none. */
 export async function loadSkills(dir: string): Promise<Record<string, SkillMeta>> {
@@ -24,7 +55,7 @@ export async function hasSkills(dir: string): Promise<boolean> {
 
 /** Skills a queue names that are neither the user's nor built in; in-repo skills are only visible at run time. */
 export async function unknownSkills(config: Config, userDir: string): Promise<string[]> {
-  const catalog = { user: await loadSkills(userDir), builtin: builtinSkills }
+  const catalog = await readCatalog(userDir)
   const problems = config.skills
     .filter((name) => !resolveSkill(name, catalog))
     .map((name) => `skills: unknown skill "${name}" (not built in, not in ${userDir})`)

@@ -6,6 +6,7 @@ import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { CheckResult, CheckState, Forge, Item, Provider, Source, TaskPr } from '#core/types'
 import { bitbucketForge } from '#forge/bitbucket'
@@ -48,7 +49,7 @@ const config = configOf()
 const skills = { builtin: builtinSkills }
 const allowances = { claude: allowance(config.budget, null, 0, config.windows) }
 const plan = (items: Item[], cfg = config, attempts: Attempts = {}) =>
-  planRun({ config: cfg, items, allowances, skills, attempts })
+  planRun({ setup: setupOf(cfg, skills), items, allowances, attempts })
 
 const sameRepo = `tasks:
   - { id: api, title: VAT export endpoint }
@@ -193,7 +194,10 @@ describe('reading checks', () => {
   const linked = async (yaml: string, forge: Forge) => {
     const item = card(yaml)
     const log: string[] = []
-    await linkPlanTasks([item], config, skills, forge, { env: {}, log: (l) => log.push(l) })
+    await linkPlanTasks(setupOf(config, skills), [item], forge, {
+      env: {},
+      log: (l) => log.push(l),
+    })
     return { taskPrs: item.taskPrs, log }
   }
   const withPr = () => {
@@ -273,7 +277,7 @@ describe('a check dependency run by run', () => {
     const run = async () => {
       const n = ++runs
       const cardNow = { ...item }
-      await linkPlanTasks([cardNow], config, skills, origins.forge, ctx)
+      await linkPlanTasks(setupOf(config, skills), [cardNow], origins.forge, ctx)
       const planned = plan([cardNow], config, attempts)
       const report = await runUnits({
         config,
@@ -452,7 +456,7 @@ describe('a plan fanned out on Bitbucket', () => {
     let attempts: Attempts = {}
     const run = async (n: number) => {
       const cardNow = { ...item }
-      await linkPlanTasks([cardNow], cfg, skills, bb.forge, ctx)
+      await linkPlanTasks(setupOf(cfg, skills), [cardNow], bb.forge, ctx)
       const planned = plan([cardNow], cfg, attempts)
       const report = await runUnits({
         config: cfg,

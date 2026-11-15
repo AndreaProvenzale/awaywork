@@ -6,6 +6,7 @@ import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { containerize, isolate } from '#core/isolation'
 import { builtinSkills } from '#core/skills'
 import type { Provider, PrRef } from '#core/types'
@@ -63,10 +64,9 @@ ${withRepos(extra)}`)
   }
   const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [githubPr(1, { checks: 'failing' })],
     allowances: { claude: allowance(config.budget, quota, now, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const runDir = join(root, 'run')
   const skillDirs = { user: join(root, 'none'), builtin: builtinSkillsDir }
@@ -269,10 +269,9 @@ queue: [{ skill: review }]
   }
   const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items: [{ ...forked, linkedPrs: [fork] }],
     allowances: { claude: allowance(config.budget, quota, now, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const shared = {
     config,

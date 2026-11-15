@@ -2,6 +2,7 @@ import { listedRun } from '#cli/commands/run'
 import { jobLines, wontRun } from '#cli/commands/schedule'
 import { configPath, parseConfig } from '#config/load'
 import { stateDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item } from '#core/types'
 import { findChains, formatUnit } from '#format/report'
@@ -77,10 +78,9 @@ const pr = (n: number): Item => ({
 /** A run's report.md, as `report --list` counts it, its units planned from `items`. */
 function report(runId: string, items: Item[], outcomes: (Outcome | undefined)[]): string {
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items,
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const results = plan.units.map(
     (planned, i): UnitResult => ({
@@ -198,10 +198,9 @@ function remoteReport(): RunReport {
     raw: null,
   }
   const plan = planRun({
-    config: choresConfig,
+    setup: setupOf(choresConfig, { builtin: builtinSkills }),
     items: [ch1],
     allowances: { claude: allowance(choresConfig.budget, null, 0, choresConfig.windows) },
-    skills: { builtin: builtinSkills },
   })
   const at = new Date('2026-11-04T22:06:57Z')
   return {

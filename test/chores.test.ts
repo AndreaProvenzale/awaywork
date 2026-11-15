@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Ctx, Quota } from '#core/types'
 import { recordAttempts } from '#plan/attempts'
@@ -32,7 +33,12 @@ async function planOn(date: string, attempts = {}) {
   const ctx: Ctx = { env: { ...process.env, CHORE_NOW: date }, log: () => {} }
   const items = await commandSource('chores', source).items(source, ctx)
   const allowances = { claude: allowance(config.budget, quota, now, config.windows) }
-  return planRun({ config, items, allowances, skills: { builtin: builtinSkills }, attempts })
+  return planRun({
+    setup: setupOf(config, { builtin: builtinSkills }),
+    items,
+    allowances,
+    attempts,
+  })
 }
 
 describe('chores from a custom source', () => {

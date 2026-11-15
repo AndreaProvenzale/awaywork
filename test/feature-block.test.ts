@@ -6,6 +6,7 @@ import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Provider, Source, TaskPr } from '#core/types'
 import { prText } from '#forge/pr'
@@ -77,7 +78,7 @@ const pr = (id: string, state: TaskPr['state'], number = 12): TaskPr => ({
 
 const allowances = { claude: allowance(config.budget, null, 0, config.windows) }
 const plan = (items: Item[], cfg = config, attempts: Attempts = {}) =>
-  planRun({ config: cfg, items, allowances, skills: { builtin: builtinSkills }, attempts })
+  planRun({ setup: setupOf(cfg, { builtin: builtinSkills }), items, allowances, attempts })
 const shape = (p: ReturnType<typeof plan>) =>
   p.units.map((u) => [u.unit.id, u.unit.base, u.unit.stackedOn ?? '-', u.after ?? '-'])
 const skips = (p: ReturnType<typeof plan>) =>
@@ -353,7 +354,7 @@ describe('a feature block run by run', () => {
     const run = async (extra: Partial<Parameters<typeof runUnits>[0]> = {}) => {
       const n = ++runs
       const cardNow = { ...item }
-      await linkPlanTasks([cardNow], cfg, { builtin: builtinSkills }, origin.forge, ctx)
+      await linkPlanTasks(setupOf(cfg, { builtin: builtinSkills }), [cardNow], origin.forge, ctx)
       const planned = plan([cardNow], cfg, attempts)
       const report = await runUnits({
         config: cfg,

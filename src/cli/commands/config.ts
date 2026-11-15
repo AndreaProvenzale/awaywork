@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { configPath } from '#config/load'
 import { skillsDirOf } from '#config/paths'
 import { configSchema } from '#config/schema'
-import { loadSkills } from '#config/skills'
+import { readCatalog } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import { explainConfig } from './explain'
 
@@ -37,9 +37,8 @@ export function configCommand(program: Command): void {
         return
       }
       // A broken SKILL.md is the run's problem; the rules still read, from the built-in logic.
-      const user = await loadSkills(skillsDirOf(path)).catch(() => ({}))
-      const skills = { user, builtin: builtinSkills }
-      console.log(JSON.stringify(explainConfig(text, path, skills), null, 2))
+      const catalog = await readCatalog(skillsDirOf(path)).catch(() => ({ builtin: builtinSkills }))
+      console.log(JSON.stringify(explainConfig(text, path, catalog), null, 2))
     })
 
   config

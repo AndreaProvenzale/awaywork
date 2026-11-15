@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { approveItem } from '#cli/commands/approve'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
+import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Provider, Source, Write } from '#core/types'
 import { planRun } from '#plan/foreman'
@@ -152,10 +153,9 @@ async function run(
     `providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {} }\n${top}\nqueue:\n${queue}\n`,
   )
   const plan = planRun({
-    config,
+    setup: setupOf(config, { builtin: builtinSkills }),
     items,
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
   })
   const writes: [string, Write][] = []
   const source = {
@@ -1022,10 +1022,9 @@ describe('stale posts', () => {
       'github:acme/api#1': { runId: 'r0', skill: 'story', updated: '2026-10-24T00:00:00Z' },
     }
     const plan = planRun({
-      config,
+      setup: setupOf(config, { builtin: builtinSkills }),
       items: [withApproved(card)],
       allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-      skills: { builtin: builtinSkills },
       attempts,
     })
     expect(plan.units.map((u) => [u.unit.skill, u.unit.waits])).toEqual([['story', true]])
@@ -1085,10 +1084,9 @@ describe('stale posts', () => {
       ])
       await checkPins([card], config.store as Store, process.env)
       const plan = planRun({
-        config,
+        setup: setupOf(config, { builtin: builtinSkills }),
         items: [card],
         allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-        skills: { builtin: builtinSkills },
         attempts: { 'github:acme/api#1/qa': ran },
       })
       return {
@@ -1134,10 +1132,9 @@ describe('stale posts', () => {
       ])
       await checkPins([card], config.store as Store, process.env)
       const plan = planRun({
-        config,
+        setup: setupOf(config, { builtin: builtinSkills }),
         items: [card],
         allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-        skills: { builtin: builtinSkills },
       })
       expect(plan.units).toEqual([])
       return plan.skipped.map((s) => [s.item.key, s.kind, s.reason.split(':')[0]])
@@ -1160,10 +1157,9 @@ describe('stale posts', () => {
       const card = { ...yours(1, [waiting([pin])]), linkedPrs: pr.linkedPrs }
       await checkPins([card], config.store as Store, process.env)
       const p = planRun({
-        config,
+        setup: setupOf(config, { builtin: builtinSkills }),
         items: [withApproved(card), pr],
         allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-        skills: { builtin: builtinSkills },
         attempts: {
           'github:acme/api#1': { runId: 'r0', skill: 'story', updated: '2026-10-24T00:00:00Z' },
         },
@@ -1187,10 +1183,9 @@ describe('stale posts', () => {
     const card = yours(1, [waiting([gone]), post('approve', '2026-10-24T02:00:00Z')])
     await checkPins([card], config.store as Store, process.env)
     const plan = planRun({
-      config,
+      setup: setupOf(config, { builtin: builtinSkills }),
       items: [withApproved(card)],
       allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-      skills: { builtin: builtinSkills },
     })
     expect(plan.skipped.map((s) => [s.kind, s.reason.split(':')[0]])).toEqual([
       ['store_failed', "couldn't read report.md from the store"],
@@ -1210,10 +1205,9 @@ describe('stale posts', () => {
       markComment(`${leanPlanComment(text, [{ id: 'api', title: 'A' }])}${pinBlock(pins)}`)
     const planned = (items: Item[]) => {
       const p = planRun({
-        config,
+        setup: setupOf(config, { builtin: builtinSkills }),
         items,
         allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-        skills: { builtin: builtinSkills },
       })
       return {
         units: p.units.map((u) => [u.unit.skill, u.unit.items.map((i) => i.key)]),
@@ -1307,10 +1301,9 @@ describe('stale posts', () => {
       await checkPins([card], other.store as Store, process.env)
       expect(card.comments[0]?.pinned?.failed).toBeTruthy()
       const plan = planRun({
-        config: other,
+        setup: setupOf(other, { builtin: builtinSkills }),
         items: [card],
         allowances: { claude: allowance(other.budget, null, 0, other.windows) },
-        skills: { builtin: builtinSkills },
       })
       expect(plan.units.map((u) => u.unit.skill)).toEqual(['review'])
     })

@@ -1,4 +1,4 @@
-import type { Config } from '#config/schema'
+import type { Setup } from '#config/skills'
 import { defaultType, renderBranch } from '#core/branch'
 import { resolveSkill, type SkillCatalog } from '#core/skills'
 import type { BranchPr, Item, Rule, TaskPr, ThenStep } from '#core/types'
@@ -30,12 +30,7 @@ export const cardRepo = (item: Item): string | undefined =>
   item.linkedPrs[0]?.repo ?? (typeof item.fields.repo === 'string' ? item.fields.repo : undefined)
 
 /** What a plan on the card is checked against: every id whose PR closed unmerged is retired. */
-export const planLimits = (
-  config: Config,
-  queue: Rule[],
-  card: Item,
-  catalog: SkillCatalog,
-): PlanLimits => ({
+export const planLimits = ({ config, queue, catalog }: Setup, card: Item): PlanLimits => ({
   maxTasks: queue[ruleFor(queue, card)]?.plan_tasks ?? PLAN_TASKS,
   repo: cardRepo(card),
   repos: Object.keys(config.repos),
@@ -59,37 +54,36 @@ function taskSkills(
 
 /** Whether a rule's step reports instead of committing: every step of a `report`, `pending_review` or `plan` rule does, and one whose skill says so. */
 export const stepReports =
-  (rule: Rule, skills: SkillCatalog) =>
+  (rule: Rule, catalog: SkillCatalog) =>
   (step: ThenStep): boolean =>
     rule.deliver === 'report' ||
     rule.deliver === 'pending_review' ||
     rule.deliver === 'plan' ||
-    resolveSkill(step.skill, skills)?.meta.deliver === 'report'
+    resolveSkill(step.skill, catalog)?.meta.deliver === 'report'
 
 /** The rule's first step that commits, if one does. */
-export function committingStep(rule: Rule, skills: SkillCatalog): ThenStep | undefined {
+export function committingStep(rule: Rule, catalog: SkillCatalog): ThenStep | undefined {
   const steps = [rule, ...(rule.then ?? []).flatMap((e) => (isLoop(e) ? e.loop : [e]))]
-  return steps.find((s) => !stepReports(rule, skills)(s))
+  return steps.find((s) => !stepReports(rule, catalog)(s))
 }
 
 /** Why a rule's own gates could never run, the fix first: no step of its commits and it posts no plan or report. */
-export function gatesNeverRun(rule: Rule, skills: SkillCatalog): string | undefined {
+export function gatesNeverRun(rule: Rule, catalog: SkillCatalog): string | undefined {
   const posts = rule.deliver === 'plan' || rule.deliver === 'report'
-  if (!rule.gates || posts || committingStep(rule, skills)) return undefined
+  if (!rule.gates || posts || committingStep(rule, catalog)) return undefined
   return `set deliver: report (${rule.skill} commits nothing, so its gates would never run)`
 }
 
 /** The branch a rule's slice on the item publishes on: the template with the item and the type of the step it starts with. */
 export function branchName(
-  config: Config,
+  { config, catalog }: Setup,
   rule: Rule,
   repo: string,
   item: Item,
   step: ThenStep | undefined,
-  skills: SkillCatalog,
 ): string {
   const template = rule.branch ?? settingsFor(config.repos, repo).branch ?? config.branch
-  const type = (step && resolveSkill(step.skill, skills)?.meta.type) || defaultType
+  const type = (step && resolveSkill(step.skill, catalog)?.meta.type) || defaultType
   return renderBranch(template, item, type)
 }
 
@@ -144,9 +138,9 @@ export function taskItem(
 }
 
 /** Where the plan stands on a card a `deliver: plan` rule takes. */
-function planCard(item: Item, queue: Rule[], config: Config, catalog: SkillCatalog) {
-  return queue[ruleFor(queue, item)]?.deliver === 'plan'
-    ? planState(item, planLimits(config, queue, item, catalog))
+function planCard(setup: Setup, item: Item) {
+  return setup.queue[ruleFor(setup.queue, item)]?.deliver === 'plan'
+    ? planState(item, planLimits(setup, item))
     : undefined
 }
 
@@ -155,11 +149,10 @@ function planCard(item: Item, queue: Rule[], config: Config, catalog: SkillCatal
  * that are yours: the forge looks up each task's PR by it, and reads the checks other tasks name.
  */
 export function taskBranches(
+  setup: Setup,
   items: Item[],
-  config: Config,
-  queue: Rule[],
-  skills: SkillCatalog,
 ): { card: Item; id: string; key: string; repo: string; branch: string; checks: string[] }[] {
+  const { queue, catalog } = setup
   return items.flatMap((card) => {
     if (!card.mine || queue[ruleFor(queue, card)]?.deliver !== 'plan') return []
     // The first plan, unanswered: no task ran yet.
@@ -171,7 +164,7 @@ export function taskBranches(
       const rule = queue[ruleFor(queue, item)]
       const repo = item.fields.repo
       if (!rule || typeof repo !== 'string') return []
-      const branch = branchName(config, rule, repo, item, committingStep(rule, skills), skills)
+      const branch = branchName(setup, rule, repo, item, committingStep(rule, catalog))
       const checks = tasks.flatMap((o) => {
         const when = o.after?.[t.id]
         return when && isCheck(when) ? [when] : []
@@ -212,10 +205,8 @@ export function taskPr(
  * A card whose tasks' PRs closed unmerged since stays, to plan again.
  */
 export function expandPlans(
+  setup: Setup,
   items: Item[],
-  config: Config,
-  queue: Rule[],
-  catalog: SkillCatalog,
   skips: Record<string, Skip> = {},
 ): { items: Item[]; skipped: Skipped[] } {
   const out: Item[] = []
@@ -223,7 +214,7 @@ export function expandPlans(
   const skip = (item: Item, { kind, reason, url }: SkipReason) =>
     skipped.push({ item, kind, reason, ...(url && { url }) })
   for (const card of items) {
-    const state = planCard(card, queue, config, catalog)
+    const state = planCard(setup, card)
     // Without its tasks' PRs a re-plan wouldn't know the retired ids, nor a fan-out what's done.
     if ((state?.state === 'feedback' || state?.state === 'approved') && card.taskPrs === null) {
       skip(card, { kind: 'fanned_out', reason: "its plan's tasks' PRs couldn't be read" })
@@ -246,7 +237,7 @@ export function expandPlans(
     const home = cardRepo(card)
     const tasks = runOrder(state.plan.tasks)
     const merged = (id: string) => prs[id]?.state === 'merged'
-    const { reports = [] } = planLimits(config, queue, card, catalog)
+    const { reports = [] } = planLimits(setup, card)
     const reportsOnly = (t: Task) => reports.includes(t.skill ?? TASK_SKILL)
     // A task that reports is done by its result on the card, as one that opens a PR is by its merge.
     const results = taskResults(card)
