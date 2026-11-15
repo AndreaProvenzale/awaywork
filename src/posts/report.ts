@@ -10,8 +10,8 @@ import {
 } from '#plan/foreman'
 import { type Allowance, pct, presenceLine } from '#quota/budget'
 import { counted } from '#util/text'
-import type { Outcome } from '#worker/publish'
-import type { WorkerStatus } from '#worker/run'
+import type { Outcome } from '#worker/deliver/publish'
+import type { WorkerStatus } from '#worker/process/worker'
 import type { PostState } from './comments'
 
 export interface UnitResult {

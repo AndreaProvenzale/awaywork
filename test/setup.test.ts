@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { runCommand, runSetup } from '#worker/setup'
+import { runCommand, runSetup } from '#worker/process/command'
 import { escaped, escaping } from './fakes/escape'
 
 const env = { PATH: process.env.PATH, NPM_TOKEN: 'npm-secret' }

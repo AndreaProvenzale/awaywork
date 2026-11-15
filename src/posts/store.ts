@@ -9,12 +9,12 @@ import { parse } from 'yaml'
 import type { Config } from '#config/schema'
 import type { Item } from '#core/types'
 import { itemState } from '#plan/where'
-import { commentKind, pinsOf } from '#posts/comments'
-import type { Pin } from '#posts/footer'
-import { decisionPosts, type PinnedPost } from '#posts/posts'
 import { runShell, TIMEOUT_MS } from '#sources/command'
 import { contractName } from '#tasks/plan-file'
 import { globToRegExp } from '#util/glob'
+import { commentKind, pinsOf } from './comments'
+import type { Pin } from './footer'
+import { decisionPosts, type PinnedPost } from './posts'
 
 /** `dir` is the folder of the config file that set the command, set when the config loads. */
 export type Store = NonNullable<Config['store']> & { dir?: string }

@@ -15,8 +15,8 @@ import { ambiguous, formatWhy, namedItems } from '#format/why'
 import { needsYou } from '#plan/foreman'
 import { collectItems, configuredSources, probeAndPlan } from '#plan/probe'
 import { providersOf } from '#providers/index'
-import { configSecrets } from '#worker/secrets'
-import { maskSecrets } from '#worker/setup'
+import { configSecrets } from '#worker/clone/context'
+import { maskSecrets } from '#worker/process/command'
 
 export function planCommand(program: Command): void {
   program

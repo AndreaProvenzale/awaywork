@@ -7,7 +7,7 @@ import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '#core/types'
 import { claudeProvider, toEvents } from '#providers/claude'
-import { commandEnv, workerEnv } from '#worker/env'
+import { commandEnv, workerEnv } from '#worker/clone/env'
 import { providerContract } from './contracts/provider.contract'
 import { fakeItem } from './fakes/items'
 

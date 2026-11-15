@@ -9,12 +9,12 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 | `src/core/` | The contracts between modules (`types.ts`) and what they share: isolation and `launch`, branch names, skills |
 | `src/plan/` | The foreman (`planRun`) and what it reads: the queue, `where`, conditions, repos, skips, attempts, polling; `probe.ts` collects the items and probes the providers for `planRun` |
 | `src/tasks/` | The plan file and its tasks (`plan-file.ts`), and fanning them out |
-| `src/posts/` | What awaywork writes on items (comments, posts, the footer, held moves, closed threads), the threads and task PRs it links back, and the run report that records them |
+| `src/posts/` | What awaywork writes on items (comments, posts, the footer, held moves, closed threads), the threads and task PRs it links back, the run report that records them, and the file store |
 | `src/quota/` | The budget, and the `windows` a scheduled run starts and stops in |
 | `src/sources/`, `src/providers/` | One adapter per file, plus the registry in `index.ts` |
 | `src/forge/` | GitHub through `gh`: clone, find PRs, push, draft PRs |
-| `src/worker/` | The workspace, the worker prompt, the worker run, the watchdog and publishing |
-| `src/run/` | A run (`execute.ts`), the `watch` daemon, the remote, and the run lock, retention and stats around them |
+| `src/worker/` | A unit's run, by job: `clone/` (the workspace, its files, git, env, context, the worker prompt), `process/` (the worker run, the watchdog, commands, checks), `chain/` (hand-offs, merges, replay, loops), `deliver/` (publishing, slices, gates, reviews); `units.ts` drives them |
+| `src/run/` | A run (`execute.ts`), the `watch` daemon, the remote, and the run lock, retention, stats and notifications around them |
 | `src/format/` | What gets printed for people to read, in the terminal or in a run's files: plans, reports, skips, rules, JSON |
 | `src/cli/` | The CLI: `index.ts`, one file per command in `commands/`, prompts and the browsable views in `tui/`; nothing outside it imports it |
 | `src/config/` | The config: its shapes (`schema.ts`), the cross-field checks in `validate/` (one function per topic), loading, editing, logins, paths and skills |

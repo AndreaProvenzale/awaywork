@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { loadSkills } from '#config/skills'
 import { builtinSkills, parseSkill, resolveSkill } from '#core/skills'
-import { assemblePrompt } from '#worker/prompt'
+import { assemblePrompt } from '#worker/clone/prompt'
 
 describe('skills', () => {
   it('looks up user, then in-repo, then built-in skills', () => {

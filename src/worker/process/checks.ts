@@ -1,13 +1,12 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, relative } from 'node:path'
-import { execa } from 'execa'
-import { bin } from '#config/paths'
 import type { Condition, Unit } from '#core/types'
 import { type Facts, holds } from '#plan/condition'
-import { checkEnv, gateEnv } from './env'
-import { refuseSymlinks, writeOutput } from './safe-files'
-import { runCommand } from './setup'
-import { inClone, restoreGitConfig } from './workspace'
+import { checkEnv, gateEnv } from '#worker/clone/env'
+import { refuseSymlinks, writeOutput } from '#worker/clone/files'
+import { changedPaths, head, uncommitted } from '#worker/clone/git'
+import { restoreGitConfig } from '#worker/clone/workspace'
+import { runCommand } from './command'
 
 const CHECK_LOG_CHARS = 8000
 
@@ -127,30 +126,7 @@ export function createChecks(input: ChecksInput) {
   return { check, factsFor, restoreGit, rememberGitConfig, baseline }
 }
 
-export const git = async (dir: string, ...args: string[]) =>
-  (await execa(bin('git'), [...inClone(dir), ...args])).stdout
-
-export const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
-
-export async function commitsSince(dir: string, start: string): Promise<number> {
-  return Number(await git(dir, 'rev-list', '--count', `${start}..HEAD`))
-}
-
 const refusal = (failed: string): Check => ({ output: '', failed, refused: true })
-
-/** `git status --porcelain` lines, one per uncommitted path; a nested repo's own config runs nothing. */
-async function uncommitted(dir: string): Promise<string[]> {
-  const status = ['status', '--porcelain', '--ignore-submodules=dirty']
-  return (await git(dir, ...status)).split('\n').filter(Boolean)
-}
-
-/** The paths matching `globs` the commits since `from` change, from `from` itself when `exact`, else from where it left HEAD's history; a rename counts as both of its paths. */
-export async function changedPaths(dir: string, from: string, globs: string[], exact = false) {
-  const paths = globs.map((glob) => `:(glob)${glob}`)
-  const range = exact ? [from, 'HEAD'] : [`${from}...HEAD`]
-  const diff = await git(dir, 'diff', '-z', '--name-only', '--no-renames', ...range, '--', ...paths)
-  return diff.split('\0').filter(Boolean)
-}
 
 /** The command and the tail of its output. */
 export function checkLog({ command, output, failed }: RanCheck): string {

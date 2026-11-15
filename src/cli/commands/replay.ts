@@ -9,7 +9,7 @@ import { providersOf } from '#providers/index'
 import { abortOnSignals } from '#run/execute'
 import { sourceFor } from '#sources/index'
 import { counted } from '#util/text'
-import { replayUnit } from '#worker/replay'
+import { replayUnit } from '#worker/chain/replay'
 
 export function replayCommand(program: Command): void {
   program

@@ -2,8 +2,7 @@ import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
-import { refuseSymlinks } from './safe-files'
-import { WORK_DIR } from './work-dir'
+import { refuseSymlinks, WORK_DIR } from './files'
 
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 /** Credentials that aren't tokens: askpass helpers, the ssh agent and git config set through the env. */
@@ -43,6 +42,17 @@ export function commandEnv(
     GH_ENTERPRISE_TOKEN: 'none',
     TWG_CONFIG_DIR: join(dir, WORK_DIR, 'twg'),
   }
+}
+
+/** With every secret withheld except the repo's own. */
+export function setupEnv(
+  env: NodeJS.ProcessEnv,
+  dir: string,
+  secrets: string[],
+  own: string[],
+): NodeJS.ProcessEnv {
+  const passed = own.filter((name) => env[name] !== undefined).map((name) => [name, env[name]])
+  return { ...commandEnv(env, dir, secrets), ...Object.fromEntries(passed) }
 }
 
 /** The env of the model and the checks: `commandEnv`'s without the credential plumbing, on awaywork's global git config and no system one. */
