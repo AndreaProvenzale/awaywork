@@ -14,7 +14,7 @@ import type {
   Tab,
   View,
 } from '../types'
-import { awaywork, configPaths, firstLine, json, openInEditor, openUrl } from './cli'
+import { awaywork, configPaths, firstLine, isHere, json, openInEditor, openUrl } from './cli'
 import { draftNamed, mentionsConfig } from './config'
 import { type Drawn, type Key, paneView } from './pane'
 import { isPr, itemKey, layout, opens, pickOn, type Row, selected, startQuestion } from './rows'
@@ -84,8 +84,8 @@ async function fetchConfig($: EngineInterface) {
   const where = await configPaths($, c.named)
   if (!where.path || !where.draft) return
   const located = { path: where.path, draft: where.draft, setup: where.missing }
-  const isDraft = await $.fs.exists(where.draft)
-  const hasConfig = await $.fs.exists(where.path)
+  const isDraft = await isHere($, where.draft)
+  const hasConfig = await isHere($, where.path)
   const file = isDraft ? where.draft : where.path
   const text = isDraft || hasConfig ? await $.fs.read(file) : undefined
   // A file with problems is asked about again, so a failed explain doesn't outlive the file it failed on.
@@ -487,7 +487,7 @@ export const register: Register = (on) => {
       return next(e)
     }
     if (e.args.trim()) return next(e)
-    const drafting = !!where.draft && (await $.fs.exists(where.draft))
+    const drafting = !!where.draft && (await isHere($, where.draft))
     await update($, view, (v): View => ({ marks: v.marks, tab: drafting ? 'config' : undefined }))
     await update($, data, (d): Data => ({ ...d, loading: true, planning: planCall && true }))
     await $.ui.open({ id: PANE, title: 'awaywork', focus: true, closeOnEscape: true })
@@ -501,7 +501,7 @@ export const register: Register = (on) => {
   on('classic.SessionStart', async ($, e, next) => {
     const r = await next(e)
     const { missing, path } = await configPaths($, undefined, 2_000)
-    if (!path || (!missing && !(await $.fs.exists(path)))) return r
+    if (!path || (!missing && !(await isHere($, path)))) return r
     const folder = path.slice(0, path.lastIndexOf('/'))
     if (missing) await $.process.run(['mkdir', '-p', folder])
     return { ...r, watchPaths: [...(r.watchPaths ?? []), folder] }
