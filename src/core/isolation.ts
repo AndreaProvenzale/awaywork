@@ -446,11 +446,10 @@ async function handOver(dirs: string[], owner: string): Promise<Handed[]> {
       return { dir, dev, ino }
     }),
   )
-  for (const dir of dirs) {
-    // A fresh clone opens to the worker only here.
-    await closeOrLose(dirs, dir)
-    await chownOrLose(dirs, owner, dir)
-  }
+  // All closed before any chown: a file the clone links from the home (pnpm's store) changes owner with the clone.
+  for (const dir of dirs) await closeOrLose(dirs, dir)
+  // A fresh clone opens to the worker only here.
+  for (const dir of dirs) await chownOrLose(dirs, owner, dir)
   return handed
 }
 
