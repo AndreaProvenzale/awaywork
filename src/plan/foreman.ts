@@ -416,6 +416,12 @@ export function modelFor(models: Step['model'], provider: string, attempt = 0): 
   return Array.isArray(set) ? set[attempt] : set
 }
 
+/** The models a step tries on a provider in turn: the rule's pair, else its one model or the provider's `own`. */
+export function modelsFor(models: Step['model'], provider: string, own?: string) {
+  const set = models?.[provider]
+  return Array.isArray(set) ? set : [set ?? own]
+}
+
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`, or the last report rule done with it. */
 export function noRuleReason(item: Item, queue: Rule[]): SkipReason {
   const done = queue.findLastIndex((r) => matches(r, item) && doneWith(r, item))

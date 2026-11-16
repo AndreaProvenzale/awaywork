@@ -4,10 +4,10 @@ import { dirname, join } from 'node:path'
 import { AGENT_HOME, CONTAINER_HOME, contain, contained, lostToWorker } from '#core/isolation'
 import type { McpServer, Unit } from '#core/types'
 import { describeCondition, holds } from '#plan/condition'
-import { modelFor, type PlannedUnit, slug } from '#plan/foreman'
+import { modelFor, modelsFor, type PlannedUnit, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
 import type { UnitResult } from '#posts/report'
-import { MAX_TURNS, quotaFacts, route, withQuota } from '#quota/budget'
+import { MAX_TURNS, modelOver, quotaFacts, route, withQuota } from '#quota/budget'
 import { counted } from '#util/text'
 import { fetchContexts } from '#worker/clone/context'
 import { gateEnv, setupEnv, workerEnv } from '#worker/clone/env'
@@ -200,7 +200,13 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
   }
   const unit = { ...p.unit, ...shape }
   const candidates = retryOf ? [retryOf.result.provider as string] : unit.providers
-  const { provider: id, passed } = route(candidates, allowances, routed)
+  const own = (on: string) => input.config.providers.find((c) => c.id === on)?.model
+  // A model whose own window is full passes its turn to the next; a retry has only the second.
+  const tries = (on: string) =>
+    retryOf
+      ? [modelFor(unit.rule.model, on, 1) ?? own(on)]
+      : modelsFor(unit.rule.model, on, own(on))
+  const { provider: id, passed, model: next = 0 } = route(candidates, allowances, routed, tries)
   const provider = id && input.providers[id]
   // A merge planned with no conflict to resolve, or with no provider left for it, still merges what's clean.
   if (p.unit.merge && (!p.provider || !provider)) {
@@ -228,7 +234,13 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
   routed[id] = (routed[id] ?? 0) + 1
   if (retryOf) retryOf.result.retried = true
   const entry = input.config.providers.find((c) => c.id === id)
-  const model = modelFor(unit.rule.model, id, retryOf ? 1 : 0) ?? entry?.model
+  const attempt = retryOf ? 1 : next
+  const model = modelFor(unit.rule.model, id, attempt) ?? entry?.model
+  if (next > 0) {
+    const first = modelFor(unit.rule.model, id, 0)
+    const over = allowances[id] && modelOver(allowances[id], first)
+    input.ctx.log(`${unit.id}: ${first} at its ceiling (${over}), starting on ${model}`)
+  }
   const starts = `${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`
   // A unit its `when` or `quota` may pass over says it starts only once that held.
   const gated = !!(unit.rule.when ?? unit.rule.quota) && !retryOf && !input.dryRun
@@ -396,7 +408,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     }
     if (a.kind === 'quota') result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
     start = await head(dir)
-    const retryable = !retryOf && modelFor(unit.rule.model, id, 1) !== undefined
+    const retryable = attempt === 0 && modelFor(unit.rule.model, id, 1) !== undefined
     const saved = retryable ? await snapshot(dir) : undefined
     cs.ran = true
     const worker = await runWorker(provider, job, a, {
@@ -412,7 +424,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (loop && p.loop) loop.rounds = p.loop.round
     if (worker.quota) {
       quotas[id] = worker.quota
-      allowances[id] = withQuota(a, worker.quota)
+      allowances[id] = withQuota(a, worker.quota, model)
     }
     result.verdict = await readVerdict(dir)
     const commits = await commitsSince(dir, start)
@@ -456,7 +468,8 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
         await prependSection(join(dir, WORK_DIR, 'out', outputFile.push), lines.join('\n\n'), false)
       }
     }
-    if (worker.status === 'failed' && saved && !input.signal?.aborted) {
+    const modelFull = worker.status === 'stopped: quota' && !!modelOver(allowances[id] ?? a, model)
+    if ((worker.status === 'failed' || modelFull) && saved && !input.signal?.aborted) {
       const out = join(unitDir, 'out')
       const keep = () => {
         cs.verdict = result.verdict ?? cs.verdict

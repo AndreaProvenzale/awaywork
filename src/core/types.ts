@@ -187,6 +187,8 @@ export interface Quota {
     used: number
     resetsAt: number
     minutes?: number
+    /** A long window only the model that ran counts, beside the one every model does. */
+    scoped?: true
   }[]
 }
 

@@ -3,7 +3,7 @@ import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { contain, contained, lostToWorker } from '#core/isolation'
 import type { Unit } from '#core/types'
-import { modelFor, slug } from '#plan/foreman'
+import { modelFor, modelsFor, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
 import { MAX_TURNS, route, withQuota } from '#quota/budget'
 import { gateEnv } from '#worker/clone/env'
@@ -24,14 +24,16 @@ export const judge =
     // On a provider that ran a step of the chain, a judge rides on that step's fallback unit; elsewhere it takes one.
     const ranSlice = new Set(done.filter((r) => r.status !== 'skipped').map((r) => r.provider))
     const counted = Object.fromEntries(Object.entries(routed).filter(([p]) => !ranSlice.has(p)))
-    const { provider: id, passed } = route(unit.providers, allowances, counted)
+    const own = (on: string) => input.config.providers.find((c) => c.id === on)?.model
+    const tries = (on: string) => modelsFor(unit.rule.model, on, own(on))
+    const { provider: id, passed, model: at } = route(unit.providers, allowances, counted, tries)
     const provider = id && input.providers[id]
     const a = id && allowances[id]
     if (!id || !provider || !a) return `no provider left: ${passed.join('; ') || 'none configured'}`
     if (!ranSlice.has(id)) routed[id] = (routed[id] ?? 0) + 1
     const image = settingsFor(input.config.repos, unit.repo).image
     const entry = input.config.providers.find((c) => c.id === id)
-    const model = modelFor(unit.rule.model, id, 0) ?? entry?.model
+    const model = modelFor(unit.rule.model, id, at) ?? entry?.model
     const name = `judge-${gate}-${slug(skill)}`
     input.ctx.log(`${unit.id}: gate ${gate}, ${skill} on ${id}${model ? ` (${model})` : ''}`)
     const out = join(chainDir, 'out')
@@ -93,7 +95,7 @@ export const judge =
       })
       if (worker.quota) {
         quotas[id] = worker.quota
-        allowances[id] = withQuota(a, worker.quota)
+        allowances[id] = withQuota(a, worker.quota, model)
       }
       if (worker.status !== 'done')
         why = maskSecrets(worker.reason ?? 'its worker failed', secrets, input.ctx.env)

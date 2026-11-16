@@ -1048,7 +1048,7 @@
                   }
                 }
               ],
-              "description": "A model, or two: a step that fails on the first runs once more on the second"
+              "description": "A model, or two: a step that fails on the first, or fills the first's own weekly limit, runs once more on the second, and starts there once that limit is full"
             }
           },
           "skills": {
@@ -1275,7 +1275,7 @@
                               }
                             }
                           ],
-                          "description": "A model, or two: a step that fails on the first runs once more on the second"
+                          "description": "A model, or two: a step that fails on the first, or fills the first's own weekly limit, runs once more on the second, and starts there once that limit is full"
                         }
                       },
                       "skills": {
@@ -1461,7 +1461,7 @@
                                       }
                                     }
                                   ],
-                                  "description": "A model, or two: a step that fails on the first runs once more on the second"
+                                  "description": "A model, or two: a step that fails on the first, or fills the first's own weekly limit, runs once more on the second, and starts there once that limit is full"
                                 }
                               },
                               "skills": {
@@ -1644,7 +1644,7 @@
                                         }
                                       }
                                     ],
-                                    "description": "A model, or two: a step that fails on the first runs once more on the second"
+                                    "description": "A model, or two: a step that fails on the first, or fills the first's own weekly limit, runs once more on the second, and starts there once that limit is full"
                                   }
                                 },
                                 "skills": {
@@ -1906,7 +1906,7 @@
                                     }
                                   }
                                 ],
-                                "description": "A model, or two: a step that fails on the first runs once more on the second"
+                                "description": "A model, or two: a step that fails on the first, or fills the first's own weekly limit, runs once more on the second, and starts there once that limit is full"
                               }
                             },
                             "skills": {
@@ -2092,7 +2092,7 @@
                                             }
                                           }
                                         ],
-                                        "description": "A model, or two: a step that fails on the first runs once more on the second"
+                                        "description": "A model, or two: a step that fails on the first, or fills the first's own weekly limit, runs once more on the second, and starts there once that limit is full"
                                       }
                                     },
                                     "skills": {
@@ -2275,7 +2275,7 @@
                                               }
                                             }
                                           ],
-                                          "description": "A model, or two: a step that fails on the first runs once more on the second"
+                                          "description": "A model, or two: a step that fails on the first, or fills the first's own weekly limit, runs once more on the second, and starts there once that limit is full"
                                         }
                                       },
                                       "skills": {
