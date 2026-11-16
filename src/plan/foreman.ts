@@ -416,10 +416,14 @@ export function modelFor(models: Step['model'], provider: string, attempt = 0): 
   return Array.isArray(set) ? set[attempt] : set
 }
 
-/** The models a step tries on a provider in turn: the rule's pair, else its one model or the provider's `own`. */
-export function modelsFor(models: Step['model'], provider: string, own?: string) {
+/** The models a step tries on a provider in turn: the rule's pair, else its one model or the provider's own. */
+export function modelsFor(
+  models: Step['model'],
+  provider: string,
+  providers: { id: string; model?: string }[],
+) {
   const set = models?.[provider]
-  return Array.isArray(set) ? set : [set ?? own]
+  return Array.isArray(set) ? set : [set ?? providers.find((c) => c.id === provider)?.model]
 }
 
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`, or the last report rule done with it. */

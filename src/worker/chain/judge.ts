@@ -24,8 +24,7 @@ export const judge =
     // On a provider that ran a step of the chain, a judge rides on that step's fallback unit; elsewhere it takes one.
     const ranSlice = new Set(done.filter((r) => r.status !== 'skipped').map((r) => r.provider))
     const counted = Object.fromEntries(Object.entries(routed).filter(([p]) => !ranSlice.has(p)))
-    const own = (on: string) => input.config.providers.find((c) => c.id === on)?.model
-    const tries = (on: string) => modelsFor(unit.rule.model, on, own(on))
+    const tries = (on: string) => modelsFor(unit.rule.model, on, input.config.providers)
     const { provider: id, passed, model: at } = route(unit.providers, allowances, counted, tries)
     const provider = id && input.providers[id]
     const a = id && allowances[id]

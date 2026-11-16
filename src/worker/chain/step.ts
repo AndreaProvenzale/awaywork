@@ -170,7 +170,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (retryOf) {
       retryOf.result.reason ??= `not retried: ${reason}`
       retryOf.keep()
-      reason = `${p.unit.id} failed, not retried: ${reason}`
+      reason = `${p.unit.id} ${retryOf.result.status}, not retried: ${reason}`
     } else skip(reason)
     cs.ended = { reason }
     if (loop) loop.ended ??= reason
@@ -200,12 +200,11 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
   }
   const unit = { ...p.unit, ...shape }
   const candidates = retryOf ? [retryOf.result.provider as string] : unit.providers
-  const own = (on: string) => input.config.providers.find((c) => c.id === on)?.model
   // A model whose own window is full passes its turn to the next; a retry has only the second.
-  const tries = (on: string) =>
-    retryOf
-      ? [modelFor(unit.rule.model, on, 1) ?? own(on)]
-      : modelsFor(unit.rule.model, on, own(on))
+  const tries = (on: string) => {
+    const all = modelsFor(unit.rule.model, on, input.config.providers)
+    return retryOf ? all.slice(-1) : all
+  }
   const { provider: id, passed, model: next = 0 } = route(candidates, allowances, routed, tries)
   const provider = id && input.providers[id]
   // A merge planned with no conflict to resolve, or with no provider left for it, still merges what's clean.
@@ -241,6 +240,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     const over = allowances[id] && modelOver(allowances[id], first)
     input.ctx.log(`${unit.id}: ${first} at its ceiling (${over}), starting on ${model}`)
   }
+  if (retryOf) input.ctx.log(`${unit.id}: ${retryOf.result.status}, retrying on ${model}`)
   const starts = `${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`
   // A unit its `when` or `quota` may pass over says it starts only once that held.
   const gated = !!(unit.rule.when ?? unit.rule.quota) && !retryOf && !input.dryRun
@@ -468,7 +468,10 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
         await prependSection(join(dir, WORK_DIR, 'out', outputFile.push), lines.join('\n\n'), false)
       }
     }
-    const modelFull = worker.status === 'stopped: quota' && !!modelOver(allowances[id] ?? a, model)
+    const modelFull =
+      worker.status === 'stopped: quota' &&
+      modelFor(unit.rule.model, id, 1) !== model &&
+      !!modelOver(allowances[id] ?? a, model)
     if ((worker.status === 'failed' || modelFull) && saved && !input.signal?.aborted) {
       const out = join(unitDir, 'out')
       const keep = () => {
@@ -480,7 +483,6 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
         cs.previous = { skill: unit.skill, out }
       }
       cs.retrying = { result, start, saved, keep }
-      input.ctx.log(`${unit.id}: failed, retrying on the next ${id} model`)
       return
     }
     cs.verdict = result.verdict ?? cs.verdict
