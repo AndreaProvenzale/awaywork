@@ -93,5 +93,5 @@ Keep `.env` out of git. Without `GH_TOKEN`, compose refuses: `required variable 
   2026-11-03 23:14:58   acme-api-196: implement on fake
   ```
 
-- **Memory:** capped at 4 GB, and the watchdog's 1.5 GB floor counts against the cap (`process.availableMemory()` was 2.99 GB under `-m 3g`, 7.19 GB without). Raise `mem_limit` for big builds.
+- **Memory:** capped at 4 GB, and the watchdog's 1.5 GB floor counts against the cap: what's free under it, with page cache the container can drop counted as free. Raise `mem_limit` for big builds.
 - **Reaching it:** `docker exec`, ssh to the host, or Coolify's terminal. `watch.log` is the container's output (`docker logs -f <container>`, Coolify's Logs tab), and `docker exec <container> awaywork doctor`, `report` or `schedule status` work as usual; `status` says `No scheduled job installed`, which is right, since the container keeps `watch` running.

@@ -5,7 +5,15 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
-import { AWAYWORK_ENV, dockerArgs, isolate, sudoArgs, WORKER, workerFor } from '#core/isolation'
+import {
+  AWAYWORK_ENV,
+  dockerArgs,
+  failure,
+  isolate,
+  sudoArgs,
+  WORKER,
+  workerFor,
+} from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, Unit } from '#core/types'
 import { claudeProvider } from '#providers/claude'
@@ -228,6 +236,15 @@ describe('the launcher', () => {
     ]
     const set = envs.flatMap((env) => Object.keys(env ?? {})).filter((name) => !(name in base))
     expect(new Set(set)).toEqual(new Set(AWAYWORK_ENV))
+  })
+
+  it('keeps a failed command’s stderr to its first line and a count', () => {
+    const stderr = Array.from({ length: 3 }, (_, i) => `chmod: f${i}: Operation not permitted`)
+    expect(failure({ stderr: `${stderr.join('\n')}\n` })).toBe(
+      'chmod: f0: Operation not permitted (and 2 more)',
+    )
+    expect(failure({ stderr: stderr[0] as string })).toBe(stderr[0])
+    expect(failure({ stderr: '', shortMessage: 'Command failed' })).toBe('Command failed')
   })
 
   // Where the worker user exists, real-isolation.test.ts takes the other side.

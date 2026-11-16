@@ -182,6 +182,8 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     const second = await runCommand('cat linked', clone, env, { secrets: [] })
     expect(second.output).toBe('x')
     expect(await owner(`${workerHome(clone)}/store`)).toBe(process.getuid?.())
+    expect((await stat(`${workerHome(clone)}/store`)).mode & 0o077).toBe(0)
+    expect(lostToWorker(clone)).toBe(false)
   })
 
   it('lends the Codex login to the worker’s HOME and saves its refresh back', async () => {
