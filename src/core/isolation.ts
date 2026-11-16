@@ -316,9 +316,7 @@ export async function workerFor(
   // Left the worker's by a failed chown back, it's only the worker's to remove.
   await rm(root, { recursive: true }).catch(() => as('rmdir', root))
   if (back.failed)
-    throw new Error(
-      `can't chown a clone to the ${WORKER} user and back (${back.stderr || back.shortMessage})`,
-    )
+    throw new Error(`can't chown a clone to the ${WORKER} user and back (${failure(back)})`)
   return WORKER
 }
 
@@ -446,11 +444,9 @@ async function handOver(dirs: string[], owner: string): Promise<Handed[]> {
       return { dir, dev, ino }
     }),
   )
-  for (const dir of dirs) {
-    // A fresh clone opens to the worker only here.
-    await closeOrLose(dirs, dir)
-    await chownOrLose(dirs, owner, dir)
-  }
+  // A fresh clone opens to the worker only from here; all closed before any chown, as a file the clone links from the home (pnpm's store) changes owner with it.
+  for (const dir of dirs) await closeOrLose(dirs, dir)
+  for (const dir of dirs) await chownOrLose(dirs, owner, dir)
   return handed
 }
 
@@ -479,23 +475,26 @@ async function takeBack(handed: Handed[]): Promise<void> {
 async function closeOrLose(dirs: string[], dir: string): Promise<void> {
   const closed = await execa(bin('chmod'), ['-R', 'u+rwX,go-rwx', dir], { reject: false })
   if (closed.failed)
-    lose(
-      dirs,
-      `couldn't close the clone to others, left as it is: ${closed.stderr || closed.shortMessage}`,
-    )
+    lose(dirs, `couldn't close the clone to others, left as it is: ${failure(closed)}`)
   // The next phase's worker starts in it, through a chdir of the developer's.
   await chmod(dir, 0o711)
 }
 
 async function chownOrLose(dirs: string[], owner: string, dir: string): Promise<void> {
   const result = await chown(owner, dir)
-  if (result.failed)
-    lose(dirs, `couldn't chown the clone, left as it is: ${result.stderr || result.shortMessage}`)
+  if (result.failed) lose(dirs, `couldn't chown the clone, left as it is: ${failure(result)}`)
 }
 
 function lose(dirs: string[], reason: string): never {
   for (const dir of dirs) lost.add(dir)
   throw new Error(reason)
+}
+
+/** A failed command's stderr as one line, and how many more it had: a chmod -R can fail on every file. */
+export function failure(ran: { stderr: string; shortMessage?: string }): string {
+  const [first, ...more] = ran.stderr.trim().split('\n')
+  if (!first) return String(ran.shortMessage)
+  return more.length ? `${first} (and ${more.length} more)` : first
 }
 
 /** The only command awaywork runs as root, shaped as the sudoers line names it. */

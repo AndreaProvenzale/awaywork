@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
-import { statfs } from 'node:fs/promises'
+import { readFile, statfs } from 'node:fs/promises'
+import { totalmem } from 'node:os'
 import { dirname } from 'node:path'
 import { execa } from 'execa'
 import { launched } from '#core/launch'
@@ -28,11 +29,22 @@ export async function shortage(
   dir: string,
   limits: WatchdogLimits = defaultLimits,
 ): Promise<string | undefined> {
-  if (process.availableMemory() < limits.minMemory)
+  if ((await availableMemory()) < limits.minMemory)
     return `memory below ${limits.minMemory / GB} GB`
   while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir)
   const disk = await statfs(dir)
   if (disk.bavail * disk.bsize < limits.minDisk) return `disk below ${limits.minDisk / GB} GB`
+}
+
+/** Under a cgroup's limit (a container's), adds back the page cache it counts as used but reclaims first. */
+async function availableMemory(): Promise<number> {
+  const available = process.availableMemory()
+  const limit = process.constrainedMemory()
+  if (!limit || limit >= totalmem()) return available
+  const group = (await readFile('/proc/self/cgroup', 'utf8').catch(() => '')).match(/^0::(.*)$/m)
+  if (!group) return available
+  const stat = await readFile(`/sys/fs/cgroup${group[1]}/memory.stat`, 'utf8').catch(() => '')
+  return available + Number(stat.match(/^inactive_file (\d+)$/m)?.[1] ?? 0)
 }
 
 /**

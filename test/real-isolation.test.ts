@@ -176,6 +176,16 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     expect(await owner(workerHome(a) as string)).toBe(process.getuid?.())
   })
 
+  it('runs a second phase after the clone links a file from its HOME, as pnpm links its store', async () => {
+    const clone = await workerRoot()
+    await runCommand('echo x > ~/store && ln ~/store linked', clone, env, { secrets: [] })
+    const second = await runCommand('cat linked', clone, env, { secrets: [] })
+    expect(second.output).toBe('x')
+    expect(await owner(`${workerHome(clone)}/store`)).toBe(process.getuid?.())
+    expect((await stat(`${workerHome(clone)}/store`)).mode & 0o077).toBe(0)
+    expect(lostToWorker(clone)).toBe(false)
+  })
+
   it('lends the Codex login to the worker’s HOME and saves its refresh back', async () => {
     const yours = await mkdtemp(join(homedir(), 'awaywork-codex-'))
     const authFile = join(yours, 'auth.json')
