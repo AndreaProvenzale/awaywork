@@ -1124,21 +1124,30 @@ test('on the desktop app j and k step the rule and the pane keeps its own scroll
 
 const SERVER = '/srv/awaywork/config.yml'
 
-test('a config only the remote has keeps the run tabs: no setup, no Config tab', async ($, on) => {
-  const { calls } = engine(on, {
-    'config path': { stdout: `${SERVER}\n` },
-    'report --json': ok(busyReport),
+// macOS' `/home` is an automount, which the engine rejects as a network location.
+const remoteAnswers = {
+  'not here': () => ({ value: false }),
+  rejected: () => {
+    throw new Error('a network location')
+  },
+}
+
+for (const [how, answer] of Object.entries(remoteAnswers))
+  test(`a config only the remote has keeps the run tabs: no setup, no Config tab (${how})`, async ($, on) => {
+    const { calls } = engine(on, {
+      'config path': { stdout: `${SERVER}\n` },
+      'report --json': ok(busyReport),
+    })
+    on('fs.exists', answer)
+    await $.command.run(away())
+    const ui = await mount($, 'terminal')
+    expect(await label(ui, 'tab:needs')).toBe('Needs you (6)')
+    expect(await label(ui, 'tab:last')).toBe('Last run (2)')
+    expect(await ui.find({ key: 'tab:config' })).toBeFalsy()
+    expect(await label(ui, 'plan')).toBe('plan')
+    expect(await text(ui, /setting up/)).toBe(false)
+    expect(calls.some((argv) => argv[0] === 'mkdir')).toBe(false)
   })
-  on('fs.exists', () => ({ value: false }))
-  await $.command.run(away())
-  const ui = await mount($, 'terminal')
-  expect(await label(ui, 'tab:needs')).toBe('Needs you (6)')
-  expect(await label(ui, 'tab:last')).toBe('Last run (2)')
-  expect(await ui.find({ key: 'tab:config' })).toBeFalsy()
-  expect(await label(ui, 'plan')).toBe('plan')
-  expect(await text(ui, /setting up/)).toBe(false)
-  expect(calls.some((argv) => argv[0] === 'mkdir')).toBe(false)
-})
 
 test('session start makes the folder only when config path says missing, and watches nothing of a remote', async ($, on) => {
   let reply: Reply = noConfig

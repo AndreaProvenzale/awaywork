@@ -51,6 +51,11 @@ export async function configPaths($: EngineInterface, named?: string, timeoutMs 
   return { missing, path, draft: `${folderOf(path)}/${DRAFT}` }
 }
 
+/** Whether the file is on this machine: the engine rejects a network location, like a remote's path under macOS' `/home`. */
+export function isHere($: EngineInterface, path: string) {
+  return $.fs.exists(path).catch(() => false)
+}
+
 let opener: string | undefined
 
 export async function openUrl($: EngineInterface, url: string) {
