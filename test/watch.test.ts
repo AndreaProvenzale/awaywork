@@ -6,6 +6,7 @@ import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printStatus } from '#cli/commands/schedule'
 import {
+  attemptsPath,
   runLockPath,
   runsDir,
   watchLockPath,
@@ -166,7 +167,14 @@ beforeEach(async () => {
   vi.spyOn(console, 'log').mockImplementation((...line) => void out.push(line.join(' ')))
   vi.stubEnv('GITHUB_OUTPUT', '')
   vi.stubEnv('RUNNER_ENVIRONMENT', '')
-  for (const file of [watchLogPath, watchLockPath, watchStatePath, runLockPath, windowEndPath])
+  for (const file of [
+    watchLogPath,
+    watchLockPath,
+    watchStatePath,
+    runLockPath,
+    windowEndPath,
+    attemptsPath,
+  ])
     await rm(file, { force: true })
   lock.releaseMs = 0
 })
@@ -201,17 +209,20 @@ describe('awaywork watch', () => {
     windowChecks.count = 0
     clock.fast = true
     const done = watch(path, again.signal)
-    await vi.waitFor(() => expect(windowChecks.count).toBeGreaterThan(1))
-    clock.fast = false
-    again.abort()
-    await done
+    try {
+      await vi.waitFor(() => expect(windowChecks.count).toBeGreaterThan(1))
+    } finally {
+      clock.fast = false
+      again.abort()
+      await done
+    }
     expect(await daemonLog()).not.toContain('window run')
 
     await writeFile(windowEndPath, JSON.stringify(new Date(Date.now() - 3_600_000)))
     expect(await watchUntil(path, 'Report: ')).toContain('window run')
   })
 
-  async function queuedChore() {
+  async function queuedChore(repo = '{}') {
     const path = await config()
     const dir = dirname(path)
     workers.origin = join(dir, 'origin')
@@ -230,7 +241,7 @@ describe('awaywork watch', () => {
       path,
       `providers: [claude]
 windows: [{ start: "${hhmm(-60)}", end: "${hhmm(60)}" }]
-repos: { acme/api: {} }
+repos: { acme/api: ${repo} }
 sources: { chores: { command: cat items.json } }
 queue:
   - { skill: plan, source: chores }
@@ -274,6 +285,25 @@ queue:
     expect(existsSync(windowEndPath)).toBe(false)
 
     await rm(watchLogPath)
+    expect(await watchUntil(path, 'Report: ')).toContain('window run')
+    expect(workers.ran).toEqual(['ch-1'])
+  }, 30_000)
+
+  it('starts the window run again after a restart that stopped it during repo setup', async () => {
+    const started = join(await mkdtemp(join(tmpdir(), 'awaywork-setup-')), 'started')
+    const path = await queuedChore(`{ setup: "touch ${started} && sleep 30" }`)
+    Object.assign(workers, { ran: [], ms: 0, gate: undefined })
+    const stop = new AbortController()
+    const done = watch(path, stop.signal)
+    await vi.waitFor(() => expect(existsSync(started)).toBe(true), { timeout: 10_000 })
+    stop.abort()
+    await done
+    expect(existsSync(windowEndPath)).toBe(false)
+
+    await rm(watchLogPath)
+    await writeFile(path, (await readFile(path, 'utf8')).replace(/\{ setup:.*? \}/, '{}'))
+    // Run ids are per second, and the stopped run's chain dir would be reused.
+    await new Promise((r) => setTimeout(r, 1100))
     expect(await watchUntil(path, 'Report: ')).toContain('window run')
     expect(workers.ran).toEqual(['ch-1'])
   }, 30_000)

@@ -29,7 +29,7 @@ import {
   soonSources,
 } from '#plan/poll'
 import { probeAndPlan, sourceFailure } from '#plan/probe'
-import { localTime, type UnitResult } from '#posts/report'
+import { localTime } from '#posts/report'
 import { firstOpening, windowEnd, windowRun } from '#quota/window'
 import { holdAwake } from '#scheduler/wake'
 import { readJson } from '#util/json'
@@ -201,8 +201,8 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
       running.set(
         runId,
         run
-          .then((own) =>
-            own && r.trigger === 'window' && r.until ? saveWindowEnd(r.until) : undefined,
+          .then((ended) =>
+            ended && r.trigger === 'window' && r.until ? saveWindowEnd(r.until) : undefined,
           )
           .finally(() => finish(runId))
           .catch((e) => event(`run ${runId} didn't end cleanly: ${reason(e)}`)),
@@ -422,11 +422,6 @@ export function runStarted(r: Pick<DaemonRun, 'trigger' | 'runId' | 'until' | 's
   return `${r.trigger} run ${r.runId} started${until}${units}`
 }
 
-const interrupted = (r: UnitResult) =>
-  r.status === 'stopped: aborted' ||
-  (r.status === 'skipped' && r.reason === 'interrupted') ||
-  (r.outcome?.kind === 'none' && r.outcome.reason === 'interrupted')
-
 /** One of the daemon's runs, its full output in `run.log` in its run dir; never throws. True when it ended on its own, not stopped or crashed. */
 async function daemonRun(r: DaemonRun): Promise<boolean> {
   const runDir = join(runsDir, r.runId)
@@ -445,8 +440,8 @@ async function daemonRun(r: DaemonRun): Promise<boolean> {
   try {
     await r.isolated
     await mkdir(runDir, { recursive: true, mode: 0o700 })
-    const report = await executeRun({ ...r, now: new Date(), log, signal: () => r.stop })
-    return !!report && !report.results.some(interrupted)
+    const reported = await executeRun({ ...r, now: new Date(), log, signal: () => r.stop })
+    return reported && !r.stop.aborted
   } catch (e) {
     event(`run ${r.runId} failed: ${reason(e)}`)
     return false

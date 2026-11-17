@@ -18,7 +18,7 @@ import { loadAttempts, recordAttempts, saveAttempts } from '#plan/attempts'
 import { isNamed, type PlannedUnit, type RunPlan } from '#plan/foreman'
 import { probeAndPlan } from '#plan/probe'
 import { ruleFor } from '#plan/queue'
-import { formatReport, type RunReport } from '#posts/report'
+import { formatReport } from '#posts/report'
 import { providersOf } from '#providers/index'
 import { type Allowance, route } from '#quota/budget'
 import { counted } from '#util/text'
@@ -192,7 +192,7 @@ const inSaving = serial()
 /** A plan warning as `run` logs it, its later lines indented under the first. */
 export const warningLine = (w: string) => `warning: ${w.replaceAll('\n', '\n  ')}`
 
-export async function executeRun(a: RunArgs): Promise<RunReport | false> {
+export async function executeRun(a: RunArgs): Promise<boolean> {
   const { config, path, runId, log } = a
   const badSkill = a.skill !== undefined && (await skillRefusal(a.skill, skillsDirOf(path)))
   if (badSkill) {
@@ -213,7 +213,7 @@ export async function executeRun(a: RunArgs): Promise<RunReport | false> {
   const { warnings, ctx, sources, secrets } = planned
   const warned = warnings.map(warningLine)
   for (const line of warned) log.error(line)
-  const refuse = (why: string): false => {
+  const refuse = (why: string) => {
     log.error(why)
     a.tell?.({ refused: [why, ...warned].join('\n') })
     return false
@@ -284,7 +284,7 @@ export async function executeRun(a: RunArgs): Promise<RunReport | false> {
     const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
     if (failure) log.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
   }
-  return report
+  return true
 }
 
 /** Why `--skill` can't name this skill: it's unknown, or a rule or a gate is what runs it. */
