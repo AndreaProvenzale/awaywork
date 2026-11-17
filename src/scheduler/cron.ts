@@ -57,5 +57,6 @@ export function parseCronLines(ours: string[]): Schedule {
     command: words.slice(1, -1),
     path: words[0] ?? '',
     log: words.at(-1) ?? '',
+    unpinned: (ours[0] ?? '').includes(' AWAYWORK_PROFILE=') ? undefined : true,
   }
 }

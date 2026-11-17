@@ -77,6 +77,7 @@ export function parseService(text: string): Schedule {
     command: unquote(value(text, 'ExecStart')),
     path: (unquote(value(text, 'Environment'))[0] ?? '').replace(/^PATH=/, ''),
     log: value(text, 'StandardOutput').replace(/^append:/, ''),
+    unpinned: text.includes('AWAYWORK_PROFILE=') ? undefined : true,
   }
 }
 

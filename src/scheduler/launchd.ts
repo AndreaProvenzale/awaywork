@@ -63,6 +63,7 @@ export function parsePlist(text: string): Schedule {
     command: strings(after('ProgramArguments').split('</array>')[0] ?? ''),
     path: strings(after('PATH'))[0] ?? '',
     log: strings(after('StandardOutPath'))[0] ?? '',
+    unpinned: text.includes('<key>AWAYWORK_PROFILE</key>') ? undefined : true,
   }
 }
 

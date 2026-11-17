@@ -17,10 +17,12 @@ export interface Schedule {
   command: string[]
   path: string
   log: string
+  /** Set by a reader on a job installed without `AWAYWORK_PROFILE`. */
+  unpinned?: true
 }
 
-/** Whether a job is the per-window kind an older awaywork installed, starting `awaywork run`. */
-export const olderJob = (job: Schedule) => !job.command.includes('watch')
+/** Whether a job is one an older awaywork installed: per-window (`awaywork run`) or not pinned to a profile. */
+export const olderJob = (job: Schedule) => !job.command.includes('watch') || job.unpinned === true
 
 export interface Scheduler {
   id: string

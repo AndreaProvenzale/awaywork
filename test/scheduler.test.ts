@@ -829,9 +829,29 @@ it('reads an older per-window crontab back as an older job', async () => {
     command: ['/opt/node', '/x/index.js', 'run', '--scheduled', '--config', '/h/c.yml'],
     path: '/opt/bin',
     log: '/h/s.log',
+    unpinned: true,
   })
   expect(job && olderJob(job)).toBe(true)
   expect(olderJob(schedule)).toBe(false)
+})
+
+it('reads a watch job without AWAYWORK_PROFILE back as older, in each scheduler', () => {
+  const noProfile = (text: string) =>
+    text
+      .replace('<key>AWAYWORK_PROFILE</key><string>default</string>', '')
+      .replace(/^Environment="AWAYWORK_PROFILE=default"\n/m, '')
+      .replace(' AWAYWORK_PROFILE=default', '')
+  const jobs = [
+    parsePlist(noProfile(plist(schedule))),
+    parseService(noProfile(service(schedule))),
+    parseCronLines(cronLines(schedule).map(noProfile)),
+  ]
+  for (const job of jobs) expect(olderJob(job)).toBe(true)
+  expect(jobs.map((job) => ({ ...job, unpinned: undefined }))).toEqual([
+    schedule,
+    schedule,
+    schedule,
+  ])
 })
 
 it('writes a workflow cron per window', () => {
