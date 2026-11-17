@@ -58,7 +58,7 @@ A widening, anything that lets awaywork write more than a draft PR or a report o
 
 ### Tokens
 
-Tokens never go through the chat. You run `awaywork secret LINEAR_API_KEY` (in Claude Code, `! pbpaste | awaywork secret LINEAR_API_KEY` after copying it), which saves it to `~/.config/awaywork/env`. The skill then reads your teams and statuses and asks only which repo each team's code is in.
+Tokens never go through the chat. You run `awaywork secret LINEAR_API_KEY` (in Claude Code, `! pbpaste | awaywork secret LINEAR_API_KEY` after copying it), which saves it to `~/.config/awaywork/.env`. The skill then reads your teams and statuses and asks only which repo each team's code is in.
 
 ### The draft
 

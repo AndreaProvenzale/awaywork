@@ -71,7 +71,7 @@ The image is yours to build, and all the units get:
 
 With `isolation: none`, the default on your machine and a self-hosted runner, all of the above keeps credentials out of the agent's way, not its reach. It runs as you, and its tools aren't sandboxed: Claude Code has Bash and file tools pre-approved, Codex runs `--sandbox danger-full-access` (it needs it to commit), Cursor any shell command with read and write (no `--force`, no sandbox), a command provider whatever your command does. So what it reads can leave [I, from the code]:
 
-- `~/.config/awaywork/env`, with your `GH_TOKEN` and tracker tokens.
+- `~/.config/awaywork/.env`, with your `GH_TOKEN` and tracker tokens.
 - gh's login, by unsetting the placeholders (an empty `GH_CONFIG_DIR` doesn't hide a keyring from `gh auth token`); `glab`'s keyring login needs nothing unset. Git credential helpers too: the worker's config names none, but your `~/.gitconfig` and the system one are readable, and a helper answers when run directly.
 - twg's login in `~/.config/twg`: the empty `TWG_CONFIG_DIR` only points twg elsewhere. Its encrypted storage, keyed from your OS keychain, is untried with the empty dir; `doctor` warns.
 - Your ssh keys and agent: no `SSH_AUTH_SOCK`, but the socket can be found (`launchctl getenv SSH_AUTH_SOCK` on macOS). On [Bitbucket](../config/sources.md#bitbucket-and-jira) those keys push, so a worker reading `~/.ssh` can push as you.
