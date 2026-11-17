@@ -2,7 +2,6 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printStatus } from '#cli/commands/schedule'
@@ -93,6 +92,18 @@ vi.mock('node:timers/promises', async (original) => {
     ...timers,
     setTimeout: (ms?: number, value?: unknown, options?: object) =>
       timers.setTimeout(clock.fast && (ms ?? 0) > 1000 ? 20 : ms, value, options),
+  }
+})
+/** How many times the daemon's loop asked whether a window run is due. */
+const windowChecks = vi.hoisted(() => ({ count: 0 }))
+vi.mock('#quota/window', async (original) => {
+  const real = await original<typeof import('#quota/window')>()
+  return {
+    ...real,
+    windowRun: (...args: Parameters<typeof real.windowRun>) => {
+      windowChecks.count++
+      return real.windowRun(...args)
+    },
   }
 })
 // The daemon's remote server, on a free port.
@@ -187,9 +198,11 @@ describe('awaywork watch', () => {
     await watchUntil(path, 'Report: ')
     await rm(watchLogPath)
     const again = new AbortController()
+    windowChecks.count = 0
+    clock.fast = true
     const done = watch(path, again.signal)
-    await vi.waitFor(async () => expect(await daemonLog()).toContain('awaywork watch started'))
-    await sleep(200)
+    await vi.waitFor(() => expect(windowChecks.count).toBeGreaterThan(1))
+    clock.fast = false
     again.abort()
     await done
     expect(await daemonLog()).not.toContain('window run')
@@ -198,7 +211,7 @@ describe('awaywork watch', () => {
     expect(await watchUntil(path, 'Report: ')).toContain('window run')
   })
 
-  it('starts the window run again after a restart that stopped it', async () => {
+  async function queuedChore() {
     const path = await config()
     const dir = dirname(path)
     workers.origin = join(dir, 'origin')
@@ -223,6 +236,11 @@ queue:
   - { skill: plan, source: chores }
 `,
     )
+    return path
+  }
+
+  it('starts the window run again after a restart that stopped it', async () => {
+    const path = await queuedChore()
     Object.assign(workers, { ran: [], ms: 5000, gate: undefined })
     const stop = new AbortController()
     const done = watch(path, stop.signal)
@@ -236,6 +254,28 @@ queue:
     expect(await watchUntil(path, 'Report: ')).toContain('window run')
     expect(workers.ran).toEqual(['ch-1', 'ch-1'])
     expect(existsSync(windowEndPath)).toBe(true)
+  }, 30_000)
+
+  it('starts the window run again after a restart that stopped it before its unit began', async () => {
+    const path = await queuedChore()
+    let open = () => {}
+    Object.assign(workers, {
+      ran: [],
+      ms: 0,
+      gate: new Promise<void>((resolve) => (open = resolve)),
+    })
+    const stop = new AbortController()
+    const done = watch(path, stop.signal)
+    await vi.waitFor(() => expect(workers.gate).toBeUndefined(), { timeout: 10_000 })
+    stop.abort()
+    open()
+    await done
+    expect(workers.ran).toEqual([])
+    expect(existsSync(windowEndPath)).toBe(false)
+
+    await rm(watchLogPath)
+    expect(await watchUntil(path, 'Report: ')).toContain('window run')
+    expect(workers.ran).toEqual(['ch-1'])
   }, 30_000)
 
   it('logs a config that fails to load and keeps going with nothing to do', async () => {

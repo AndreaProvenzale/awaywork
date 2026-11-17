@@ -424,6 +424,7 @@ export function runStarted(r: Pick<DaemonRun, 'trigger' | 'runId' | 'until' | 's
 
 const interrupted = (r: UnitResult) =>
   r.status === 'stopped: aborted' ||
+  (r.status === 'skipped' && r.reason === 'interrupted') ||
   (r.outcome?.kind === 'none' && r.outcome.reason === 'interrupted')
 
 /** One of the daemon's runs, its full output in `run.log` in its run dir; never throws. True when it ended on its own, not stopped or crashed. */
