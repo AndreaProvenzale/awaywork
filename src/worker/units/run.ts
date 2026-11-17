@@ -132,5 +132,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   }
 
   const { runId, dryRun, plan } = input
-  return { runId, dryRun, startedAt, finishedAt: new Date(), plan, results, quotas }
+  const models = Object.fromEntries(
+    Object.entries(allowances).flatMap(([id, a]) =>
+      a.kind === 'quota' && a.models ? [[id, a.models]] : [],
+    ),
+  )
+  const finishedAt = new Date()
+  const scoped = Object.keys(models).length > 0 && { models }
+  return { runId, dryRun, startedAt, finishedAt, plan, results, quotas, ...scoped }
 }

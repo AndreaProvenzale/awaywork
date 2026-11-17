@@ -294,11 +294,13 @@ async function gated(
     items = async () => [issue(1)],
     fallback,
     provider,
+    claude,
   }: {
     script?: string
     items?: (origin: string) => Promise<Item[]>
     fallback?: Record<string, number>
     provider?: Partial<Provider>
+    claude?: Allowance
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-gated-'))
@@ -314,9 +316,11 @@ async function gated(
   const allowances = Object.fromEntries(
     ids.map((id): [string, Allowance] => [
       id,
-      fallback
-        ? { kind: 'fallback', units: fallback[id] ?? 0, turns: 60, reason: 'no quota reading' }
-        : allowance(config.budget, null, 0, config.windows),
+      claude && id === 'claude'
+        ? claude
+        : fallback
+          ? { kind: 'fallback', units: fallback[id] ?? 0, turns: 60, reason: 'no quota reading' }
+          : allowance(config.budget, null, 0, config.windows),
     ]),
   )
   const plan = planRun({
@@ -325,11 +329,13 @@ async function gated(
     allowances,
   })
   const runs: string[] = []
+  const models: string[] = []
   const worker = (id: string): Provider => ({
     ...fakeProvider(id),
     ...provider,
     async *run(job) {
       runs.push(`${id}:${job.unit.skill}:${job.unit.items[0]?.id}`)
+      models.push(`${job.unit.skill} ${job.model}`)
       const body = await act(job.dir, job.unit.skill, job.env)
       const text = typeof body === 'string' ? body : `${job.unit.skill}\n\nDone.`
       // A gate's judge only reports.
@@ -356,6 +362,7 @@ async function gated(
     origin,
     opened,
     runs,
+    models,
     outcomes: report.results.map((r) => r.outcome),
     statuses: report.results.map((r) => [r.planned.unit.id, r.status]),
   }
@@ -646,6 +653,30 @@ it("hides a slice's config that git ignores from its judge without firing the ga
   )
   expect(seen).toEqual({ implement: undefined, judge: undefined })
   expect(outcomes[0]).not.toHaveProperty('draft')
+})
+
+it("runs a judge on the rule's second model when the first is past its own ceiling", async () => {
+  const { models } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr, model: { claude: [sonnet, opus] } }]`,
+    judgedBy(verdict('clear')),
+    {
+      claude: {
+        kind: 'quota',
+        window: 'seven_day',
+        used: 0.36,
+        resetsAt: 2e9,
+        ceiling: 0.8,
+        runs: 3,
+        limits: [{ name: 'reserve', value: 0.8 }],
+        models: {
+          sonnet: [
+            { name: 'seven_day_sonnet', span: 'long', used: 0.95, resetsAt: 2e9, scoped: true },
+          ],
+        },
+      },
+    },
+  )
+  expect(models).toEqual(['implement opus', 'judge opus'])
 })
 
 it("fires the gate when its judge can't run", async () => {

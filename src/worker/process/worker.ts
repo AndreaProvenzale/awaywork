@@ -1,6 +1,6 @@
 import { asWorker } from '#core/isolation'
 import type { Job, Provider, Quota } from '#core/types'
-import { type Allowance, pct } from '#quota/budget'
+import { type Allowance, pct, scopedOver } from '#quota/budget'
 import { startWatchdog, type Watchdog } from './watchdog'
 
 export type WorkerStatus =
@@ -106,6 +106,8 @@ function overLimit(
       status: 'stopped: quota',
       reason: `${a.window} at ${pct(long.used)}, ceiling ${pct(a.ceiling)}`,
     }
+  const scoped = scopedOver(a, quota.windows)
+  if (scoped) return { status: 'stopped: quota', reason: scoped }
   const short = quota.windows.find((w) => w.span === 'short')
   if (short && a.session && short.used >= a.session.stopAt)
     return {

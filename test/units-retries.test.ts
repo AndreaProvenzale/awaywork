@@ -23,13 +23,37 @@ import { git, quota, reset, worker } from './fakes/units'
 
 const retryRule = '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] } }'
 
+const sonnetWeek = {
+  name: 'seven_day_sonnet',
+  span: 'long',
+  used: 0.95,
+  resetsAt: reset,
+  scoped: true,
+} as const
+/** Room on the week every model counts, under a ceiling of 80% on a model's own. */
+const roomy: Allowance = {
+  kind: 'quota',
+  window: 'seven_day',
+  used: 0.36,
+  resetsAt: reset,
+  ceiling: 0.8,
+  runs: 3,
+  limits: [
+    { name: 'reserve', value: 0.9 },
+    { name: 'pacing', value: 0.8 },
+  ],
+}
+
 /**
  * Runs one PR's rule with a provider that does `act(skill, model)`: a failing run first leaves partial
- * work behind (`burn` also uses quota), and `leave` succeeds but leaves an uncommitted file and an extra `out/` file;
+ * work behind (`burn` also uses quota), `full` fills sonnet's own week, and `leave` succeeds but leaves an uncommitted file and an extra `out/` file;
  * `swap` fails with a report, its `.away/out` swapped for a symlink.
  */
 async function retried(
-  act: (skill: string, model?: string) => 'ok' | 'fail' | 'burn' | 'quota' | 'leave' | 'swap',
+  act: (
+    skill: string,
+    model?: string,
+  ) => 'ok' | 'fail' | 'burn' | 'quota' | 'full' | 'leave' | 'swap',
   rule = retryRule,
   claude?: Allowance,
   repos = '',
@@ -48,6 +72,7 @@ async function retried(
     },
   }
   const tried: string[] = []
+  const logs: string[] = []
   // What each run found in the clone: the files a failing run leaves, and the PR body.
   const found: string[] = []
   const tracked: string[] = []
@@ -98,6 +123,10 @@ async function retried(
         yield { type: 'quota', quota: quota(0.99) }
         return
       }
+      if (does === 'full') {
+        yield { type: 'quota', quota: { windows: [...quota(0.4).windows, sonnetWeek] } }
+        return
+      }
       yield* worker.run(job, new AbortController().signal)
     },
   }
@@ -128,20 +157,22 @@ ${withRepos(repos)}
     providers: { claude: flaky },
     sources: { github: fakeSource() as Source },
     forge,
-    ctx: { env: { PATH: '/bin' }, log: () => {} },
+    ctx: { env: { PATH: '/bin' }, log: (line) => logs.push(line) },
     watch: () => ({ stop: async () => {} }),
     shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
   const failed = recordAttempts({}, report)['github:acme/api#1']?.failed
-  return { tried, found, tracked, report, failed, units: join(runDir, 'units', 'acme-api-1') }
+  const units = join(runDir, 'units', 'acme-api-1')
+  return { tried, logs, found, tracked, report, failed, units }
 }
 
 it('retries a failed step once on the next model', async () => {
-  const { tried, report, failed } = await retried((_, model) =>
+  const { tried, logs, report, failed } = await retried((_, model) =>
     model === 'sonnet' ? 'fail' : 'ok',
   )
   expect(tried).toEqual(['fix sonnet', 'fix opus'])
+  expect(logs).toContain('acme-api-1: failed, retrying on opus')
   expect(report.results.map((u) => [u.step, u.status, u.retried, u.outcome?.kind])).toEqual([
     ['1-fix', 'failed', true, undefined],
     ['2-fix', 'done', undefined, 'pr'],
@@ -316,4 +347,75 @@ it('retries a step without checking its when again, keeping its when.log', async
     true,
     true,
   ])
+})
+
+it("retries a step stopped on its model's own window on the second model, where the next step starts too", async () => {
+  const { tried, report } = await retried(
+    (_, model) => (model === 'sonnet' ? 'full' : 'ok'),
+    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] }, then: review }',
+    roomy,
+  )
+  expect(tried).toEqual(['fix sonnet', 'fix opus', 'review opus'])
+  expect(report.results.map((u) => [u.status, u.retried, u.reason])).toEqual([
+    ['stopped: quota', true, 'seven_day_sonnet at 95%, ceiling 80%'],
+    ['done', undefined, undefined],
+    ['done', undefined, undefined],
+  ])
+  expect(formatReport(report)).toContain(
+    '- claude: seven_day 36% to 45%, ceiling 80%; seven_day_sonnet (sonnet) 95%, ceiling 80%',
+  )
+})
+
+it('starts on the second model when the first is already past its own ceiling', async () => {
+  const { tried, report } = await retried(() => 'ok', retryRule, {
+    ...roomy,
+    models: { sonnet: [sonnetWeek] },
+  })
+  expect(tried).toEqual(['fix opus'])
+  expect(report.results.map((u) => [u.status, u.retried])).toEqual([['done', undefined]])
+})
+
+it('passes the provider over when its only model is past its own ceiling', async () => {
+  const { tried, report } = await retried(
+    () => 'ok',
+    '{ skill: fix, where: { checks: failing }, model: { claude: sonnet } }',
+    { ...roomy, models: { sonnet: [sonnetWeek] } },
+  )
+  expect(tried).toEqual([])
+  expect(report.results.map((u) => [u.status, u.reason])).toEqual([
+    [
+      'skipped',
+      'no provider left: claude on sonnet at its ceiling (seven_day_sonnet at 95%, ceiling 80%)',
+    ],
+  ])
+})
+
+it("ends a single model's stop on its own window as stopped, with no retry", async () => {
+  const { tried, logs, report } = await retried(
+    () => 'full',
+    '{ skill: fix, where: { checks: failing }, model: { claude: sonnet }, then: review }',
+    roomy,
+  )
+  expect(tried).toEqual(['fix sonnet'])
+  expect(report.results.map((u) => [u.status, u.retried, u.reason])).toEqual([
+    ['stopped: quota', undefined, 'seven_day_sonnet at 95%, ceiling 80%'],
+    ['skipped', undefined, 'acme-api-1 stopped: quota'],
+  ])
+  expect(logs.join('\n')).not.toContain('retrying')
+})
+
+it("names the stop, not a failure, when the second model's own window is full too", async () => {
+  const opusWeek = { ...sonnetWeek, name: 'seven_day_opus' }
+  const { tried, logs, report } = await retried(
+    () => 'full',
+    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] }, then: review }',
+    { ...roomy, models: { opus: [opusWeek] } },
+  )
+  expect(tried).toEqual(['fix sonnet'])
+  const why = 'no provider left: claude on opus at its ceiling (seven_day_opus at 95%, ceiling 80%)'
+  expect(report.results.map((u) => [u.status, u.reason])).toEqual([
+    ['stopped: quota', 'seven_day_sonnet at 95%, ceiling 80%'],
+    ['skipped', `acme-api-1 stopped: quota, not retried: ${why}`],
+  ])
+  expect(logs.join('\n')).not.toContain('retrying')
 })

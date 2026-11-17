@@ -187,6 +187,7 @@ What real runs showed. The prototype was a private set of scheduled GitHub Actio
   Identical to `/usage` on the same machine at the same moment for those two windows. A worker's own stream carries it after each response.
 
 - A model's own weekly limit shows only in that model's turns. On Claude Code 2.1.326, `/usage` listed `Current week (Fable): 62%` beside `Current week (all models): 64%`; a Haiku turn's `unifiedWindows` had only `five_hour` and `seven_day`, and a Fable turn's added `seven_day_overage_included` at 0.62. [V, tested] That window is the Fable week. [I, from the matching value] So the Haiku probe can't read it: a worker on Fable reads it from its first response, and a one-turn Fable probe cost $0.11 list. [V, tested]
+- Mythos, Fable with fewer restrictions, isn't on this account. It likely has its own week too, maybe the same `seven_day_overage_included`; any `seven_day_<x>` is read as a model's own week, so either way a Mythos worker would stop on it. [I]
 
 - OAuth-only MCP servers (claude.ai connectors) don't work with a setup-token; REST with a personal token, or an MCP server with a bearer key, does. [V, prototype]
 

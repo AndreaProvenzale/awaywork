@@ -11,7 +11,8 @@ if (args.includes('--version')) {
 } else if (args[0] === 'auth') {
   console.log(process.env.FAKE_CLAUDE_AUTH ?? '{"loggedIn":false,"authMethod":"none"}')
 } else {
-  const name = args.includes('claude-haiku-4-5-20251001') ? 'probe' : 'max-turns'
+  const models = { 'claude-haiku-4-5-20251001': 'probe', 'claude-fable-5-2': 'fable' }
+  const name = models[args[args.indexOf('--model') + 1]] ?? 'max-turns'
   process.stdout.write(readFileSync(new URL(`../fixtures/claude/${name}.jsonl`, import.meta.url)))
   if (process.env.FAKE_CLAUDE_HANG) setTimeout(() => {}, 60_000)
 }

@@ -139,7 +139,8 @@ Units run in the source's order, newest first for GitHub, so with little quota t
 A step that fails on `sonnet` (a failed turn or the turn cap) runs once more, right away, on `opus`: in a one-step rule and in each step of a [chain](./chains.md#then), where a step can bring its own pair. Details:
 
 - The retry starts from the clone as the failed step found it, its commits, edits and `.away/out/` changes dropped (gitignored files stay), on the same provider, without rechecking [`when`](./chains.md#when) or [`quota`](./chains.md#quota).
-- Only a failure retries: not a quota stop, the time limit or Ctrl-C. No budget left, and the failure stands.
+- Only a failure retries, or a stop on `sonnet`'s own [weekly limit](../how-it-works.md#budget): not any other quota stop, the time limit or Ctrl-C. No budget left, and the failure stands.
+- Once `sonnet`'s own limit is full, later steps start on `opus` right away.
 - Both attempts show in the report and cost budget. For [giving up](../how-it-works.md#units) on an item the retry counts, unless a quota, session or window stop cut it short. `notify` hears only the retry.
 
 ## `on_done`
