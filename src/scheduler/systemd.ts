@@ -81,8 +81,7 @@ export function parseService(text: string): Schedule {
 }
 
 export function service(s: Schedule, profile = DEFAULT_PROFILE): string {
-  const profileEnv =
-    profile === DEFAULT_PROFILE ? '' : `Environment=${quote(`AWAYWORK_PROFILE=${profile}`)}\n`
+  const profileEnv = `Environment=${quote(`AWAYWORK_PROFILE=${profile}`)}\n`
   return `[Unit]
 Description=awaywork watch
 

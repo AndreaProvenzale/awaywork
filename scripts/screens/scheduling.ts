@@ -170,7 +170,7 @@ function scheduleProfileStatus(): string {
     new Date('2026-10-25T17:28:00Z'),
   )
   return command(
-    'awaywork switch work && awaywork schedule status',
+    'AWAYWORK_PROFILE=work awaywork schedule status',
     [...profileLines('work'), ...jobLines('launchd', job), ...daemon]
       .join('\n')
       .replace(watchLogPath, `${stateDir}/profiles/work/watch.log`),

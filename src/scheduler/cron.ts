@@ -45,7 +45,7 @@ export function cron(run: Exec, profile = DEFAULT_PROFILE): Scheduler {
 
 export function cronLines(s: Schedule, profile = DEFAULT_PROFILE): string[] {
   const q = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`.replace(/%/g, '\\%')
-  const command = `PATH=${q(s.path)} ${profile === DEFAULT_PROFILE ? '' : `AWAYWORK_PROFILE=${profile} `}${s.command.map(q).join(' ')} > /dev/null 2>> ${q(s.log)} &`
+  const command = `PATH=${q(s.path)} AWAYWORK_PROFILE=${profile} ${s.command.map(q).join(' ')} > /dev/null 2>> ${q(s.log)} &`
   return ['@reboot', '*/5 * * * *'].map((when) => `${when} ${command} ${tagOf(profile)}`)
 }
 

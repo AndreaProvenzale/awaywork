@@ -113,11 +113,11 @@ awaywork switch
 `switch work` goes back to a registered profile, `switch default` to the usual `~/.config/awaywork/config.yml`. The registry is `~/.config/awaywork/profiles.yml`, a `current:` and a `profiles:` map of names to absolute config paths; edit it to rename or drop one.
 
 - **Config:** `--config` and `AWAYWORK_CONFIG` still win over the profile's.
-- **Secrets:** only the profile's `.env` loads, next to its config. Keep it out of git: `.env` in the config repo's `.gitignore`.
+- **Secrets:** only the profile's `.env` loads, next to its config. Keep it out of git: `.env` in the config repo's `.gitignore`; `secret` warns when it isn't.
 - **State:** runs, attempts, skips and the daemon's lock and log live in `~/.local/state/awaywork/profiles/<name>/`; `default` keeps `~/.local/state/awaywork/`. The Codex login lock stays shared, as `~/.codex` is.
 - **Per shell:** `AWAYWORK_PROFILE=work awaywork plan` ignores the current profile for that call, and `awaywork switch` says when it's set. What `watch` starts stays on its profile even if you switch meanwhile.
 
-`switch` runs on this machine, never on an `AWAYWORK_REMOTE` box.
+`switch` runs on this machine, never on an `AWAYWORK_REMOTE` box. For one daemon per profile, see [two profiles on one machine](../scheduling/machine.md#two-profiles-on-one-machine).
 
 ## Old runs
 

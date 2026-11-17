@@ -1,4 +1,4 @@
-$ awaywork switch work && awaywork schedule status
+$ AWAYWORK_PROFILE=work awaywork schedule status
 Profile: work
 Scheduled with launchd, keeping awaywork watch running
 Config: ~/acme/awaywork/developer.yml

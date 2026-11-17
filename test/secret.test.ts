@@ -65,9 +65,11 @@ describe('awaywork secret', () => {
     await execa('git', ['init', '-q'], { cwd: repo })
     const file = join(repo, 'team', '.env')
     await mkdir(join(repo, 'team'))
-    const warning = `${file} is in a git work tree and not ignored; add it to .gitignore before committing`
+    const warning = `${file} is in a git work tree and git doesn't ignore it; keep it out of commits (.gitignore, or git rm --cached)`
     expect(await secretFrom('T', piped('a'), file)).toBe(`Saved T in ${file}\n${warning}`)
     await writeFile(join(repo, '.gitignore'), '.env\n')
     expect(await secretFrom('T', piped('a'), file)).toBe(`Saved T in ${file}`)
+    await execa('git', ['add', '-f', file], { cwd: repo })
+    expect(await secretFrom('T', piped('a'), file)).toBe(`Saved T in ${file}\n${warning}`)
   })
 })

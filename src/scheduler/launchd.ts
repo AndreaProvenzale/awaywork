@@ -79,7 +79,7 @@ export function plist(s: Schedule, profile = DEFAULT_PROFILE): string {
 ${s.command.map((arg) => `    ${str(arg)}`).join('\n')}
   </array>
   <key>EnvironmentVariables</key>
-  <dict><key>PATH</key>${str(s.path)}${profile === DEFAULT_PROFILE ? '' : `<key>AWAYWORK_PROFILE</key>${str(profile)}`}</dict>
+  <dict><key>PATH</key>${str(s.path)}<key>AWAYWORK_PROFILE</key>${str(profile)}</dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ExitTimeOut</key><integer>120</integer>

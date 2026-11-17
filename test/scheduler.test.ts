@@ -218,7 +218,7 @@ it("adds tagged crontab lines at boot and every 5 minutes, keeps the user's own 
   const scheduler = cron(cronTab.run)
   await scheduler.install(schedule)
   await scheduler.install(schedule)
-  const command = `PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/away work/index.js' 'watch' '--config' '/h/it'\\''s.yml' > /dev/null 2>> '/h/state/schedule.log' & # awaywork`
+  const command = `PATH='/opt/bin:/usr/bin' AWAYWORK_PROFILE=default '/opt/node' '/opt/away work/index.js' 'watch' '--config' '/h/it'\\''s.yml' > /dev/null 2>> '/h/state/schedule.log' & # awaywork`
   expect(cronLines(schedule)).toEqual([`@reboot ${command}`, `*/5 * * * * ${command}`])
   expect(cronTab.crontab()).toBe(
     `MAILTO=me\n\n0 9 * * * backup\n${cronLines(schedule).join('\n')}\n`,
@@ -1041,11 +1041,11 @@ describe('a named profile', () => {
     expect(await scheduler.remove()).toBe(true)
   })
 
-  it('leaves the default profile’s job without the variable', () => {
+  it('pins the default profile too, under the names it always had', () => {
     expect(plist(schedule)).toContain('<key>Label</key><string>awaywork</string>')
-    expect(plist(schedule)).not.toContain('AWAYWORK_PROFILE')
-    expect(service(schedule)).not.toContain('AWAYWORK_PROFILE')
-    expect(cronLines(schedule).join('')).not.toContain('AWAYWORK_PROFILE')
+    expect(plist(schedule)).toContain('<key>AWAYWORK_PROFILE</key><string>default</string>')
+    expect(service(schedule)).toContain('Environment="AWAYWORK_PROFILE=default"')
+    expect(cronLines(schedule).join('')).toContain('AWAYWORK_PROFILE=default ')
   })
 
   it('gets its own systemd unit, enabled and removed apart from the default one', async () => {

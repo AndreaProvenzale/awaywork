@@ -46,7 +46,7 @@ export async function secretFrom(
     lines.push(`Your shell sets ${name} too, and its value wins until you unset it`)
   if (await trackable(file))
     lines.push(
-      `${file} is in a git work tree and not ignored; add it to .gitignore before committing`,
+      `${file} is in a git work tree and git doesn't ignore it; keep it out of commits (.gitignore, or git rm --cached)`,
     )
   return lines.join('\n')
 }
