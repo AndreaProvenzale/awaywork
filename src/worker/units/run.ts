@@ -4,6 +4,7 @@ import type { Item, Quota } from '#core/types'
 import { namesUnit, type PlannedUnit, type RunPlan } from '#plan/foreman'
 import type { RunReport, UnitResult } from '#posts/report'
 import type { Store } from '#posts/store'
+import { bounded } from '#util/text'
 import { runChain } from '#worker/chain/run'
 import { configSecrets } from '#worker/clone/context'
 import type { Publisher } from '#worker/deliver/slice'
@@ -120,6 +121,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           url: lead.outcome.url,
           head: lead.outcome.head,
         }
+      for (const r of done) {
+        if (r.reason) r.reason = bounded(r.reason)
+        if (r.loop) r.loop = bounded(r.loop)
+      }
       results.push(...done)
       await notifyUnits(
         run,

@@ -22,6 +22,7 @@ import { asWorker, contain, containerize, isolate, lostToWorker } from '#core/is
 import { launch } from '#core/launch'
 import { builtinSkills } from '#core/skills'
 import type { Forge, Item, Login, Provider, Source } from '#core/types'
+import { reportJson } from '#format/json'
 import { formatPlan } from '#format/plan'
 import { summarize } from '#format/report'
 import { type Attempts, recordAttempts } from '#plan/attempts'
@@ -563,6 +564,23 @@ it('ends the chain after a report step that wrote no report, and reports nothing
     ['acme-api-1-review', 'skipped', 'acme-api-1 wrote no report'],
   ])
   expect(opened).toEqual([])
+})
+
+it('stores a bounded error for a unit that failed with megabytes of it, whatever threw it', async () => {
+  const stderr = `chmod: ${'x'.repeat(200_000)}\n`.repeat(10)
+  const provider: Provider = {
+    ...worker(),
+    // biome-ignore lint/correctness/useYield: it fails before it says anything
+    async *run() {
+      throw new Error(stderr)
+    },
+  }
+  const { report } = await run('queue: [{ skill: implement }]\n', [issue(1)], provider)
+  const [result] = report.results
+  expect(result?.status).toBe('error')
+  expect(result?.reason?.endsWith('…\n(and 6 more)')).toBe(true)
+  expect(result?.reason?.length).toBeLessThan(5_100)
+  expect(reportJson(report).length).toBeLessThan(50_000)
 })
 
 it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {
