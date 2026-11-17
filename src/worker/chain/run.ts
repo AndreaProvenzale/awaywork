@@ -117,6 +117,7 @@ async function publishChain(run: Run, cs: ChainState) {
       if (cs.asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
         lead.outcome = { kind: 'none', reason: 'asked questions' }
     } catch (e) {
+      input.ctx.log(`${lead.planned.unit.id}: publish error: ${(e as Error).stack}`)
       Object.assign(lead, { status: 'error', reason: (e as Error).message })
     } finally {
       if (!lostToWorker(dir)) await copyOut(join(dir, WORK_DIR, 'out'), out).catch(() => {})

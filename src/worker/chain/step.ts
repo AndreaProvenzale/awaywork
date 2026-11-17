@@ -543,6 +543,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
         await handOff(dir, start, unitDir)
         if (!cs.retrying) cs.previous = { skill: unit.skill, out: join(unitDir, 'out') }
       } catch (e) {
+        input.ctx.log(`${unit.id}: hand-off error: ${(e as Error).stack}`)
         cs.retrying?.keep()
         cs.retrying = undefined
         cs.ended ??= { reason: `${unit.id} error: ${(e as Error).message}` }

@@ -228,7 +228,7 @@ async function run(
     r.status,
     r.outcome ?? r.made ?? r.reason,
   ])
-  return { ...env, plan, report, rows, logged }
+  return { ...env, plan, report, rows, logged, runDir: join(root, 'run') }
 }
 
 it('runs a chain with a loop in one clone and opens one draft PR with every step in it', async () => {
@@ -575,12 +575,15 @@ it('stores a bounded error for a unit that failed with megabytes of it, whatever
       throw new Error(stderr)
     },
   }
-  const { report } = await run('queue: [{ skill: implement }]\n', [issue(1)], provider)
+  const { report, runDir } = await run('queue: [{ skill: implement }]\n', [issue(1)], provider)
   const [result] = report.results
   expect(result?.status).toBe('error')
-  expect(result?.reason?.endsWith('…\n(and 6 more)')).toBe(true)
+  expect(result?.reason?.endsWith('…\n(and 5 more)')).toBe(true)
   expect(result?.reason?.length).toBeLessThan(5_100)
   expect(reportJson(report).length).toBeLessThan(50_000)
+  expect((await readFile(join(runDir, result?.files?.log ?? ''), 'utf8')).length).toBeGreaterThan(
+    stderr.length,
+  )
 })
 
 it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {
