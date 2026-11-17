@@ -125,6 +125,7 @@ awaywork run --repo 'acme/*'   # only units in matching repos
 awaywork run --rule 4          # only units of queue rule #4
 awaywork report --list         # recent runs, to pick an id for report <id>
 awaywork report --unit 2       # one unit in full: its files, PR body or report
+awaywork report --unit 2 --log # its worker.log; --diff its diff
 ```
 
 `--unit` takes the item as `plan` shows it (`api#1`), its key (`acme/api#1`, `github:acme/api#1`) or the unit id (`acme-api-1`), in any case. It holds your terminal until the unit ends, hours sometimes; `--detach` hands it back at once, the output going to the run's `run.log`:
@@ -249,6 +250,7 @@ Fix the billing page build
 
 Also:
 
+- `report --unit <n> --log` prints the `worker.log` that `l` pages, `--diff` the diff `d` does; a unit without one exits 1 with `unit 2 of run 20261019-220012 left no diff`.
 - `report --skipped [kind]` lists the skipped items as `plan --skipped` does; `report --json` prints the run as [JSON](./agents.md).
 - `report --list` lists recent runs with their units, PRs and reports, and `report <id>` prints one; inside a control repo they include the runs GitHub Actions [uploaded](./scheduling/actions.md#reports-from-the-runner).
 - During a run there's no report yet: `report` lists the steps done, the one working and its `worker.log` path, to `tail -f`.

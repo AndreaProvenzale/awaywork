@@ -8,6 +8,7 @@ import { formatWhy } from '#format/why'
 import type { RunPlan } from '#plan/foreman'
 import type { Step } from '#plan/probe'
 import { chains, needsYouOn, quotaLines, type ReportedSkip, type RunReport } from '#posts/report'
+import { parseJson } from '#util/json'
 
 /** What a key does on a row. */
 export type Action = 'read' | 'open' | 'log' | 'diff' | 'skip' | 'approve'
@@ -265,6 +266,24 @@ export function runTriage(
     rows,
     footerKeys.map(([, action]) => action),
   )
+}
+
+/** A view as `--screen` prints it for a laptop to browse: `open` an array, with the run whose units `l` and `d` name. */
+type ScreenJson = Omit<State, 'open'> & { open: string[]; run?: string }
+
+export const screenJson = (s: State, run?: string): string =>
+  JSON.stringify({ ...s, open: [...s.open], run } satisfies ScreenJson)
+
+/** The view `--screen` printed, on a terminal `rows` high; undefined when `text` is something else. */
+export function fromScreenJson(
+  text: string,
+  rows: number,
+): { state: State; run?: string } | undefined {
+  const parsed = parseJson<ScreenJson>(text)
+  if (!Array.isArray(parsed?.sections)) return
+  const { open, run, ...state } = parsed
+  // Printed with no terminal: it scrolls here.
+  return { state: { ...state, open: new Set(open), top: 0, rows }, run }
 }
 
 interface Visible {

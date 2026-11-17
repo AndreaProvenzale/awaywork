@@ -309,6 +309,9 @@ Options:
                     "no_repo", "unlisted_repo", "invalid_branch",
                     "refused_delivery", "draft_moved", "continue_cap",
                     "continues_later", "running")
+  --log             with --unit: print the worker.log of its chain's last step
+  --diff            with --unit: print its diff, the commits it published, else
+                    the step's own
   -h, --help        display help for command
 ```
 

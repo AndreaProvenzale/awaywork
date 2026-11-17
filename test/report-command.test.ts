@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printReport } from '#cli/commands/run'
+import { fromScreenJson } from '#cli/tui/triage'
 import { remoteDir, runsDir } from '#config/paths'
 import { reportJson } from '#format/json'
 import type { RunReport, StepFiles } from '#posts/report'
@@ -266,6 +267,72 @@ describe('report command', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it("prints a unit's worker.log or diff, saying so when it left none or the name fits two", async () => {
+    const unit = (n: number, repo: string, files: StepFiles) => ({
+      planned: {
+        unit: { id: `u${n}`, skill: 'fix', items: [{ ...githubPr(n), key: `${repo}#1` }] },
+      },
+      status: 'done',
+      outcome: { kind: 'none', reason: 'no commits' },
+      files,
+    })
+    const results = [
+      unit(1, 'acme/api', { log: 'units/u1/1-fix/worker.log', diff: 'units/u1/1-fix/diff.patch' }),
+      unit(2, 'other/api', { log: 'units/u2/1-fix/worker.log' }),
+    ]
+    const plan = { units: results.map((r) => r.planned), skipped: [] }
+    const id = '20261015-220000'
+    const run = { runId: id, plan, results } as unknown as RunReport
+    await writeFile(join(runsDir, id, 'report.json'), reportJson(run))
+    await mkdir(join(runsDir, id, 'units/u1/1-fix'), { recursive: true })
+    await writeFile(join(runsDir, id, 'units/u1/1-fix/worker.log'), 'the log')
+    await writeFile(join(runsDir, id, 'units/u1/1-fix/diff.patch'), 'the diff')
+    let written = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((s) => {
+      written += s
+      return true
+    })
+    const { err } = output()
+    const gh = await controlRepo([], '')
+
+    await printReport(id, false, gh, false, { unit: '1', log: true })
+    await printReport(id, false, gh, false, { unit: 'u1', diff: true })
+    expect(written).toBe('the logthe diff')
+    expect(process.exitCode).toBeUndefined()
+
+    await printReport(id, false, gh, false, { unit: '2', diff: true })
+    await printReport(id, false, gh, false, { unit: '2', log: true })
+    await printReport(id, false, gh, false, { unit: 'api#1', log: true })
+    expect(err).toEqual([
+      `unit 2 of run ${id} left no diff`,
+      `unit 2 of run ${id} left no worker.log`,
+      expect.stringMatching(/^"api#1" names 2 items; pick one:\n/),
+    ])
+    expect(written).toBe('the logthe diff')
+    expect(process.exitCode).toBe(1)
+  })
+
+  it("prints the view as JSON with --screen, a unit's files by its number for the laptop to fetch", async () => {
+    const planned = { unit: { id: 'acme-api-1', skill: 'fix', items: [githubPr(1)] } }
+    const files = { log: 'units/acme-api-1/1-fix/worker.log', diff: 'units/acme-api-1/x.patch' }
+    const result = { planned, status: 'done', outcome: { kind: 'none', reason: 'r' }, files }
+    const id = '20261015-220000'
+    const plan = { queue: [], units: [planned], allowances: {}, skipped: [] }
+    const run = { runId: id, startedAt: 0, finishedAt: 0, plan, results: [result], quotas: {} }
+    await writeFile(join(runsDir, id, 'report.json'), reportJson(run as unknown as RunReport))
+    await mkdir(join(runsDir, id, 'units/acme-api-1/1-fix'), { recursive: true })
+    await writeFile(join(runsDir, id, files.log), 'the log')
+    const { out } = output()
+    await printReport(undefined, false, await controlRepo([], ''), false, { screen: true })
+    const screen = fromScreenJson(out.join('\n'), 30)
+    expect(screen?.run).toBe(id)
+    const row = screen?.state.sections
+      .flatMap((s) => s.children ?? [])
+      .flatMap((g) => g.children ?? [])[0]
+    expect(row?.act).toMatchObject({ log: '1', read: expect.stringContaining('api#1') })
+    expect(row?.act?.diff).toBeUndefined()
+  })
+
   it('prints report.md for a run without report.json, which --unit needs', async () => {
     const { out, err } = output()
     await printReport('20261013-220000', false, await controlRepo([], ''))
@@ -347,7 +414,12 @@ describe('report command', () => {
       browse: async () => {},
       close: () => void err.push('closed'),
     }
-    const commands = { skip: async () => '', approve: async () => '' }
+    const commands = {
+      skip: async () => '',
+      approve: async () => '',
+      log: async () => '',
+      diff: async () => '',
+    }
     await printReport(undefined, false, run, false, { browse: { screen, commands } })
     expect(err).toEqual([
       'closed',

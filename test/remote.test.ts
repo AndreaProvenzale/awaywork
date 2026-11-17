@@ -9,7 +9,17 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runsDir } from '#config/paths'
-import { checkArgs, forward, remoteCall, servedRemotely, serveRemote, sshArgs } from '#run/remote'
+import {
+  captured,
+  checkArgs,
+  forward,
+  remoteCall,
+  remoteFor,
+  type Send,
+  servedRemotely,
+  serveRemote,
+  sshArgs,
+} from '#run/remote'
 
 vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
@@ -34,7 +44,11 @@ describe('the remote allowlist', () => {
       ['report', '--list'],
       ['report', '--skipped'],
       ['report', '--skipped=quota'],
+      ['report', '20261104-101500', '--screen'],
+      ['report', '20261104-101500', '--unit', '3', '--log'],
+      ['report', '--unit=3', '--diff'],
       ['plan', '--json'],
+      ['plan', '--repo', 'acme/*', '--screen'],
       ['plan', '--why', 'github:acme/api#5'],
       ['plan', '--why=-c'],
       ['plan', '--repo', 'acme/*', '--rule=2', '--rules'],
@@ -372,6 +386,25 @@ describe('the CLI forwarding to a remote', () => {
     const out = output()
     expect(await forward(['stats'], { url: `${url}/`, token: TOKEN })).toBe(2)
     expect(out).toEqual({ stdout: 'out\n', stderr: 'err\n' })
+  })
+
+  it('keeps the output instead of printing it, errors included, for the screen to browse', async () => {
+    const { url } = await serve('console.log("out"); console.error("err"); process.exit(2)')
+    const out = output()
+    const send = remoteFor(['stats'], { url, token: TOKEN }) as Send
+    expect(await captured(send, ['stats'])).toEqual({
+      stdout: 'out\n',
+      stderr: 'err\n',
+      code: 2,
+    })
+    expect(await captured(send, ['plan', '--config', 'x'])).toEqual({
+      stdout: '',
+      stderr: `AWAYWORK_REMOTE (${url}): refused --config\n`,
+      code: 1,
+    })
+    expect(out).toEqual({ stdout: '', stderr: '' })
+    expect(remoteFor(['init'], { url, token: TOKEN })).toBeUndefined()
+    expect(remoteFor(['plan'], { url })).toBeUndefined()
   })
 
   it('fails in one line naming AWAYWORK_REMOTE when the answer stops before an exit code', async () => {

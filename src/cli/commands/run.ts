@@ -10,7 +10,7 @@ import {
   openScreen,
   type Screen,
 } from '#cli/tui/browse'
-import { runTriage, type UnitFiles } from '#cli/tui/triage'
+import { runTriage, screenJson, type UnitFiles } from '#cli/tui/triage'
 import { ConfigError, configPath, loadConfig } from '#config/load'
 import { remoteDir, runLockPath, runsDir, watchLockPath } from '#config/paths'
 import { isolateFor } from '#core/isolation'
@@ -148,8 +148,21 @@ export function runCommand(program: Command): void {
         .choices(skipKinds)
         .conflicts(['list', 'json', 'unit']),
     )
+    .addOption(
+      new Option('--log', "with --unit: print the worker.log of its chain's last step").conflicts(
+        'diff',
+      ),
+    )
+    .option('--diff', "with --unit: print its diff, the commits it published, else the step's own")
+    .addOption(new Option('--screen').hideHelp().conflicts(['list', 'json', 'unit', 'skipped']))
     .action(async (id: string | undefined, opts: ReportOptions) => {
-      const browsing = interactive() && !opts.list && !opts.json && !opts.unit && !opts.skipped
+      if ((opts.log || opts.diff) && !opts.unit) {
+        console.error(`${opts.log ? '--log' : '--diff'} needs --unit <n|key>`)
+        process.exitCode = 1
+        return
+      }
+      const browsing =
+        interactive() && !opts.list && !opts.json && !opts.unit && !opts.skipped && !opts.screen
       const screen = browsing ? openScreen('Loading the report') : undefined
       try {
         await printReport(id, !!opts.list, exec, !!opts.json, {
@@ -175,6 +188,11 @@ type ReportOptions = {
   json?: boolean
   unit?: string
   skipped?: string | true
+  /** With `unit`, print the file it left instead. */
+  log?: boolean
+  diff?: boolean
+  /** Print the view as JSON, for a laptop to browse. */
+  screen?: boolean
   /** Browse the run on this screen, already open, instead of printing it. */
   browse?: { screen: Screen; commands: ItemCommands }
 }
@@ -198,12 +216,12 @@ export async function printReport(
   list: boolean,
   run: Exec = exec,
   json = false,
-  view: Pick<ReportOptions, 'unit' | 'skipped' | 'browse'> = {},
+  view: View = {},
 ) {
   const screen = view.browse?.screen
   // Kept off the screen: they go in the view's warnings, or out once it's closed.
   const held: string[] = []
-  const warn = (e: unknown) => (screen ? held.push(remoteWarning(e)) : warnRemote(e))
+  const warn = (e: unknown) => (screen || view.screen ? held.push(remoteWarning(e)) : warnRemote(e))
   const local = (await readdir(runsDir).catch(() => [])).sort()
   const uploaded = id && local.includes(id) ? [] : await remoteRuns(run, warn, screen?.progress)
   const runs: Run[] = [
@@ -287,11 +305,13 @@ function reflagged(text: string) {
   return reportJson(report, report.warnings)
 }
 
-/** A run from its report.json: the whole run, browsed or printed, one unit with the files it left, or its skipped items. */
+type View = Pick<ReportOptions, 'unit' | 'skipped' | 'log' | 'diff' | 'screen' | 'browse'>
+
+/** A run from its report.json: the whole run, browsed or printed, one unit with the files it left or one of them, or its skipped items. */
 async function printRun(
   dir: string,
   report: RunReport & { warnings?: string[] },
-  view: Pick<ReportOptions, 'unit' | 'skipped' | 'browse'>,
+  view: View,
   remote: boolean,
   held: string[] = [],
 ) {
@@ -299,13 +319,19 @@ async function printRun(
     return console.log(
       formatSkipped(report.plan.skipped, view.skipped === true ? undefined : view.skipped),
     )
-  if (!view.unit && view.browse) {
+  if (!view.unit && (view.browse || view.screen)) {
     const units = await Promise.all(
       chains(report).map((chain, i) => unitFiles(dir, { chain, n: i + 1 })),
     )
     const warnings = [...held, ...(report.warnings ?? [])]
-    const state = runTriage(report, warnings, units, process.stdout.rows, remote)
-    return view.browse.screen.browse(state, view.browse.commands)
+    // The laptop fetches a unit's files by its number.
+    const byNumber = (file: string | undefined, i: number) => file && `${i + 1}`
+    const files = view.screen
+      ? units.map((u, i) => ({ ...u, log: byNumber(u.log, i), diff: byNumber(u.diff, i) }))
+      : units
+    const state = runTriage(report, warnings, files, process.stdout.rows, remote)
+    if (view.screen) return console.log(screenJson(state, report.runId))
+    return view.browse?.screen.browse(state, view.browse.commands)
   }
   if (!view.unit) return console.log(formatRun(report, report.warnings, true))
   const named = findChains(report, view.unit)
@@ -320,7 +346,16 @@ async function printRun(
     process.exitCode = 1
     return
   }
-  console.log((await unitFiles(dir, found)).text)
+  const files = await unitFiles(dir, found)
+  const kind = view.log ? 'log' : view.diff ? 'diff' : undefined
+  if (!kind) return console.log(files.text)
+  const file = files[kind]
+  if (file) return void process.stdout.write(await readFile(file, 'utf8'))
+  const gone = remote ? '; a run fetched from GitHub keeps only its report' : ''
+  console.error(
+    `unit ${found.n} of run ${report.runId} left no ${kind === 'log' ? 'worker.log' : 'diff'}${gone}`,
+  )
+  process.exitCode = 1
 }
 
 /** A unit's `--unit` text, and the worker.log and diff it left that are still there. */

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { pagerCommand } from '#cli/tui/browse'
 import {
   clipLine,
+  fromScreenJson,
   type Loading,
   loading,
   loadingView,
@@ -12,6 +13,7 @@ import {
   resize,
   runTriage,
   type State,
+  screenJson,
   settle,
   tick,
   update,
@@ -443,6 +445,27 @@ describe('triage update', () => {
     for (const key of ['q', 'escape', 'ctrl-c'])
       expect(update(run(), key).effect).toEqual({ action: 'quit' })
     expect(update(help, 'ctrl-c').effect).toEqual({ action: 'quit' })
+  })
+})
+
+describe('screen JSON', () => {
+  it('carries a view to the laptop and back as it was, scrolled to the top, with the run', () => {
+    const plan = planTriage(acmePlan(), ['a warning'], 30)
+    const report = press(run(), 'right')
+    expect(fromScreenJson(screenJson(plan), 30)).toEqual({ state: plan })
+    expect(fromScreenJson(screenJson(report, '20261019-220000'), 30)).toEqual({
+      state: report,
+      run: '20261019-220000',
+    })
+    const scrolled = press(run(5), 'G')
+    expect(scrolled.top).toBeGreaterThan(0)
+    expect(fromScreenJson(screenJson(scrolled), 5)?.state).toEqual({ ...scrolled, top: 0 })
+    const boxed = { ...plan, rows: undefined as unknown as number }
+    const unsized = fromScreenJson(screenJson(boxed), 30)?.state as State
+    const brand = loading('brand', 'Planning')
+    expect(view(ready(brand, unsized), 100, 30)).toEqual(view(ready(brand, plan), 100, 30))
+    expect(fromScreenJson('# Awaywork 20261019-220000', 30)).toBeUndefined()
+    expect(fromScreenJson('{"error":"x"}', 30)).toBeUndefined()
   })
 })
 

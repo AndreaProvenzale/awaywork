@@ -23,15 +23,19 @@ import {
 /** A person at a terminal: stdin and stdout are TTYs and `CI` is unset. */
 export const interactive = () => !!process.stdin.isTTY && !!process.stdout.isTTY && !process.env.CI
 
-/** What `s` and `a` run: `awaywork skip` and `awaywork approve`, each resolving to its message. */
+/** What `s` and `a` run, `awaywork skip` and `awaywork approve`, each resolving to its message; and the texts `l` and `d` page. */
 export interface ItemCommands {
   skip(key: string): Promise<string>
   approve(key: string): Promise<string>
+  log(target: string): Promise<string>
+  diff(target: string): Promise<string>
 }
 
 export const itemCommands = (config: () => Promise<Config>): ItemCommands => ({
   skip: async (key) => skipItem(key, {}, Object.keys((await config()).sources)),
   approve: async (key) => approveItem(key, await config(), '', { ctx: quiet }),
+  log: (file) => readFile(file, 'utf8'),
+  diff: (file) => readFile(file, 'utf8'),
 })
 
 // A source's warnings would print over the screen.
@@ -112,19 +116,17 @@ export function openScreen(title: string): Screen {
     switch (effect.action) {
       case 'read':
         return page(now, effect.target)
-      case 'log':
-      case 'diff':
-        return page(now, await readFile(effect.target, 'utf8'))
       case 'open':
         await openUrl(effect.target)
         return { ...now, status: `opened ${effect.target}` }
-      default:
-        if (!commands) return now
-        return commands[effect.action](effect.target).then(
-          (message) => settle(now, effect, { ok: true, message }),
-          (e: Error) => settle(now, effect, { ok: false, message: e.message }),
-        )
     }
+    if (!commands) return now
+    if (effect.action === 'log' || effect.action === 'diff')
+      return page(now, await commands[effect.action](effect.target))
+    return commands[effect.action](effect.target).then(
+      (message) => settle(now, effect, { ok: true, message }),
+      (e: Error) => settle(now, effect, { ok: false, message: e.message }),
+    )
   }
 
   const quitLoading = () => {
