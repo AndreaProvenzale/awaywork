@@ -5,7 +5,14 @@ import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printStatus } from '#cli/commands/schedule'
-import { runLockPath, runsDir, watchLockPath, watchLogPath, watchStatePath } from '#config/paths'
+import {
+  runLockPath,
+  runsDir,
+  watchLockPath,
+  watchLogPath,
+  watchStatePath,
+  windowEndPath,
+} from '#config/paths'
 import type { Config } from '#config/schema'
 import { contained, isolateFor } from '#core/isolation'
 import type { Job } from '#core/types'
@@ -113,6 +120,7 @@ vi.mock('#config/paths', async (original) => {
     watchLockPath: `${state}/watch.lock`,
     watchStatePath: `${state}/watch.json`,
     watchLogPath: `${state}/watch.log`,
+    windowEndPath: `${state}/window-end.json`,
   }
 })
 
@@ -146,7 +154,7 @@ beforeEach(async () => {
   vi.spyOn(console, 'log').mockImplementation((...line) => void out.push(line.join(' ')))
   vi.stubEnv('GITHUB_OUTPUT', '')
   vi.stubEnv('RUNNER_ENVIRONMENT', '')
-  for (const file of [watchLogPath, watchLockPath, watchStatePath, runLockPath])
+  for (const file of [watchLogPath, watchLockPath, watchStatePath, runLockPath, windowEndPath])
     await rm(file, { force: true })
   lock.releaseMs = 0
 })
@@ -171,6 +179,21 @@ describe('awaywork watch', () => {
     expect(existsSync(runLockPath)).toBe(false)
     expect(existsSync(watchLockPath)).toBe(false)
     expect(existsSync(watchStatePath)).toBe(false)
+  })
+
+  it('starts no second window run after a restart inside the window, and one for a later window', async () => {
+    const path = await config()
+    await watchUntil(path, 'Report: ')
+    await rm(watchLogPath)
+    const again = new AbortController()
+    const done = watch(path, again.signal)
+    await vi.waitFor(async () => expect(await daemonLog()).toContain('awaywork watch started'))
+    again.abort()
+    await done
+    expect(await daemonLog()).not.toContain('window run')
+
+    await writeFile(windowEndPath, JSON.stringify(new Date(Date.now() - 3_600_000)))
+    expect(await watchUntil(path, 'Report: ')).toContain('window run')
   })
 
   it('logs a config that fails to load and keeps going with nothing to do', async () => {

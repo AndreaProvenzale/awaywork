@@ -11,6 +11,7 @@ import {
   watchLockPath,
   watchLogPath,
   watchStatePath,
+  windowEndPath,
 } from '#config/paths'
 import type { Config } from '#config/schema'
 import { isolateFor } from '#core/isolation'
@@ -207,7 +208,8 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
     })
 
   let failed: string | undefined
-  let lastEnd: Date | undefined
+  const saved = await readJson<string | undefined>(windowEndPath, undefined)
+  let lastEnd = saved ? new Date(saved) : undefined
   let pruned = 0
   let waiting = false
   const lockedOut = (what: string, holder: { pid: number; runId: string }, again: string) => {
@@ -346,6 +348,9 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
         else {
           waiting = false
           lastEnd = until
+          await writeFile(windowEndPath, JSON.stringify(until)).catch((e) =>
+            event(`couldn't save ${windowEndPath}: ${reason(e)}`),
+          )
         }
       }
       if (config && !polling)
