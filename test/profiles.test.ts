@@ -64,6 +64,18 @@ describe('the registry', () => {
     }
   })
 
+  it('drops the colon ending a yaml error line', async () => {
+    const path = join(await temp(), 'profiles.yml')
+    await writeFile(path, 'current: work\nprofiles:\n  work: /w.yml\n   play: /p.yml\n')
+    expect(() => readRegistry(path)).toThrow(/column \d+$/)
+  })
+
+  it('reads a blank current as the default', async () => {
+    const path = join(await temp(), 'profiles.yml')
+    await writeFile(path, 'current:\n')
+    expect(readRegistry(path)).toEqual({ current: undefined, profiles: {} })
+  })
+
   it('keeps what switch registers and makes it current', async () => {
     const { registry, configs } = await registered('work', 'play')
     expect(readRegistry(registry)).toEqual({ current: 'play', profiles: configs })
@@ -111,6 +123,13 @@ describe('awaywork switch', () => {
     expect(await runSwitch(registry, undefined, 'work', configs.work)).toBe('Switched to work')
     expect(await runSwitch(registry, 'default')).toContain(
       'AWAYWORK_PROFILE=default in this shell overrides',
+    )
+  })
+
+  it("says when AWAYWORK_PROFILE isn't registered", async () => {
+    const { registry } = await registered('work')
+    expect(await runSwitch(registry, 'nope')).toContain(
+      "AWAYWORK_PROFILE=nope in this shell isn't registered",
     )
   })
 

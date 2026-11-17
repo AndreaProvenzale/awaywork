@@ -28,19 +28,19 @@ export function readRegistry(path: string): Registry {
   try {
     doc = parse(readFileSync(path, 'utf8'))
   } catch (e) {
-    throw refuse((e as Error).message.split('\n')[0] as string)
+    throw refuse((e as Error).message.split('\n')[0]?.replace(/:$/, '') as string)
   }
   if (doc === null) return { current: undefined, profiles: {} }
   if (typeof doc !== 'object' || Array.isArray(doc)) throw refuse('not a mapping')
   const { current, profiles = {} } = doc
-  if (current !== undefined && typeof current !== 'string') throw refuse('current: not a name')
+  if (current != null && typeof current !== 'string') throw refuse('current: not a name')
   if (typeof profiles !== 'object' || profiles === null || Array.isArray(profiles))
     throw refuse('profiles: not a mapping')
   for (const [name, config] of Object.entries(profiles)) {
     if (!NAME.test(name)) throw refuse(`${name} isn't a profile name`)
     if (typeof config !== 'string') throw refuse(`${name}: not a config path`)
   }
-  return { current, profiles }
+  return { current: current ?? undefined, profiles }
 }
 
 const unknown = (name: string) =>

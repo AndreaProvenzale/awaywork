@@ -47,7 +47,9 @@ export async function runSwitch(
     lines.push(`current is ${current}, which isn't registered`)
   if (fromEnv && fromEnv !== current)
     lines.push(
-      `AWAYWORK_PROFILE=${fromEnv} in this shell overrides it; unset it to follow the switch`,
+      fromEnv === DEFAULT_PROFILE || Object.hasOwn(registry.profiles, fromEnv)
+        ? `AWAYWORK_PROFILE=${fromEnv} in this shell overrides it; unset it to follow the switch`
+        : `AWAYWORK_PROFILE=${fromEnv} in this shell isn't registered; unset it`,
     )
   return lines.join('\n')
 }
