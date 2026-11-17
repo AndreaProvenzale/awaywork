@@ -119,9 +119,10 @@ async function publishChain(run: Run, cs: ChainState) {
         lead.outcome = { kind: 'none', reason: 'asked questions' }
     } catch (e) {
       input.ctx.log(`${lead.planned.unit.id}: publish error: ${bounded((e as Error).stack ?? '')}`)
+      const last = done.findLast((r) => r.step)?.step ?? ''
       await appendFile(
-        join(chainDir, lead.step ?? '', 'worker.log'),
-        `publish error: ${(e as Error).stack}\n`,
+        join(chainDir, last, 'worker.log'),
+        `${new Date().toISOString()} publish error: ${(e as Error).stack}\n`,
       ).catch(() => {})
       Object.assign(lead, { status: 'error', reason: (e as Error).message })
     } finally {

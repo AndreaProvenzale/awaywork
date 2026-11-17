@@ -189,6 +189,7 @@ async function run(
     taken?: string[]
     shortage?: () => Promise<string | undefined>
     pendingReview?: Forge['pendingReview']
+    openPr?: () => Promise<string>
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
@@ -199,6 +200,7 @@ async function run(
   const env = await originForge(root)
   for (const branch of opts.taken ?? []) env.forge.branches.add(`acme/api:${branch}`)
   if (opts.pendingReview) env.forge.pendingReview = opts.pendingReview
+  if (opts.openPr) env.forge.openPr = opts.openPr as typeof env.forge.openPr
   const logged: string[] = []
   const config = parseConfig(`providers: [claude: {}]\nsources: { github: {} }\n${withRepos(yaml)}`)
   const plan = planRun({
@@ -584,6 +586,23 @@ it('stores a bounded error for a unit that failed with megabytes of it, whatever
   expect((await readFile(join(runDir, result?.files?.log ?? ''), 'utf8')).length).toBeGreaterThan(
     stderr.length,
   )
+})
+
+it("keeps a publish error whole in the last step's worker.log", async () => {
+  const openPr = async () => {
+    throw new Error(`gh: ${'y'.repeat(100_000)} PUB-TAIL`)
+  }
+  const { runDir, report } = await run(
+    'queue: [{ skill: implement, deliver: pr, then: [review] }]\n',
+    [issue(1)],
+    worker({}),
+    { openPr },
+  )
+  expect(report.results[0]?.status).toBe('error')
+  const unitDir = join(runDir, 'units/acme-api-1')
+  const last = await readFile(join(unitDir, '2-review/worker.log'), 'utf8')
+  expect(last).toMatch(/^\S+Z publish error: Error: gh: y+ PUB-TAIL/m)
+  expect(await readFile(join(unitDir, '1-implement/worker.log'), 'utf8')).not.toContain('PUB-TAIL')
 })
 
 it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {

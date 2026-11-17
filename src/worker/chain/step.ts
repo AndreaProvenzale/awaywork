@@ -546,7 +546,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
         input.ctx.log(`${unit.id}: hand-off error: ${bounded((e as Error).stack ?? '')}`)
         await appendFile(
           join(unitDir, 'worker.log'),
-          `hand-off error: ${(e as Error).stack}\n`,
+          `${new Date().toISOString()} hand-off error: ${(e as Error).stack}\n`,
         ).catch(() => {})
         cs.retrying?.keep()
         cs.retrying = undefined
