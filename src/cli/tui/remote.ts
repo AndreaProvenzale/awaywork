@@ -46,7 +46,7 @@ async function browse(args: string[], send: Send, url: string): Promise<number> 
   }
 }
 
-/** What the keys run on the remote at `url`: `call` runs a CLI call there, `run` is the report's, whose units `l` and `d` name. */
+/** What the keys run on the remote at `url`: `call` runs a CLI call there, `run` is the report's, whose units ⏎, `l` and `d` name. */
 function remoteCommands(
   call: (args: string[], stop?: AbortSignal) => Promise<Output>,
   url: string,
@@ -61,6 +61,7 @@ function remoteCommands(
     remote: url,
     skip: async (key, stop) => (await text(['skip', key], stop)).trim(),
     approve: async (key, stop) => (await text(['approve', key], stop)).trim(),
+    unit: (unit, stop) => text(['report', run, '--unit', unit], stop),
     log: (unit, stop) => text(['report', run, '--unit', unit, '--log'], stop),
     diff: (unit, stop) => text(['report', run, '--unit', unit, '--diff'], stop),
   }

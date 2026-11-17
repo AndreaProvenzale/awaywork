@@ -10,8 +10,8 @@ import type { Step } from '#plan/probe'
 import { chains, needsYouOn, quotaLines, type ReportedSkip, type RunReport } from '#posts/report'
 import { parseJson } from '#util/json'
 
-/** What a key does on a row. */
-export type Action = 'read' | 'open' | 'log' | 'diff' | 'skip' | 'approve'
+/** What a key does on a row; `unit` is ⏎ on a unit whose text the laptop fetches from the box. */
+export type Action = 'read' | 'unit' | 'open' | 'log' | 'diff' | 'skip' | 'approve'
 
 export interface Row {
   id: string
@@ -21,7 +21,7 @@ export interface Row {
   /** Lines under the row, shown unless it's folded: a unit's summary, a section's column header. */
   more?: string[]
   children?: Row[]
-  /** What each key acts on: the text to page, a URL, a file, or the item's source:key. */
+  /** What each key acts on: the text to page, a URL, a file, a unit's number, or the item's source:key. */
   act?: Partial<Record<Action, string>>
   /** Why a key does nothing here. */
   why?: Partial<Record<Action, string>>
@@ -221,9 +221,10 @@ export function planTriage(plan: RunPlan, warnings: string[], rows: number, empt
   )
 }
 
-/** What `report` pages for a unit: its `--unit` text and the files it left that are still there. */
+/** What `report` pages for a unit: its `--unit` text and the files it left that are still there; under `--screen`, the unit's number in their place. */
 export interface UnitFiles {
-  text: string
+  text?: string
+  unit?: string
   log?: string
   diff?: string
 }
@@ -250,6 +251,7 @@ export function runTriage(
       more,
       act: {
         read: files[i]?.text,
+        unit: files[i]?.unit,
         open: pr || top?.url,
         log: files[i]?.log,
         diff: files[i]?.diff,
@@ -268,7 +270,7 @@ export function runTriage(
   )
 }
 
-/** A view as `--screen` prints it for a laptop to browse: `open` an array, with the run whose units `l` and `d` name. */
+/** A view as `--screen` prints it for a laptop to browse: `open` an array, with the run whose units ⏎, `l` and `d` name. */
 type ScreenJson = Omit<State, 'open'> & { open: string[]; run?: string }
 
 export const screenJson = (s: State, run?: string): string =>
@@ -449,6 +451,8 @@ export function update(s: State, key: string): { state: State; effect?: Effect }
   const action = actionKeys[key]
   if (!action || !s.actions.includes(action)) return { state }
   if (action === 'read' && row.children) return fold(!s.open.has(row.id))
+  const unit = action === 'read' && row.act?.unit
+  if (unit) return { state, effect: { action: 'unit', target: unit, row: row.id } }
   const target = row.act?.[action]
   if (!target) return { state: { ...state, status: `${labelOf(action)}: ${whyNot(row, action)}` } }
   if (action === 'skip' || action === 'approve') {
@@ -559,7 +563,8 @@ function footer(s: State): string {
   const listed = footerKeys.filter(([, action]) => s.actions.includes(action))
   const shown = listed.map(([key, action, label]) => {
     if (action === 'read' && row?.children) return `${key} ${isOpen(s, row) ? 'fold' : 'unfold'}`
-    return row?.act?.[action] ? `${key} ${label}` : style('dim', `${key} ${label}`)
+    const lit = row?.act?.[action] || (action === 'read' && row?.act?.unit)
+    return lit ? `${key} ${label}` : style('dim', `${key} ${label}`)
   })
   return [...shown, '? help', 'q quit'].join('  ')
 }

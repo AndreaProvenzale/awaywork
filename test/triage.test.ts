@@ -290,6 +290,13 @@ describe('triage view', () => {
     )
   })
 
+  it('fetches on ⏎ a unit the box sent by its number, ⏎ lit as for its text', () => {
+    const sent = runTriage(acmeRun(), [], [{ unit: '1' }], 30)
+    const unit = press(sent, 'down', 'down', 'down')
+    expect(update(unit, 'return').effect).toEqual({ action: 'unit', target: '1', row: 'units/0' })
+    expect(view(unit, 120, 30).at(-2)).toMatch(/^⏎ read {2}o open/)
+  })
+
   it('dims the keys a row has nothing behind', () => {
     const footer = (state: State) => view(state, 120, state.rows).at(-2) ?? ''
     const dim = (label: string) => `\u001b[2m${label}\u001b[22m`

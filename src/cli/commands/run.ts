@@ -320,15 +320,10 @@ async function printRun(
       formatSkipped(report.plan.skipped, view.skipped === true ? undefined : view.skipped),
     )
   if (!view.unit && (view.browse || view.screen)) {
-    const units = await Promise.all(
-      chains(report).map((chain, i) => unitFiles(dir, { chain, n: i + 1 })),
+    const files = await Promise.all(
+      chains(report).map((chain, i) => unitFiles(dir, { chain, n: i + 1 }, view.screen)),
     )
     const warnings = [...held, ...(report.warnings ?? [])]
-    // The laptop fetches a unit's files by its number.
-    const byNumber = (file: string | undefined, i: number) => file && `${i + 1}`
-    const files = view.screen
-      ? units.map((u, i) => ({ ...u, log: byNumber(u.log, i), diff: byNumber(u.diff, i) }))
-      : units
     const state = runTriage(report, warnings, files, process.stdout.rows, remote)
     if (view.screen) return console.log(screenJson(state, report.runId))
     return view.browse?.screen.browse(state, view.browse.commands)
@@ -358,21 +353,26 @@ async function printRun(
   process.exitCode = 1
 }
 
-/** A unit's `--unit` text, and the worker.log and diff it left that are still there. */
-async function unitFiles(dir: string, found: { chain: Chain; n: number }): Promise<UnitFiles> {
+/** A unit's `--unit` text, and the worker.log and diff it left that are still there; for `screen`, the unit's number in their place. */
+async function unitFiles(
+  dir: string,
+  found: { chain: Chain; n: number },
+  screen = false,
+): Promise<UnitFiles> {
   const there = (file: string | undefined) =>
     file && existsSync(join(dir, file)) ? join(dir, file) : undefined
   const { head, steps } = found.chain
+  // The last step that ran is the one that ended the chain.
+  const log = steps.map((s) => there(s.files?.log)).findLast(Boolean)
+  const diff = [head.files?.sliceDiff, ...steps.map((s) => s.files?.diff)].map(there).find(Boolean)
+  // The laptop fetches them by number: a unit's text can be huge.
+  const n = `${found.n}`
+  if (screen) return { unit: n, log: log && n, diff: diff && n }
   const files = steps.flatMap((s) => Object.values(s.files ?? {}).flatMap((f) => there(f) ?? []))
   const bodyFile = there(head.files?.sliceBody) ?? there(head.files?.report)
   const outcomeText = head.outcome && 'text' in head.outcome ? head.outcome.text : undefined
   const body = bodyFile ? await readFile(bodyFile, 'utf8') : outcomeText
-  return {
-    text: formatUnit(found, [...new Set(files)], body, true),
-    // The last step that ran is the one that ended the chain.
-    log: steps.map((s) => there(s.files?.log)).findLast(Boolean),
-    diff: [head.files?.sliceDiff, ...steps.map((s) => s.files?.diff)].map(there).find(Boolean),
-  }
+  return { text: formatUnit(found, [...new Set(files)], body, true), log, diff }
 }
 
 /** The steps a run started, oldest first: each has a `worker.log`, and the last one written is the latest. */

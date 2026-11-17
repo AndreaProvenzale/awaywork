@@ -23,12 +23,14 @@ import {
 /** A person at a terminal: stdin and stdout are TTYs and `CI` is unset. */
 export const interactive = () => !!process.stdin.isTTY && !!process.stdout.isTTY && !process.env.CI
 
-/** What `s` and `a` run, `awaywork skip` and `awaywork approve`, each resolving to its message; and the texts `l` and `d` page. */
+/** What `s` and `a` run, `awaywork skip` and `awaywork approve`, each resolving to its message; and the texts ⏎ on a fetched unit, `l` and `d` page. */
 export interface ItemCommands {
   /** Where they run when not here: awaited with a status, and q, Esc or Ctrl-C abort `stop`. */
   remote?: string
   skip(key: string, stop?: AbortSignal): Promise<string>
   approve(key: string, stop?: AbortSignal): Promise<string>
+  /** A unit's `--unit` text by its number: only the remote's, a row here holds its text. */
+  unit?(target: string, stop?: AbortSignal): Promise<string>
   log(target: string, stop?: AbortSignal): Promise<string>
   diff(target: string, stop?: AbortSignal): Promise<string>
 }
@@ -48,6 +50,7 @@ export const pagerCommand = (pager = process.env.PAGER) =>
   pager && pager !== 'cat' ? pager : 'less -R -c -+F -+X'
 
 const waitingOn = {
+  unit: 'fetching from',
   log: 'fetching from',
   diff: 'fetching from',
   skip: 'skipping on',
@@ -56,7 +59,7 @@ const waitingOn = {
 const quits = ['q', 'escape', 'ctrl-c']
 
 function cancelled(action: keyof typeof waitingOn, remote?: string) {
-  if (action === 'log' || action === 'diff') return 'cancelled'
+  if (action !== 'skip' && action !== 'approve') return 'cancelled'
   const [done, doing] = action === 'skip' ? ['skipped', 'skipping'] : ['approved', 'approving']
   return `cancelled; ${remote} may still have ${done} it, and ${doing} again is safe`
 }
@@ -138,8 +141,9 @@ export function openScreen(title: string): Screen {
         await openUrl(effect.target)
         return { ...now, status: `opened ${effect.target}` }
     }
-    if (!commands) return now
     const { action, target } = effect
+    const command = commands?.[action]
+    if (!commands || !command) return now
     const { remote } = commands
     if (remote) {
       state = { ...now, status: `${waitingOn[action]} ${remote}…` }
@@ -147,7 +151,7 @@ export function openScreen(title: string): Screen {
       waiting = new AbortController()
     }
     const stop = waiting?.signal
-    const outcome = await commands[action](target, stop).then(
+    const outcome = await command(target, stop).then(
       (message) => ({ ok: true, message }),
       (e: Error) => ({ ok: false, message: e.message }),
     )

@@ -1,3 +1,6 @@
+import { mkdtemp, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type ItemCommands, openScreen } from '#cli/tui/browse'
@@ -9,10 +12,12 @@ const start: State = {
     {
       id: 'units',
       text: 'Units',
-      children: [{ id: 'unit', text: 'unit 1', act: { log: '1', skip: 'github:acme/api#1' } }],
+      children: [
+        { id: 'unit', text: 'unit 1', act: { unit: '1', log: '1', skip: 'github:acme/api#1' } },
+      ],
     },
   ],
-  actions: ['log', 'skip'],
+  actions: ['read', 'log', 'skip'],
   open: new Set(['units']),
   selected: 'unit',
   top: 0,
@@ -33,6 +38,7 @@ function hanging() {
     remote: 'http://box',
     skip: wait('skip'),
     approve: wait('approve'),
+    unit: wait('unit'),
     log: wait('log'),
     diff: wait('diff'),
   }
@@ -67,6 +73,7 @@ describe('the screen while a remote call waits', () => {
   })
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
     Object.assign(stdin, { setRawMode: tty.setRawMode })
     Object.assign(stdout, { hasColors: tty.hasColors, columns: tty.columns, rows: tty.rows })
   })
@@ -82,6 +89,31 @@ describe('the screen while a remote call waits', () => {
     await press('q')
     await vi.waitFor(() => expect(status()).toBe('cancelled'))
     expect(calls[0]?.stop?.aborted).toBe(true)
+    await press('q')
+    await browsed
+  })
+
+  it("fetches a unit's text on ⏎ as l does, and q cancels it", async () => {
+    const { calls, commands } = hanging()
+    const browsed = openScreen('Loading the report').browse(start, commands)
+    await press('return')
+    expect(status()).toBe('fetching from http://box…')
+    await press('q')
+    await vi.waitFor(() => expect(status()).toBe('cancelled'))
+    expect(calls.map((c) => c.call)).toEqual(['unit 1'])
+    expect(calls[0]?.stop?.aborted).toBe(true)
+    await press('q')
+    await browsed
+  })
+
+  it("pages the unit's text the box sent on ⏎", async () => {
+    const paged = join(await mkdtemp(join(tmpdir(), 'pager-')), 'paged')
+    vi.stubEnv('PAGER', `cat > ${paged}`)
+    const unit = vi.fn(async () => 'unit 1 in full')
+    const browsed = openScreen('Loading the report').browse(start, { ...hanging().commands, unit })
+    await press('return')
+    await vi.waitFor(async () => expect(await readFile(paged, 'utf8')).toBe('unit 1 in full'))
+    expect(unit).toHaveBeenCalledWith('1', expect.any(AbortSignal))
     await press('q')
     await browsed
   })

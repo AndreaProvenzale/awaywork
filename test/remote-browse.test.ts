@@ -65,7 +65,7 @@ function output() {
   return out
 }
 
-/** A box's daemon whose CLI prints `SCREEN` for --screen, and answers skip, approve and report --unit --log as awaywork would. */
+/** A box's daemon whose CLI prints `SCREEN` for --screen, and answers skip, approve and report --unit as awaywork would. */
 async function box() {
   const log: string[] = []
   const cli = `const a = process.argv.slice(3)
@@ -105,12 +105,13 @@ describe('plan and report from a laptop', () => {
     tui.interactive.mockReturnValue(true)
   })
 
-  it("browses the view the box built, here; skip, approve and the unit's log run there", async () => {
+  it("browses the view the box built, here; skip, approve and the unit's text and log run there", async () => {
     const { url, log } = await box()
     const screen = fakeScreen(async (c) => [
       await c.skip('github:acme/api#1'),
       await c.approve('github:acme/api#1').catch((e: Error) => e.message),
       await c.log('1'),
+      await c.unit?.('1'),
     ])
     const out = output()
     expect(await browseRemotely(['report'], { url, token: TOKEN })).toBe(0)
@@ -121,12 +122,14 @@ describe('plan and report from a laptop', () => {
       'skipped with awaywork skip github:acme/api#1',
       'not yours',
       `log of report ${RUN} --unit 1 --log`,
+      `log of report ${RUN} --unit 1`,
     ])
     expect(log).toEqual([
       'remote: ["report","--screen"]: exit 0',
       'remote: ["skip","github:acme/api#1"]: exit 0',
       'remote: ["approve","github:acme/api#1"]: exit 1',
       `remote: ["report","${RUN}","--unit","1","--log"]: exit 0`,
+      `remote: ["report","${RUN}","--unit","1"]: exit 0`,
     ])
     expect(existsSync(skipsPath)).toBe(false)
     expect(out).toEqual({ stdout: '', stderr: '' })

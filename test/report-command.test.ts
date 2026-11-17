@@ -312,25 +312,38 @@ describe('report command', () => {
     expect(process.exitCode).toBe(1)
   })
 
-  it("prints the view as JSON with --screen, a unit's files by its number for the laptop to fetch", async () => {
+  it("prints the view as JSON with --screen, a unit's text and files by its number for the laptop to fetch", async () => {
     const planned = { unit: { id: 'acme-api-1', skill: 'fix', items: [githubPr(1)] } }
-    const files = { log: 'units/acme-api-1/1-fix/worker.log', diff: 'units/acme-api-1/x.patch' }
+    const files = {
+      log: 'units/acme-api-1/1-fix/worker.log',
+      diff: 'units/acme-api-1/x.patch',
+      report: 'units/acme-api-1/1-fix/report.md',
+    }
     const result = { planned, status: 'done', outcome: { kind: 'none', reason: 'r' }, files }
     const id = '20261015-220000'
-    const plan = { queue: [], units: [planned], allowances: {}, skipped: [] }
+    const skipped = [{ item: githubPr(2), kind: 'no_rule', reason: 'no rule takes it' }]
+    const plan = { queue: [], units: [planned], allowances: {}, skipped }
     const run = { runId: id, startedAt: 0, finishedAt: 0, plan, results: [result], quotas: {} }
     await writeFile(join(runsDir, id, 'report.json'), reportJson(run as unknown as RunReport))
     await mkdir(join(runsDir, id, 'units/acme-api-1/1-fix'), { recursive: true })
     await writeFile(join(runsDir, id, files.log), 'the log')
+    const huge = 'x'.repeat(5_000_000)
+    await writeFile(join(runsDir, id, files.report), huge)
     const { out } = output()
     await printReport(undefined, false, await controlRepo([], ''), false, { screen: true })
-    const screen = fromScreenJson(out.join('\n'), 30)
+    const printed = out.join('\n')
+    expect(printed.length).toBeLessThan(100_000)
+    const screen = fromScreenJson(printed, 30)
     expect(screen?.run).toBe(id)
-    const row = screen?.state.sections
-      .flatMap((s) => s.children ?? [])
-      .flatMap((g) => g.children ?? [])[0]
-    expect(row?.act).toMatchObject({ log: '1', read: expect.stringContaining('api#1') })
-    expect(row?.act?.diff).toBeUndefined()
+    const [unit, skip] =
+      screen?.state.sections.flatMap((s) => s.children ?? []).flatMap((g) => g.children ?? []) ?? []
+    expect(unit?.act).toMatchObject({ unit: '1', log: '1' })
+    expect(unit?.act?.read).toBeUndefined()
+    expect(unit?.act?.diff).toBeUndefined()
+    expect(skip?.act?.read).toContain('no rule takes it')
+    out.splice(0)
+    await printReport(id, false, await controlRepo([], ''), false, { unit: '1' })
+    expect(out.join('\n')).toContain(huge)
   })
 
   it('prints report.md for a run without report.json, which --unit needs', async () => {
