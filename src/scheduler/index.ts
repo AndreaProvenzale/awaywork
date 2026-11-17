@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Exec } from '#forge/gh'
 import { cron } from './cron'
 import { launchd } from './launchd'
@@ -31,10 +32,14 @@ export interface Scheduler {
   read(): Promise<Schedule | undefined>
 }
 
-export const schedulers = (home: string, run: Exec): Record<string, Scheduler> => ({
-  launchd: launchd(home, run),
-  systemd: systemd(home, run),
-  cron: cron(run),
+export const schedulers = (
+  home: string,
+  run: Exec,
+  profile = DEFAULT_PROFILE,
+): Record<string, Scheduler> => ({
+  launchd: launchd(home, run, undefined, undefined, profile),
+  systemd: systemd(home, run, profile),
+  cron: cron(run, profile),
 })
 
 export function defaultScheduler(platform = process.platform): string {

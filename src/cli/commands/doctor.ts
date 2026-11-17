@@ -12,9 +12,11 @@ import {
   configDir,
   envFile,
   legacyEnvFile,
+  profile,
   runsDir,
   skillsDirIn,
   skillsDirOf,
+  stateDir,
 } from '#config/paths'
 import type { Config } from '#config/schema'
 import { hasSkills, readSetup, unknownSkillsWarning } from '#config/skills'
@@ -107,6 +109,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
               () => report(process.env.GH_TOKEN ? 'ok' : 'FAIL', 'gh login', secret('GH_TOKEN')),
             ),
     )
+  report('ok', 'profile', `${profile.name}, config ${path}, env ${envFile}, state ${stateDir}`)
   if (existsSync(envFile)) {
     const mode = statSync(envFile).mode & 0o777
     if (mode === 0o600) report('ok', envFile, 'mode 600')

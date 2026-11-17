@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
-import { installWorkflow, offerSecrets, staleSchedules } from '#cli/commands/schedule'
+import { installWorkflow, offerSecrets, printStatus, staleSchedules } from '#cli/commands/schedule'
 import type { Exec } from '#forge/gh'
 import { cron, cronLines, parseCronLines } from '#scheduler/cron'
 import {
@@ -1017,5 +1017,87 @@ Scheduled power events:
       'sudo systemctl',
     ])
     expect(calls.at(-1)).toEqual(['sudo', 'systemctl', 'enable', '--now', 'awaywork-wake.timer'])
+  })
+})
+
+describe('a named profile', () => {
+  it('gets its own launchd label and plist, and the job carries its profile', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+    const { run, calls } = recorder()
+    const scheduler = launchd(home, run, 501, 0, 'work')
+    const file = await scheduler.install(schedule)
+    expect(file).toBe(join(home, 'Library/LaunchAgents/awaywork.work.plist'))
+    const text = await readFile(file, 'utf8')
+    expect(text).toContain('<key>Label</key><string>awaywork.work</string>')
+    expect(text).toContain('<key>AWAYWORK_PROFILE</key><string>work</string>')
+    expect(calls).toEqual([
+      'launchctl bootout gui/501/awaywork.work',
+      `launchctl bootstrap gui/501 ${file}`,
+    ])
+    expect(await scheduler.read()).toEqual(schedule)
+    const other = launchd(home, run, 501, 0)
+    expect(await other.read()).toBeUndefined()
+    expect(await other.remove()).toBe(false)
+    expect(await scheduler.remove()).toBe(true)
+  })
+
+  it('leaves the default profile’s job without the variable', () => {
+    expect(plist(schedule)).toContain('<key>Label</key><string>awaywork</string>')
+    expect(plist(schedule)).not.toContain('AWAYWORK_PROFILE')
+    expect(service(schedule)).not.toContain('AWAYWORK_PROFILE')
+    expect(cronLines(schedule).join('')).not.toContain('AWAYWORK_PROFILE')
+  })
+
+  it('gets its own systemd unit, enabled and removed apart from the default one', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+    const { run, calls } = recorder()
+    await systemd(home, run).install(schedule)
+    calls.length = 0
+    const work = systemd(home, run, 'work')
+    await work.install(schedule)
+    const unit = join(home, '.config/systemd/user/awaywork-work.service')
+    expect(await readFile(unit, 'utf8')).toContain('Environment="AWAYWORK_PROFILE=work"')
+    expect(calls).toEqual([
+      'systemctl --user daemon-reload',
+      'systemctl --user enable awaywork-work.service',
+      'systemctl --user restart awaywork-work.service',
+    ])
+    expect(await work.read()).toEqual(schedule)
+    expect(await work.remove()).toBe(true)
+    expect(existsSync(unit)).toBe(false)
+    expect(existsSync(join(home, '.config/systemd/user/awaywork.service'))).toBe(true)
+  })
+
+  it("tags its crontab lines apart: neither profile reads or removes the other's", async () => {
+    const cronTab = recorder()
+    const byDefault = cron(cronTab.run)
+    const work = cron(cronTab.run, 'work')
+    await byDefault.install(schedule)
+    await work.install({ ...schedule, command: [...schedule.command, 'x'] })
+    expect(cronLines(schedule, 'work')[0]).toMatch(/AWAYWORK_PROFILE=work .* # awaywork:work$/)
+    expect(cronTab.crontab().split('\n').filter(Boolean)).toHaveLength(4)
+    expect(await byDefault.read()).toEqual(schedule)
+    expect((await work.read())?.command.at(-1)).toBe('x')
+    expect(await work.remove()).toBe(true)
+    expect(await byDefault.read()).toEqual(schedule)
+    expect(await work.remove()).toBe(false)
+    expect(cronTab.crontab()).toBe(`${cronLines(schedule).join('\n')}\n`)
+  })
+
+  it('prints the profile in schedule status, and nothing extra for the default', async () => {
+    const logs: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((l) => void logs.push(String(l)))
+    const none: Scheduler = {
+      id: 'launchd',
+      install: async () => '',
+      remove: async () => false,
+      read: async () => undefined,
+    }
+    await printStatus(undefined, { launchd: none }, 'work')
+    expect(logs[0]).toBe('Profile: work')
+    logs.length = 0
+    await printStatus(undefined, { launchd: none }, 'default')
+    expect(logs).not.toContain('Profile: default')
+    spy.mockRestore()
   })
 })

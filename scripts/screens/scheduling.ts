@@ -1,7 +1,7 @@
 import { listedRun } from '#cli/commands/run'
-import { jobLines, wontRun } from '#cli/commands/schedule'
+import { jobLines, profileLines, wontRun } from '#cli/commands/schedule'
 import { configPath, parseConfig } from '#config/load'
-import { stateDir } from '#config/paths'
+import { stateDir, watchLogPath } from '#config/paths'
 import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item } from '#core/types'
@@ -151,6 +151,32 @@ function scheduleStatus(): string {
   return command('awaywork schedule status', [...jobLines('launchd', job), ...daemon].join('\n'))
 }
 
+/** `schedule status` for the work profile: its own plist and state dir, its daemon up beside the default's. */
+function scheduleProfileStatus(): string {
+  const job = {
+    command: ['/usr/local/bin/awaywork', 'watch', '--config', '~/acme/awaywork/developer.yml'],
+    path: '/HOME/Library/LaunchAgents/awaywork.work.plist',
+    log: `${stateDir}/profiles/work/schedule.log`,
+  }
+  const daemon = daemonLines(
+    {
+      pid: 71203,
+      since: '2026-10-25T17:26:00Z',
+      config: '~/acme/awaywork/developer.yml',
+      runs: [],
+      polls: {},
+    },
+    [],
+    new Date('2026-10-25T17:28:00Z'),
+  )
+  return command(
+    'awaywork switch work && awaywork schedule status',
+    [...profileLines('work'), ...jobLines('launchd', job), ...daemon]
+      .join('\n')
+      .replace(watchLogPath, `${stateDir}/profiles/work/watch.log`),
+  )
+}
+
 /** watch.log: chores' item comes in, then the reply on it at chores' next poll; flaky fails once, backing off. */
 function watchLog(): string {
   const start = new Date('2026-10-25T16:17:51Z')
@@ -276,6 +302,7 @@ export default {
   'schedule-report-list': reportList(),
   'schedule-codex-hosted': codexHosted(),
   'schedule-status': scheduleStatus(),
+  'schedule-profile-status': scheduleProfileStatus(),
   'schedule-watch-log': watchLog(),
   'schedule-remote-run': remoteRun(),
   'schedule-ssh-errors': sshErrors(),

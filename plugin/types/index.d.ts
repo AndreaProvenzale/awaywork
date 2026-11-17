@@ -105,6 +105,8 @@ export type ConfigView = {
   providers: string[]
   sources: string[]
   reserve?: string
+  /** The profile in force when it isn't the default. */
+  profile?: string
   rules: ConfigRule[]
 }
 
