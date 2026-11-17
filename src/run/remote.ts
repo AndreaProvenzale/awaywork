@@ -149,8 +149,8 @@ const fail = (line: string, print = terminal) => {
   return 1
 }
 
-/** Runs a CLI call on the remote, its exit code; `print` takes its output, the terminal's by default. */
-export type Send = (args: string[], print?: Print) => Promise<number>
+/** Runs a CLI call on the remote, its exit code; `print` takes its output, the terminal's by default, and `stop` aborts it. */
+export type Send = (args: string[], print?: Print, stop?: AbortSignal) => Promise<number>
 
 /** Runs a CLI call where AWAYWORK_REMOTE says, its exit code; undefined when it runs here. */
 export function remoteCall(args: string[], remote: Remote): Promise<number> | undefined {
@@ -161,24 +161,28 @@ export function remoteCall(args: string[], remote: Remote): Promise<number> | un
 /** How CLI calls reach AWAYWORK_REMOTE; undefined when `args` runs here. */
 export function remoteFor(args: string[], { url, token }: Remote): Send | undefined {
   if (!url || !servedRemotely(args)) return
-  if (/^ssh:\/\//i.test(url)) return (args, print) => overSsh(args, url, print)
+  if (/^ssh:\/\//i.test(url)) return (args, print, stop) => overSsh(args, url, print, stop)
   if (!/^https?:\/\//i.test(url))
     return async (_, print) =>
       fail(`AWAYWORK_REMOTE (${url}) is neither ssh:// nor http(s)://`, print)
-  if (token) return (args, print) => forward(args, { url, token }, undefined, print)
+  if (token) return (args, print, stop) => forward(args, { url, token }, undefined, print, stop)
 }
 
-/** A call on the remote, its output kept instead of printed. */
-export async function captured(send: Send, args: string[]): Promise<Output> {
+/** A call on the remote, its output kept instead of printed, until `stop` aborts it. */
+export async function captured(send: Send, args: string[], stop?: AbortSignal): Promise<Output> {
   const out = { stdout: '', stderr: '' }
-  const code = await send(args, {
-    out: (text) => {
-      out.stdout += text
+  const code = await send(
+    args,
+    {
+      out: (text) => {
+        out.stdout += text
+      },
+      err: (text) => {
+        out.stderr += text
+      },
     },
-    err: (text) => {
-      out.stderr += text
-    },
-  })
+    stop,
+  )
   return { ...out, code }
 }
 
@@ -204,7 +208,12 @@ export function sshArgs(url: string, args: string[]): string[] | undefined {
 }
 
 /** Runs a CLI call on the box an ssh:// AWAYWORK_REMOTE names, printing its output as it comes; its exit code. */
-async function overSsh(args: string[], url: string, print = terminal): Promise<number> {
+async function overSsh(
+  args: string[],
+  url: string,
+  print = terminal,
+  stop?: AbortSignal,
+): Promise<number> {
   const at = `AWAYWORK_REMOTE (${url})`
   const argv = sshArgs(url, args)
   if (!argv) return fail(`${at} names no host`, print)
@@ -212,7 +221,12 @@ async function overSsh(args: string[], url: string, print = terminal): Promise<n
   if (Buffer.byteLength(JSON.stringify({ args })) > MAX_BODY)
     return fail(`${at}: the body is over ${MAX_BODY} bytes`, print)
   // A stdin nothing writes to: it closes when this process goes, and the box's end leaves with it.
-  const ssh = execa('ssh', argv, { stdin: 'pipe', reject: false, buffer: false })
+  const ssh = execa('ssh', argv, {
+    stdin: 'pipe',
+    reject: false,
+    buffer: false,
+    cancelSignal: stop,
+  })
   // Held until stdout comes or HOLD_MS pass, so ssh's last lines, however split, can become this one's.
   let held = ''
   let hold: NodeJS.Timeout | undefined
@@ -279,15 +293,17 @@ export async function forward(
   remote: { url: string; token: string },
   via?: string,
   print = terminal,
+  stop?: AbortSignal,
 ): Promise<number> {
   const at = `AWAYWORK_REMOTE (${via ?? remote.url})`
+  const timeout = AbortSignal.timeout(TIMEOUT_MS + 30_000)
   let res: Response
   try {
     res = await fetch(`${remote.url.replace(/\/+$/, '')}/cli`, {
       method: 'POST',
       headers: { authorization: `Bearer ${remote.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ args }),
-      signal: AbortSignal.timeout(TIMEOUT_MS + 30_000),
+      signal: stop ? AbortSignal.any([stop, timeout]) : timeout,
     })
   } catch (e) {
     const { cause, message } = e as Error & { cause?: Error }

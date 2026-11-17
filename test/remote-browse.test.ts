@@ -132,6 +132,29 @@ describe('plan and report from a laptop', () => {
     expect(out).toEqual({ stdout: '', stderr: '' })
   })
 
+  it("puts --screen right after the command, so a trailing flag missing its value is the box's to answer", async () => {
+    const { url, log } = await box()
+    fakeScreen()
+    output()
+    expect(await browseRemotely(['plan', '--repo'], { url, token: TOKEN })).toBe(0)
+    expect(log).toEqual(['remote: ["plan","--screen","--repo"]: exit 0'])
+  })
+
+  it('names the remote the keys wait on, and stops the call there when the screen cancels it', async () => {
+    const { url, log } = await box()
+    const screen = fakeScreen(async (c) => [
+      c.remote,
+      await c.log('1', AbortSignal.abort()).catch((e: Error) => e.message),
+    ])
+    output()
+    expect(await browseRemotely(['report'], { url, token: TOKEN })).toBe(0)
+    expect(screen.answers).toEqual([
+      url,
+      `can't reach AWAYWORK_REMOTE (${url}): This operation was aborted`,
+    ])
+    expect(log).toEqual(['remote: ["report","--screen"]: exit 0'])
+  })
+
   it('leaves the plain flags, a pipe and a local run to the forwarding as before', async () => {
     const { url } = await box()
     for (const args of [['plan', '--json'], ['report', '--unit=2'], ['stats'], ['plan', '--why=x']])
@@ -174,7 +197,7 @@ describe('plan and report from a laptop', () => {
     expect(tui.openScreen).toHaveBeenCalledWith('Planning the next run')
     expect(screen.close).toHaveBeenCalled()
     expect(calls).toEqual([
-      ['plan', '--repo', 'acme/*', '--screen'],
+      ['plan', '--screen', '--repo', 'acme/*'],
       ['plan', '--repo', 'acme/*'],
     ])
     expect(out).toEqual({

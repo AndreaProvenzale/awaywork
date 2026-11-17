@@ -15,16 +15,18 @@ export function browseRemotely(args: string[], remote: Remote): Promise<number> 
 }
 
 async function browse(args: string[], send: Send, url: string): Promise<number> {
-  const plan = args[0] === 'plan'
+  const [command = ''] = args
+  const plan = command === 'plan'
   const screen = openScreen(plan ? 'Planning the next run' : 'Loading the report')
   try {
     screen.progress({ name: `${plan ? 'planning' : 'reading'} on ${url}`, state: 'running' })
-    const out = await captured(send, [...args, '--screen'])
+    // Right after the command, so a trailing flag missing its value can't take it.
+    const out = await captured(send, [command, '--screen', ...args.slice(1)])
     const fetched = out.code === 0 ? fromScreenJson(out.stdout, process.stdout.rows) : undefined
     if (fetched) {
       await screen.browse(
         fetched.state,
-        remoteCommands((more) => captured(send, more), fetched.run),
+        remoteCommands((more, stop) => captured(send, more, stop), url, fetched.run),
       )
       return 0
     }
@@ -44,17 +46,22 @@ async function browse(args: string[], send: Send, url: string): Promise<number> 
   }
 }
 
-/** What the keys run on the remote: `call` runs a CLI call there, `run` is the report's, whose units `l` and `d` name. */
-function remoteCommands(call: (args: string[]) => Promise<Output>, run = ''): ItemCommands {
-  const text = async (args: string[]) => {
-    const { stdout, stderr, code } = await call(args)
+/** What the keys run on the remote at `url`: `call` runs a CLI call there, `run` is the report's, whose units `l` and `d` name. */
+function remoteCommands(
+  call: (args: string[], stop?: AbortSignal) => Promise<Output>,
+  url: string,
+  run = '',
+): ItemCommands {
+  const text = async (args: string[], stop?: AbortSignal) => {
+    const { stdout, stderr, code } = await call(args, stop)
     if (code) throw new Error(stderr.trim().split('\n').at(-1) || `exit ${code}`)
     return stdout
   }
   return {
-    skip: async (key) => (await text(['skip', key])).trim(),
-    approve: async (key) => (await text(['approve', key])).trim(),
-    log: (unit) => text(['report', run, '--unit', unit, '--log']),
-    diff: (unit) => text(['report', run, '--unit', unit, '--diff']),
+    remote: url,
+    skip: async (key, stop) => (await text(['skip', key], stop)).trim(),
+    approve: async (key, stop) => (await text(['approve', key], stop)).trim(),
+    log: (unit, stop) => text(['report', run, '--unit', unit, '--log'], stop),
+    diff: (unit, stop) => text(['report', run, '--unit', unit, '--diff'], stop),
   }
 }

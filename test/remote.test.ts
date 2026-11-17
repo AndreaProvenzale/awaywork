@@ -407,6 +407,21 @@ describe('the CLI forwarding to a remote', () => {
     expect(remoteFor(['plan'], { url })).toBeUndefined()
   })
 
+  it("stops the remote's command when the call is aborted", async () => {
+    const { url, log } = await serve('console.log("started"); setTimeout(() => {}, 30000)')
+    const out = output()
+    const stop = new AbortController()
+    const call = captured(
+      remoteFor(['stats'], { url, token: TOKEN }) as Send,
+      ['stats'],
+      stop.signal,
+    )
+    setTimeout(() => stop.abort(), 500)
+    expect(await call).toMatchObject({ stdout: 'started\n', code: 1 })
+    await vi.waitFor(() => expect(log).toEqual(['remote: ["stats"]: stopped, the client left']))
+    expect(out).toEqual({ stdout: '', stderr: '' })
+  })
+
   it('fails in one line naming AWAYWORK_REMOTE when the answer stops before an exit code', async () => {
     const cut = createServer((_, res) => {
       res.writeHead(200).write('{"stdout":"half"}\n')
@@ -655,6 +670,32 @@ exec env AWAYWORK_REMOTE="$BOX_URL" HOME=${home} ${process.execPath} --experimen
       expect(out.stderr).toBe(
         `AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving, the box's ${join(dir, 'box-home', '.config', 'awaywork', 'env')} has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch\n`,
       )
+    }, 20_000)
+
+    it("keeps the output over ssh too, and an aborted call ends ssh and the box's command with it", async () => {
+      const dir = await box()
+      const pid = join(dir, 'pid')
+      const { url, log } = await serve(
+        `if (process.argv.includes('hang')) { require('node:fs').writeFileSync(${JSON.stringify(pid)}, String(process.pid)); setTimeout(() => {}, 30000) } else { console.log('out'); console.error('err') }`,
+      )
+      vi.stubEnv('BOX_URL', url)
+      const out = output()
+      const send = remoteFor(['stats'], { url: 'ssh://box' }) as Send
+      expect(await captured(send, ['stats'])).toEqual({ stdout: 'out\n', stderr: 'err\n', code: 0 })
+      const stop = new AbortController()
+      const hung = captured(send, ['sources', 'hang'], stop.signal)
+      await vi.waitFor(() => expect(existsSync(pid)).toBe(true), { timeout: 10_000 })
+      stop.abort()
+      expect((await hung).code).toBe(1)
+      const running = Number(await readFile(pid, 'utf8'))
+      await vi.waitFor(() => expect(() => process.kill(running, 0)).toThrow())
+      await vi.waitFor(() =>
+        expect(log).toEqual([
+          'remote: ["stats"]: exit 0',
+          'remote: ["sources","hang"]: stopped, the client left',
+        ]),
+      )
+      expect(out).toEqual({ stdout: '', stderr: '' })
     }, 20_000)
 
     it("stops the box's command when the laptop's awaywork goes, with no terminal to pass a Ctrl-C", async () => {
