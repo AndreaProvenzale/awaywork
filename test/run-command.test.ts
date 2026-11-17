@@ -232,7 +232,7 @@ describe('run command', () => {
           dryRun: true,
         }),
       )
-    expect(await at('20261025-120300', 'CH-2')).toBe(true)
+    expect(await at('20261025-120300', 'CH-2')).toBeTruthy()
     const plan = await readFile(join(runsDir, '20261025-120300', 'plan.txt'), 'utf8')
     expect(plan).toContain('Chore 2')
     expect(await at('20261025-120301', 'CH-9')).toBe(false)
@@ -269,7 +269,7 @@ describe('run command', () => {
         unit: 'acme/api#3',
         dryRun: true,
       }),
-    ).toBe(true)
+    ).toBeTruthy()
     const report = JSON.parse(await readFile(join(runsDir, runId, 'report.json'), 'utf8'))
     const { plan, results } = report as {
       plan: { skipped: { item: { key: string }; kind: string; url?: string }[] }

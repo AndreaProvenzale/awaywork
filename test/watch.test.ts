@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printStatus } from '#cli/commands/schedule'
@@ -188,6 +189,7 @@ describe('awaywork watch', () => {
     const again = new AbortController()
     const done = watch(path, again.signal)
     await vi.waitFor(async () => expect(await daemonLog()).toContain('awaywork watch started'))
+    await sleep(200)
     again.abort()
     await done
     expect(await daemonLog()).not.toContain('window run')
@@ -195,6 +197,46 @@ describe('awaywork watch', () => {
     await writeFile(windowEndPath, JSON.stringify(new Date(Date.now() - 3_600_000)))
     expect(await watchUntil(path, 'Report: ')).toContain('window run')
   })
+
+  it('starts the window run again after a restart that stopped it', async () => {
+    const path = await config()
+    const dir = dirname(path)
+    workers.origin = join(dir, 'origin')
+    await execa('git', ['init', '-q', '-b', 'main', workers.origin])
+    const id = ['-c', 'user.name=a', '-c', 'user.email=a@b']
+    await execa('git', [...id, '-C', workers.origin, 'commit', '-q', '--allow-empty', '-m', 'init'])
+    const item = {
+      id: '1',
+      key: 'CH-1',
+      title: 'Chore',
+      url: 'https://example.com/1',
+      fields: { repo: 'acme/api' },
+    }
+    await writeFile(join(dir, 'items.json'), JSON.stringify([item]))
+    await writeFile(
+      path,
+      `providers: [claude]
+windows: [{ start: "${hhmm(-60)}", end: "${hhmm(60)}" }]
+repos: { acme/api: {} }
+sources: { chores: { command: cat items.json } }
+queue:
+  - { skill: plan, source: chores }
+`,
+    )
+    Object.assign(workers, { ran: [], ms: 5000, gate: undefined })
+    const stop = new AbortController()
+    const done = watch(path, stop.signal)
+    await vi.waitFor(() => expect(workers.ran).toHaveLength(1), { timeout: 10_000 })
+    stop.abort()
+    await done
+    expect(existsSync(windowEndPath)).toBe(false)
+
+    Object.assign(workers, { ms: 0 })
+    await rm(watchLogPath)
+    expect(await watchUntil(path, 'Report: ')).toContain('window run')
+    expect(workers.ran).toEqual(['ch-1', 'ch-1'])
+    expect(existsSync(windowEndPath)).toBe(true)
+  }, 30_000)
 
   it('logs a config that fails to load and keeps going with nothing to do', async () => {
     const path = await config()

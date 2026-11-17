@@ -29,7 +29,7 @@ import {
   soonSources,
 } from '#plan/poll'
 import { probeAndPlan, sourceFailure } from '#plan/probe'
-import { localTime } from '#posts/report'
+import { localTime, type UnitResult } from '#posts/report'
 import { firstOpening, windowEnd, windowRun } from '#quota/window'
 import { holdAwake } from '#scheduler/wake'
 import { readJson } from '#util/json'
@@ -201,11 +201,20 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
       running.set(
         runId,
         run
+          .then((own) =>
+            own && r.trigger === 'window' && r.until ? saveWindowEnd(r.until) : undefined,
+          )
           .finally(() => finish(runId))
           .catch((e) => event(`run ${runId} didn't end cleanly: ${reason(e)}`)),
       )
       return runId
     })
+
+  /** Remembered once a window run ends on its own, so a restart inside the window starts no second. */
+  const saveWindowEnd = (end: Date) =>
+    writeFile(windowEndPath, JSON.stringify(end)).catch((e) =>
+      event(`couldn't save ${windowEndPath}: ${reason(e)}`),
+    )
 
   let failed: string | undefined
   const saved = await readJson<string | undefined>(windowEndPath, undefined)
@@ -348,9 +357,6 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
         else {
           waiting = false
           lastEnd = until
-          await writeFile(windowEndPath, JSON.stringify(until)).catch((e) =>
-            event(`couldn't save ${windowEndPath}: ${reason(e)}`),
-          )
         }
       }
       if (config && !polling)
@@ -416,8 +422,12 @@ export function runStarted(r: Pick<DaemonRun, 'trigger' | 'runId' | 'until' | 's
   return `${r.trigger} run ${r.runId} started${until}${units}`
 }
 
-/** One of the daemon's runs, its full output in `run.log` in its run dir; never throws. */
-async function daemonRun(r: DaemonRun): Promise<void> {
+const interrupted = (r: UnitResult) =>
+  r.status === 'stopped: aborted' ||
+  (r.outcome?.kind === 'none' && r.outcome.reason === 'interrupted')
+
+/** One of the daemon's runs, its full output in `run.log` in its run dir; never throws. True when it ended on its own, not stopped or crashed. */
+async function daemonRun(r: DaemonRun): Promise<boolean> {
   const runDir = join(runsDir, r.runId)
   const runLog = join(runDir, 'run.log')
   const log: RunLog = {
@@ -434,9 +444,11 @@ async function daemonRun(r: DaemonRun): Promise<void> {
   try {
     await r.isolated
     await mkdir(runDir, { recursive: true, mode: 0o700 })
-    await executeRun({ ...r, now: new Date(), log, signal: () => r.stop })
+    const report = await executeRun({ ...r, now: new Date(), log, signal: () => r.stop })
+    return !!report && !report.results.some(interrupted)
   } catch (e) {
     event(`run ${r.runId} failed: ${reason(e)}`)
+    return false
   }
 }
 
