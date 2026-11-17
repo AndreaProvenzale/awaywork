@@ -111,6 +111,7 @@ export function openScreen(title: string): Screen {
   }, 80)
 
   const page = async (now: State, text: string): Promise<State> => {
+    state = now
     hide()
     const code = await new Promise<number | null>((done) => {
       const child = spawn(pagerCommand(), { shell: true, stdio: ['pipe', 'inherit', 'inherit'] })
@@ -171,8 +172,9 @@ export function openScreen(title: string): Screen {
     draw()
     if (!effect) return
     const now = state
-    state = await perform(now, effect).catch((e: Error) => ({ ...now, status: e.message }))
-    draw()
+    const done = await perform(now, effect).catch((e: Error) => ({ ...now, status: e.message }))
+    state = resize(done, stdout.rows)
+    if (shown) draw()
   }
   const onKey = (text: string | undefined, key: Key | undefined) => {
     if (busy) {
@@ -201,6 +203,7 @@ export function openScreen(title: string): Screen {
     process.exit(143)
   }
   function close() {
+    waiting?.abort()
     clearInterval(spin)
     stdin.off('keypress', onKey)
     stdout.off('resize', onResize)
