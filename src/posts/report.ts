@@ -8,7 +8,7 @@ import {
   type Skipped,
   shortRef,
 } from '#plan/foreman'
-import { type Allowance, pct, presenceLine } from '#quota/budget'
+import { type Allowance, modelCeiling, pct, presenceLine } from '#quota/budget'
 import { counted } from '#util/text'
 import type { Outcome } from '#worker/deliver/publish'
 import type { WorkerStatus } from '#worker/process/worker'
@@ -161,6 +161,8 @@ export interface RunReport {
   results: UnitResult[]
   /** The last quota a worker saw, per provider. */
   quotas: Record<string, Quota>
+  /** Each model's own windows as a worker last saw them, per provider, by model. */
+  models?: Record<string, Record<string, Quota['windows']>>
 }
 
 const SUMMARY_LENGTH = 200
@@ -459,7 +461,7 @@ function result(u: UnitResult): string {
 export function quotaLines(r: RunReport): string[] {
   const providers = Object.entries(r.plan.allowances).map(([id, a]) => {
     const units = r.results.filter((u) => u.provider === id)
-    return `${id}: ${quotaLine(a, r.quotas[id], units)}`
+    return `${id}: ${quotaLine(a, r.quotas[id], units)}${modelLines(a, r.models?.[id])}`
   })
   return r.plan.present === undefined ? providers : [presenceLine(r.plan.present), ...providers]
 }
@@ -474,4 +476,15 @@ function quotaLine(a: Allowance, last: Quota | undefined, units: UnitResult[]): 
     ? `; session ${pct(a.session.used)} to ${pct(short?.used ?? a.session.used)}, stop at ${pct(a.session.stopAt)}`
     : ''
   return `${a.window} ${pct(a.used)} to ${pct(long)}, ceiling ${pct(a.ceiling)}${session}`
+}
+
+/** E.g. `; seven_day_opus (opus) 64%, ceiling 80%`: no start value, as the probe's model can't read another's window. */
+function modelLines(a: Allowance, models: Record<string, Quota['windows']> = {}): string {
+  if (a.kind !== 'quota') return ''
+  const ceiling = pct(modelCeiling(a))
+  return Object.entries(models)
+    .flatMap(([model, windows]) =>
+      windows.map((w) => `; ${w.name} (${model}) ${pct(w.used)}, ceiling ${ceiling}`),
+    )
+    .join('')
 }

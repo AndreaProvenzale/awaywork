@@ -96,6 +96,8 @@ A worker stops once its provider is past the ceiling, or past the session limit 
 
 Claude reports quota during the run, so it stops mid-unit; Codex is read after each unit, so it stops between units. A provider whose quota can't be read, like Cursor, gets a fixed `fallback` of units and turns per run. `plan` says which limit a run started now gets; the keys are in [Providers and budget](./config/providers.md#windows-limits-and-budget).
 
+A model can also have its own weekly limit beside the one every model counts, like Fable's, and likely Mythos's, on some Claude plans. The probe can't read it, so a worker on that model reads it from its first reply. Its ceiling is the run's without `per_run`; a worker that reaches it stops, and the run passes that model over from then on: a step with a [second model](./config/queue-rules.md#retry-on-the-next-model) goes on there, one without skips that provider. The report shows each such window's last reading.
+
 **Routing:** a unit goes to the first provider under its ceiling, in the rule's `provider` list, else the global `providers` order. When one fills up, the next unit goes to the next.
 
 ## The worker

@@ -13,6 +13,8 @@ const knownWindows: Record<string, { span: 'short' | 'long'; minutes: number }> 
   five_hour: { span: 'short', minutes: 300 },
   seven_day: { span: 'long', minutes: 7 * 24 * 60 },
 }
+/** `seven_day_<x>`: a model's own week, like Fable's `seven_day_overage_included`. */
+const modelWeek = { span: 'long', minutes: 7 * 24 * 60, scoped: true } as const
 const stream = ['--output-format', 'stream-json', '--verbose']
 /** Auto-memory lives under ~/.claude whatever the setting sources. */
 const noMemory = { autoMemoryEnabled: false }
@@ -134,7 +136,7 @@ export function toEvents(line: string): WorkerEvent[] {
     const unified: Record<string, { utilization: number; resetsAt: number }> =
       event.rate_limit_info?.unifiedWindows ?? {}
     const windows = Object.entries(unified).flatMap(([name, w]) => {
-      const known = knownWindows[name]
+      const known = knownWindows[name] ?? (name.startsWith('seven_day_') ? modelWeek : undefined)
       return known ? [{ name, ...known, used: w.utilization, resetsAt: w.resetsAt }] : []
     })
     return windows.length ? [{ type: 'quota', quota: { windows } satisfies Quota }] : []

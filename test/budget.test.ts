@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Budget } from '#config/schema'
 import type { Quota } from '#core/types'
-import { type Allowance, allowance, quotaFacts, route, withQuota } from '#quota/budget'
+import {
+  type Allowance,
+  allowance,
+  modelCeiling,
+  quotaFacts,
+  route,
+  withQuota,
+} from '#quota/budget'
 
 // Thursday at 01:00 local time, as the default window opens.
 const now = new Date(2026, 0, 1, 1).getTime()
@@ -187,5 +194,58 @@ it('keeps the session limit across readings', () => {
   const a = allowance(budget(), quota(0.1, 10), now, daily, { present: true })
   expect(withQuota(a, quota(0.2, 20, 0.3))).toMatchObject({
     session: { used: 0.3, stopAt: 0.4, limit: 'present_session_max' },
+  })
+})
+
+describe("a model's own window", () => {
+  const opusWeek = (used: number): Quota['windows'][number] => ({
+    name: 'seven_day_opus',
+    span: 'long',
+    used,
+    resetsAt: hours(60),
+    scoped: true,
+  })
+  const present = { present: true }
+  const start = allowance(budget({ per_run: 0.15 }), quota(0.36, 60), now, daily, present)
+  const read = (used: number, model?: string) =>
+    withQuota(start, { windows: [opusWeek(used)] }, model)
+
+  it('paces against the window every model counts, whichever comes first', () => {
+    const scopedFirst = { windows: [opusWeek(0.9), ...quota(0.36, 60).windows] }
+    expect(allowance(budget(), scopedFirst, now, daily, present)).toEqual(
+      allowance(budget(), quota(0.36, 60), now, daily, present),
+    )
+  })
+
+  it('has the ceiling of reserve and pacing, without per_run', () => {
+    expect(ceiling(start)).toBe(0.51)
+    expect(start.kind === 'quota' && Math.round(modelCeiling(start) * 1000) / 1000).toBe(0.579)
+  })
+
+  it('is remembered against the model that read it, the default one too', () => {
+    const a = withQuota(read(0.5, 'opus'), quota(0.4, 60), 'sonnet')
+    expect(a).toMatchObject({ used: 0.4, models: { opus: [opusWeek(0.5)] } })
+    expect(withQuota(a, { windows: [opusWeek(0.6)] })).toMatchObject({
+      models: { opus: [opusWeek(0.5)], default: [opusWeek(0.6)] },
+    })
+  })
+
+  it('routes to the next model with room, else past the provider, naming the model and window', () => {
+    const allowances = {
+      full: read(0.6, 'opus'),
+      open: allowance(budget(), quota(0.2, 60), now, daily),
+    }
+    expect(route(['full'], allowances, {}, () => ['opus', 'sonnet'])).toEqual({
+      provider: 'full',
+      model: 1,
+      passed: [],
+    })
+    const onlyOpus = (id: string) => (id === 'full' ? ['opus'] : [undefined])
+    expect(route(['full', 'open'], allowances, {}, onlyOpus)).toEqual({
+      provider: 'open',
+      model: 0,
+      passed: ['full on opus at its ceiling (seven_day_opus at 60%, ceiling 57.9%)'],
+    })
+    expect(route(['full'], allowances, {})).toEqual({ provider: 'full', passed: [] })
   })
 })

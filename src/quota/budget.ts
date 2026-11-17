@@ -16,6 +16,8 @@ export type Allowance =
       runs: number
       limits: { name: 'per_run' | 'reserve' | 'pacing'; value: number }[]
       session?: { used: number; stopAt: number; limit: SessionLimit }
+      /** Each model's own windows as a worker last read them, by the model it ran: `default` for the binary's. */
+      models?: Record<string, Quota['windows']>
     }
   | {
       kind: 'fallback'
@@ -43,7 +45,7 @@ export function allowance(
   windows: Window[],
   { present = false, reason = 'no quota reading' }: { present?: boolean; reason?: string } = {},
 ): Allowance {
-  const long = quota?.windows.find((w) => w.span === 'long')
+  const long = quota?.windows.find((w) => w.span === 'long' && !w.scoped)
   if (!long)
     return { kind: 'fallback', ...budget.fallback, reason, ...(present && { present: true }) }
   const length = (long.minutes ?? WEEK_MINUTES) * 60_000
@@ -78,12 +80,32 @@ export function allowance(
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n))
 
-/** The first candidate still under its ceiling, or under its fallback unit cap given units already routed. */
+/** This run's ceiling on a model's own window: the long window's but for `per_run`, which the long window already holds the model's spend to. */
+export const modelCeiling = (a: Extract<Allowance, { kind: 'quota' }>) =>
+  Math.min(...a.limits.filter((l) => l.name !== 'per_run').map((l) => l.value))
+
+/** The first model-scoped window in `windows` at this run's ceiling on it, as a stop reason. */
+export function scopedOver(a: Allowance, windows: Quota['windows']): string | undefined {
+  if (a.kind !== 'quota') return
+  const ceiling = modelCeiling(a)
+  const over = windows.find((w) => w.scoped && w.used >= ceiling)
+  return over && `${over.name} at ${pct(over.used)}, ceiling ${pct(ceiling)}`
+}
+
+/** Why `model`, unset for the binary's default, has no room left by its windows' last reading. */
+export const modelOver = (a: Allowance, model?: string) =>
+  a.kind === 'quota' ? scopedOver(a, a.models?.[model ?? 'default'] ?? []) : undefined
+
+/**
+ * The first candidate still under its ceiling, or under its fallback unit cap given units already routed,
+ * and the first of its `models`, the ones the unit tries on it in turn, with room left.
+ */
 export function route(
   candidates: string[],
   allowances: Record<string, Allowance>,
   routed: Record<string, number>,
-): { provider?: string; passed: string[] } {
+  models?: (id: string) => (string | undefined)[],
+): { provider?: string; model?: number; passed: string[] } {
   const passed: string[] = []
   for (const id of candidates) {
     const a = allowances[id]
@@ -101,7 +123,15 @@ export function route(
       passed.push(`${id} sits out a present run (${a.reason})`)
       continue
     }
-    if (a.kind === 'quota' && a.used < a.ceiling) return { provider: id, passed }
+    if (a.kind === 'quota' && a.used < a.ceiling) {
+      const tries = models?.(id)
+      const model = tries?.findIndex((m) => !modelOver(a, m))
+      if (model === undefined) return { provider: id, passed }
+      if (model >= 0) return { provider: id, model, passed }
+      for (const m of tries ?? [])
+        passed.push(`${id} on ${m ?? 'its default model'} at its ceiling (${modelOver(a, m)})`)
+      continue
+    }
     if (a.kind === 'fallback' && (routed[id] ?? 0) < a.units) return { provider: id, passed }
     passed.push(
       a.kind === 'quota'
@@ -127,11 +157,19 @@ export function quotaFacts(a: Allowance): { runs?: number; headroom?: number } {
     : {}
 }
 
-/** The same ceiling with usage moved to what a worker last saw. */
-export function withQuota(a: Allowance, quota: Quota): Allowance {
+/** The same ceiling with usage moved to what a worker on `model`, unset for the binary's default, last saw. */
+export function withQuota(a: Allowance, quota: Quota, model?: string): Allowance {
   if (a.kind !== 'quota') return a
   const long = quota.windows.find((w) => w.name === a.window)
   const short = quota.windows.find((w) => w.span === 'short')
   const session = a.session && short ? { ...a.session, used: short.used } : a.session
-  return { ...a, used: long?.used ?? a.used, resetsAt: long?.resetsAt ?? a.resetsAt, session }
+  const scoped = quota.windows.filter((w) => w.scoped)
+  const models = scoped.length ? { ...a.models, [model ?? 'default']: scoped } : a.models
+  return {
+    ...a,
+    used: long?.used ?? a.used,
+    resetsAt: long?.resetsAt ?? a.resetsAt,
+    session,
+    ...(models && { models }),
+  }
 }

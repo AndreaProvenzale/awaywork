@@ -76,7 +76,9 @@ const model = z
 
 const models = z
   .union([model, z.array(model).length(2)])
-  .describe('A model, or two: a step that fails on the first runs once more on the second')
+  .describe(
+    "A model, or two: a step that fails on the first, or fills the first's own weekly limit, runs once more on the second, and starts there once that limit is full",
+  )
 
 export type ProviderConfig = {
   model?: string

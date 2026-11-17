@@ -7,7 +7,9 @@ import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '#core/types'
 import { claudeProvider, toEvents } from '#providers/claude'
+import type { Allowance } from '#quota/budget'
 import { commandEnv, workerEnv } from '#worker/clone/env'
+import { runWorker } from '#worker/process/worker'
 import { providerContract } from './contracts/provider.contract'
 import { fakeItem } from './fakes/items'
 
@@ -110,6 +112,49 @@ describe('claude provider', () => {
         { name: 'five_hour', span: 'short', used: 0.02, resetsAt: 1790374800, minutes: 300 },
         { name: 'seven_day', span: 'long', used: 0.05, resetsAt: 1790676000, minutes: 10080 },
       ],
+    })
+  })
+
+  it("reads a model's own week as a scoped long window", () => {
+    const [, quota] = recorded('fable').flatMap(toEvents)
+    expect(quota).toEqual({
+      type: 'quota',
+      quota: {
+        windows: [
+          { name: 'five_hour', span: 'short', used: 0.31, resetsAt: 1790374800, minutes: 300 },
+          { name: 'seven_day', span: 'long', used: 0.64, resetsAt: 1790676000, minutes: 10080 },
+          {
+            name: 'seven_day_overage_included',
+            span: 'long',
+            used: 0.82,
+            resetsAt: 1790676000,
+            minutes: 10080,
+            scoped: true,
+          },
+        ],
+      },
+    })
+  })
+
+  it("stops a worker once its model's own week reaches the ceiling, per_run aside", async () => {
+    const a: Allowance = {
+      kind: 'quota',
+      window: 'seven_day',
+      used: 0.6,
+      resetsAt: 1790676000,
+      ceiling: 0.7,
+      runs: 3,
+      limits: [
+        { name: 'per_run', value: 0.7 },
+        { name: 'reserve', value: 0.9 },
+        { name: 'pacing', value: 0.8 },
+      ],
+    }
+    const fable = { ...job(), model: 'claude-fable-5-2' }
+    const watch = () => ({ stop: async () => {} })
+    expect(await runWorker(provider, fable, a, { log: () => {}, watch })).toMatchObject({
+      status: 'stopped: quota',
+      reason: 'seven_day_overage_included at 82%, ceiling 80%',
     })
   })
 
