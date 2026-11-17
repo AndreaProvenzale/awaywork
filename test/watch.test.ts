@@ -302,8 +302,8 @@ queue:
 
     await rm(watchLogPath)
     await writeFile(path, (await readFile(path, 'utf8')).replace(/\{ setup:.*? \}/, '{}'))
-    // Run ids are per second, and the stopped run's chain dir would be reused.
-    await new Promise((r) => setTimeout(r, 1100))
+    // Run ids are per second, and the stopped run's clone dir would be reused.
+    await new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000)))
     expect(await watchUntil(path, 'Report: ')).toContain('window run')
     expect(workers.ran).toEqual(['ch-1'])
   }, 30_000)
