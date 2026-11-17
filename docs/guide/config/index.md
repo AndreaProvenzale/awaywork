@@ -131,7 +131,7 @@ Each `awaywork run` prunes once it holds the run lock (not on `--dry-run`), goin
 
 ## Secrets
 
-The config holds env var **names** only. Values come from the environment or `~/.config/awaywork/.env`, the environment winning. `awaywork secret ASANA_TOKEN` saves one there (the active [profile](#profiles)'s `.env`) off your shell history, at a hidden prompt or from a pipe (`pbpaste | awaywork secret ASANA_TOKEN`), replacing an existing line.
+The config holds env var **names** only. Values come from the environment or `~/.config/awaywork/.env` (an older `env` there still counts; `doctor` says to rename it), the environment winning. `awaywork secret ASANA_TOKEN` saves one there (the active [profile](#profiles)'s `.env`) off your shell history, at a hidden prompt or from a pipe (`pbpaste | awaywork secret ASANA_TOKEN`), replacing an existing line.
 
 | Variable | Used by |
 | --- | --- |

@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Command } from 'commander'
+import { expandHome } from '#config/logins'
 import { configDir, profilesPath } from '#config/paths'
 import { DEFAULT_PROFILE, readRegistry, switchTo } from '#config/profiles'
 
@@ -31,20 +32,19 @@ export async function runSwitch(
   config?: string,
 ): Promise<string> {
   const registry = name
-    ? await switchTo(path, name, config && resolve(config.replace(/^~(?=\/)/, homedir())))
+    ? await switchTo(path, name, config && resolve(expandHome(config)))
     : readRegistry(path)
   const current = registry.current ?? DEFAULT_PROFILE
-  const rows = [
+  const rows: [string, string][] = [
     [DEFAULT_PROFILE, join(configDir, 'config.yml')],
     ...Object.entries(registry.profiles),
   ]
-  const width = Math.max(...rows.map(([n]) => (n as string).length))
+  const width = Math.max(...rows.map(([n]) => n.length))
   const lines = name
     ? [`Switched to ${current}`]
-    : rows.map(
-        ([n, c]) =>
-          `${n === current ? '*' : ' '} ${(n as string).padEnd(width)}  ${tilde(c as string)}`,
-      )
+    : rows.map(([n, c]) => `${n === current ? '*' : ' '} ${n.padEnd(width)}  ${tilde(c)}`)
+  if (!name && current !== DEFAULT_PROFILE && !Object.hasOwn(registry.profiles, current))
+    lines.push(`current is ${current}, which isn't registered`)
   if (fromEnv && fromEnv !== current)
     lines.push(
       `AWAYWORK_PROFILE=${fromEnv} in this shell overrides it; unset it to follow the switch`,

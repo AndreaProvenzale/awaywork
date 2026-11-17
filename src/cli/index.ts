@@ -19,7 +19,10 @@ import { switchCommand } from './commands/switch'
 import { watchCommand } from './commands/watch'
 
 const shell = { ...process.env }
-if (profile.problem && process.argv[2] !== 'switch') {
+const [command] = process.argv
+  .slice(2)
+  .filter((arg, i, all) => !arg.startsWith('-') && !/^(-c|--config)$/.test(all[i - 1] ?? ''))
+if (profile.problem && command !== 'switch') {
   console.error(profile.problem)
   process.exit(1)
 }
@@ -45,7 +48,7 @@ const program = new Command('awaywork')
   .version(packageVersion)
   .option(
     '-c, --config <path>',
-    'config file (default: $AWAYWORK_CONFIG, else the profile config, ~/.config/awaywork/config.yml)',
+    "config file (default: $AWAYWORK_CONFIG, else the profile's, else ~/.config/awaywork/config.yml)",
   )
 
 initCommand(program)

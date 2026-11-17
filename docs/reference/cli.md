@@ -18,7 +18,7 @@ Run your coding agents on your real tasks, under rules you set
 Options:
   -V, --version             output the version number
   -c, --config <path>       config file (default: $AWAYWORK_CONFIG, else the
-                            profile config, ~/.config/awaywork/config.yml)
+                            profile's, else ~/.config/awaywork/config.yml)
   -h, --help                display help for command
 
 Commands:

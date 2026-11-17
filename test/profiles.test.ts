@@ -39,11 +39,29 @@ describe('resolving the profile', () => {
 })
 
 describe('the registry', () => {
-  it('is empty without a file or with a broken one', async () => {
+  it('is empty without a file', async () => {
     const dir = await temp()
     expect(readRegistry(join(dir, 'profiles.yml'))).toEqual({ current: undefined, profiles: {} })
-    await writeFile(join(dir, 'profiles.yml'), '{ not: [yaml')
-    expect(readRegistry(join(dir, 'profiles.yml')).profiles).toEqual({})
+  })
+
+  it("refuses a file it can't read, naming it, and switch leaves it as it was", async () => {
+    const path = join(await temp(), 'profiles.yml')
+    const config = join(await temp(), 'c.yml')
+    await writeFile(config, '')
+    for (const text of [
+      '{ not: [yaml',
+      '- a\n- b\n',
+      'current: work\nprofiles:\n  work: /w.yml\n   play: /p.yml\n',
+      'profiles:\n  Bad_Name: /p.yml\n',
+      'profiles:\n  work: [1]\n',
+      'profiles: [work]\n',
+    ]) {
+      await writeFile(path, text)
+      expect(() => readRegistry(path)).toThrow(path)
+      await expect(switchTo(path, 'new', config)).rejects.toThrow(path)
+      await expect(runSwitch(path, undefined)).rejects.toThrow(path)
+      expect(await readFile(path, 'utf8')).toBe(text)
+    }
   })
 
   it('keeps what switch registers and makes it current', async () => {
@@ -55,13 +73,12 @@ describe('the registry', () => {
     expect(readRegistry(registry).current).toBe('default')
   })
 
-  it('refuses an unknown name, a bad name, a relative or missing config and re-pointing default', async () => {
+  it('refuses an unknown name, a bad name, a missing config and re-pointing default', async () => {
     const { dir, registry, configs } = await registered('work')
     await expect(switchTo(registry, 'nope')).rejects.toThrow('awaywork switch nope <config>')
     await expect(switchTo(registry, 'Bad_Name', configs.work)).rejects.toThrow(
       "isn't a profile name",
     )
-    await expect(switchTo(registry, 'x', 'rel.yml')).rejects.toThrow("isn't an absolute path")
     await expect(switchTo(registry, 'x', join(dir, 'gone.yml'))).rejects.toThrow("doesn't exist")
     await expect(switchTo(registry, 'default', configs.work)).rejects.toThrow('pick another name')
     expect(Object.keys(readRegistry(registry).profiles)).toEqual(['work'])
@@ -69,6 +86,12 @@ describe('the registry', () => {
 })
 
 describe('awaywork switch', () => {
+  it("says when the current profile isn't registered", async () => {
+    const path = join(await temp(), 'profiles.yml')
+    await writeFile(path, 'current: gone\n')
+    expect(await runSwitch(path, undefined)).toContain("current is gone, which isn't registered")
+  })
+
   it('lists the profiles with the current one marked and where each config is', async () => {
     const { registry, configs } = await registered('work', 'play')
     await switchTo(registry, 'work')

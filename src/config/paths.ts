@@ -6,12 +6,18 @@ import { DEFAULT_PROFILE, readRegistry, resolveProfile } from './profiles'
 
 export const configDir = join(homedir(), '.config', 'awaywork')
 export const profilesPath = join(configDir, 'profiles.yml')
-export const profile = resolveProfile(process.env.AWAYWORK_PROFILE, readRegistry(profilesPath))
+export const profile = (() => {
+  try {
+    return resolveProfile(process.env.AWAYWORK_PROFILE, readRegistry(profilesPath))
+  } catch (e) {
+    return { name: DEFAULT_PROFILE, problem: (e as Error).message }
+  }
+})()
 /** The config in use when neither `--config` nor `AWAYWORK_CONFIG` says: the profile's, else `config.yml`. */
 export const defaultConfigPath = profile.config ?? join(configDir, 'config.yml')
-/** The profile's secrets, beside its config; the default profile's older `env` still counts until a `.env` exists. */
 export const legacyEnvFile = join(configDir, 'env')
 const dotEnv = join(dirname(defaultConfigPath), '.env')
+/** The profile's secrets, beside its config; the default profile's older `env` still counts until a `.env` exists. */
 export const envFile =
   profile.name === DEFAULT_PROFILE && !existsSync(dotEnv) && existsSync(legacyEnvFile)
     ? legacyEnvFile
