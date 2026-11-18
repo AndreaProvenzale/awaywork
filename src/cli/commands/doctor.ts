@@ -26,6 +26,7 @@ import {
   dockerVersion,
   inAwayworkImage,
   inImage,
+  sudoArgs,
   sudoersLines,
   WORKER,
   workerFor,
@@ -37,6 +38,7 @@ import { describeAllowance } from '#format/allowances'
 import { NO_QUEUE } from '#format/rules'
 import { type Status, statusMarker } from '#format/terminal'
 import { ruleThread } from '#plan/queue'
+import { sandboxStarts } from '#providers/claude'
 import { codexLogin } from '#providers/codex'
 import { commandBinary, isCommandProvider } from '#providers/command'
 import { providerFor, providers } from '#providers/index'
@@ -186,7 +188,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
         facts.filter(Boolean).join(', '),
       )
     if (id === 'claude') {
-      const sandbox = await claudeSandbox()
+      const sandbox = await claudeSandbox(boxed, asWorker)
       report(sandbox ? 'warn' : 'ok', 'claude sandbox', sandbox ?? 'Bash runs offline')
     }
     if (!keyless && asWorker && !provider.login && unset.length > 0)
@@ -260,22 +262,18 @@ export const configFailure = (error: Error, path: string): Check => ({
   detail: error.message.split('\n').slice(1).join('; ').trim(),
 })
 
-/** Why Claude's Bash sandbox can't start on this machine, if it can't; macOS needs nothing. */
-async function claudeSandbox(): Promise<string | undefined> {
-  if (process.platform !== 'linux') return undefined
-  const effect = "Claude's Bash runs unsandboxed, with network access"
-  const has = (name: string) => exec('sh', ['-c', `command -v ${name}`]).then(Boolean, () => false)
-  const tools = ['bwrap', 'socat']
-  const found = await Promise.all(tools.map(has))
-  const absent = tools.filter((_, i) => !found[i])
-  if (absent.length)
-    return `${absent.join(' and ')} missing (apt install bubblewrap socat): ${effect}`
-  const probe = ['--unshare-user', '--unshare-net', '--ro-bind', '/', '/', 'true']
-  const started = await exec('bwrap', probe).then(
-    () => true,
-    () => false,
+/** Why Claude's Bash sandbox can't start where units run, if it can't; in a container the image decides, so each unit probes it. */
+async function claudeSandbox(boxed: boolean, asWorker: boolean): Promise<string | undefined> {
+  if (boxed) return undefined
+  const options = { env: {}, extendEnv: false, reject: false }
+  const started = await sandboxStarts((file, args) =>
+    asWorker
+      ? execa(bin('sudo'), sudoArgs(WORKER, file, args, options), options)
+      : execa(bin(file), args, options),
   )
-  return started ? undefined : `bwrap can't create a user namespace here: ${effect}`
+  if (started) return undefined
+  const needs = inAwayworkImage(process.env) ? '' : ' (needs bubblewrap, socat and user namespaces)'
+  return `bwrap can't start here${needs}: Claude's Bash runs unsandboxed, with network access`
 }
 
 const GH_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']

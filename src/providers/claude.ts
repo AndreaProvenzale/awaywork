@@ -10,8 +10,7 @@ import { killGroupWhenDone } from '#util/process'
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
 const TOKEN = 'CLAUDE_CODE_OAUTH_TOKEN'
-/** A round can't plant settings in the clone: they'd merge into the sandbox lists. */
-const protectedPaths = ['Edit(.claude/**)', 'Write(.claude/**)']
+const BWRAP_PROBE = ['--unshare-user', '--unshare-net', '--ro-bind', '/', '/', 'true']
 const knownWindows: Record<string, { span: 'short' | 'long'; minutes: number }> = {
   five_hour: { span: 'short', minutes: 300 },
   seven_day: { span: 'long', minutes: 7 * 24 * 60 },
@@ -37,7 +36,7 @@ const configSchema = z.strictObject({
 })
 
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
-export function claudeProvider(bin = 'claude'): Provider {
+export function claudeProvider(bin = 'claude', startsSandbox = sandboxStartsFor): Provider {
   return {
     id: 'claude',
     configSchema,
@@ -80,7 +79,14 @@ export function claudeProvider(bin = 'claude'): Provider {
     async *run(job, signal) {
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
       if (job.model) args.push('--model', job.model)
-      args.push(...(job.unit.foreign ? isolated : repoOnly), '--settings', await settings(job))
+      const sandboxed = await startsSandbox(job)
+      if (!sandboxed)
+        yield { type: 'log', line: "Claude's sandbox can't start here: Bash runs unsandboxed" }
+      args.push(
+        ...(job.unit.foreign ? isolated : repoOnly),
+        '--settings',
+        await settings(job, sandboxed),
+      )
       if (job.plugin) args.push('--plugin-dir', job.plugin)
       const servers = Object.entries(job.mcp ?? {})
       if (servers.length > 0) args.push('--mcp-config', mcpConfig(servers))
@@ -112,25 +118,39 @@ export function claudeProvider(bin = 'claude'): Provider {
 
 export const claude = claudeProvider()
 
-/** Bash offline, without the login or the MCP secrets; where the sandbox can't start, Claude warns and Bash runs unsandboxed. */
-function sandbox(job: Job, allowedDomains: string[] = []) {
+/** Whether Claude's sandbox can start where `run` runs commands; bubblewrap on Linux, Seatbelt elsewhere needs nothing. */
+export async function sandboxStarts(
+  run: (file: string, args: string[]) => PromiseLike<{ failed: boolean }>,
+  platform = process.platform,
+): Promise<boolean> {
+  return platform !== 'linux' || !(await run('bwrap', BWRAP_PROBE)).failed
+}
+
+/** The probe where the unit's Claude runs: as the worker user or in the container, when there is one. */
+function sandboxStartsFor(job: Job) {
+  return sandboxStarts((file, args) =>
+    launch(file, args, { cwd: job.dir, env: job.env, extendEnv: false, reject: false }),
+  )
+}
+
+/** Bash offline, without the login or the MCP secrets. */
+function sandbox(job: Job) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
   return {
     enabled: true,
     failIfUnavailable: false,
     allowUnsandboxedCommands: false,
-    network: { allowedDomains },
+    network: { allowedDomains: [] },
     credentials: { envVars: [TOKEN, ...secrets].map((name) => ({ name, mode: 'deny' })) },
   }
 }
 
-/** The developer's settings file with auto-memory off and Bash sandboxed; it applies whatever the setting sources. */
-async function settings(job: Job): Promise<string> {
+/** The developer's settings file with auto-memory off and, where the sandbox starts, Bash sandboxed; it applies whatever the setting sources. */
+async function settings(job: Job, sandboxed: boolean): Promise<string> {
   const { settings: file } = configSchema.parse(job.config ?? {})
   const theirs = file && JSON.parse(await readFile(resolve(job.configDir ?? '', file), 'utf8'))
-  const deny = [...(theirs?.permissions?.deny ?? []), ...protectedPaths]
-  const permissions = { ...theirs?.permissions, deny }
-  return JSON.stringify({ ...theirs, ...noMemory, permissions, sandbox: sandbox(job) })
+  const merged = sandboxed ? { ...theirs?.sandbox, ...sandbox(job) } : theirs?.sandbox
+  return JSON.stringify({ ...theirs, ...noMemory, ...(merged && { sandbox: merged }) })
 }
 
 /** The servers as `.mcp.json`; the binary expands `${NAME}` from the worker's env. */

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '#core/types'
-import { claudeProvider, toEvents } from '#providers/claude'
+import { claudeProvider, sandboxStarts, toEvents } from '#providers/claude'
 import type { Allowance } from '#quota/budget'
 import { commandEnv, workerEnv } from '#worker/clone/env'
 import { runWorker } from '#worker/process/worker'
@@ -334,7 +334,7 @@ describe('claude provider', () => {
       )
       expect(rest).toEqual({ env: { A: '1' }, autoMemoryEnabled: false })
       expect(sandbox.enabled).toBe(true)
-      expect(permissions.deny).toContain('Write(.claude/**)')
+      expect(permissions).toBeUndefined()
       expect(args[args.indexOf('--plugin-dir') + 1]).toBe(plugin)
     } finally {
       delete process.env.FAKE_ARGV
@@ -362,11 +362,39 @@ describe('claude provider', () => {
           ],
         },
       })
-      expect(settings.permissions.deny).toEqual([
-        'Read(.env)',
-        'Edit(.claude/**)',
-        'Write(.claude/**)',
-      ])
+      expect(settings.permissions.deny).toEqual(['Read(.env)'])
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("keeps the developer's other sandbox keys, ours winning", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    const theirs = { sandbox: { excludedCommands: ['docker'], enabled: false } }
+    await writeFile(join(dir, 'worker.json'), JSON.stringify(theirs))
+    try {
+      const run = { ...job(), config: { settings: 'worker.json' }, configDir: dir }
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox).toMatchObject({ excludedCommands: ['docker'], enabled: true })
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("leaves the sandbox out and says so where it can't start", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    try {
+      const events = await collect(
+        claudeProvider(bin, async () => false).run(job(), new AbortController().signal),
+      )
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      expect(JSON.parse(args[args.indexOf('--settings') + 1] as string).sandbox).toBeUndefined()
+      expect(events).toContainEqual({
+        type: 'log',
+        line: "Claude's sandbox can't start here: Bash runs unsandboxed",
+      })
     } finally {
       delete process.env.FAKE_ARGV
     }
@@ -433,5 +461,36 @@ describe('claude provider', () => {
     await collect(claudeProvider(script).run(job(), new AbortController().signal))
     const left = Number(await readFile(pid, 'utf8'))
     await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
+  })
+})
+
+describe('sandboxStarts', () => {
+  const ran: string[][] = []
+  const probe = (failed: boolean) => async (file: string, args: string[]) => {
+    ran.push([file, ...args])
+    return { failed }
+  }
+
+  it('runs a bwrap with a new user and network namespace on Linux', async () => {
+    expect(await sandboxStarts(probe(false), 'linux')).toBe(true)
+    expect(ran[0]).toEqual([
+      'bwrap',
+      '--unshare-user',
+      '--unshare-net',
+      '--ro-bind',
+      '/',
+      '/',
+      'true',
+    ])
+  })
+
+  it('is false on Linux when bwrap fails or is missing', async () => {
+    expect(await sandboxStarts(probe(true), 'linux')).toBe(false)
+  })
+
+  it('needs no probe on macOS', async () => {
+    ran.length = 0
+    expect(await sandboxStarts(probe(true), 'darwin')).toBe(true)
+    expect(ran).toEqual([])
   })
 })
