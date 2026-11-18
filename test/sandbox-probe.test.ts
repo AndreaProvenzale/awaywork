@@ -14,6 +14,11 @@ const FLAGS = [
   '/proc',
   '--dev',
   '/dev',
+  'bwrap',
+  '--unshare-user',
+  '--ro-bind',
+  '/',
+  '/',
   'true',
 ]
 

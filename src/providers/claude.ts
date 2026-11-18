@@ -129,6 +129,7 @@ function sandbox(job: Job) {
     failIfUnavailable: false,
     allowUnsandboxedCommands: false,
     network: { allowedDomains: [] },
+    filesystem: { allowWrite: job.env.HOME ? [job.env.HOME] : [] },
     credentials: { envVars: [TOKEN, ...secrets].map((name) => ({ name, mode: 'deny' })) },
   }
 }

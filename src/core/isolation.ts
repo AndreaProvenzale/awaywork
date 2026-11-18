@@ -221,6 +221,12 @@ const BWRAP_PROBE = [
   '/proc',
   '--dev',
   '/dev',
+  // Claude's apply-seccomp nests a user namespace, which AppArmor refuses inside bwrap on hosted runners.
+  'bwrap',
+  '--unshare-user',
+  '--ro-bind',
+  '/',
+  '/',
   'true',
 ]
 const sandboxes = new Map<string, boolean>()
