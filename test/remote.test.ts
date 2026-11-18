@@ -9,7 +9,17 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runsDir } from '#config/paths'
-import { checkArgs, forward, remoteCall, servedRemotely, serveRemote, sshArgs } from '#run/remote'
+import {
+  captured,
+  checkArgs,
+  forward,
+  remoteCall,
+  remoteFor,
+  type Send,
+  servedRemotely,
+  serveRemote,
+  sshArgs,
+} from '#run/remote'
 
 vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
@@ -34,7 +44,11 @@ describe('the remote allowlist', () => {
       ['report', '--list'],
       ['report', '--skipped'],
       ['report', '--skipped=quota'],
+      ['report', '20261104-101500', '--screen'],
+      ['report', '20261104-101500', '--unit', '3', '--log'],
+      ['report', '--unit=3', '--diff'],
       ['plan', '--json'],
+      ['plan', '--repo', 'acme/*', '--screen'],
       ['plan', '--why', 'github:acme/api#5'],
       ['plan', '--why=-c'],
       ['plan', '--repo', 'acme/*', '--rule=2', '--rules'],
@@ -374,6 +388,40 @@ describe('the CLI forwarding to a remote', () => {
     expect(out).toEqual({ stdout: 'out\n', stderr: 'err\n' })
   })
 
+  it('keeps the output instead of printing it, errors included, for the screen to browse', async () => {
+    const { url } = await serve('console.log("out"); console.error("err"); process.exit(2)')
+    const out = output()
+    const send = remoteFor(['stats'], { url, token: TOKEN }) as Send
+    expect(await captured(send, ['stats'])).toEqual({
+      stdout: 'out\n',
+      stderr: 'err\n',
+      code: 2,
+    })
+    expect(await captured(send, ['plan', '--config', 'x'])).toEqual({
+      stdout: '',
+      stderr: `AWAYWORK_REMOTE (${url}): refused --config\n`,
+      code: 1,
+    })
+    expect(out).toEqual({ stdout: '', stderr: '' })
+    expect(remoteFor(['init'], { url, token: TOKEN })).toBeUndefined()
+    expect(remoteFor(['plan'], { url })).toBeUndefined()
+  })
+
+  it("stops the remote's command when the call is aborted", async () => {
+    const { url, log } = await serve('console.log("started"); setTimeout(() => {}, 30000)')
+    const out = output()
+    const stop = new AbortController()
+    const call = captured(
+      remoteFor(['stats'], { url, token: TOKEN }) as Send,
+      ['stats'],
+      stop.signal,
+    )
+    setTimeout(() => stop.abort(), 500)
+    expect(await call).toMatchObject({ stdout: 'started\n', code: 1 })
+    await vi.waitFor(() => expect(log).toEqual(['remote: ["stats"]: stopped, the client left']))
+    expect(out).toEqual({ stdout: '', stderr: '' })
+  })
+
   it('fails in one line naming AWAYWORK_REMOTE when the answer stops before an exit code', async () => {
     const cut = createServer((_, res) => {
       res.writeHead(200).write('{"stdout":"half"}\n')
@@ -622,6 +670,32 @@ exec env AWAYWORK_REMOTE="$BOX_URL" HOME=${home} ${process.execPath} --experimen
       expect(out.stderr).toBe(
         `AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving, the box's ${join(dir, 'box-home', '.config', 'awaywork', 'env')} has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch\n`,
       )
+    }, 20_000)
+
+    it("keeps the output over ssh too, and an aborted call ends ssh and the box's command with it", async () => {
+      const dir = await box()
+      const pid = join(dir, 'pid')
+      const { url, log } = await serve(
+        `if (process.argv.includes('hang')) { require('node:fs').writeFileSync(${JSON.stringify(pid)}, String(process.pid)); setTimeout(() => {}, 30000) } else { console.log('out'); console.error('err') }`,
+      )
+      vi.stubEnv('BOX_URL', url)
+      const out = output()
+      const send = remoteFor(['stats'], { url: 'ssh://box' }) as Send
+      expect(await captured(send, ['stats'])).toEqual({ stdout: 'out\n', stderr: 'err\n', code: 0 })
+      const stop = new AbortController()
+      const hung = captured(send, ['sources', 'hang'], stop.signal)
+      await vi.waitFor(() => expect(existsSync(pid)).toBe(true), { timeout: 10_000 })
+      stop.abort()
+      expect((await hung).code).toBe(1)
+      const running = Number(await readFile(pid, 'utf8'))
+      await vi.waitFor(() => expect(() => process.kill(running, 0)).toThrow())
+      await vi.waitFor(() =>
+        expect(log).toEqual([
+          'remote: ["stats"]: exit 0',
+          'remote: ["sources","hang"]: stopped, the client left',
+        ]),
+      )
+      expect(out).toEqual({ stdout: '', stderr: '' })
     }, 20_000)
 
     it("stops the box's command when the laptop's awaywork goes, with no terminal to pass a Ctrl-C", async () => {

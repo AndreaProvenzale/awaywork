@@ -33,7 +33,15 @@ type Value = 'required' | 'optional' | 'none'
 /** The commands the remote runs, each with every flag it takes and how many positional arguments at most. */
 const allowed: Record<string, { flags: Record<string, Value>; args: number }> = {
   report: {
-    flags: { '--list': 'none', '--json': 'none', '--unit': 'required', '--skipped': 'optional' },
+    flags: {
+      '--list': 'none',
+      '--json': 'none',
+      '--unit': 'required',
+      '--skipped': 'optional',
+      '--log': 'none',
+      '--diff': 'none',
+      '--screen': 'none',
+    },
     args: 1,
   },
   plan: {
@@ -44,6 +52,7 @@ const allowed: Record<string, { flags: Record<string, Value>; args: number }> = 
       '--rules': 'none',
       '--skipped': 'optional',
       '--why': 'required',
+      '--screen': 'none',
     },
     args: 0,
   },
@@ -124,19 +133,57 @@ export interface Remote {
   token?: string
 }
 
-const fail = (line: string) => {
-  console.error(line)
+/** Where a remote call's output goes: the terminal, or kept by `captured`. */
+export interface Print {
+  out(text: string): void
+  err(text: string): void
+}
+
+const terminal: Print = {
+  out: (text) => process.stdout.write(text),
+  err: (text) => process.stderr.write(text),
+}
+
+const fail = (line: string, print = terminal) => {
+  print.err(`${line}\n`)
   return 1
 }
 
+/** Runs a CLI call on the remote, its exit code; `print` takes its output, the terminal's by default, and `stop` aborts it. */
+export type Send = (args: string[], print?: Print, stop?: AbortSignal) => Promise<number>
+
 /** Runs a CLI call where AWAYWORK_REMOTE says, its exit code; undefined when it runs here. */
-export function remoteCall(args: string[], { url, token }: Remote): Promise<number> | undefined {
-  if (args[0] === FROM_SSH) return fromSsh(args[1], url, token)
+export function remoteCall(args: string[], remote: Remote): Promise<number> | undefined {
+  if (args[0] === FROM_SSH) return fromSsh(args[1], remote.url, remote.token)
+  return remoteFor(args, remote)?.(args)
+}
+
+/** How CLI calls reach AWAYWORK_REMOTE; undefined when `args` runs here. */
+export function remoteFor(args: string[], { url, token }: Remote): Send | undefined {
   if (!url || !servedRemotely(args)) return
-  if (/^ssh:\/\//i.test(url)) return overSsh(args, url)
+  if (/^ssh:\/\//i.test(url)) return (args, print, stop) => overSsh(args, url, print, stop)
   if (!/^https?:\/\//i.test(url))
-    return Promise.resolve(fail(`AWAYWORK_REMOTE (${url}) is neither ssh:// nor http(s)://`))
-  if (token) return forward(args, { url, token })
+    return async (_, print) =>
+      fail(`AWAYWORK_REMOTE (${url}) is neither ssh:// nor http(s)://`, print)
+  if (token) return (args, print, stop) => forward(args, { url, token }, undefined, print, stop)
+}
+
+/** A call on the remote, its output kept instead of printed, until `stop` aborts it. */
+export async function captured(send: Send, args: string[], stop?: AbortSignal): Promise<Output> {
+  const out = { stdout: '', stderr: '' }
+  const code = await send(
+    args,
+    {
+      out: (text) => {
+        out.stdout += text
+      },
+      err: (text) => {
+        out.stderr += text
+      },
+    },
+    stop,
+  )
+  return { ...out, code }
 }
 
 // A flag, so a box on an older awaywork fails on it rather than running something else.
@@ -161,27 +208,37 @@ export function sshArgs(url: string, args: string[]): string[] | undefined {
 }
 
 /** Runs a CLI call on the box an ssh:// AWAYWORK_REMOTE names, printing its output as it comes; its exit code. */
-async function overSsh(args: string[], url: string): Promise<number> {
+async function overSsh(
+  args: string[],
+  url: string,
+  print = terminal,
+  stop?: AbortSignal,
+): Promise<number> {
   const at = `AWAYWORK_REMOTE (${url})`
   const argv = sshArgs(url, args)
-  if (!argv) return fail(`${at} names no host`)
+  if (!argv) return fail(`${at} names no host`, print)
   // Refused here as the box's daemon would: a much bigger call wouldn't fit in one argument there.
   if (Buffer.byteLength(JSON.stringify({ args })) > MAX_BODY)
-    return fail(`${at}: the body is over ${MAX_BODY} bytes`)
+    return fail(`${at}: the body is over ${MAX_BODY} bytes`, print)
   // A stdin nothing writes to: it closes when this process goes, and the box's end leaves with it.
-  const ssh = execa('ssh', argv, { stdin: 'pipe', reject: false, buffer: false })
+  const ssh = execa('ssh', argv, {
+    stdin: 'pipe',
+    reject: false,
+    buffer: false,
+    cancelSignal: stop,
+  })
   // Held until stdout comes or HOLD_MS pass, so ssh's last lines, however split, can become this one's.
   let held = ''
   let hold: NodeJS.Timeout | undefined
   const flush = () => {
     clearTimeout(hold)
     hold = undefined
-    process.stderr.write(held)
+    print.err(held)
     held = ''
   }
   ssh.stdout.setEncoding('utf8').on('data', (text: string) => {
     flush()
-    process.stdout.write(text)
+    print.out(text)
   })
   ssh.stderr.setEncoding('utf8').on('data', (text: string) => {
     held += text
@@ -190,9 +247,9 @@ async function overSsh(args: string[], url: string): Promise<number> {
   const { exitCode, originalMessage } = await ssh
   clearTimeout(hold)
   const failed = sshFailure(url, exitCode, held)
-  if (failed) return fail(failed)
+  if (failed) return fail(failed, print)
   flush()
-  return exitCode ?? fail(`can't reach ${at}: ${originalMessage}`)
+  return exitCode ?? fail(`can't reach ${at}: ${originalMessage}`, print)
 }
 
 /** What a call over ssh says when ssh exits 255, failing itself, or 127, the box missing awaywork or node; `stderr` is ssh's. */
@@ -235,15 +292,18 @@ export async function forward(
   args: string[],
   remote: { url: string; token: string },
   via?: string,
+  print = terminal,
+  stop?: AbortSignal,
 ): Promise<number> {
   const at = `AWAYWORK_REMOTE (${via ?? remote.url})`
+  const timeout = AbortSignal.timeout(TIMEOUT_MS + 30_000)
   let res: Response
   try {
     res = await fetch(`${remote.url.replace(/\/+$/, '')}/cli`, {
       method: 'POST',
       headers: { authorization: `Bearer ${remote.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ args }),
-      signal: AbortSignal.timeout(TIMEOUT_MS + 30_000),
+      signal: stop ? AbortSignal.any([stop, timeout]) : timeout,
     })
   } catch (e) {
     const { cause, message } = e as Error & { cause?: Error }
@@ -252,31 +312,30 @@ export async function forward(
       via
         ? `${at}: the box's daemon isn't serving (${reason}); is awaywork watch running there, with AWAYWORK_REMOTE_TOKEN in its env file?`
         : `can't reach ${at}: ${reason}`,
+      print,
     )
   }
-  if (res.status === 401) return fail(tokenRefused(remote.url, via))
+  if (res.status === 401) return fail(tokenRefused(remote.url, via), print)
   const unlike = `answered HTTP ${res.status}, not as awaywork watch does`
   if (!res.ok || !res.body) {
     const body: { error?: string } = await res.json().catch(() => ({}))
-    console.error(`${at}: ${body.error ?? unlike}`)
-    return 1
+    return fail(`${at}: ${body.error ?? unlike}`, print)
   }
   try {
     for await (const line of createInterface({
       input: Readable.fromWeb(res.body as ReadableStream),
     })) {
       const { stdout, stderr, code }: Partial<Output> = JSON.parse(line) ?? {}
-      if (stdout) process.stdout.write(stdout)
-      if (stderr) process.stderr.write(stderr)
+      if (stdout) print.out(stdout)
+      if (stderr) print.err(stderr)
       if (typeof code === 'number') return code
     }
-    console.error(`${at}: ${unlike}`)
+    return fail(`${at}: ${unlike}`, print)
   } catch (e) {
     const { cause, message } = e as Error & { cause?: Error }
-    if (e instanceof SyntaxError) console.error(`${at}: ${unlike}`)
-    else console.error(`${at} stopped answering: ${cause?.message ?? message}`)
+    if (e instanceof SyntaxError) return fail(`${at}: ${unlike}`, print)
+    return fail(`${at} stopped answering: ${cause?.message ?? message}`, print)
   }
-  return 1
 }
 
 export interface Serve {
