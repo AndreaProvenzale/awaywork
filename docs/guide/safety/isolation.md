@@ -82,7 +82,7 @@ Also open:
 
 - **Prompt injection.** Strangers' GitHub comments are [hidden](./index.md#public-repos), but issue bodies, CI logs, check names and links, other sources' text and trusted people's quotes may be anyone's. The harness calls them data; a model can still be talked into things, with the reach above.
 - **Hooks across a loop's rounds:** on your repo, Claude Code loads the clone's `.claude/settings.json`, so a round can leave hooks the next runs.
-- **MCP secrets in Claude's Bash** and Cursor's shell, on your items ([MCP servers](./index.md#mcp-servers); fix in [#155](https://github.com/AndreaProvenzale/awaywork/issues/155)).
+- **MCP secrets in Claude's Bash**, on your items ([MCP servers](./index.md#mcp-servers); fix in [#155](https://github.com/AndreaProvenzale/awaywork/issues/155)). Cursor's shell can read them from its `mcp.json`.
 - **Codex and Cursor read a PR author's `AGENTS.md`**, Cursor also `CLAUDE.md`, `.cursor/rules` and skills.
 - **A command provider's repo config** on someone else's PR, e.g. MCP servers or hooks in its config dir.
 
