@@ -136,10 +136,15 @@ AGENTS.md
      package.json dependencies, prisma/schema.prisma
      → delete
 
+notes/acme-api.md
+  5  "Flag any change to migrations/ in the PR body."   enforced already
+     gates.schema: changed ["**/migrations/**"] puts it on the PR's decision card
+     → delete
+
 Apply which? (e.g. 1, 3)
 ```
 
-A line saying when to run what ("run `pnpm format`; `pnpm lint` checks") isn't a listing, so "shown by the code" leaves it: neither the tree nor a check says when. A `verify` or [gate](./workflows/gates.md) runs only in awaywork's chains, so it covers a line in `.awaywork/instructions.md` or an `instructions` file, for the units it runs on, never an `AGENTS.md` line your own sessions read.
+A line saying when to run what ("run `pnpm format`; `pnpm lint` checks") isn't a listing, so neither "enforced already" nor "shown by the code" takes it: neither a check nor the tree says when. A `verify` or [gate](./workflows/gates.md) runs only in awaywork's chains, so it covers a line in `.awaywork/instructions.md` or an `instructions` file, for the units it runs on, never an `AGENTS.md` line your own sessions read.
 
 Each line is its own yes, a local edit for you to commit. Nothing declined is written or remembered.
 

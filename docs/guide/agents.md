@@ -17,7 +17,7 @@ codex plugin marketplace add AndreaProvenzale/awaywork
 codex plugin add awaywork@awaywork
 ```
 
-It shows up in Codex's skill list as `awaywork:away`; ask Codex to use it by name. Its longer routes, `setup.md`, `queue.md` and `suggest.md`, sit beside its `SKILL.md` and are read only when a route needs one.
+It shows up in Codex's skill list as `awaywork:away`; ask Codex to use it by name. Its longer routes, `setup.md`, `queue.md`, `suggest.md` and `prune.md`, sit beside its `SKILL.md` and are read only when a route needs one.
 
 Any agent that loads skills from a folder can take it from the installed package, e.g. `~/.agents/skills`, which Codex reads as well:
 

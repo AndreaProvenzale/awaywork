@@ -2,7 +2,7 @@
 
 Propose lines to delete or rewrite in what's already written down for agents, each with the evidence it checked, and edit only the lines the developer picks. Docs: https://andreaprovenzale.github.io/awaywork/guide/suggest.md#prune
 
-It reads no sessions or memories, so it has no Ask round and no window to pick: it goes straight to the files. The [ground rules](SKILL.md#ground-rules) hold: no credentials, read freely, nothing written without their yes, real names only.
+It reads no sessions or memories, so it asks nothing first: go straight to the files. The [ground rules](SKILL.md#ground-rules) hold: no credentials, read freely, nothing written without their yes, real names only.
 
 ## 1. Read
 
@@ -10,7 +10,7 @@ The repo is the one you're in (`git rev-parse --show-toplevel`); not in one, ask
 
 - the repo's root `AGENTS.md` and `CLAUDE.md`. A `CLAUDE.md` that only imports `@AGENTS.md` has no lines of its own;
 - its `.awaywork/instructions.md`;
-- the `instructions` files this repo's units get from the config `awaywork config path` prints, merged with the one its `extends` names: the top level's (the config's own, or the base's when it sets none), the repo's (the last `repos` key naming it that sets one, its own key after globs), and each rule's and step's. Each path is relative to the config that names it. Not a gate's: those are a judge's criteria.
+- the `instructions` files this repo's units get from the config `awaywork config path` prints, merged with the one its `extends` names, where a list replaces the base's: the top level's and the rules (the config's own, or the base's when it sets none), the repo's (the last `repos` key naming it that sets one, its own key after globs), and each rule's and step's. Each path is relative to the config that names it. Not a gate's: those are a judge's criteria.
 
 A config not on this machine (`AWAYWORK_REMOTE`): its `instructions` files are in the control repo. Prune the repo's files and say so.
 
@@ -21,7 +21,9 @@ A line is a bullet or a paragraph. Try the tests in this order and stop at the f
 1. **Contradicted by the code:** it names a path, script or command that doesn't exist. Check the path in the tree, the script in `package.json`, `pyproject.toml` or the `Makefile`. Evidence: what's missing, e.g. "no `scripts/release.sh`". Delete, or rewrite to what the tree shows replaced it ("`package.json` has `release`").
 2. **Enforced already:** a check does what the line asks. Name it: the lint rule on in the linter's config or the preset it extends (`biome.json`, `eslint.config.*`, `ruff`/`[tool.ruff]`, `.golangci.yml`, `.rubocop.yml`, clippy), the test that asserts it, `repos.<repo>.verify`, or the gate. The mistake has to be one the check catches: a linter being installed isn't enough. `verify` and gates run only in awaywork's chains, so they enforce a line in `.awaywork/instructions.md` or a config `instructions` file, for the units they run on, never an `AGENTS.md` or `CLAUDE.md` one, which the developer's own sessions read. Delete.
 3. **Emphatic:** `IMPORTANT`, `MUST`, a word or a line in all caps, "never ever". A name or an acronym (`GH_TOKEN`, `API`) isn't emphasis. Evidence: the words, e.g. `IMPORTANT`, `MUST`. Rewrite: the same line, plain.
-4. **Shown by the code, listings only:** the stack, a directory tree, an inventory of scripts or dependencies, which the manifest or the tree already says. Evidence: the file that says it. Delete. A line saying when to run what ("run `pnpm format`; `pnpm lint` checks") isn't a listing: it stays, since neither the tree nor a check tells an agent when.
+4. **Shown by the code, listings only:** the stack, a directory tree, an inventory of scripts or dependencies, which the manifest or the tree already says. Evidence: the file that says it. Delete.
+
+A line saying when to run what ("run `pnpm format`; `pnpm lint` checks") fits neither test 2 nor test 4: neither a check nor the tree tells an agent when. It stays.
 
 A config file can reach other repos too: the top level's reaches them all, a glob key's those it matches, a rule's or step's those its items come from. Tests 1, 2 and 4 take a line in it only when they hold in each repo it reaches; where you can't check one, only test 3 applies.
 
