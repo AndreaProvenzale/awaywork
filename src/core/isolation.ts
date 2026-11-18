@@ -248,7 +248,8 @@ export async function sandboxStarts(
           { ...options, env: {}, extendEnv: false },
         )
       : await run(bin('bwrap'), BWRAP_PROBE, options)
-  if (!signal?.aborted) sandboxes.set(key, !ran.failed)
+  // Docker's own failure (125) says nothing about bwrap, and may pass later.
+  if (!signal?.aborted && ran.exitCode !== 125) sandboxes.set(key, !ran.failed)
   return !ran.failed
 }
 

@@ -14,7 +14,7 @@ import { providerContract } from './contracts/provider.contract'
 import { fakeItem } from './fakes/items'
 
 const bin = fileURLToPath(new URL('./fakes/claude.mjs', import.meta.url))
-const provider = claudeProvider(bin)
+const provider = claudeProvider(bin, async () => true)
 const dir = await mkdtemp(join(tmpdir(), 'awaywork-claude-'))
 const recorded = (name: string) =>
   readFileSync(new URL(`./fixtures/claude/${name}.jsonl`, import.meta.url), 'utf8').split('\n')
@@ -448,7 +448,9 @@ describe('claude provider', () => {
   })
 
   it('reports a failed run when the binary exits without a result', async () => {
-    const events = await collect(claudeProvider('false').run(job(), new AbortController().signal))
+    const events = await collect(
+      claudeProvider('false', async () => true).run(job(), new AbortController().signal),
+    )
     expect(events).toEqual([{ type: 'done', ok: false, turns: 0 }])
   })
 
@@ -458,7 +460,7 @@ describe('claude provider', () => {
     const script = join(root, 'leaves.sh')
     const leaves = `/bin/sleep 30 >/dev/null 2>&1 & echo $! > ${pid}`
     await writeFile(script, `#!/bin/sh\n${leaves}\n`, { mode: 0o755 })
-    await collect(claudeProvider(script).run(job(), new AbortController().signal))
+    await collect(claudeProvider(script, async () => true).run(job(), new AbortController().signal))
     const left = Number(await readFile(pid, 'utf8'))
     await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
   })

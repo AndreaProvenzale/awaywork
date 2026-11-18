@@ -84,6 +84,12 @@ describe('sandboxStarts', () => {
     expect(calls).toHaveLength(2)
   })
 
+  it("doesn't keep docker's own failure", async () => {
+    const docker = (async () => ({ failed: true, exitCode: 125 })) as unknown as Run
+    expect(await sandboxStarts({ image: 'probe/image:five' }, undefined, docker)).toBe(false)
+    expect(await sandboxStarts({ image: 'probe/image:five' }, undefined, fake(false))).toBe(true)
+  })
+
   it('looks where the phase runs: the image under a container, else the worker', () => {
     containerize(true)
     contain('/clone', { image: 'probe/image:four', secrets: [] })

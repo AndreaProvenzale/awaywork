@@ -83,7 +83,7 @@ export function claudeProvider(
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
       if (job.model) args.push('--model', job.model)
       const sandboxed = await startsSandbox(job, signal)
-      if (!sandboxed)
+      if (!sandboxed && !signal.aborted)
         yield { type: 'log', line: "Claude's sandbox can't start here: Bash runs unsandboxed" }
       args.push(
         ...(job.unit.foreign ? isolated : repoOnly),
