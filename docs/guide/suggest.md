@@ -58,19 +58,19 @@ A correction you keep typing becomes the first of these that fits:
 
 | Correction | It proposes | When |
 | --- | --- | --- |
-| One a check you have already catches | That command as the repo's [`verify`](./config/repos.md#repos-and-instructions), like `pnpm lint` | The command catches it: its rule is on, or it fails on a tree with the mistake. That the command exists isn't enough |
+| One your checks already catch | That command as the repo's [`verify`](./config/repos.md#repos-and-instructions), like `pnpm lint` | The command catches it: its rule is on, or it fails on a tree with the mistake. That the command exists isn't enough |
 | One a script could catch in the code | A check (a lint rule, a test or a grep script) and fixing what's there, as an issue awaywork can take | It's a call, an import or a pattern, and every `git grep` hit for it is the mistake. No hits is fine: the check lands green |
 | One that shows only in the change | A [gate](./workflows/gates.md) | It's a touched path, a file kind or a new dependency, which a linter can't see in the tree; or the trigger is mechanical but the answer is yours |
 | One that needs judgment, for every agent | A line in the repo's `AGENTS.md` (or `CLAUDE.md`), which helps your own sessions too | No script decides it, and an agent reading the README, the manifest and the tree wouldn't learn it |
 | The same, for awaywork's workers only | A line in your awaywork `instructions` | As above |
 
-A correction already written down and still made is a strong check candidate: the issue deletes the line. The check goes into your `lint` or `test` script, so your own sessions hit it before a PR and CI runs it too. Its evidence is the pattern and its `git grep` count from your repo, never your sessions, since the issue may be public.
+A correction already written down and still made is a strong check candidate: the issue deletes the line, when it's in the repo. The check goes into your `lint` or `test` script, so your own sessions hit it before a PR and CI runs it too. Its evidence is the pattern and its `git grep` count from your repo, never your sessions, since the issue may be public.
 
-A saved memory can be a correction you already wrote down, which awaywork's Claude Code workers never see: they start with auto-memory off and none of your user-level config (Codex workers do read `~/.codex/AGENTS.md` under `isolation: none`). It reads the memory index, types and descriptions first, and opens only your feedback and notes stating a rule about the repo, not progress logs. One that holds for the repo becomes an `AGENTS.md` or `instructions` line; one about you doesn't.
+A saved memory can be a correction you already wrote down, which awaywork's Claude Code workers never see: they start with auto-memory off and none of your user-level config (Codex workers do read `~/.codex/AGENTS.md` under `isolation: none`). It reads the memory index, types and descriptions first, and opens only your feedback and notes stating a rule about the repo, not progress logs. One that holds for the repo is a correction like the others, through the table above; one about you isn't.
 
 With a rule that implements and no proving skill on it, it proposes one whether or not it saw the pattern, and asks how a change is proven in that repo before writing a line: it names no tool.
 
-Anything your config or `AGENTS.md` already has shows as "already rule #1". A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts the rules and routines into a copy of your config and runs `awaywork plan --rules --json` and `doctor --json` on it, so each comes with the items it takes now, the near misses, and a routine's next occurrence.
+Anything your config or `AGENTS.md` already has shows as "already rule #1", except a correction you still make, which a check can catch. A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts the rules and routines into a copy of your config and runs `awaywork plan --rules --json` and `doctor --json` on it, so each comes with the items it takes now, the near misses, and a routine's next occurrence.
 
 ## What you see
 
@@ -106,7 +106,7 @@ Below it: 2 patterns dropped for having no visible trigger, the draft keeping th
 
 ## You pick
 
-Accept, tweak or decline each by number. Kept rules and routines go through the skill's queue loop: drafted, checked on your items again, written into your config on your yes, comments kept, then `doctor`. An `AGENTS.md` line is a local edit you commit. A check comes back as an issue body and a command for you to run (`gh issue create …`); with no rule to take it, a body to file or paste into a session. A rule that lets awaywork write more (`pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./away.md). Nothing else is written. It won't:
+Accept, tweak or decline each by number. Kept rules and routines go through the skill's queue loop: drafted, checked on your items again, written into your config on your yes, comments kept, then `doctor`. An `AGENTS.md` line is a local edit you commit. A check comes back as an issue body and a command for you to run (`gh issue create …`, or where to create it on another tracker); with no rule to take it, a body to file or paste into a session. A rule that lets awaywork write more (`pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./away.md). Nothing else is written. It won't:
 
 - quote your sessions or memories: evidence is a count and a paraphrase, since sessions hold pasted secrets;
 - touch the forge beyond reading;
