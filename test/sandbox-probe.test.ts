@@ -19,7 +19,8 @@ const FLAGS = [
   '--ro-bind',
   '/',
   '/',
-  'true',
+  'socat',
+  '-V',
 ]
 
 describe('sandboxStarts', () => {

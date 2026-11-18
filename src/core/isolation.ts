@@ -227,7 +227,8 @@ const BWRAP_PROBE = [
   '--ro-bind',
   '/',
   '/',
-  'true',
+  'socat',
+  '-V',
 ]
 const sandboxes = new Map<string, boolean>()
 

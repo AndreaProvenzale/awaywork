@@ -207,7 +207,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 /**
  * Puts back the clone's git config as it was cloned, and drops its `info/attributes`, so nothing a worker or check
  * wrote there runs or steers awaywork's own git or a check's. Refuses a `.git` that now borrows a repo or objects
- * from elsewhere (an empty `alternates` file, which Claude's sandbox leaves, borrows nothing and is removed), grafts its history, or holds a symlink outside its hooks, which git never makes there and would read and write through: awaywork then runs
+ * from elsewhere, grafts its history, or holds a symlink outside its hooks, which git never makes there and would read and write through: awaywork then runs
  * no more git in the clone.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
@@ -219,10 +219,13 @@ export async function restoreGitConfig(dir: string, config: string): Promise<voi
     if (entry.isSymbolicLink() && !/^hooks($|\/)/.test(path))
       throw new Error(`.git/${path} in the clone is a symlink`)
   }
+  // Claude's sandbox leaves an empty `alternates`, which borrows nothing.
+  const alternates = join(git, 'objects/info/alternates')
+  const empty = await lstat(alternates).catch(() => undefined)
+  if (empty?.isFile() && empty.size === 0) await rm(alternates)
   for (const path of ['commondir', 'objects/info/alternates', 'info/grafts']) {
     const stat = await lstat(join(git, path)).catch(() => undefined)
-    if (stat?.isFile() && stat.size === 0 && path.endsWith('alternates')) await rm(join(git, path))
-    else if (stat) throw new Error(`.git/${path} in the clone points elsewhere`)
+    if (stat) throw new Error(`.git/${path} in the clone points elsewhere`)
   }
   await rm(join(git, 'config'), { recursive: true, force: true })
   await rm(join(git, 'info', 'attributes'), { recursive: true, force: true })

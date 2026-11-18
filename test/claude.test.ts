@@ -13,6 +13,12 @@ import { runWorker } from '#worker/process/worker'
 import { providerContract } from './contracts/provider.contract'
 import { fakeItem } from './fakes/items'
 
+const home = vi.hoisted(() => ({ dir: undefined as string | undefined }))
+vi.mock('#core/isolation', async (original) => ({
+  ...(await original<typeof import('#core/isolation')>()),
+  workerHome: () => home.dir,
+}))
+
 const bin = fileURLToPath(new URL('./fakes/claude.mjs', import.meta.url))
 const provider = claudeProvider(bin, async () => true)
 const dir = await mkdtemp(join(tmpdir(), 'awaywork-claude-'))
@@ -379,6 +385,26 @@ describe('claude provider', () => {
       const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
       expect(sandbox).toMatchObject({ excludedCommands: ['docker'], enabled: true })
     } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("merges the developer's sandbox filesystem with the worker's HOME", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    const filesystem = { denyRead: ['~/.aws'], allowWrite: ['/tmp/build'] }
+    await writeFile(join(dir, 'worker.json'), JSON.stringify({ sandbox: { filesystem } }))
+    home.dir = '/tmp/awaywork-abc123'
+    try {
+      const run = { ...job(), config: { settings: 'worker.json' }, configDir: dir }
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox.filesystem).toEqual({
+        denyRead: ['~/.aws'],
+        allowWrite: ['/tmp/build', '/tmp/awaywork-abc123'],
+      })
+    } finally {
+      home.dir = undefined
       delete process.env.FAKE_ARGV
     }
   })

@@ -122,7 +122,7 @@ export function claudeProvider(
 export const claude = claudeProvider()
 
 /** Bash offline, without the login or the MCP secrets. */
-function sandbox(job: Job) {
+function sandbox(job: Job, theirs?: { allowWrite?: string[] }) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
@@ -131,7 +131,7 @@ function sandbox(job: Job) {
     failIfUnavailable: false,
     allowUnsandboxedCommands: false,
     network: { allowedDomains: [] },
-    ...(home && { filesystem: { allowWrite: [home] } }),
+    ...(home && { filesystem: { ...theirs, allowWrite: [...(theirs?.allowWrite ?? []), home] } }),
     credentials: { envVars: [TOKEN, ...secrets].map((name) => ({ name, mode: 'deny' })) },
   }
 }
@@ -140,7 +140,9 @@ function sandbox(job: Job) {
 async function settings(job: Job, sandboxed: boolean): Promise<string> {
   const { settings: file } = configSchema.parse(job.config ?? {})
   const theirs = file && JSON.parse(await readFile(resolve(job.configDir ?? '', file), 'utf8'))
-  const merged = sandboxed ? { ...theirs?.sandbox, ...sandbox(job) } : theirs?.sandbox
+  const merged = sandboxed
+    ? { ...theirs?.sandbox, ...sandbox(job, theirs?.sandbox?.filesystem) }
+    : theirs?.sandbox
   return JSON.stringify({ ...theirs, ...noMemory, ...(merged && { sandbox: merged }) })
 }
 
