@@ -64,13 +64,13 @@ A correction you keep typing becomes the first of these that fits:
 | One that needs judgment, for every agent | A line in the repo's `AGENTS.md` (or `CLAUDE.md`), which helps your own sessions too | No script decides it, and an agent reading the README, the manifest and the tree wouldn't learn it |
 | The same, for awaywork's workers only | A line in your awaywork `instructions` | As above |
 
-A correction already written down and still made is a strong check candidate: the issue deletes the line, when it's in the repo. The check goes into your `lint` or `test` script, so your own sessions hit it before a PR and CI runs it too. Its evidence is the pattern and its `git grep` count from your repo, never your sessions, since the issue may be public.
+A correction already written down and still made is a strong candidate for one of the first three rows; as a check, the issue deletes the line, when it's in the repo. The check goes into your `lint` or `test` script, so your own sessions hit it before a PR and CI runs it too. Its evidence is the pattern and its `git grep` count from your repo, never your sessions, since the issue may be public.
 
 A saved memory can be a correction you already wrote down, which awaywork's Claude Code workers never see: they start with auto-memory off and none of your user-level config (Codex workers do read `~/.codex/AGENTS.md` under `isolation: none`). It reads the memory index, types and descriptions first, and opens only your feedback and notes stating a rule about the repo, not progress logs. One that holds for the repo is a correction like the others, through the table above; one about you isn't.
 
 With a rule that implements and no proving skill on it, it proposes one whether or not it saw the pattern, and asks how a change is proven in that repo before writing a line: it names no tool.
 
-Anything your config or `AGENTS.md` already has shows as "already rule #1", except a correction you still make, which a check can catch. A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts the rules and routines into a copy of your config and runs `awaywork plan --rules --json` and `doctor --json` on it, so each comes with the items it takes now, the near misses, and a routine's next occurrence.
+Anything your config or `AGENTS.md` already has shows as "already rule #1", except a correction you still make that one of the first three rows fits. A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts the rules and routines into a copy of your config and runs `awaywork plan --rules --json` and `doctor --json` on it, so each comes with the items it takes now, the near misses, and a routine's next occurrence.
 
 ## What you see
 

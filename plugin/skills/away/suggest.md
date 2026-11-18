@@ -125,7 +125,7 @@ Routines
 Checks
   4  await the render, not a setTimeout   in AGENTS.md, still corrected in 5 sessions
      git grep -E 'setTimeout\(' main -- '*.test.ts': 7 hits, all the mistake   linter: biome
-     → an issue for rule #4 (implement): the check, the 7 fixed, the AGENTS.md line deleted
+     → an issue for rule #3 (implement): the check, the 7 fixed, the AGENTS.md line deleted
 
 Corrections
   5  keep a refactor and a behavior change in separate PRs   a saved memory + 3 sessions
@@ -136,7 +136,7 @@ Keep which? (e.g. 2, 4, 5)
 
 Nothing found in a group: say so in one line, and under 3 weeks just "no routines: window too short", without what fell short. The developer accepts, tweaks or declines each. Accepted rules and routines go through `queue.md`'s steps 4 to 7 (draft, check, write, validate), starting from the draft above with the declined ones taken out; from setup, take the declined ones out of its draft and go back to setup's step 6 with the picks. Widening still needs its own yes. A correction: show the file and the exact line, and edit only on a yes; it's a local change they commit themselves. Nothing declined is written, and nothing is remembered: a declined candidate comes back next run.
 
-A check goes out as an issue the developer files, never you. With step 6's rule, print the issue's title and body and the command for them to run in their own terminal, as you give `run`: `gh issue create -R <repo> --label <label> --assignee @me --title "<title>" --body-file -`, the body on its stdin. On another tracker, the same text and where to create it: the place the rule reads (its project, section or status), assigned to them where the source needs it. With no such rule, print the body and "file it, or paste it into a session", plus one line that a rule like `{ type: issue, label: awaywork }` with `skill: implement` would take it; propose no rule for it. The body, filled in:
+A check goes out as an issue the developer files, never you. With step 6's rule, print the issue's title and body and the command for them to run in their own terminal, as you give `run`: `gh issue create -R <repo> --label <label> --assignee @me --title "<title>" --body-file - <<'EOF'`, the body, then `EOF`: the quoted delimiter keeps the shell off the body's backticks. On another tracker, the same text and where to create it: the place the rule reads (its project, section or status), assigned to them where the source needs it. With no such rule, print the body and "file it, or paste it into a session", plus one line that a rule like `{ type: issue, label: awaywork }` with `skill: implement` would take it; propose no rule for it. The body, filled in:
 
 ```text
 Add a check for <pattern>; <n> occurrences today (`<the git grep command step 6 ran>`). Linter here: <biome | none>.
@@ -146,7 +146,7 @@ Add a check for <pattern>; <n> occurrences today (`<the git grep command step 6 
 - Up to 30 occurrences: fix them all in the same PR, so the check lands green.
 - Over 30: land the check with the existing files excluded, and list them in the PR body.
 - Where the wrong path is small and not exported (a helper), remove it instead of adding a rule. Exported: say so in the PR body.
-- Delete the line it replaces from AGENTS.md or .awaywork/instructions.md: <line>.
+- Delete the line it replaces from <the file it's in>: <line>.
 ```
 
 Keep the last bullet only when the line is in a file the repo carries: its `AGENTS.md`, `CLAUDE.md` or `.awaywork/instructions.md`. Drop it otherwise: no line written down, a memory, a user-level file, or a config's `instructions` file, which the worker can't reach.
