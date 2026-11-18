@@ -1,7 +1,7 @@
 import { type Command, InvalidArgumentError, Option } from 'commander'
 import { reportConfigError } from '#cli/tui/ask'
 import { interactive, itemCommands, openScreen } from '#cli/tui/browse'
-import { planTriage } from '#cli/tui/triage'
+import { planTriage, screenJson } from '#cli/tui/triage'
 import { configPath, loadConfig } from '#config/load'
 import { skillsDirOf } from '#config/paths'
 import type { Config } from '#config/schema'
@@ -44,8 +44,10 @@ export function planCommand(program: Command): void {
         'say why an item is planned or skipped, by key, source:key or the ref plan shows',
       ).conflicts(['json', 'rules', 'skipped']),
     )
+    .addOption(new Option('--screen').hideHelp().conflicts(['json', 'rules', 'skipped', 'why']))
     .action(async (opts: PlanOptions) => {
-      const browsing = interactive() && !opts.json && !opts.rules && !opts.skipped && !opts.why
+      const browsing =
+        interactive() && !opts.json && !opts.rules && !opts.skipped && !opts.why && !opts.screen
       const screen = browsing ? openScreen('Planning the next run') : undefined
       try {
         const path = configPath(program.opts().config)
@@ -59,7 +61,7 @@ export function planCommand(program: Command): void {
           !plan.units.length && (opts.repo !== undefined || opts.rule !== undefined)
             ? 'no unit matches --repo/--rule'
             : undefined
-        if (none && !screen) console.error(none)
+        if (none && !screen && !opts.screen) console.error(none)
         if (opts.skipped)
           return console.log(
             formatSkipped(plan.skipped, opts.skipped === true ? undefined : opts.skipped),
@@ -75,15 +77,16 @@ export function planCommand(program: Command): void {
           process.exitCode = 1
           return
         }
-        if (screen) {
+        const state = () => ({
+          ...planTriage(plan, warnings, process.stdout.rows, none),
+          status: plan.skipped.length ? none : undefined,
+        })
+        if (opts.screen) return console.log(screenJson(state()))
+        if (screen)
           return await screen.browse(
-            {
-              ...planTriage(plan, warnings, process.stdout.rows, none),
-              status: plan.skipped.length ? none : undefined,
-            },
+            state(),
             itemCommands(async () => config),
           )
-        }
         console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
       } catch (e) {
         screen?.close()
@@ -99,6 +102,8 @@ type PlanOptions = {
   rule?: number
   skipped?: string | true
   why?: string
+  /** Print the view as JSON, for a laptop to browse. */
+  screen?: boolean
 }
 
 /** What `--skipped` filters on. */

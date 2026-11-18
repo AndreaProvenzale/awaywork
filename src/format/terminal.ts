@@ -89,7 +89,8 @@ export function table(
   rows: string[][],
   style: (cell: string, r: number, c: number) => string = (cell) => cell,
 ): string[] {
-  const widths = rows[0]?.map((_, c) => Math.max(...rows.map((r) => width(r[c] ?? '')))) ?? []
+  const widths =
+    rows[0]?.map((_, c) => rows.reduce((w, r) => Math.max(w, width(r[c] ?? '')), 0)) ?? []
   return rows.map((row, r) =>
     row
       .map((cell, c) => style(pad(cell, widths[c] ?? 0), r, c))

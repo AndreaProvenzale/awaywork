@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { AGENT_HOME, CONTAINER_HOME, contain, contained, lostToWorker } from '#core/isolation'
 import type { McpServer, Unit } from '#core/types'
@@ -8,7 +8,7 @@ import { modelFor, modelsFor, type PlannedUnit, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
 import type { UnitResult } from '#posts/report'
 import { MAX_TURNS, modelOver, quotaFacts, route, withQuota } from '#quota/budget'
-import { counted } from '#util/text'
+import { bounded, counted } from '#util/text'
 import { fetchContexts } from '#worker/clone/context'
 import { gateEnv, setupEnv, workerEnv } from '#worker/clone/env'
 import {
@@ -543,6 +543,11 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
         await handOff(dir, start, unitDir)
         if (!cs.retrying) cs.previous = { skill: unit.skill, out: join(unitDir, 'out') }
       } catch (e) {
+        input.ctx.log(`${unit.id}: hand-off error: ${bounded((e as Error).stack ?? '')}`)
+        await appendFile(
+          join(unitDir, 'worker.log'),
+          `${new Date().toISOString()} hand-off error: ${(e as Error).stack}\n`,
+        ).catch(() => {})
         cs.retrying?.keep()
         cs.retrying = undefined
         cs.ended ??= { reason: `${unit.id} error: ${(e as Error).message}` }

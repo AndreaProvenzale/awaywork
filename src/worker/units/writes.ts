@@ -18,6 +18,7 @@ import { type Kind, outFiles, putFiles } from '#posts/store'
 import { notifyUnit } from '#run/notify'
 import { type Threads, threaded, unwritable, writeItem } from '#sources/index'
 import { checkPlan, contractName, contractText, PLAN_TASKS, planYaml } from '#tasks/plan-file'
+import { bounded } from '#util/text'
 import { outputFile, readOutput } from '#worker/clone/files'
 import { maskSecrets } from '#worker/process/command'
 import type { Run } from './state'
@@ -69,7 +70,7 @@ export async function postResult(
       input.ctx.log(`${item.key}: result posted on ${url}`)
       posted.push({ ...ref, url, ...(updated && { updated }), ...(state && { post: state }) })
     } catch (e) {
-      const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
+      const failed = bounded(maskSecrets((e as Error).message, secrets, input.ctx.env))
       event(`couldn't post the result on ${item.key}: ${failed}`)
       posted.push({ ...ref, failed })
     }
@@ -106,7 +107,7 @@ export async function moveItems(
       input.ctx.log(`on_done: moved ${item.key} to ${to}`)
       moved.push({ ...ref, ...(updated && { updated }) })
     } catch (e) {
-      const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
+      const failed = bounded(maskSecrets((e as Error).message, secrets, input.ctx.env))
       event(`on_done: couldn't move ${item.key} to ${to}: ${failed}`)
       moved.push({ ...ref, failed })
     }
@@ -165,7 +166,7 @@ async function postComment(
     input.ctx.log(`${p.unit.id}: ${what} posted on ${url}`)
     return { item: ref, url }
   } catch (e) {
-    const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
+    const failed = bounded(maskSecrets((e as Error).message, secrets, input.ctx.env))
     event(`${p.unit.id}: couldn't post its ${what} on ${item.key}: ${failed}`)
     return { item: ref, unposted: failed }
   }

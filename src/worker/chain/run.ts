@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { appendFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gitUnrestored, lostToWorker, workerHome } from '#core/isolation'
@@ -6,6 +6,7 @@ import type { Item } from '#core/types'
 import type { PlannedUnit } from '#plan/foreman'
 import type { PostState } from '#posts/comments'
 import type { UnitResult } from '#posts/report'
+import { bounded } from '#util/text'
 import { copyOut, outputFile, reportsOnly, WORK_DIR } from '#worker/clone/files'
 import { type Publisher, publishSlice } from '#worker/deliver/slice'
 import type { Ready } from '#worker/units/ready'
@@ -117,6 +118,12 @@ async function publishChain(run: Run, cs: ChainState) {
       if (cs.asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
         lead.outcome = { kind: 'none', reason: 'asked questions' }
     } catch (e) {
+      input.ctx.log(`${lead.planned.unit.id}: publish error: ${bounded((e as Error).stack ?? '')}`)
+      const last = done.findLast((r) => r.step)?.step ?? ''
+      await appendFile(
+        join(chainDir, last, 'worker.log'),
+        `${new Date().toISOString()} publish error: ${(e as Error).stack}\n`,
+      ).catch(() => {})
       Object.assign(lead, { status: 'error', reason: (e as Error).message })
     } finally {
       if (!lostToWorker(dir)) await copyOut(join(dir, WORK_DIR, 'out'), out).catch(() => {})

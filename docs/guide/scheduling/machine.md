@@ -45,7 +45,7 @@ warning: source chores: Command failed with exit code 1: ./chores.sh
 
 Details:
 
-- **One opening, one run.** A run that finishes early isn't restarted in the window; one started inside a window, after a reboot say, picks up there, skipping items already worked on.
+- **One opening, one run.** A run that finishes early isn't restarted in the window, not even by restarting the daemon; one a restart or reboot stopped picks up there, skipping items already worked on.
 - **One daemon at a time:** another copy exits with `awaywork watch is already running (pid 67014)`, which makes cron's restart line harmless.
 - **Your run or the daemon's.** A manual `awaywork run` during a daemon run exits 1 (`awaywork watch holds the run lock (pid 67014); try again once its runs end, awaywork schedule status lists them`). A window opening during your manual run waits for it, checking every minute and logging it once; a soon run waits for the next poll. A dead process's lock is taken over; `--dry-run` takes none.
 - **`PATH`:** the job keeps the installing shell's, so it finds the same `claude`, `codex`, `agent` and `gh`, but runs the binaries, not shell functions: [pin logins](../config/providers.md#which-login) in the config instead.

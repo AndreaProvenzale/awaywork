@@ -5,7 +5,15 @@ import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printStatus } from '#cli/commands/schedule'
-import { runLockPath, runsDir, watchLockPath, watchLogPath, watchStatePath } from '#config/paths'
+import {
+  attemptsPath,
+  runLockPath,
+  runsDir,
+  watchLockPath,
+  watchLogPath,
+  watchStatePath,
+  windowEndPath,
+} from '#config/paths'
 import type { Config } from '#config/schema'
 import { contained, isolateFor } from '#core/isolation'
 import type { Job } from '#core/types'
@@ -87,6 +95,18 @@ vi.mock('node:timers/promises', async (original) => {
       timers.setTimeout(clock.fast && (ms ?? 0) > 1000 ? 20 : ms, value, options),
   }
 })
+/** How many times the daemon's loop asked whether a window run is due. */
+const windowChecks = vi.hoisted(() => ({ count: 0 }))
+vi.mock('#quota/window', async (original) => {
+  const real = await original<typeof import('#quota/window')>()
+  return {
+    ...real,
+    windowRun: (...args: Parameters<typeof real.windowRun>) => {
+      windowChecks.count++
+      return real.windowRun(...args)
+    },
+  }
+})
 // The daemon's remote server, on a free port.
 vi.mock('#run/remote', async (original) => {
   const real = await original<typeof import('#run/remote')>()
@@ -113,6 +133,7 @@ vi.mock('#config/paths', async (original) => {
     watchLockPath: `${state}/watch.lock`,
     watchStatePath: `${state}/watch.json`,
     watchLogPath: `${state}/watch.log`,
+    windowEndPath: `${state}/window-end.json`,
   }
 })
 
@@ -146,7 +167,14 @@ beforeEach(async () => {
   vi.spyOn(console, 'log').mockImplementation((...line) => void out.push(line.join(' ')))
   vi.stubEnv('GITHUB_OUTPUT', '')
   vi.stubEnv('RUNNER_ENVIRONMENT', '')
-  for (const file of [watchLogPath, watchLockPath, watchStatePath, runLockPath])
+  for (const file of [
+    watchLogPath,
+    watchLockPath,
+    watchStatePath,
+    runLockPath,
+    windowEndPath,
+    attemptsPath,
+  ])
     await rm(file, { force: true })
   lock.releaseMs = 0
 })
@@ -172,6 +200,113 @@ describe('awaywork watch', () => {
     expect(existsSync(watchLockPath)).toBe(false)
     expect(existsSync(watchStatePath)).toBe(false)
   })
+
+  it('starts no second window run after a restart inside the window, and one for a later window', async () => {
+    const path = await config()
+    await watchUntil(path, 'Report: ')
+    await rm(watchLogPath)
+    const again = new AbortController()
+    windowChecks.count = 0
+    clock.fast = true
+    const done = watch(path, again.signal)
+    try {
+      await vi.waitFor(() => expect(windowChecks.count).toBeGreaterThan(1))
+    } finally {
+      clock.fast = false
+      again.abort()
+      await done
+    }
+    expect(await daemonLog()).not.toContain('window run')
+
+    await writeFile(windowEndPath, JSON.stringify(new Date(Date.now() - 3_600_000)))
+    expect(await watchUntil(path, 'Report: ')).toContain('window run')
+  })
+
+  async function queuedChore(repo = '{}') {
+    const path = await config()
+    const dir = dirname(path)
+    workers.origin = join(dir, 'origin')
+    await execa('git', ['init', '-q', '-b', 'main', workers.origin])
+    const id = ['-c', 'user.name=a', '-c', 'user.email=a@b']
+    await execa('git', [...id, '-C', workers.origin, 'commit', '-q', '--allow-empty', '-m', 'init'])
+    const item = {
+      id: '1',
+      key: 'CH-1',
+      title: 'Chore',
+      url: 'https://example.com/1',
+      fields: { repo: 'acme/api' },
+    }
+    await writeFile(join(dir, 'items.json'), JSON.stringify([item]))
+    await writeFile(
+      path,
+      `providers: [claude]
+windows: [{ start: "${hhmm(-60)}", end: "${hhmm(60)}" }]
+repos: { acme/api: ${repo} }
+sources: { chores: { command: cat items.json } }
+queue:
+  - { skill: plan, source: chores }
+`,
+    )
+    return path
+  }
+
+  it('starts the window run again after a restart that stopped it', async () => {
+    const path = await queuedChore()
+    Object.assign(workers, { ran: [], ms: 5000, gate: undefined })
+    const stop = new AbortController()
+    const done = watch(path, stop.signal)
+    await vi.waitFor(() => expect(workers.ran).toHaveLength(1), { timeout: 10_000 })
+    stop.abort()
+    await done
+    expect(existsSync(windowEndPath)).toBe(false)
+
+    Object.assign(workers, { ms: 0 })
+    await rm(watchLogPath)
+    expect(await watchUntil(path, 'Report: ')).toContain('window run')
+    expect(workers.ran).toEqual(['ch-1', 'ch-1'])
+    expect(existsSync(windowEndPath)).toBe(true)
+  }, 30_000)
+
+  it('starts the window run again after a restart that stopped it before its unit began', async () => {
+    const path = await queuedChore()
+    let open = () => {}
+    Object.assign(workers, {
+      ran: [],
+      ms: 0,
+      gate: new Promise<void>((resolve) => (open = resolve)),
+    })
+    const stop = new AbortController()
+    const done = watch(path, stop.signal)
+    await vi.waitFor(() => expect(workers.gate).toBeUndefined(), { timeout: 10_000 })
+    stop.abort()
+    open()
+    await done
+    expect(workers.ran).toEqual([])
+    expect(existsSync(windowEndPath)).toBe(false)
+
+    await rm(watchLogPath)
+    expect(await watchUntil(path, 'Report: ')).toContain('window run')
+    expect(workers.ran).toEqual(['ch-1'])
+  }, 30_000)
+
+  it('starts the window run again after a restart that stopped it during repo setup', async () => {
+    const started = join(await mkdtemp(join(tmpdir(), 'awaywork-setup-')), 'started')
+    const path = await queuedChore(`{ setup: "touch ${started} && sleep 30" }`)
+    Object.assign(workers, { ran: [], ms: 0, gate: undefined })
+    const stop = new AbortController()
+    const done = watch(path, stop.signal)
+    await vi.waitFor(() => expect(existsSync(started)).toBe(true), { timeout: 10_000 })
+    stop.abort()
+    await done
+    expect(existsSync(windowEndPath)).toBe(false)
+
+    await rm(watchLogPath)
+    await writeFile(path, (await readFile(path, 'utf8')).replace(/\{ setup:.*? \}/, '{}'))
+    // Run ids are per second, and the stopped run's clone dir would be reused.
+    await new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000)))
+    expect(await watchUntil(path, 'Report: ')).toContain('window run')
+    expect(workers.ran).toEqual(['ch-1'])
+  }, 30_000)
 
   it('logs a config that fails to load and keeps going with nothing to do', async () => {
     const path = await config()

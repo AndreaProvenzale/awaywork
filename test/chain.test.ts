@@ -22,6 +22,7 @@ import { asWorker, contain, containerize, isolate, lostToWorker } from '#core/is
 import { launch } from '#core/launch'
 import { builtinSkills } from '#core/skills'
 import type { Forge, Item, Login, Provider, Source } from '#core/types'
+import { reportJson } from '#format/json'
 import { formatPlan } from '#format/plan'
 import { summarize } from '#format/report'
 import { type Attempts, recordAttempts } from '#plan/attempts'
@@ -188,6 +189,7 @@ async function run(
     taken?: string[]
     shortage?: () => Promise<string | undefined>
     pendingReview?: Forge['pendingReview']
+    openPr?: () => Promise<string>
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
@@ -198,6 +200,7 @@ async function run(
   const env = await originForge(root)
   for (const branch of opts.taken ?? []) env.forge.branches.add(`acme/api:${branch}`)
   if (opts.pendingReview) env.forge.pendingReview = opts.pendingReview
+  if (opts.openPr) env.forge.openPr = opts.openPr as typeof env.forge.openPr
   const logged: string[] = []
   const config = parseConfig(`providers: [claude: {}]\nsources: { github: {} }\n${withRepos(yaml)}`)
   const plan = planRun({
@@ -227,7 +230,7 @@ async function run(
     r.status,
     r.outcome ?? r.made ?? r.reason,
   ])
-  return { ...env, plan, report, rows, logged }
+  return { ...env, plan, report, rows, logged, runDir: join(root, 'run') }
 }
 
 it('runs a chain with a loop in one clone and opens one draft PR with every step in it', async () => {
@@ -563,6 +566,43 @@ it('ends the chain after a report step that wrote no report, and reports nothing
     ['acme-api-1-review', 'skipped', 'acme-api-1 wrote no report'],
   ])
   expect(opened).toEqual([])
+})
+
+it('stores a bounded error for a unit that failed with megabytes of it, whatever threw it', async () => {
+  const stderr = `chmod: ${'x'.repeat(200_000)}\n`.repeat(10)
+  const provider: Provider = {
+    ...worker(),
+    // biome-ignore lint/correctness/useYield: it fails before it says anything
+    async *run() {
+      throw new Error(stderr)
+    },
+  }
+  const { report, runDir } = await run('queue: [{ skill: implement }]\n', [issue(1)], provider)
+  const [result] = report.results
+  expect(result?.status).toBe('error')
+  expect(result?.reason?.endsWith('…\n(and 5 more)')).toBe(true)
+  expect(result?.reason?.length).toBeLessThan(5_100)
+  expect(reportJson(report).length).toBeLessThan(50_000)
+  expect((await readFile(join(runDir, result?.files?.log ?? ''), 'utf8')).length).toBeGreaterThan(
+    stderr.length,
+  )
+})
+
+it("keeps a publish error whole in the last step's worker.log", async () => {
+  const openPr = async () => {
+    throw new Error(`gh: ${'y'.repeat(100_000)} PUB-TAIL`)
+  }
+  const { runDir, report } = await run(
+    'queue: [{ skill: implement, deliver: pr, then: [review] }]\n',
+    [issue(1)],
+    worker({}),
+    { openPr },
+  )
+  expect(report.results[0]?.status).toBe('error')
+  const unitDir = join(runDir, 'units/acme-api-1')
+  const last = await readFile(join(unitDir, '2-review/worker.log'), 'utf8')
+  expect(last).toMatch(/^\S+Z publish error: Error: gh: y+ PUB-TAIL/m)
+  expect(await readFile(join(unitDir, '1-implement/worker.log'), 'utf8')).not.toContain('PUB-TAIL')
 })
 
 it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {

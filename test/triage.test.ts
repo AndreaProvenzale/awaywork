@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { pagerCommand } from '#cli/tui/browse'
 import {
   clipLine,
+  fromScreenJson,
   type Loading,
   loading,
   loadingView,
@@ -12,6 +13,7 @@ import {
   resize,
   runTriage,
   type State,
+  screenJson,
   settle,
   tick,
   update,
@@ -288,6 +290,13 @@ describe('triage view', () => {
     )
   })
 
+  it('fetches on ⏎ a unit the box sent by its number, ⏎ lit as for its text', () => {
+    const sent = runTriage(acmeRun(), [], [{ unit: '1' }], 30)
+    const unit = press(sent, 'down', 'down', 'down')
+    expect(update(unit, 'return').effect).toEqual({ action: 'unit', target: '1', row: 'units/0' })
+    expect(view(unit, 120, 30).at(-2)).toMatch(/^⏎ read {2}o open/)
+  })
+
   it('dims the keys a row has nothing behind', () => {
     const footer = (state: State) => view(state, 120, state.rows).at(-2) ?? ''
     const dim = (label: string) => `\u001b[2m${label}\u001b[22m`
@@ -443,6 +452,27 @@ describe('triage update', () => {
     for (const key of ['q', 'escape', 'ctrl-c'])
       expect(update(run(), key).effect).toEqual({ action: 'quit' })
     expect(update(help, 'ctrl-c').effect).toEqual({ action: 'quit' })
+  })
+})
+
+describe('screen JSON', () => {
+  it('carries a view to the laptop and back as it was, scrolled to the top, with the run', () => {
+    const plan = planTriage(acmePlan(), ['a warning'], 30)
+    const report = press(run(), 'right')
+    expect(fromScreenJson(screenJson(plan), 30)).toEqual({ state: plan })
+    expect(fromScreenJson(screenJson(report, '20261019-220000'), 30)).toEqual({
+      state: report,
+      run: '20261019-220000',
+    })
+    const scrolled = press(run(5), 'G')
+    expect(scrolled.top).toBeGreaterThan(0)
+    expect(fromScreenJson(screenJson(scrolled), 5)?.state).toEqual({ ...scrolled, top: 0 })
+    const boxed = { ...plan, rows: undefined as unknown as number }
+    const unsized = fromScreenJson(screenJson(boxed), 30)?.state as State
+    const brand = loading('brand', 'Planning')
+    expect(view(ready(brand, unsized), 100, 30)).toEqual(view(ready(brand, plan), 100, 30))
+    expect(fromScreenJson('# Awaywork 20261019-220000', 30)).toBeUndefined()
+    expect(fromScreenJson('{"error":"x"}', 30)).toBeUndefined()
   })
 })
 
