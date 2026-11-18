@@ -1,4 +1,6 @@
-import { asWorker } from '#core/isolation'
+import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { AGENT_HOME, asWorker, lostToWorker } from '#core/isolation'
 import type { Job, Provider, Quota } from '#core/types'
 import { type Allowance, pct, scopedOver } from '#quota/budget'
 import { startWatchdog, type Watchdog } from './watchdog'
@@ -87,6 +89,9 @@ export async function runWorker(
       login && ((home) => login(home, log)),
     )
   } finally {
+    // Later steps, the judge and gates are not given the MCP secrets Cursor's `mcp.json` holds.
+    if (!lostToWorker(job.dir))
+      await rm(join(job.dir, AGENT_HOME), { recursive: true, force: true })
     signal?.removeEventListener('abort', onAbort)
     clearTimeout(windowEnd)
     clearTimeout(timeUp)

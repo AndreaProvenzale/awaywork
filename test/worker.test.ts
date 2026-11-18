@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -74,6 +76,23 @@ describe('worker', () => {
       watch: () => idle,
     })
     expect(order).toEqual(['prepare', 'run'])
+  })
+
+  it("removes the run's agent home once the worker is back", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+    const home = join(dir, '.away/agent-home/.cursor')
+    const provider = {
+      ...fakeProvider(),
+      prepare: async () => {
+        await mkdir(home, { recursive: true })
+        await writeFile(join(home, 'mcp.json'), '{"DB_URL":"pg://x"}')
+      },
+    }
+    await runWorker(provider, { ...job, dir }, allowance(budget, quota, now, windows), {
+      log: () => {},
+      watch: () => idle,
+    })
+    expect(existsSync(join(dir, '.away/agent-home'))).toBe(false)
   })
 
   it("carries a failed worker's reason, and a stop's over it", async () => {

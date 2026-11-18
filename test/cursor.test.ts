@@ -163,7 +163,7 @@ describe('cursor provider', () => {
 
   it("keeps the MCP servers' secrets out of the shell's env", async () => {
     const file = join(tmp, 'env-mcp.json')
-    const mcp = { db: { command: 'npx', secrets: ['DB_URL'] } }
+    const mcp = { db: { command: 'npx', secrets: ['DB_URL', 'CURSOR_API_KEY'] } }
     await run({ ...job({ FAKE_ENV: file, DB_URL: 'pg://x', CURSOR_API_KEY: 'key' }), mcp })
     const env = JSON.parse(await readFile(file, 'utf8'))
     expect(env.DB_URL).toBeUndefined()

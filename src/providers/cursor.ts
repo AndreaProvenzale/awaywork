@@ -19,6 +19,8 @@ const INSTALL = [
   'agent --version',
 ].join('\n')
 
+const OWN_SECRETS = ['CURSOR_API_KEY']
+
 /** The `HOME` of a run, fresh each time: with yours, Cursor loads your skills, MCP servers, hooks and rules. */
 const homeOf = (job: Job) => join(job.dir, AGENT_HOME)
 
@@ -32,7 +34,7 @@ export function cursorProvider(bin = 'agent'): Provider {
     quota: 'credits',
     unattended: 'allowed',
     install: { script: INSTALL },
-    secrets: ['CURSOR_API_KEY'],
+    secrets: OWN_SECRETS,
 
     async detect() {
       const version = (await execa(bin, ['--version']).catch(() => undefined))?.stdout.trim()
@@ -65,9 +67,9 @@ export function cursorProvider(bin = 'agent'): Provider {
       const plugin = job.plugin ? ['--plugin-dir', job.plugin] : []
       // Either would point Cursor at your own config.
       const { CURSOR_CONFIG_DIR, XDG_CONFIG_HOME, ...env } = job.env
-      // Their values sit in `mcp.json`, so the shell's env doesn't carry them.
+      // Their values sit in `mcp.json`, so the shell's env doesn't carry them; Cursor's own stay.
       for (const server of Object.values(job.mcp ?? {}))
-        for (const n of server.secrets) delete env[n]
+        for (const n of server.secrets) if (!OWN_SECRETS.includes(n)) delete env[n]
       const child = launch(bin, [...PRINT, ...model, ...plugin], {
         cwd: job.dir,
         // Without it, Cursor saves its session to the Keychain, and macOS asks.
