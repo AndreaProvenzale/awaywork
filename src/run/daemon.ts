@@ -11,6 +11,7 @@ import {
   watchLockPath,
   watchLogPath,
   watchStatePath,
+  windowEndPath,
 } from '#config/paths'
 import type { Config } from '#config/schema'
 import { isolateFor } from '#core/isolation'
@@ -200,14 +201,24 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
       running.set(
         runId,
         run
+          .then((ended) =>
+            ended && r.trigger === 'window' && r.until ? saveWindowEnd(r.until) : undefined,
+          )
           .finally(() => finish(runId))
           .catch((e) => event(`run ${runId} didn't end cleanly: ${reason(e)}`)),
       )
       return runId
     })
 
+  /** Remembered once a window run ends on its own, so a restart inside the window starts no second. */
+  const saveWindowEnd = (end: Date) =>
+    writeFile(windowEndPath, JSON.stringify(end)).catch((e) =>
+      event(`couldn't save ${windowEndPath}: ${reason(e)}`),
+    )
+
   let failed: string | undefined
-  let lastEnd: Date | undefined
+  const saved = await readJson<string | undefined>(windowEndPath, undefined)
+  let lastEnd = saved ? new Date(saved) : undefined
   let pruned = 0
   let waiting = false
   const lockedOut = (what: string, holder: { pid: number; runId: string }, again: string) => {
@@ -411,8 +422,8 @@ export function runStarted(r: Pick<DaemonRun, 'trigger' | 'runId' | 'until' | 's
   return `${r.trigger} run ${r.runId} started${until}${units}`
 }
 
-/** One of the daemon's runs, its full output in `run.log` in its run dir; never throws. */
-async function daemonRun(r: DaemonRun): Promise<void> {
+/** One of the daemon's runs, its full output in `run.log` in its run dir; never throws. True when it ended on its own, not stopped or crashed. */
+async function daemonRun(r: DaemonRun): Promise<boolean> {
   const runDir = join(runsDir, r.runId)
   const runLog = join(runDir, 'run.log')
   const log: RunLog = {
@@ -429,9 +440,11 @@ async function daemonRun(r: DaemonRun): Promise<void> {
   try {
     await r.isolated
     await mkdir(runDir, { recursive: true, mode: 0o700 })
-    await executeRun({ ...r, now: new Date(), log, signal: () => r.stop })
+    const reported = await executeRun({ ...r, now: new Date(), log, signal: () => r.stop })
+    return reported && !r.stop.aborted
   } catch (e) {
     event(`run ${r.runId} failed: ${reason(e)}`)
+    return false
   }
 }
 

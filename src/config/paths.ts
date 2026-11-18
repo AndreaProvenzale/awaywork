@@ -35,6 +35,8 @@ export const runLockPath = join(stateDir, 'run.lock')
 export const watchLockPath = join(stateDir, 'watch.lock')
 /** What `awaywork watch` is doing, for `schedule status`. */
 export const watchStatePath = join(stateDir, 'watch.json')
+/** The end of the last window `awaywork watch` ran, so a restart inside it starts no second run. */
+export const windowEndPath = join(stateDir, 'window-end.json')
 export const watchLogPath = join(stateDir, 'watch.log')
 export const skipsPath = join(stateDir, 'skips.json')
 
