@@ -807,6 +807,26 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     )
   })
 
+  it("removes the empty alternates file Claude's sandbox leaves, and refuses one with content or a link", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ns-restore-'))
+    await git(dir, 'init', '-q')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', 'start')
+    const alternates = join(dir, '.git/objects/info/alternates')
+    await writeFile(alternates, '')
+    await restoreGitConfig(dir, '')
+    expect(existsSync(alternates)).toBe(false)
+    await writeFile(alternates, '/elsewhere/objects\n')
+    await expect(restoreGitConfig(dir, '')).rejects.toThrow(
+      '.git/objects/info/alternates in the clone points elsewhere',
+    )
+    await rm(alternates)
+    await symlink('/dev/null', alternates)
+    await expect(restoreGitConfig(dir, '')).rejects.toThrow('is a symlink')
+    await rm(alternates)
+    await mkdir(alternates)
+    await expect(restoreGitConfig(dir, '')).rejects.toThrow('points elsewhere')
+  })
+
   it('copies out of the clone without its symlinks or a setuid or setgid bit', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-copy-out-'))
     await mkdir(join(dir, 'out', 'sub'), { recursive: true })

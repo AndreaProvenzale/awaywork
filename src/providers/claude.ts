@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { sandboxStarts, whereRuns } from '#core/isolation'
+import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
@@ -124,12 +124,14 @@ export const claude = claudeProvider()
 /** Bash offline, without the login or the MCP secrets. */
 function sandbox(job: Job) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
+  // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
+  const home = workerHome(job.dir)
   return {
     enabled: true,
     failIfUnavailable: false,
     allowUnsandboxedCommands: false,
     network: { allowedDomains: [] },
-    filesystem: { allowWrite: job.env.HOME ? [job.env.HOME] : [] },
+    ...(home && { filesystem: { allowWrite: [home] } }),
     credentials: { envVars: [TOKEN, ...secrets].map((name) => ({ name, mode: 'deny' })) },
   }
 }
