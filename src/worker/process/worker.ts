@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { AGENT_HOME, asWorker, lostToWorker } from '#core/isolation'
 import type { Job, Provider, Quota } from '#core/types'
 import { type Allowance, pct, scopedOver } from '#quota/budget'
+import { refuseSymlinks } from '#worker/clone/files'
 import { startWatchdog, type Watchdog } from './watchdog'
 
 export type WorkerStatus =
@@ -89,15 +90,24 @@ export async function runWorker(
       login && ((home) => login(home, log)),
     )
   } finally {
-    // Later steps, the judge and gates are not given the MCP secrets Cursor's `mcp.json` holds.
-    if (!lostToWorker(job.dir))
-      await rm(join(job.dir, AGENT_HOME), { recursive: true, force: true })
     signal?.removeEventListener('abort', onAbort)
     clearTimeout(windowEnd)
     clearTimeout(timeUp)
     await watchdog.stop()
+    await removeAgentHome(job.dir, log)
   }
   return stopped ? { ...result, ...stopped } : result
+}
+
+/** Later steps, the judge and gates are not given the MCP secrets Cursor's `mcp.json` holds. */
+async function removeAgentHome(dir: string, log: (line: string) => void): Promise<void> {
+  if (lostToWorker(dir)) return
+  try {
+    await refuseSymlinks(dir, [AGENT_HOME])
+    await rm(join(dir, AGENT_HOME), { recursive: true, force: true })
+  } catch (error) {
+    log(`couldn't remove the agent home: ${error instanceof Error ? error.message : error}`)
+  }
 }
 
 function overLimit(
