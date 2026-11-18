@@ -107,3 +107,26 @@ Accept, tweak or decline each by number. Kept rules and routines go through the 
 ## Running it again
 
 There's no memory between runs, on purpose for now. What you accepted comes back as "already rule #3"; what you declined comes back as a fresh candidate. Nothing nudges you: ask again when habits change or a new repo shows up.
+
+## Prune
+
+What's already written down grows too, and goes stale. Ask for a pass over it:
+
+```text
+/away prune my AGENTS.md
+```
+
+It reads no sessions, so it asks nothing first and runs any time. It reads the `AGENTS.md` and `CLAUDE.md` of the repo you're in, its `.awaywork/instructions.md`, and the [`instructions`](./config/repos.md#repos-and-instructions) files your config names, and tries each line against four tests, most mechanical first:
+
+| Test | The line | It names | It proposes |
+| --- | --- | --- | --- |
+| Contradicted by the code | Names a path, script or command that doesn't exist | What's missing, e.g. no `scripts/release.sh` | Delete, or rewrite to what replaced it |
+| Enforced already | Asks what a check already does | The lint rule on in the linter's config, the test, the `verify` or the [gate](./workflows/gates.md) | Delete |
+| Emphatic | `IMPORTANT`, `MUST`, all caps, "never ever" | The words | The same line, plain |
+| Shown by the code | Lists the stack, a directory tree, the scripts | The manifest or folder that shows it | Delete |
+
+A line saying when to run what ("run `pnpm format`; `pnpm lint` checks") stays: neither the tree nor a check says when. A `verify` or gate runs only in awaywork's chains, so it covers an `instructions` line, never an `AGENTS.md` line your own sessions read.
+
+Each line is its own yes: it shows the line, the test, the evidence and the edit, and on your yes edits the file locally, for you to commit. Nothing declined is written or remembered.
+
+It's static: it reads the files, not your history, so it can't tell whether a line ever mattered. A line no agent ever needed passes every test and stays; that call is yours.

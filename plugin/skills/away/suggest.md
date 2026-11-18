@@ -126,4 +126,6 @@ Nothing found in a group: say so in one line, and under 3 weeks just "no routine
 
 Delete the temp digests. Summarize in a few lines what was added where, and say they can ask `/away` for suggestions again whenever their habits change; nothing reminds them.
 
+Say too that `/away prune my AGENTS.md` ([`prune.md`](prune.md)) trims what's already written down, such as a line a check now enforces.
+
 Report only changes you actually made, naming each file; don't describe a file you didn't touch.
