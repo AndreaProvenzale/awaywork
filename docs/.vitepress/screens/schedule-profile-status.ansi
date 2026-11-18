@@ -1,0 +1,8 @@
+$ AWAYWORK_PROFILE=work awaywork schedule status
+Profile: work
+Scheduled with launchd, keeping awaywork watch running
+Config: ~/acme/awaywork/developer.yml
+Log: ~/.local/state/awaywork/profiles/work/schedule.log
+Daemon: running, pid 71203, since 2026-10-25 17:26:00
+Next window: none, no windows set
+Daemon log: ~/.local/state/awaywork/profiles/work/watch.log

@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { parseEnv } from 'node:util'
+import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { secretFrom } from '#cli/commands/secret'
 
@@ -57,5 +58,18 @@ describe('awaywork secret', () => {
     await expect(secretFrom('T', piped('\n'), file)).rejects.toThrow('the value for T is empty')
     await expect(secretFrom('T', piped('a\nb\n'), file)).rejects.toThrow('spans lines')
     await expect(stat(file)).rejects.toThrow('ENOENT')
+  })
+
+  it('warns when the .env sits in a git work tree that does not ignore it, and not when it does', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
+    await execa('git', ['init', '-q'], { cwd: repo })
+    const file = join(repo, 'team', '.env')
+    await mkdir(join(repo, 'team'))
+    const warning = `${file} is in a git work tree and git doesn't ignore it; keep it out of commits (.gitignore, or git rm --cached)`
+    expect(await secretFrom('T', piped('a'), file)).toBe(`Saved T in ${file}\n${warning}`)
+    await writeFile(join(repo, '.gitignore'), '.env\n')
+    expect(await secretFrom('T', piped('a'), file)).toBe(`Saved T in ${file}`)
+    await execa('git', ['add', '-f', file], { cwd: repo })
+    expect(await secretFrom('T', piped('a'), file)).toBe(`Saved T in ${file}\n${warning}`)
   })
 })

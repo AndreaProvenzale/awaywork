@@ -1,13 +1,16 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Exec } from '#forge/gh'
 import type { Schedule, Scheduler } from './index'
 
-const TAG = '# awaywork'
+const tagOf = (profile: string) =>
+  profile === DEFAULT_PROFILE ? '# awaywork' : `# awaywork:${profile}`
 
-/** Tagged lines in the user's crontab starting the job at boot and every 5 minutes; the watch lock makes extra copies exit. */
-export function cron(run: Exec): Scheduler {
+/** Tagged lines in the user's crontab starting the job at boot and every 5 minutes, per profile; the watch lock makes extra copies exit. */
+export function cron(run: Exec, profile = DEFAULT_PROFILE): Scheduler {
+  const tag = tagOf(profile)
   const read = () => run('crontab', ['-l']).catch(() => '')
   const write = async (lines: string[]) => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
@@ -19,11 +22,11 @@ export function cron(run: Exec): Scheduler {
     }
   }
   const lines = (text: string) => (text ? text.replace(/\n+$/, '').split('\n') : [])
-  const others = (text: string) => lines(text).filter((l) => !l.endsWith(TAG))
+  const others = (text: string) => lines(text).filter((l) => !l.endsWith(tag))
   return {
     id: 'cron',
     async install(s) {
-      await write([...others(await read()), ...cronLines(s)])
+      await write([...others(await read()), ...cronLines(s, profile)])
       return 'crontab'
     },
     async remove() {
@@ -34,16 +37,16 @@ export function cron(run: Exec): Scheduler {
       return true
     },
     async read() {
-      const ours = lines(await read()).filter((l) => l.endsWith(TAG))
+      const ours = lines(await read()).filter((l) => l.endsWith(tag))
       return ours.length ? parseCronLines(ours) : undefined
     },
   }
 }
 
-export function cronLines(s: Schedule): string[] {
+export function cronLines(s: Schedule, profile = DEFAULT_PROFILE): string[] {
   const q = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`.replace(/%/g, '\\%')
-  const command = `PATH=${q(s.path)} ${s.command.map(q).join(' ')} > /dev/null 2>> ${q(s.log)} &`
-  return ['@reboot', '*/5 * * * *'].map((when) => `${when} ${command} ${TAG}`)
+  const command = `PATH=${q(s.path)} AWAYWORK_PROFILE=${profile} ${s.command.map(q).join(' ')} > /dev/null 2>> ${q(s.log)} &`
+  return ['@reboot', '*/5 * * * *'].map((when) => `${when} ${command} ${tagOf(profile)}`)
 }
 
 export function parseCronLines(ours: string[]): Schedule {
@@ -54,5 +57,6 @@ export function parseCronLines(ours: string[]): Schedule {
     command: words.slice(1, -1),
     path: words[0] ?? '',
     log: words.at(-1) ?? '',
+    unpinned: (ours[0] ?? '').includes(' AWAYWORK_PROFILE=') ? undefined : true,
   }
 }

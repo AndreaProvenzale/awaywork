@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Exec } from '#forge/gh'
 import { cron } from './cron'
 import { launchd } from './launchd'
@@ -16,10 +17,12 @@ export interface Schedule {
   command: string[]
   path: string
   log: string
+  /** Set by a reader on a job installed without `AWAYWORK_PROFILE`. */
+  unpinned?: true
 }
 
-/** Whether a job is the per-window kind an older awaywork installed, starting `awaywork run`. */
-export const olderJob = (job: Schedule) => !job.command.includes('watch')
+/** Whether a job is one an older awaywork installed: per-window (`awaywork run`) or not pinned to a profile. */
+export const olderJob = (job: Schedule) => !job.command.includes('watch') || job.unpinned === true
 
 export interface Scheduler {
   id: string
@@ -31,10 +34,14 @@ export interface Scheduler {
   read(): Promise<Schedule | undefined>
 }
 
-export const schedulers = (home: string, run: Exec): Record<string, Scheduler> => ({
-  launchd: launchd(home, run),
-  systemd: systemd(home, run),
-  cron: cron(run),
+export const schedulers = (
+  home: string,
+  run: Exec,
+  profile = DEFAULT_PROFILE,
+): Record<string, Scheduler> => ({
+  launchd: launchd(home, run, undefined, undefined, profile),
+  systemd: systemd(home, run, profile),
+  cron: cron(run, profile),
 })
 
 export function defaultScheduler(platform = process.platform): string {

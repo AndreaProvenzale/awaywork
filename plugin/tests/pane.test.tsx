@@ -1093,6 +1093,19 @@ test('on the Config tab the arrows move between rules and each skill has its col
   expect(colors).toEqual(expect.arrayContaining(['claude', 'merged']))
 })
 
+test("the header names the profile when it isn't the default", async ($, on) => {
+  engine(on, {
+    'config path': { stdout: `${CONFIG}\n` },
+    'report --json': ok(busyReport),
+    [`--config ${CONFIG} config explain`]: ok({ ...explained, profile: 'work' }),
+  })
+  on('fs.exists', (_, e) => ({ value: e.path === CONFIG }))
+  on('fs.read', () => ({ value: 'queue: []\n' }))
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  expect(await text(ui, / · profile work/)).toBe(true)
+})
+
 test('on the desktop app j and k step the rule and the pane keeps its own scroll', async ($, on) => {
   engine(on, {
     'config path': { stdout: `${CONFIG}\n` },

@@ -62,6 +62,7 @@ Details:
 - Two commands at a time, a third turned away (`2 commands are running, try again`), 2 minutes each. A silent command gets a `{}` line every 30 s to keep the proxy open; Ctrl-C stops it on the box. A queued `run --unit` is the daemon's by then.
 - A box that's down or a wrong token fails in one line: `can't reach AWAYWORK_REMOTE (http://127.0.0.1:8480): read ECONNRESET`, `AWAYWORK_REMOTE (http://127.0.0.1:7480) refused AWAYWORK_REMOTE_TOKEN`.
 - Remove the two lines to go back to local runs. A laptop daemon opens no port while `AWAYWORK_REMOTE` is set. A leaked token and rotation: [Safety](../safety/index.md#the-remote-token).
+- Two [profiles](./machine.md#two-profiles-on-one-machine) with daemons on one machine share port 7480: set `AWAYWORK_REMOTE_TOKEN` in one profile's `.env` only.
 
 ## Over ssh
 

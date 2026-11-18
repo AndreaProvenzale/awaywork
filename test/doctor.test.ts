@@ -103,6 +103,17 @@ describe('doctor', () => {
     expect(agents.probe).not.toHaveBeenCalled()
   })
 
+  it('reports the profile in force with its config, env file and state dir', async () => {
+    const path = join(import.meta.dirname, 'fixtures', 'missing.yml')
+    const { envFile, stateDir } = await import('#config/paths')
+    const checks = await runChecks(path, () => {})
+    expect(checks).toContainEqual({
+      status: 'ok',
+      what: 'profile',
+      detail: `default, config ${path}, env ${envFile}, state ${stateDir}`,
+    })
+  })
+
   it('warns that the secrets file still has its old name', async () => {
     const path = join(import.meta.dirname, 'fixtures', 'missing.yml')
     await writeFile(join(configDir, 'env'), 'A=1\n', { mode: 0o600 })

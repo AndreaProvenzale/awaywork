@@ -77,6 +77,7 @@ export function paneView({ e, els, now, d, v, c, keys: cardButtons, on }: Input)
   const noRunsYet = d.noReport && /^no runs in /.test(d.noReport)
 
   const facts: string[] = []
+  if (c.view?.profile) facts.push(`profile ${c.view.profile}`)
   if (c.setup) facts.push('setting up')
   else if (!d.error) {
     if (report)

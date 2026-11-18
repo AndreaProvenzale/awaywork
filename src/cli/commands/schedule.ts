@@ -10,11 +10,13 @@ import { pinned } from '#config/logins'
 import {
   bin,
   packageVersion,
+  profile,
   skillsDirOf,
   stateDir,
   watchLockPath,
   watchLogPath,
 } from '#config/paths'
+import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Config } from '#config/schema'
 import { hasSkills } from '#config/skills'
 import type { Ask, Provider } from '#core/types'
@@ -115,7 +117,9 @@ export async function removeSchedule(
 export async function printStatus(
   config: string | undefined,
   all: Record<string, Scheduler> = localSchedulers(),
+  profileName = profile.name,
 ): Promise<void> {
+  for (const line of profileLines(profileName)) console.log(line)
   let found = false
   let watched: string | undefined
   for (const scheduler of Object.values(all)) {
@@ -139,6 +143,9 @@ export async function printStatus(
     for (const line of await watchStatus(watched ?? configPath(config))) console.log(line)
 }
 
+/** `schedule status`'s first line, naming a profile that isn't the default. */
+export const profileLines = (name: string) => (name === DEFAULT_PROFILE ? [] : [`Profile: ${name}`])
+
 /** `schedule status`'s lines on a job `scheduler` installed. */
 export const jobLines = (scheduler: string, job: Schedule) => [
   olderJob(job)
@@ -158,7 +165,7 @@ function insideWatch(): boolean {
   return true
 }
 
-const localSchedulers = () => schedulers(homedir(), exec)
+const localSchedulers = () => schedulers(homedir(), exec, profile.name)
 
 function jobConfig(job: Schedule): string | undefined {
   const flag = job.command.indexOf('--config')

@@ -1,9 +1,11 @@
+import { dirname } from 'node:path'
 import type { Readable } from 'node:stream'
 import { text } from 'node:stream/consumers'
 import { isCancel, password } from '@clack/prompts'
 import type { Command } from 'commander'
+import { execa } from 'execa'
 import { saveSecret } from '#cli/tui/ask'
-import { envFile } from '#config/paths'
+import { bin, envFile } from '#config/paths'
 
 export function secretCommand(program: Command, shell: NodeJS.ProcessEnv): void {
   program
@@ -39,8 +41,20 @@ export async function secretFrom(
   if (!value) throw new Error(`Nothing saved: the value for ${name} is empty`)
   if (/[\r\n]/.test(value)) throw new Error(`Nothing saved: the value for ${name} spans lines`)
   await saveSecret(name, value, file)
-  const saved = `Saved ${name} in ${file}`
-  return inShell === undefined || inShell === value
-    ? saved
-    : `${saved}\nYour shell sets ${name} too, and its value wins until you unset it`
+  const lines = [`Saved ${name} in ${file}`]
+  if (inShell !== undefined && inShell !== value)
+    lines.push(`Your shell sets ${name} too, and its value wins until you unset it`)
+  if (await trackable(file))
+    lines.push(
+      `${file} is in a git work tree and git doesn't ignore it; keep it out of commits (.gitignore, or git rm --cached)`,
+    )
+  return lines.join('\n')
+}
+
+/** Whether `file` sits in a git work tree where `git check-ignore` doesn't ignore it. */
+async function trackable(file: string): Promise<boolean> {
+  const git = (...args: string[]) =>
+    execa(bin('git'), ['-C', dirname(file), ...args], { reject: false })
+  if ((await git('rev-parse', '--is-inside-work-tree')).stdout !== 'true') return false
+  return (await git('check-ignore', '-q', file)).exitCode === 1
 }

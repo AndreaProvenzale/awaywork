@@ -3,15 +3,25 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
+import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Exec } from '#forge/gh'
 import type { Schedule, Scheduler } from './index'
 
 const LABEL = 'awaywork'
 
-/** A user LaunchAgent, started at login and restarted when it crashes. */
-export function launchd(home: string, run: Exec, uid = userInfo().uid, retryMs = 300): Scheduler {
-  const file = join(home, 'Library', 'LaunchAgents', `${LABEL}.plist`)
-  const bootout = () => run('launchctl', ['bootout', `gui/${uid}/${LABEL}`]).catch(() => '')
+const labelOf = (profile: string) => (profile === DEFAULT_PROFILE ? LABEL : `${LABEL}.${profile}`)
+
+/** A user LaunchAgent, started at login and restarted when it crashes; one per profile. */
+export function launchd(
+  home: string,
+  run: Exec,
+  uid = userInfo().uid,
+  retryMs = 300,
+  profile = DEFAULT_PROFILE,
+): Scheduler {
+  const label = labelOf(profile)
+  const file = join(home, 'Library', 'LaunchAgents', `${label}.plist`)
+  const bootout = () => run('launchctl', ['bootout', `gui/${uid}/${label}`]).catch(() => '')
   // bootout returns before the old job is gone, and bootstrap fails with EIO until it is.
   const bootstrap = async (tries = 10): Promise<void> => {
     try {
@@ -26,7 +36,7 @@ export function launchd(home: string, run: Exec, uid = userInfo().uid, retryMs =
     id: 'launchd',
     async install(s) {
       await mkdir(dirname(file), { recursive: true })
-      await writeFile(file, plist(s))
+      await writeFile(file, plist(s, profile))
       await bootout()
       await bootstrap()
       return file
@@ -53,23 +63,24 @@ export function parsePlist(text: string): Schedule {
     command: strings(after('ProgramArguments').split('</array>')[0] ?? ''),
     path: strings(after('PATH'))[0] ?? '',
     log: strings(after('StandardOutPath'))[0] ?? '',
+    unpinned: text.includes('<key>AWAYWORK_PROFILE</key>') ? undefined : true,
   }
 }
 
-export function plist(s: Schedule): string {
+export function plist(s: Schedule, profile = DEFAULT_PROFILE): string {
   const str = (v: string) =>
     `<string>${v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</string>`
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key>${str(LABEL)}
+  <key>Label</key>${str(labelOf(profile))}
   <key>ProgramArguments</key>
   <array>
 ${s.command.map((arg) => `    ${str(arg)}`).join('\n')}
   </array>
   <key>EnvironmentVariables</key>
-  <dict><key>PATH</key>${str(s.path)}</dict>
+  <dict><key>PATH</key>${str(s.path)}<key>AWAYWORK_PROFILE</key>${str(profile)}</dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ExitTimeOut</key><integer>120</integer>

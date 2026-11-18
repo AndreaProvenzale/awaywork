@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises'
 import type { Command } from 'commander'
 import { z } from 'zod'
 import { configPath } from '#config/load'
-import { skillsDirOf } from '#config/paths'
+import { profile, skillsDirOf } from '#config/paths'
+import { DEFAULT_PROFILE } from '#config/profiles'
 import { configSchema } from '#config/schema'
 import { readCatalog } from '#config/skills'
 import { builtinSkills } from '#core/skills'
@@ -38,7 +39,10 @@ export function configCommand(program: Command): void {
       }
       // A broken SKILL.md is the run's problem; the rules still read, from the built-in logic.
       const catalog = await readCatalog(skillsDirOf(path)).catch(() => ({ builtin: builtinSkills }))
-      console.log(JSON.stringify(explainConfig(text, path, catalog), null, 2))
+      const named = profile.name === DEFAULT_PROFILE ? undefined : profile.name
+      console.log(
+        JSON.stringify({ ...explainConfig(text, path, catalog), profile: named }, null, 2),
+      )
     })
 
   config

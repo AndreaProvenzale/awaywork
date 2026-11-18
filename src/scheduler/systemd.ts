@@ -1,21 +1,23 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Exec } from '#forge/gh'
 import { errorText } from '#util/text'
 import { SchedulerError } from './error'
 import type { Schedule, Scheduler } from './index'
 
-/** A user service started at login and restarted when it crashes. */
-export function systemd(home: string, run: Exec): Scheduler {
+/** A user service started at login and restarted when it crashes; one per profile. */
+export function systemd(home: string, run: Exec, profile = DEFAULT_PROFILE): Scheduler {
+  const name = profile === DEFAULT_PROFILE ? 'awaywork' : `awaywork-${profile}`
   const dir = join(home, '.config', 'systemd', 'user')
-  const file = join(dir, 'awaywork.service')
+  const file = join(dir, `${name}.service`)
   // The trigger per window an older awaywork installed.
-  const timerFile = join(dir, 'awaywork.timer')
+  const timerFile = join(dir, `${name}.timer`)
   const systemctl = (...args: string[]) => run('systemctl', ['--user', ...args])
   const removeTimer = async () => {
     if (!existsSync(timerFile)) return
-    await systemctl('disable', '--now', 'awaywork.timer').catch(() => '')
+    await systemctl('disable', '--now', `${name}.timer`).catch(() => '')
     await rm(timerFile, { force: true })
   }
   return {
@@ -23,12 +25,12 @@ export function systemd(home: string, run: Exec): Scheduler {
     async install(s) {
       await mkdir(dir, { recursive: true })
       const previous = await readFile(file, 'utf8').catch(() => undefined)
-      await writeFile(file, service(s))
+      await writeFile(file, service(s, profile))
       try {
         await removeTimer()
         await systemctl('daemon-reload')
-        await systemctl('enable', 'awaywork.service')
-        await systemctl('restart', 'awaywork.service')
+        await systemctl('enable', `${name}.service`)
+        await systemctl('restart', `${name}.service`)
       } catch (e) {
         if (previous === undefined) await rm(file, { force: true })
         else await writeFile(file, previous)
@@ -45,14 +47,14 @@ export function systemd(home: string, run: Exec): Scheduler {
     async remove() {
       if (!existsSync(file)) return false
       await removeTimer()
-      await systemctl('disable', '--now', 'awaywork.service').catch(() => '')
+      await systemctl('disable', '--now', `${name}.service`).catch(() => '')
       await rm(file, { force: true })
       await systemctl('daemon-reload').catch(() => '')
       return true
     },
     async read() {
       if (!existsSync(file)) return undefined
-      const unit = existsSync(timerFile) ? 'awaywork.timer' : 'awaywork.service'
+      const unit = existsSync(timerFile) ? `${name}.timer` : `${name}.service`
       const enabled = await systemctl('is-enabled', unit).then(
         () => true,
         () => false,
@@ -75,16 +77,18 @@ export function parseService(text: string): Schedule {
     command: unquote(value(text, 'ExecStart')),
     path: (unquote(value(text, 'Environment'))[0] ?? '').replace(/^PATH=/, ''),
     log: value(text, 'StandardOutput').replace(/^append:/, ''),
+    unpinned: text.includes('AWAYWORK_PROFILE=') ? undefined : true,
   }
 }
 
-export function service(s: Schedule): string {
+export function service(s: Schedule, profile = DEFAULT_PROFILE): string {
+  const profileEnv = `Environment=${quote(`AWAYWORK_PROFILE=${profile}`)}\n`
   return `[Unit]
 Description=awaywork watch
 
 [Service]
 Environment=${quote(`PATH=${s.path}`)}
-ExecStart=${s.command.map(quote).join(' ')}
+${profileEnv}ExecStart=${s.command.map(quote).join(' ')}
 Restart=on-failure
 RestartSec=10
 KillMode=mixed
