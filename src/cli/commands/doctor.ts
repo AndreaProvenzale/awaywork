@@ -185,6 +185,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
         id,
         facts.filter(Boolean).join(', '),
       )
+    if (id === 'claude') {
+      const sandbox = await claudeSandbox()
+      report(sandbox ? 'warn' : 'ok', 'claude sandbox', sandbox ?? 'Bash runs offline')
+    }
     if (!keyless && asWorker && !provider.login && unset.length > 0)
       report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
     const pin = pins.find((p) => p.what === id)
@@ -255,6 +259,24 @@ export const configFailure = (error: Error, path: string): Check => ({
   what: error instanceof ConfigError ? error.path : path,
   detail: error.message.split('\n').slice(1).join('; ').trim(),
 })
+
+/** Why Claude's Bash sandbox can't start on this machine, if it can't; macOS needs nothing. */
+async function claudeSandbox(): Promise<string | undefined> {
+  if (process.platform !== 'linux') return undefined
+  const effect = "Claude's Bash runs unsandboxed, with network access"
+  const has = (name: string) => exec('sh', ['-c', `command -v ${name}`]).then(Boolean, () => false)
+  const tools = ['bwrap', 'socat']
+  const found = await Promise.all(tools.map(has))
+  const absent = tools.filter((_, i) => !found[i])
+  if (absent.length)
+    return `${absent.join(' and ')} missing (apt install bubblewrap socat): ${effect}`
+  const probe = ['--unshare-user', '--unshare-net', '--ro-bind', '/', '/', 'true']
+  const started = await exec('bwrap', probe).then(
+    () => true,
+    () => false,
+  )
+  return started ? undefined : `bwrap can't create a user namespace here: ${effect}`
+}
 
 const GH_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 

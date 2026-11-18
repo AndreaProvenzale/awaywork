@@ -308,7 +308,7 @@ describe('claude provider', () => {
     try {
       const own = await argv(true)
       expect(flag(own, '--setting-sources')).toBe('project,local')
-      expect(flag(own, '--settings')).toBe('{"autoMemoryEnabled":false}')
+      expect(JSON.parse(flag(own, '--settings') as string).autoMemoryEnabled).toBe(false)
       expect(own).not.toContain('--strict-mcp-config')
       const foreign = await argv(false)
       expect(flag(foreign, '--setting-sources')).toBe('')
@@ -329,10 +329,44 @@ describe('claude provider', () => {
       const run = { ...job(), config: { settings: 'worker.json' }, configDir: dir, plugin }
       await collect(provider.run(run, new AbortController().signal))
       const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
-      expect(args[args.indexOf('--settings') + 1]).toBe(
-        '{"env":{"A":"1"},"autoMemoryEnabled":false}',
+      const { sandbox, permissions, ...rest } = JSON.parse(
+        args[args.indexOf('--settings') + 1] as string,
       )
+      expect(rest).toEqual({ env: { A: '1' }, autoMemoryEnabled: false })
+      expect(sandbox.enabled).toBe(true)
+      expect(permissions.deny).toContain('Write(.claude/**)')
       expect(args[args.indexOf('--plugin-dir') + 1]).toBe(plugin)
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("runs Bash offline in Claude's sandbox, unsetting the login and the MCP secrets", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    await writeFile(join(dir, 'worker.json'), '{"permissions":{"deny":["Read(.env)"]}}')
+    try {
+      const mcp = { db: { command: 'npx', secrets: ['DATABASE_URL'] } }
+      const run = { ...job(), mcp, config: { settings: 'worker.json' }, configDir: dir }
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const settings = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(settings.sandbox).toEqual({
+        enabled: true,
+        failIfUnavailable: false,
+        allowUnsandboxedCommands: false,
+        network: { allowedDomains: [] },
+        credentials: {
+          envVars: [
+            { name: 'CLAUDE_CODE_OAUTH_TOKEN', mode: 'deny' },
+            { name: 'DATABASE_URL', mode: 'deny' },
+          ],
+        },
+      })
+      expect(settings.permissions.deny).toEqual([
+        'Read(.env)',
+        'Edit(.claude/**)',
+        'Write(.claude/**)',
+      ])
     } finally {
       delete process.env.FAKE_ARGV
     }

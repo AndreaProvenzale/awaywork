@@ -9,6 +9,9 @@ import { killGroupWhenDone } from '#util/process'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
+const TOKEN = 'CLAUDE_CODE_OAUTH_TOKEN'
+/** A round can't plant settings in the clone: they'd merge into the sandbox lists. */
+const protectedPaths = ['Edit(.claude/**)', 'Write(.claude/**)']
 const knownWindows: Record<string, { span: 'short' | 'long'; minutes: number }> = {
   five_hour: { span: 'short', minutes: 300 },
   seven_day: { span: 'long', minutes: 7 * 24 * 60 },
@@ -42,7 +45,7 @@ export function claudeProvider(bin = 'claude'): Provider {
     quota: 'window',
     unattended: 'allowed',
     install: { npm: '@anthropic-ai/claude-code' },
-    secrets: ['CLAUDE_CODE_OAUTH_TOKEN'],
+    secrets: [TOKEN],
     loginDir: { env: 'CLAUDE_CONFIG_DIR', default: '~/.claude', command: 'claude /login' },
 
     async account(env) {
@@ -109,11 +112,25 @@ export function claudeProvider(bin = 'claude'): Provider {
 
 export const claude = claudeProvider()
 
-/** The developer's settings file with auto-memory off; it applies whatever the setting sources. */
+/** Bash offline, without the login or the MCP secrets; where the sandbox can't start, Claude warns and Bash runs unsandboxed. */
+function sandbox(job: Job, allowedDomains: string[] = []) {
+  const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
+  return {
+    enabled: true,
+    failIfUnavailable: false,
+    allowUnsandboxedCommands: false,
+    network: { allowedDomains },
+    credentials: { envVars: [TOKEN, ...secrets].map((name) => ({ name, mode: 'deny' })) },
+  }
+}
+
+/** The developer's settings file with auto-memory off and Bash sandboxed; it applies whatever the setting sources. */
 async function settings(job: Job): Promise<string> {
   const { settings: file } = configSchema.parse(job.config ?? {})
   const theirs = file && JSON.parse(await readFile(resolve(job.configDir ?? '', file), 'utf8'))
-  return JSON.stringify({ ...theirs, ...noMemory })
+  const deny = [...(theirs?.permissions?.deny ?? []), ...protectedPaths]
+  const permissions = { ...theirs?.permissions, deny }
+  return JSON.stringify({ ...theirs, ...noMemory, permissions, sandbox: sandbox(job) })
 }
 
 /** The servers as `.mcp.json`; the binary expands `${NAME}` from the worker's env. */
