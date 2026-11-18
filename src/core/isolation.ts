@@ -379,14 +379,14 @@ export async function asWorker<T>(dir: string, run: () => Promise<T>, login?: Lo
 /** Held machine-wide across profiles: `killWorker` ends every process of the one worker user, whoever's unit it belongs to. */
 export const WORKER_LOCK = join(rootStateDir, 'worker.lock')
 
-/** Runs a whole unit under the worker lock when launches run as the worker user, waiting while another profile's unit holds it. */
+/** Runs a whole unit under the worker lock when launches run as the worker user, waiting while another profile's unit holds it, until `signal` aborts. */
 export async function holdingWorker<T>(
   run: () => Promise<T>,
   log: (line: string) => void,
-  file = WORKER_LOCK,
+  { file = WORKER_LOCK, signal }: { file?: string; signal?: AbortSignal } = {},
 ): Promise<T> {
   if (!worker) return run()
-  const release = await lock(file, (line) => log(`worker user: ${line}`))
+  const release = await lock(file, (line) => log(`worker user: ${line}`), signal)
   try {
     return await run()
   } finally {

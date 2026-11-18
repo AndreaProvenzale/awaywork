@@ -16,7 +16,7 @@ describe('holdingWorker', () => {
     await holdingWorker(
       async () => expect(existsSync(file)).toBe(false),
       () => {},
-      file,
+      { file },
     )
   })
 
@@ -26,7 +26,7 @@ describe('holdingWorker', () => {
     await holdingWorker(
       async () => expect(existsSync(file)).toBe(true),
       () => {},
-      file,
+      { file },
     )
     expect(existsSync(file)).toBe(false)
   })
@@ -38,7 +38,7 @@ describe('holdingWorker', () => {
       holdingWorker(
         () => Promise.reject(new Error('boom')),
         () => {},
-        file,
+        { file },
       ),
     ).rejects.toThrow('boom')
     expect(existsSync(file)).toBe(false)
@@ -59,13 +59,13 @@ describe('holdingWorker', () => {
           }
         }),
       () => {},
-      file,
+      { file },
     )
     await new Promise((r) => setTimeout(r, 100))
     const second = holdingWorker(
       async () => void order.push('second'),
       (line) => waits.push(line),
-      file,
+      { file },
     )
     await new Promise((r) => setTimeout(r, 200))
     expect(order).toEqual([])
@@ -85,8 +85,26 @@ describe('holdingWorker', () => {
         ran = true
       },
       () => {},
-      file,
+      { file },
     )
     expect(ran).toBe(true)
+  })
+
+  it('stops waiting when the signal aborts, and runs without the lock', async () => {
+    isolate('awaywork')
+    const file = await lockPath()
+    await writeFile(file, String(process.pid))
+    const abort = new AbortController()
+    setTimeout(() => abort.abort(), 100)
+    let ran = false
+    await holdingWorker(
+      async () => {
+        ran = true
+      },
+      () => {},
+      { file, signal: abort.signal },
+    )
+    expect(ran).toBe(true)
+    expect(existsSync(file)).toBe(true)
   })
 })
