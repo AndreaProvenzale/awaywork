@@ -8,7 +8,7 @@ import { formatPlan, listedUnits } from '#format/plan'
 import { findChains, formatRun, formatUnit } from '#format/report'
 import { describeRule } from '#format/rules'
 import { formatSkipped, groupOf, type SkipRow, skipRows } from '#format/skips'
-import { brandHeader, clip, pad, statusMarker, warningLines, width } from '#format/terminal'
+import { brandHeader, clip, pad, statusMarker, table, warningLines, width } from '#format/terminal'
 import { ambiguous, formatWhy, namedItems } from '#format/why'
 import { type PlannedUnit, planRun, type RunPlan } from '#plan/foreman'
 import { formatReport, type RunReport, summaryOf, type UnitResult } from '#posts/report'
@@ -38,6 +38,12 @@ describe('clip', () => {
 
   it('pads by width', () => {
     expect(pad('🇮🇹', 4)).toBe('🇮🇹  ')
+  })
+})
+
+describe('table', () => {
+  it('takes any number of rows', () => {
+    expect(table(Array.from({ length: 300_000 }, (_, i) => [`${i}`, 'x']))).toHaveLength(300_000)
   })
 })
 

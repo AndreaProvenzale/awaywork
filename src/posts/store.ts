@@ -12,6 +12,7 @@ import { itemState } from '#plan/where'
 import { runShell, TIMEOUT_MS } from '#sources/command'
 import { contractName } from '#tasks/plan-file'
 import { globToRegExp } from '#util/glob'
+import { bounded } from '#util/text'
 import { commentKind, pinsOf } from './comments'
 import type { Pin } from './footer'
 import { decisionPosts, type PinnedPost } from './posts'
@@ -217,7 +218,7 @@ export async function checkPins(items: Item[], store: Store, env: NodeJS.Process
         // An older plan unread names no tasks, and decides nothing.
         post.pinned = {
           files: {},
-          ...(deciding.includes(post) && { failed: (e as Error).message }),
+          ...(deciding.includes(post) && { failed: bounded((e as Error).message) }),
         }
       } finally {
         await rm(tmp, { recursive: true, force: true })
@@ -261,7 +262,7 @@ export async function readBack(
       if (post.needed) throw e
       budget.left = left
       await rm(join(dir, post.name), { recursive: true, force: true })
-      notes.push(`left out ${post.what}: ${(e as Error).message}`)
+      notes.push(`left out ${post.what}: ${bounded((e as Error).message)}`)
       continue
     }
     const keep = post.edits && store.get

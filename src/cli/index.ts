@@ -17,6 +17,7 @@ import { sourcesCommand } from './commands/sources'
 import { statsCommand } from './commands/stats'
 import { switchCommand } from './commands/switch'
 import { watchCommand } from './commands/watch'
+import { browseRemotely } from './tui/remote'
 
 const shell = { ...process.env }
 const [command] = process.argv
@@ -68,6 +69,7 @@ doctorCommand(program)
 switchCommand(program, shell.AWAYWORK_PROFILE)
 
 // The commands a remote daemon serves run there, refused or not; anything else, here.
-const remotely = remoteCall(process.argv.slice(2), { url, token })
+const argv = process.argv.slice(2)
+const remotely = browseRemotely(argv, { url, token }) ?? remoteCall(argv, { url, token })
 if (remotely) process.exitCode = await remotely
 else await program.parseAsync()

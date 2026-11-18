@@ -23,15 +23,23 @@ import {
 /** A person at a terminal: stdin and stdout are TTYs and `CI` is unset. */
 export const interactive = () => !!process.stdin.isTTY && !!process.stdout.isTTY && !process.env.CI
 
-/** What `s` and `a` run: `awaywork skip` and `awaywork approve`, each resolving to its message. */
+/** What `s` and `a` run, `awaywork skip` and `awaywork approve`, each resolving to its message; and the texts ⏎ on a fetched unit, `l` and `d` page. */
 export interface ItemCommands {
-  skip(key: string): Promise<string>
-  approve(key: string): Promise<string>
+  /** Where they run when not here: awaited with a status, and q, Esc or Ctrl-C abort `stop`. */
+  remote?: string
+  skip(key: string, stop?: AbortSignal): Promise<string>
+  approve(key: string, stop?: AbortSignal): Promise<string>
+  /** A unit's `--unit` text by its number: only the remote's, a row here holds its text. */
+  unit?(target: string, stop?: AbortSignal): Promise<string>
+  log(target: string, stop?: AbortSignal): Promise<string>
+  diff(target: string, stop?: AbortSignal): Promise<string>
 }
 
 export const itemCommands = (config: () => Promise<Config>): ItemCommands => ({
   skip: async (key) => skipItem(key, {}, Object.keys((await config()).sources)),
   approve: async (key) => approveItem(key, await config(), '', { ctx: quiet }),
+  log: (file) => readFile(file, 'utf8'),
+  diff: (file) => readFile(file, 'utf8'),
 })
 
 // A source's warnings would print over the screen.
@@ -40,6 +48,21 @@ const quiet = { env: process.env, log: () => {} }
 /** `$PAGER` unless it's unset or `cat`, as git does; the default `less` repaints from the top and stays open on short texts whatever `$LESS` says. */
 export const pagerCommand = (pager = process.env.PAGER) =>
   pager && pager !== 'cat' ? pager : 'less -R -c -+F -+X'
+
+const waitingOn = {
+  unit: 'fetching from',
+  log: 'fetching from',
+  diff: 'fetching from',
+  skip: 'skipping on',
+  approve: 'approving on',
+}
+const quits = ['q', 'escape', 'ctrl-c']
+
+function cancelled(action: keyof typeof waitingOn, remote?: string) {
+  if (action !== 'skip' && action !== 'approve') return 'cancelled'
+  const [done, doing] = action === 'skip' ? ['skipped', 'skipping'] : ['approved', 'approving']
+  return `cancelled; ${remote} may still have ${done} it, and ${doing} again is safe`
+}
 
 const enterScreen = '\u001b[?1049h\u001b[?25l'
 const leaveScreen = '\u001b[?25h\u001b[?1049l'
@@ -62,6 +85,7 @@ export function openScreen(title: string): Screen {
   let shown = false
   let pager: ChildProcess | undefined
   let busy = false
+  let waiting: AbortController | undefined
   let finish: (error?: unknown) => void = close
 
   const draw = () => {
@@ -90,6 +114,7 @@ export function openScreen(title: string): Screen {
   }, 80)
 
   const page = async (now: State, text: string): Promise<State> => {
+    state = now
     hide()
     const code = await new Promise<number | null>((done) => {
       const child = spawn(pagerCommand(), { shell: true, stdio: ['pipe', 'inherit', 'inherit'] })
@@ -112,19 +137,28 @@ export function openScreen(title: string): Screen {
     switch (effect.action) {
       case 'read':
         return page(now, effect.target)
-      case 'log':
-      case 'diff':
-        return page(now, await readFile(effect.target, 'utf8'))
       case 'open':
         await openUrl(effect.target)
         return { ...now, status: `opened ${effect.target}` }
-      default:
-        if (!commands) return now
-        return commands[effect.action](effect.target).then(
-          (message) => settle(now, effect, { ok: true, message }),
-          (e: Error) => settle(now, effect, { ok: false, message: e.message }),
-        )
     }
+    const { action, target } = effect
+    const command = commands?.[action]
+    if (!commands || !command) return now
+    const { remote } = commands
+    if (remote) {
+      state = { ...now, status: `${waitingOn[action]} ${remote}…` }
+      draw()
+      waiting = new AbortController()
+    }
+    const stop = waiting?.signal
+    const outcome = await command(target, stop).then(
+      (message) => ({ ok: true, message }),
+      (e: Error) => ({ ok: false, message: e.message }),
+    )
+    waiting = undefined
+    if (stop?.aborted) return { ...now, status: cancelled(action, remote) }
+    if (action === 'skip' || action === 'approve') return settle(now, effect, outcome)
+    return outcome.ok ? page(now, outcome.message) : { ...now, status: outcome.message }
   }
 
   const quitLoading = () => {
@@ -133,7 +167,7 @@ export function openScreen(title: string): Screen {
   }
   const press = async (key: string) => {
     if (!state) {
-      if (key === 'q' || key === 'escape' || key === 'ctrl-c') quitLoading()
+      if (quits.includes(key)) quitLoading()
       return
     }
     const { state: next, effect } = update(state, key)
@@ -142,11 +176,15 @@ export function openScreen(title: string): Screen {
     draw()
     if (!effect) return
     const now = state
-    state = await perform(now, effect).catch((e: Error) => ({ ...now, status: e.message }))
-    draw()
+    const done = await perform(now, effect).catch((e: Error) => ({ ...now, status: e.message }))
+    state = resize(done, stdout.rows)
+    if (shown) draw()
   }
   const onKey = (text: string | undefined, key: Key | undefined) => {
-    if (busy) return
+    if (busy) {
+      if (quits.includes(keyName(text, key))) waiting?.abort()
+      return
+    }
     busy = true
     press(keyName(text, key)).then(
       () => {
@@ -169,6 +207,7 @@ export function openScreen(title: string): Screen {
     process.exit(143)
   }
   function close() {
+    waiting?.abort()
     clearInterval(spin)
     stdin.off('keypress', onKey)
     stdout.off('resize', onResize)

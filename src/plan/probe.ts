@@ -13,7 +13,7 @@ import { type Allowance, allowance, pct } from '#quota/budget'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '#quota/window'
 import { sourceFor } from '#sources/index'
 import { nextOccurrences, type RoutinesConfig } from '#sources/routines'
-import { counted } from '#util/text'
+import { bounded, counted } from '#util/text'
 import { configSecrets } from '#worker/clone/context'
 import { maskSecrets } from '#worker/process/command'
 import { loadAttempts } from './attempts'
@@ -97,7 +97,7 @@ export async function probeAndPlan(
     onProgress?.({ name, state: 'running' })
     let reason: string | undefined
     const quota = await provider?.probe(ctx).catch((e: Error) => {
-      reason = `probe failed: ${e.message}`
+      reason = `probe failed: ${bounded(e.message)}`
       return null
     })
     const a = allowance(config.budget, quota ?? null, at.getTime(), config.windows, {
