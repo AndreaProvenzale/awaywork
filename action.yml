@@ -76,10 +76,6 @@ runs:
           echo "GIT_AUTHOR_EMAIL=$user@users.noreply.github.com"
           echo "GIT_COMMITTER_EMAIL=$user@users.noreply.github.com"
         } >> "$GITHUB_ENV"
-    - name: Install Claude's sandbox dependencies
-      if: runner.environment == 'github-hosted' && runner.os == 'Linux'
-      shell: bash
-      run: sudo apt-get install -y --no-install-recommends bubblewrap socat
     - name: Make the worker user
       if: runner.environment == 'github-hosted'
       shell: bash
