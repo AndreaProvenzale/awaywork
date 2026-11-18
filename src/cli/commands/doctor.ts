@@ -7,7 +7,15 @@ import { execa } from 'execa'
 import { parse } from 'yaml'
 import { ConfigError, configPath, loadConfig } from '#config/load'
 import { expandHome, loginCommand, type Pin, pinLogins } from '#config/logins'
-import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '#config/paths'
+import {
+  bin,
+  configDir,
+  envFile,
+  legacyEnvFile,
+  runsDir,
+  skillsDirIn,
+  skillsDirOf,
+} from '#config/paths'
 import type { Config } from '#config/schema'
 import { hasSkills, readSetup, unknownSkillsWarning } from '#config/skills'
 import { canMatch } from '#config/validate/where'
@@ -103,6 +111,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     const mode = statSync(envFile).mode & 0o777
     if (mode === 0o600) report('ok', envFile, 'mode 600')
     else report('warn', envFile, `mode ${mode.toString(8)}, want 600`)
+    if (envFile === legacyEnvFile) report('warn', envFile, 'the old name; rename it to .env')
   }
   const defaultSkills = skillsDirIn(configDir)
   if (dirname(resolve(path)) !== configDir && (await hasSkills(defaultSkills)))

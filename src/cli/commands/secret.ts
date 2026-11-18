@@ -10,7 +10,7 @@ export function secretCommand(program: Command, shell: NodeJS.ProcessEnv): void 
     .command('secret')
     .argument('<name>', 'the variable, e.g. ASANA_TOKEN')
     .description(
-      'save a token to ~/.config/awaywork/env (mode 600), from a hidden prompt or a pipe',
+      "save a token to the profile's .env, ~/.config/awaywork/.env by default (mode 600), from a hidden prompt or a pipe",
     )
     .action(async (name: string) => {
       const saved = await secretFrom(name, process.stdin, envFile, shell[name]).catch(

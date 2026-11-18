@@ -24,7 +24,7 @@ Give the container's daemon a token and your laptop's `awaywork report`, `plan`,
 
    In the image the daemon listens on every interface for Coolify's proxy; elsewhere, `watch` with the token in its env file listens on `127.0.0.1:7480` only (`remote: serving the CLI on port 7480, 127.0.0.1 only`).
 
-3. On the laptop, in `~/.config/awaywork/env` (`AWAYWORK_REMOTE` takes `https://` or `http://` with the token, or [`ssh://`](#over-ssh) without):
+3. On the laptop, in `~/.config/awaywork/.env` (`AWAYWORK_REMOTE` takes `https://` or `http://` with the token, or [`ssh://`](#over-ssh) without):
 
    ```sh
    AWAYWORK_REMOTE=https://away.example.com
@@ -74,7 +74,7 @@ AWAYWORK_REMOTE=ssh://box   # or ssh://you@host:2222
 The host is whatever `ssh` takes, aliases included. The same calls go through the box's daemon: the laptop runs `ssh -T -o BatchMode=yes box env AWAYWORK_REMOTE=http://127.0.0.1:7480 awaywork --from-ssh WyJzc2g6Ly9ib3giLCJwbGFuIl0`, the call (`["ssh://box","plan"]`) as one base64url word no login shell reads into, csh included, and the box forwards it to its daemon. The box needs:
 
 - **The same awaywork or newer:** an older one says `error: unknown option '--from-ssh'`. Install the version `awaywork --version` prints on the laptop.
-- **`watch` with a token:** `echo "AWAYWORK_REMOTE_TOKEN=$(openssl rand -hex 32)" >> ~/.config/awaywork/env`, then restart it. The token never leaves the box: ssh is the lock.
+- **`watch` with a token:** `echo "AWAYWORK_REMOTE_TOKEN=$(openssl rand -hex 32)" >> ~/.config/awaywork/.env`, then restart it. The token never leaves the box: ssh is the lock.
 - **awaywork and node on ssh's command `PATH`**, not your login shell's (nvm's usually isn't). `ssh box env awaywork --version` checks it as the laptop's calls do; exit 127 (`env: 'awaywork': No such file or directory`, or `node`) means install them system-wide, or `sudo ln -s "$(command -v node)" "$(command -v awaywork)" /usr/local/bin/` from an interactive shell there.
 - **Key auth:** `BatchMode` never asks for a password or a host key, either of which would hang the `/away` pane. ssh in once by hand to know the host key.
 
@@ -88,7 +88,7 @@ can't reach AWAYWORK_REMOTE (ssh://dev@127.0.0.1:2222): Host key verification fa
 $ awaywork report
 AWAYWORK_REMOTE (ssh://box): awaywork isn't on the box's PATH for non-interactive ssh; install it and node system-wide there, or link both into /usr/local/bin
 $ awaywork run --unit CH-1
-AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving, the box's /home/dev/.config/awaywork/env has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch
+AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving, the box's /home/dev/.config/awaywork/.env has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch
 $ awaywork report --list
 AWAYWORK_REMOTE (ssh://box): the box's daemon runs with another AWAYWORK_REMOTE_TOKEN than its env file; restart awaywork watch there
 ```

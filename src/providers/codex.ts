@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { stateDir } from '#config/paths'
+import { rootStateDir } from '#config/paths'
 import { launch } from '#core/launch'
 import type { McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
@@ -39,7 +39,7 @@ export const codexLogin = (env: NodeJS.ProcessEnv) =>
  */
 export function codexProvider(
   bin = 'codex',
-  lockFile = join(stateDir, 'codex.lock'),
+  lockFile = join(rootStateDir, 'codex.lock'),
   authPath?: string,
 ): Provider {
   // Held from a login lent to the worker until it's saved back, the run in between.

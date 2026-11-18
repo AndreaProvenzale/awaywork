@@ -2,10 +2,26 @@ import { accessSync, constants, existsSync, readFileSync, statSync } from 'node:
 import { homedir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_PROFILE, readRegistry, resolveProfile } from './profiles'
 
 export const configDir = join(homedir(), '.config', 'awaywork')
-export const defaultConfigPath = join(configDir, 'config.yml')
-export const envFile = join(configDir, 'env')
+export const profilesPath = join(configDir, 'profiles.yml')
+export const profile = (() => {
+  try {
+    return resolveProfile(process.env.AWAYWORK_PROFILE, readRegistry(profilesPath))
+  } catch (e) {
+    return { name: DEFAULT_PROFILE, problem: (e as Error).message }
+  }
+})()
+/** The config in use when neither `--config` nor `AWAYWORK_CONFIG` says: the profile's, else `config.yml`. */
+export const defaultConfigPath = profile.config ?? join(configDir, 'config.yml')
+export const legacyEnvFile = join(configDir, 'env')
+const dotEnv = join(dirname(defaultConfigPath), '.env')
+/** The profile's secrets, beside its config; the default profile's older `env` still counts until a `.env` exists. */
+export const envFile =
+  profile.name === DEFAULT_PROFILE && !existsSync(dotEnv) && existsSync(legacyEnvFile)
+    ? legacyEnvFile
+    : dotEnv
 
 /** The user's skills: `skills/` beside the config in use. */
 export const skillsDirIn = (dir: string) => join(dir, 'skills')
@@ -26,7 +42,10 @@ export const packageVersion: string = JSON.parse(
   readFileSync(join(packageRoot(), 'package.json'), 'utf8'),
 ).version
 
-export const stateDir = join(homedir(), '.local', 'state', 'awaywork')
+/** What every profile shares, like the lock on `~/.codex`. */
+export const rootStateDir = join(homedir(), '.local', 'state', 'awaywork')
+export const stateDir =
+  profile.name === DEFAULT_PROFILE ? rootStateDir : join(rootStateDir, 'profiles', profile.name)
 export const runsDir = join(stateDir, 'runs')
 /** Runs downloaded from a control repo's artifacts, as `<owner>/<repo>/<run id>`. */
 export const remoteDir = join(stateDir, 'remote')

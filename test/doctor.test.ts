@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -49,7 +49,8 @@ vi.mock('#config/paths', async (importOriginal) => {
   const bin = (name: string) => (name === 'docker' && process.env.FAKE_DOCKER) || original.bin(name)
   const runsDir = mkdtempSync(join(tmpdir(), 'awaywork-runs-'))
   const stateDir = mkdtempSync(join(tmpdir(), 'awaywork-state-'))
-  return { ...original, configDir, runsDir, stateDir, bin }
+  const legacyEnvFile = join(configDir, 'env')
+  return { ...original, configDir, runsDir, stateDir, bin, envFile: legacyEnvFile, legacyEnvFile }
 })
 
 const { bitbucketChecks, containerChecks, isolationChecks, runChecks, workflowSecretChecks } =
@@ -100,6 +101,18 @@ describe('doctor', () => {
     ])
     expect(keyed.at(-1)).toEqual({ status: 'ok', what: 'cursor', detail: 'v' })
     expect(agents.probe).not.toHaveBeenCalled()
+  })
+
+  it('warns that the secrets file still has its old name', async () => {
+    const path = join(import.meta.dirname, 'fixtures', 'missing.yml')
+    await writeFile(join(configDir, 'env'), 'A=1\n', { mode: 0o600 })
+    const checks = await runChecks(path, () => {})
+    await rm(join(configDir, 'env'))
+    expect(checks).toContainEqual({
+      status: 'warn',
+      what: join(configDir, 'env'),
+      detail: 'the old name; rename it to .env',
+    })
   })
 
   it("warns that the default skills aren't used with a config elsewhere, without parsing them", async () => {

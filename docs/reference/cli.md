@@ -17,16 +17,17 @@ Run your coding agents on your real tasks, under rules you set
 
 Options:
   -V, --version             output the version number
-  -c, --config <path>       config file (default: $AWAYWORK_CONFIG or
-                            ~/.config/awaywork/config.yml)
+  -c, --config <path>       config file (default: $AWAYWORK_CONFIG, else the
+                            profile's, else ~/.config/awaywork/config.yml)
   -h, --help                display help for command
 
 Commands:
   init [options]            set awaywork up with Claude Code's /away, or write
                             the detected defaults with --yes
   config                    print the config's path, what it says or its schema
-  secret <name>             save a token to ~/.config/awaywork/env (mode 600),
-                            from a hidden prompt or a pipe
+  secret <name>             save a token to the profile's .env,
+                            ~/.config/awaywork/.env by default (mode 600), from
+                            a hidden prompt or a pipe
   sources [options] [id]    list what a source's credentials can see
                             (workspaces, projects, teams, statuses), read-only;
                             with no id, every configured source
@@ -57,6 +58,8 @@ Commands:
                             in GitHub Actions or in a container
   doctor [options]          validate the config and check binaries, credentials,
                             quota and sources before a run
+  switch [name] [config]    list the profiles, make one current, or register one
+                            with its config file: switch <name> <config>
   help [command]            display help for command
 ```
 
@@ -135,8 +138,8 @@ Options:
 ```text
 Usage: awaywork secret [options] <name>
 
-save a token to ~/.config/awaywork/env (mode 600), from a hidden prompt or a
-pipe
+save a token to the profile's .env, ~/.config/awaywork/.env by default (mode
+600), from a hidden prompt or a pipe
 
 Arguments:
   name        the variable, e.g. ASANA_TOKEN
@@ -420,5 +423,17 @@ run
 
 Options:
   --json      print the checks as a JSON array of { status, what, detail }
+  -h, --help  display help for command
+```
+
+## awaywork switch
+
+```text
+Usage: awaywork switch [options] [name] [config]
+
+list the profiles, make one current, or register one with its config file:
+switch <name> <config>
+
+Options:
   -h, --help  display help for command
 ```

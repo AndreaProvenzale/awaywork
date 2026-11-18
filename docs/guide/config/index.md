@@ -89,6 +89,36 @@ Details:
 - Skills stay next to the file you pass to `--config`.
 - An error inside a list the role sets names the role; a key only the base sets names the base.
 
+## Profiles
+
+Two setups on one machine, say a work and a personal subscription: a profile is a name for a config file anywhere, and it picks that config, the `.env` beside it and its own run history together.
+
+```sh
+awaywork switch work ~/src/acme-awaywork/developer.yml
+```
+
+```text
+Switched to work
+```
+
+```sh
+awaywork switch
+```
+
+```text
+  default  ~/.config/awaywork/config.yml
+* work     ~/src/acme-awaywork/developer.yml
+```
+
+`switch work` goes back to a registered profile, `switch default` to the usual `~/.config/awaywork/config.yml`. The registry is `~/.config/awaywork/profiles.yml`, a `current:` and a `profiles:` map of names to absolute config paths; edit it to rename or drop one.
+
+- **Config:** `--config` and `AWAYWORK_CONFIG` still win over the profile's.
+- **Secrets:** only the profile's `.env` loads, next to its config. Keep it out of git: `.env` in the config repo's `.gitignore`.
+- **State:** runs, attempts, skips and the daemon's lock and log live in `~/.local/state/awaywork/profiles/<name>/`; `default` keeps `~/.local/state/awaywork/`. The Codex login lock stays shared, as `~/.codex` is.
+- **Per shell:** `AWAYWORK_PROFILE=work awaywork plan` ignores the current profile for that call, and `awaywork switch` says when it's set. What `watch` starts stays on its profile even if you switch meanwhile.
+
+`switch` runs on this machine, never on an `AWAYWORK_REMOTE` box.
+
 ## Old runs
 
 Run dirs keep plans, logs, context and reports, and a `replay`'s clone, easily 100 MB. `keep_runs` (a span, `30d` by default) says how long:
@@ -101,7 +131,7 @@ Each `awaywork run` prunes once it holds the run lock (not on `--dry-run`), goin
 
 ## Secrets
 
-The config holds env var **names** only. Values come from the environment or `~/.config/awaywork/env`, the environment winning. `awaywork secret ASANA_TOKEN` saves one there off your shell history, at a hidden prompt or from a pipe (`pbpaste | awaywork secret ASANA_TOKEN`), replacing an existing line.
+The config holds env var **names** only. Values come from the environment or `~/.config/awaywork/.env` (an older `env` there still counts; `doctor` says to rename it), the environment winning. `awaywork secret ASANA_TOKEN` saves one there (the active [profile](#profiles)'s `.env`) off your shell history, at a hidden prompt or from a pipe (`pbpaste | awaywork secret ASANA_TOKEN`), replacing an existing line.
 
 | Variable | Used by |
 | --- | --- |

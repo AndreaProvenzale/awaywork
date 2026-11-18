@@ -266,7 +266,7 @@ function sshErrors(): string {
       'awaywork report',
       sshFailure(box, 127, "env: 'awaywork': No such file or directory\n") ?? '',
     ),
-    command('awaywork run --unit CH-1', noBoxToken(box, '/home/dev/.config/awaywork/env')),
+    command('awaywork run --unit CH-1', noBoxToken(box, '/home/dev/.config/awaywork/.env')),
     command('awaywork report --list', tokenRefused('http://127.0.0.1:7480', box)),
   ].join('\n')
 }
