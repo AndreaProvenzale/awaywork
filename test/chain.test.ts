@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
@@ -36,6 +36,15 @@ import { fakeForge } from './fakes/forge'
 import { fakeItem, githubPr } from './fakes/items'
 import { fakeProvider } from './fakes/provider'
 import { fakeSource } from './fakes/source'
+
+vi.mock('#config/paths', async (original) => {
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  return {
+    ...(await original<typeof import('#config/paths')>()),
+    rootStateDir: await mkdtemp(`${tmpdir()}/awaywork-root-state-`),
+  }
+})
 
 process.env.GIT_COMMITTER_NAME ??= 't'
 process.env.GIT_COMMITTER_EMAIL ??= 't@t'

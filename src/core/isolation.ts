@@ -383,13 +383,15 @@ export const WORKER_LOCK = join(rootStateDir, 'worker.lock')
 export async function holdingWorker<T>(
   run: () => Promise<T>,
   log: (line: string) => void,
-  { file = WORKER_LOCK, signal }: { file?: string; signal?: AbortSignal } = {},
+  { signal }: { signal?: AbortSignal } = {},
 ): Promise<T | undefined> {
   if (!worker) return run()
-  const release = await lock(file, (line) => log(`worker user: ${line}`), signal).catch((e) => {
-    if (signal?.aborted) return undefined
-    throw e
-  })
+  const release = await lock(WORKER_LOCK, (line) => log(`worker user: ${line}`), signal).catch(
+    (e) => {
+      if (signal?.aborted) return undefined
+      throw e
+    },
+  )
   if (!release) return undefined
   try {
     return await run()

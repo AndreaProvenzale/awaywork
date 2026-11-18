@@ -1,44 +1,46 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rm, writeFile } from 'node:fs/promises'
 import { execa } from 'execa'
-import { afterEach, describe, expect, it } from 'vitest'
-import { holdingWorker, isolate } from '#core/isolation'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { WORKER_LOCK as file, holdingWorker, isolate } from '#core/isolation'
 
-afterEach(() => isolate(undefined))
+vi.mock('#config/paths', async (original) => {
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  return {
+    ...(await original<typeof import('#config/paths')>()),
+    rootStateDir: await mkdtemp(`${tmpdir()}/awaywork-root-state-`),
+  }
+})
 
-const lockPath = async () => join(await mkdtemp(join(tmpdir(), 'awaywork-wlock-')), 'worker.lock')
+afterEach(async () => {
+  isolate(undefined)
+  await rm(file, { force: true })
+})
 
 describe('holdingWorker', () => {
   it('takes no lock unless launches run as the worker user', async () => {
-    const file = await lockPath()
     await holdingWorker(
       async () => expect(existsSync(file)).toBe(false),
       () => {},
-      { file },
     )
   })
 
   it('holds the lock for the whole unit and frees it after', async () => {
     isolate('awaywork')
-    const file = await lockPath()
     await holdingWorker(
       async () => expect(existsSync(file)).toBe(true),
       () => {},
-      { file },
     )
     expect(existsSync(file)).toBe(false)
   })
 
   it('frees the lock when the unit throws', async () => {
     isolate('awaywork')
-    const file = await lockPath()
     await expect(
       holdingWorker(
         () => Promise.reject(new Error('boom')),
         () => {},
-        { file },
       ),
     ).rejects.toThrow('boom')
     expect(existsSync(file)).toBe(false)
@@ -46,7 +48,6 @@ describe('holdingWorker', () => {
 
   it('makes a second unit wait for the first, saying so', async () => {
     isolate('awaywork')
-    const file = await lockPath()
     const order: string[] = []
     const waits: string[] = []
     let finish = () => {}
@@ -59,13 +60,11 @@ describe('holdingWorker', () => {
           }
         }),
       () => {},
-      { file },
     )
     await new Promise((r) => setTimeout(r, 100))
     const second = holdingWorker(
       async () => void order.push('second'),
       (line) => waits.push(line),
-      { file },
     )
     await new Promise((r) => setTimeout(r, 200))
     expect(order).toEqual([])
@@ -77,7 +76,6 @@ describe('holdingWorker', () => {
 
   it('takes over a lock whose holder is dead', async () => {
     isolate('awaywork')
-    const file = await lockPath()
     await writeFile(file, (await execa('node', ['-e', 'console.log(process.pid)'])).stdout)
     let ran = false
     await holdingWorker(
@@ -85,14 +83,12 @@ describe('holdingWorker', () => {
         ran = true
       },
       () => {},
-      { file },
     )
     expect(ran).toBe(true)
   })
 
   it('stops waiting when the signal aborts, and never runs the unit', async () => {
     isolate('awaywork')
-    const file = await lockPath()
     await writeFile(file, String(process.pid))
     const abort = new AbortController()
     setTimeout(() => abort.abort(), 100)
@@ -102,7 +98,7 @@ describe('holdingWorker', () => {
         ran = true
       },
       () => {},
-      { file, signal: abort.signal },
+      { signal: abort.signal },
     )
     expect(result).toBeUndefined()
     expect(ran).toBe(false)
