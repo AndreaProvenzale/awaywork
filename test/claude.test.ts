@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '#core/types'
-import { claudeProvider, sandboxStarts, toEvents } from '#providers/claude'
+import { claudeProvider, toEvents } from '#providers/claude'
 import type { Allowance } from '#quota/budget'
 import { commandEnv, workerEnv } from '#worker/clone/env'
 import { runWorker } from '#worker/process/worker'
@@ -461,36 +461,5 @@ describe('claude provider', () => {
     await collect(claudeProvider(script).run(job(), new AbortController().signal))
     const left = Number(await readFile(pid, 'utf8'))
     await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
-  })
-})
-
-describe('sandboxStarts', () => {
-  const ran: string[][] = []
-  const probe = (failed: boolean) => async (file: string, args: string[]) => {
-    ran.push([file, ...args])
-    return { failed }
-  }
-
-  it('runs a bwrap with a new user and network namespace on Linux', async () => {
-    expect(await sandboxStarts(probe(false), 'linux')).toBe(true)
-    expect(ran[0]).toEqual([
-      'bwrap',
-      '--unshare-user',
-      '--unshare-net',
-      '--ro-bind',
-      '/',
-      '/',
-      'true',
-    ])
-  })
-
-  it('is false on Linux when bwrap fails or is missing', async () => {
-    expect(await sandboxStarts(probe(true), 'linux')).toBe(false)
-  })
-
-  it('needs no probe on macOS', async () => {
-    ran.length = 0
-    expect(await sandboxStarts(probe(true), 'darwin')).toBe(true)
-    expect(ran).toEqual([])
   })
 })

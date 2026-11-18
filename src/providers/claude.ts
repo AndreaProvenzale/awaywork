@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
+import { sandboxStarts, whereRuns } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
@@ -10,7 +11,6 @@ import { killGroupWhenDone } from '#util/process'
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
 const TOKEN = 'CLAUDE_CODE_OAUTH_TOKEN'
-const BWRAP_PROBE = ['--unshare-user', '--unshare-net', '--ro-bind', '/', '/', 'true']
 const knownWindows: Record<string, { span: 'short' | 'long'; minutes: number }> = {
   five_hour: { span: 'short', minutes: 300 },
   seven_day: { span: 'long', minutes: 7 * 24 * 60 },
@@ -36,7 +36,10 @@ const configSchema = z.strictObject({
 })
 
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
-export function claudeProvider(bin = 'claude', startsSandbox = sandboxStartsFor): Provider {
+export function claudeProvider(
+  bin = 'claude',
+  startsSandbox = (job: Job, signal: AbortSignal) => sandboxStarts(whereRuns(job.dir), signal),
+): Provider {
   return {
     id: 'claude',
     configSchema,
@@ -79,7 +82,7 @@ export function claudeProvider(bin = 'claude', startsSandbox = sandboxStartsFor)
     async *run(job, signal) {
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
       if (job.model) args.push('--model', job.model)
-      const sandboxed = await startsSandbox(job)
+      const sandboxed = await startsSandbox(job, signal)
       if (!sandboxed)
         yield { type: 'log', line: "Claude's sandbox can't start here: Bash runs unsandboxed" }
       args.push(
@@ -117,21 +120,6 @@ export function claudeProvider(bin = 'claude', startsSandbox = sandboxStartsFor)
 }
 
 export const claude = claudeProvider()
-
-/** Whether Claude's sandbox can start where `run` runs commands; bubblewrap on Linux, Seatbelt elsewhere needs nothing. */
-export async function sandboxStarts(
-  run: (file: string, args: string[]) => PromiseLike<{ failed: boolean }>,
-  platform = process.platform,
-): Promise<boolean> {
-  return platform !== 'linux' || !(await run('bwrap', BWRAP_PROBE)).failed
-}
-
-/** The probe where the unit's Claude runs: as the worker user or in the container, when there is one. */
-function sandboxStartsFor(job: Job) {
-  return sandboxStarts((file, args) =>
-    launch(file, args, { cwd: job.dir, env: job.env, extendEnv: false, reject: false }),
-  )
-}
 
 /** Bash offline, without the login or the MCP secrets. */
 function sandbox(job: Job) {

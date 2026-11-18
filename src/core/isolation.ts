@@ -200,6 +200,58 @@ export const inImage = (image: string, command: string[], mounts: string[] = [])
   ...command,
 ]
 
+/** Where a unit's Bash runs: in the image's container, as the worker user, or as the developer. */
+export interface Where {
+  image?: string
+  user?: string
+}
+
+/** Where the running phase's launches run in the clone `dir`. */
+export const whereRuns = (dir: string): Where =>
+  boxed ? { image: boxes.get(dir)?.image } : { user: worker }
+
+const BWRAP_PROBE = [
+  '--unshare-user',
+  '--unshare-net',
+  '--unshare-pid',
+  '--ro-bind',
+  '/',
+  '/',
+  '--proc',
+  '/proc',
+  '--dev',
+  '/dev',
+  'true',
+]
+const sandboxes = new Map<string, boolean>()
+
+/**
+ * Whether Claude's sandbox can start `where`: bubblewrap with the namespaces it takes, on Linux; Seatbelt elsewhere needs nothing.
+ * It runs outside `start`, so no exit kills the worker's processes, and once per process for each image or user.
+ */
+export async function sandboxStarts(
+  { image, user }: Where,
+  signal?: AbortSignal,
+  run: typeof execa = execa,
+): Promise<boolean> {
+  if (!image && process.platform !== 'linux') return true
+  const key = image ?? user ?? ''
+  const known = sandboxes.get(key)
+  if (known !== undefined) return known
+  const options = { reject: false, cancelSignal: signal } as const
+  const ran = image
+    ? await run(bin('docker'), inImage(image, ['bwrap', ...BWRAP_PROBE]), options)
+    : user
+      ? await run(
+          bin('sudo'),
+          sudoArgs(user, 'bwrap', BWRAP_PROBE, { env: {}, extendEnv: false }),
+          { ...options, env: {}, extendEnv: false },
+        )
+      : await run(bin('bwrap'), BWRAP_PROBE, options)
+  if (!signal?.aborted) sandboxes.set(key, !ran.failed)
+  return !ran.failed
+}
+
 /** The Docker engine's version; throws when docker can't reach it. */
 export async function dockerVersion(timeout = DOCKER_TIMEOUT_MS): Promise<string> {
   const docker = await execa(bin('docker'), ['version', '--format', '{{.Server.Version}}'], {
