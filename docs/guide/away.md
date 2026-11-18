@@ -147,7 +147,7 @@ The plugin watches the config's folder, so the chat's writes show at once. A dra
 - drafts rules on a copy and checks them with `awaywork plan --rules --json`: what each takes, what another rule takes first, and near misses;
 - on your yes writes them, keeping your comments and layout, and runs `awaywork doctor --json`;
 - starts a tweak from the item (`awaywork plan --why <key>`) and shows before and after;
-- writes your repo's [proving skill](./workflows/proving.md) with you: `/away show me it works before I review`.
+- writes your repo's [proving skill](./workflows/proving.md) with you: `/away show me it works before I review`;
 - proposes lines to cut from your `AGENTS.md` and instructions files, each with its evidence: `/away prune my AGENTS.md` ([Prune](./suggest.md#prune)).
 
 It never sees a token, starts a run or installs a schedule (it gives you the commands), or skips, unskips and approves without asking. Nothing reaches your config without your yes, and a widening you didn't ask for (`deliver: push`, `deliver: pr`, `on_done`, dropping `trusted`) gets its own question.

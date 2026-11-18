@@ -116,17 +116,31 @@ What's already written down grows too, and goes stale. Ask for a pass over it:
 /away prune my AGENTS.md
 ```
 
-It reads no sessions, so it asks nothing first and runs any time. It reads the `AGENTS.md` and `CLAUDE.md` of the repo you're in, its `.awaywork/instructions.md`, and the [`instructions`](./config/repos.md#repos-and-instructions) files your config names, and tries each line against four tests, most mechanical first:
+It reads no sessions, so unlike suggest it asks nothing first; with no config, `/away` still sets awaywork up first. It reads the `AGENTS.md` and `CLAUDE.md` of the repo you're in, its `.awaywork/instructions.md`, and the [`instructions`](./config/repos.md#repos-and-instructions) files your config gives its units, a line other repos share going only when its test holds in each of them. Four tests, most mechanical first; the first that fits wins:
 
-| Test | The line | It names | It proposes |
-| --- | --- | --- | --- |
-| Contradicted by the code | Names a path, script or command that doesn't exist | What's missing, e.g. no `scripts/release.sh` | Delete, or rewrite to what replaced it |
-| Enforced already | Asks what a check already does | The lint rule on in the linter's config, the test, the `verify` or the [gate](./workflows/gates.md) | Delete |
-| Emphatic | `IMPORTANT`, `MUST`, all caps, "never ever" | The words | The same line, plain |
-| Shown by the code | Lists the stack, a directory tree, the scripts | The manifest or folder that shows it | Delete |
+```text
+Read AGENTS.md (38 lines), CLAUDE.md (imports AGENTS.md), .awaywork/instructions.md (5 lines),
+and notes/acme-api.md from your config (repos.acme/api).
 
-A line saying when to run what ("run `pnpm format`; `pnpm lint` checks") stays: neither the tree nor a check says when. A `verify` or gate runs only in awaywork's chains, so it covers an `instructions` line, never an `AGENTS.md` line your own sessions read.
+AGENTS.md
+  1  "Release with scripts/release.sh."            contradicted by the code
+     no scripts/release.sh; package.json has "release"
+     → "Release with `pnpm release`."
+  2  "Never use `any` in TypeScript."              enforced already
+     biome.json: suspicious.noExplicitAny is "error"; `pnpm lint` runs biome
+     → delete
+  3  "IMPORTANT: you MUST NEVER push to main."     emphatic
+     IMPORTANT, MUST, NEVER
+     → "Never push to main."
+  4  "Stack: Next.js, Prisma, Postgres, Tailwind." shown by the code
+     package.json dependencies, prisma/schema.prisma
+     → delete
 
-Each line is its own yes: it shows the line, the test, the evidence and the edit, and on your yes edits the file locally, for you to commit. Nothing declined is written or remembered.
+Apply which? (e.g. 1, 3)
+```
+
+A line saying when to run what ("run `pnpm format`; `pnpm lint` checks") isn't a listing, so "shown by the code" leaves it: neither the tree nor a check says when. A `verify` or [gate](./workflows/gates.md) runs only in awaywork's chains, so it covers a line in `.awaywork/instructions.md` or an `instructions` file, for the units it runs on, never an `AGENTS.md` line your own sessions read.
+
+Each line is its own yes, a local edit for you to commit. Nothing declined is written or remembered.
 
 It's static: it reads the files, not your history, so it can't tell whether a line ever mattered. A line no agent ever needed passes every test and stays; that call is yours.
