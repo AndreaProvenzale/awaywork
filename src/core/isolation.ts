@@ -4,8 +4,9 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { execa, type Options } from 'execa'
-import { bin } from '#config/paths'
+import { bin, rootStateDir } from '#config/paths'
 import type { Config } from '#config/schema'
+import { lock } from '#util/lock'
 import type { Login } from './types'
 
 /** The user repo code runs as under `isolation: user`, made by `action.yml` on a GitHub-hosted runner, by you elsewhere. */
@@ -372,6 +373,24 @@ export async function asWorker<T>(dir: string, run: () => Promise<T>, login?: Lo
     }
   } finally {
     await save?.(back)
+  }
+}
+
+/** Held machine-wide across profiles: `killWorker` ends every process of the one worker user, whoever's unit it belongs to. */
+export const WORKER_LOCK = join(rootStateDir, 'worker.lock')
+
+/** Runs a whole unit under the worker lock when launches run as the worker user, waiting while another profile's unit holds it. */
+export async function holdingWorker<T>(
+  run: () => Promise<T>,
+  log: (line: string) => void,
+  file = WORKER_LOCK,
+): Promise<T> {
+  if (!worker) return run()
+  const release = await lock(file, (line) => log(`worker user: ${line}`))
+  try {
+    return await run()
+  } finally {
+    await release()
   }
 }
 

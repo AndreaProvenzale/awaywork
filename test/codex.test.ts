@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '#core/types'
-import { codexProvider, lock, mcpOverrides, toEvents, toQuota } from '#providers/codex'
+import { codexProvider, mcpOverrides, toEvents, toQuota } from '#providers/codex'
+import { lock } from '#util/lock'
 import { providerContract } from './contracts/provider.contract'
 import { fakeItem } from './fakes/items'
 
@@ -239,7 +240,7 @@ describe('codex provider', () => {
     })
     await new Promise((r) => setTimeout(r, 200))
     expect(second).toBe(false)
-    expect(waits).toEqual([`codex: waiting for pid ${process.pid}, which holds ${file}`])
+    expect(waits).toEqual([`waiting for pid ${process.pid}, which holds ${file}`])
     await release()
     await (await next)()
   })

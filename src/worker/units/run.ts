@@ -1,5 +1,5 @@
 import { rm } from 'node:fs/promises'
-import { isolated, lostToWorker, workerRoot } from '#core/isolation'
+import { holdingWorker, isolated, lostToWorker, workerRoot } from '#core/isolation'
 import type { Item, Quota } from '#core/types'
 import { namesUnit, type PlannedUnit, type RunPlan } from '#plan/foreman'
 import type { RunReport, UnitResult } from '#posts/report'
@@ -92,15 +92,19 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         'skip' in ready
           ? skipTask(chain, ready.skip)
           : await turn(() =>
-              runChain(
-                run,
-                onto
-                  ? chain.map((p) => ({
-                      ...p,
-                      unit: { ...p.unit, base: onto.branch, stackedOn: onto.url },
-                    }))
-                  : chain,
-                ready,
+              holdingWorker(
+                () =>
+                  runChain(
+                    run,
+                    onto
+                      ? chain.map((p) => ({
+                          ...p,
+                          unit: { ...p.unit, base: onto.branch, stackedOn: onto.url },
+                        }))
+                      : chain,
+                    ready,
+                  ),
+                (line) => input.ctx.log(`${head.unit.id}: ${line}`),
               ),
             )
       if (done.some((r) => r.status !== 'skipped')) run.started.add(head.unit.id)
