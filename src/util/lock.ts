@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-/** Waits until no other live process holds the lock file, then takes it; on abort it stops waiting and returns a release that does nothing. */
+/** Waits until no other live process holds the lock file, then takes it; on abort it stops waiting and throws. */
 export async function lock(
   file: string,
   onWait: (line: string) => void,
@@ -10,7 +10,7 @@ export async function lock(
 ): Promise<() => Promise<void>> {
   await mkdir(dirname(file), { recursive: true })
   for (let waited = false; ; waited = true) {
-    if (signal?.aborted) return async () => {}
+    signal?.throwIfAborted()
     try {
       await writeFile(file, String(process.pid), { flag: 'wx' })
       return () => rm(file, { force: true })
@@ -23,7 +23,7 @@ export async function lock(
       continue
     }
     if (!waited) onWait(`waiting for pid ${pid}, which holds ${file}`)
-    await sleep(1000, undefined, { signal }).catch(() => {})
+    await sleep(1000, undefined, { signal })
   }
 }
 

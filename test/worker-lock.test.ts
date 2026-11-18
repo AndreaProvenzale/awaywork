@@ -90,21 +90,22 @@ describe('holdingWorker', () => {
     expect(ran).toBe(true)
   })
 
-  it('stops waiting when the signal aborts, and runs without the lock', async () => {
+  it('stops waiting when the signal aborts, and never runs the unit', async () => {
     isolate('awaywork')
     const file = await lockPath()
     await writeFile(file, String(process.pid))
     const abort = new AbortController()
     setTimeout(() => abort.abort(), 100)
     let ran = false
-    await holdingWorker(
+    const result = await holdingWorker(
       async () => {
         ran = true
       },
       () => {},
       { file, signal: abort.signal },
     )
-    expect(ran).toBe(true)
+    expect(result).toBeUndefined()
+    expect(ran).toBe(false)
     expect(existsSync(file)).toBe(true)
   })
 })

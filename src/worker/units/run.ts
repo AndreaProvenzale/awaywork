@@ -107,7 +107,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 ? chained()
                 : holdingWorker(chained, (line) => input.ctx.log(`${head.unit.id}: ${line}`), {
                     signal: waitSignal(input.signal, input.until),
-                  })
+                  }).then(
+                    (done) =>
+                      done ??
+                      skipTask(chain, input.signal?.aborted ? 'interrupted' : 'the window ended'),
+                  )
             })
       if (done.some((r) => r.status !== 'skipped')) run.started.add(head.unit.id)
       const lead = done.find((r) => !r.planned.chain && !r.retried)
