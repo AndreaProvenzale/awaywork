@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
@@ -36,6 +36,15 @@ import { fakeForge } from './fakes/forge'
 import { fakeItem, githubPr } from './fakes/items'
 import { fakeProvider } from './fakes/provider'
 import { fakeSource } from './fakes/source'
+
+vi.mock('#config/paths', async (original) => {
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  return {
+    ...(await original<typeof import('#config/paths')>()),
+    rootStateDir: await mkdtemp(`${tmpdir()}/awaywork-root-state-`),
+  }
+})
 
 process.env.GIT_COMMITTER_NAME ??= 't'
 process.env.GIT_COMMITTER_EMAIL ??= 't@t'
@@ -712,7 +721,7 @@ it("runs no check in a clone whose .git it couldn't restore, so a planted filter
       const events = []
       for await (const event of base.run(job, signal)) events.push(event)
       if (job.unit.id === 'acme-api-1') {
-        await writeFile(join(job.dir, '.git', 'objects', 'info', 'alternates'), '')
+        await writeFile(join(job.dir, '.git', 'objects', 'info', 'alternates'), '/elsewhere\n')
         await writeFile(join(job.dir, '.gitattributes'), '* filter=evil\n')
         const clean = `sh -c 'echo "$ZZ_SECRET" >> ${marker}; cat'`
         await git(job.dir, 'config', 'filter.evil.clean', clean)
@@ -746,7 +755,7 @@ it("runs no check in a clone whose .git it couldn't restore, so a planted filter
 
 it.each([
   ['links .git to a repo of its own', 'link'],
-  ['plants an empty alternates', 'alternates'],
+  ['plants an alternates', 'alternates'],
 ])('publishes nothing and runs no git in a refused clone whose worker %s', async (_, how) => {
   const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
   const base = worker()
@@ -764,7 +773,7 @@ it.each([
       if (how === 'link') {
         await git(repo, 'init', '-q')
         await git(repo, 'commit', '-q', '--allow-empty', '-m', 'planted')
-      } else await writeFile(join(repo, '.git', 'objects', 'info', 'alternates'), '')
+      } else await writeFile(join(repo, '.git', 'objects', 'info', 'alternates'), '/elsewhere\n')
       for (const [key, value] of [
         ['core.repositoryformatversion', '1'],
         ['extensions.partialClone', 'origin'],

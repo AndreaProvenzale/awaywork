@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
+import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
@@ -9,6 +10,7 @@ import { killGroupWhenDone } from '#util/process'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
+const TOKEN = 'CLAUDE_CODE_OAUTH_TOKEN'
 const knownWindows: Record<string, { span: 'short' | 'long'; minutes: number }> = {
   five_hour: { span: 'short', minutes: 300 },
   seven_day: { span: 'long', minutes: 7 * 24 * 60 },
@@ -34,7 +36,10 @@ const configSchema = z.strictObject({
 })
 
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
-export function claudeProvider(bin = 'claude'): Provider {
+export function claudeProvider(
+  bin = 'claude',
+  startsSandbox = (job: Job, signal: AbortSignal) => sandboxStarts(whereRuns(job.dir), signal),
+): Provider {
   return {
     id: 'claude',
     configSchema,
@@ -42,7 +47,7 @@ export function claudeProvider(bin = 'claude'): Provider {
     quota: 'window',
     unattended: 'allowed',
     install: { npm: '@anthropic-ai/claude-code' },
-    secrets: ['CLAUDE_CODE_OAUTH_TOKEN'],
+    secrets: [TOKEN],
     loginDir: { env: 'CLAUDE_CONFIG_DIR', default: '~/.claude', command: 'claude /login' },
 
     async account(env) {
@@ -77,7 +82,14 @@ export function claudeProvider(bin = 'claude'): Provider {
     async *run(job, signal) {
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
       if (job.model) args.push('--model', job.model)
-      args.push(...(job.unit.foreign ? isolated : repoOnly), '--settings', await settings(job))
+      const sandboxed = await startsSandbox(job, signal)
+      if (!sandboxed && !signal.aborted)
+        yield { type: 'log', line: "Claude's sandbox can't start here: Bash runs unsandboxed" }
+      args.push(
+        ...(job.unit.foreign ? isolated : repoOnly),
+        '--settings',
+        await settings(job, sandboxed),
+      )
       if (job.plugin) args.push('--plugin-dir', job.plugin)
       const servers = Object.entries(job.mcp ?? {})
       if (servers.length > 0) args.push('--mcp-config', mcpConfig(servers))
@@ -109,11 +121,29 @@ export function claudeProvider(bin = 'claude'): Provider {
 
 export const claude = claudeProvider()
 
-/** The developer's settings file with auto-memory off; it applies whatever the setting sources. */
-async function settings(job: Job): Promise<string> {
+/** Bash offline, without the login or the MCP secrets. */
+function sandbox(job: Job, theirs?: { allowWrite?: string[] }) {
+  const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
+  // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
+  const home = workerHome(job.dir)
+  return {
+    enabled: true,
+    failIfUnavailable: false,
+    allowUnsandboxedCommands: false,
+    network: { allowedDomains: [] },
+    ...(home && { filesystem: { ...theirs, allowWrite: [...(theirs?.allowWrite ?? []), home] } }),
+    credentials: { envVars: [TOKEN, ...secrets].map((name) => ({ name, mode: 'deny' })) },
+  }
+}
+
+/** The developer's settings file with auto-memory off and, where the sandbox starts, Bash sandboxed; it applies whatever the setting sources. */
+async function settings(job: Job, sandboxed: boolean): Promise<string> {
   const { settings: file } = configSchema.parse(job.config ?? {})
   const theirs = file && JSON.parse(await readFile(resolve(job.configDir ?? '', file), 'utf8'))
-  return JSON.stringify({ ...theirs, ...noMemory })
+  const merged = sandboxed
+    ? { ...theirs?.sandbox, ...sandbox(job, theirs?.sandbox?.filesystem) }
+    : theirs?.sandbox
+  return JSON.stringify({ ...theirs, ...noMemory, ...(merged && { sandbox: merged }) })
 }
 
 /** The servers as `.mcp.json`; the binary expands `${NAME}` from the worker's env. */

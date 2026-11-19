@@ -1,14 +1,14 @@
 import { constants } from 'node:fs'
 import { lstat, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { setTimeout as sleep } from 'node:timers/promises'
+import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { rootStateDir } from '#config/paths'
 import { launch } from '#core/launch'
 import type { McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
+import { lock } from '#util/lock'
 import { killGroupWhenDone } from '#util/process'
 
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
@@ -102,7 +102,7 @@ export function codexProvider(
 
     /** `account/rateLimits/read` through the binary's own app server; null when it can't be read. */
     async probe(ctx) {
-      const release = await lock(lockFile, ctx.log)
+      const release = await lock(lockFile, (line) => ctx.log(`codex: ${line}`))
       try {
         return await probe(ctx.env)
       } catch (e) {
@@ -362,36 +362,4 @@ function account(auth: string | undefined): string | undefined {
   return typeof tokens?.refresh_token === 'string' && typeof tokens.account_id === 'string'
     ? tokens.account_id
     : undefined
-}
-
-/** Waits until no other live process holds the lock file, then takes it. */
-export async function lock(
-  file: string,
-  onWait: (line: string) => void,
-): Promise<() => Promise<void>> {
-  await mkdir(dirname(file), { recursive: true })
-  for (let waited = false; ; waited = true) {
-    try {
-      await writeFile(file, String(process.pid), { flag: 'wx' })
-      return () => rm(file, { force: true })
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
-    }
-    const pid = Number(await readFile(file, 'utf8').catch(() => ''))
-    if (pid && !alive(pid)) {
-      await rm(file, { force: true })
-      continue
-    }
-    if (!waited) onWait(`codex: waiting for pid ${pid}, which holds ${file}`)
-    await sleep(1000)
-  }
-}
-
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM'
-  }
 }

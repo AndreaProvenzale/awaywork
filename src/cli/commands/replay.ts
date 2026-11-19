@@ -3,7 +3,7 @@ import type { Command } from 'commander'
 import { reportConfigError } from '#cli/tui/ask'
 import { configPath, loadConfig } from '#config/load'
 import { runsDir } from '#config/paths'
-import { isolateFor } from '#core/isolation'
+import { holdingWorker, isolateFor } from '#core/isolation'
 import { forgeFor } from '#forge/index'
 import { providersOf } from '#providers/index'
 import { abortOnSignals } from '#run/execute'
@@ -23,22 +23,29 @@ export function replayCommand(program: Command): void {
         const config = await loadConfig(path)
         await isolateFor(config.isolation, process.env)
         const signal = abortOnSignals()
-        const result = await replayUnit({
-          config,
-          configDir: dirname(path),
-          runDir: join(runsDir, run),
-          unitId: unit,
-          providers: providersOf(config),
-          sources: Object.fromEntries(
-            Object.entries(config.sources).flatMap(([id, cfg]) => {
-              const source = sourceFor(id, cfg)
-              return source ? [[id, source]] : []
+        const log = (line: string) => console.log(`  ${line}`)
+        const result = await holdingWorker(
+          () =>
+            replayUnit({
+              config,
+              configDir: dirname(path),
+              runDir: join(runsDir, run),
+              unitId: unit,
+              providers: providersOf(config),
+              sources: Object.fromEntries(
+                Object.entries(config.sources).flatMap(([id, cfg]) => {
+                  const source = sourceFor(id, cfg)
+                  return source ? [[id, source]] : []
+                }),
+              ),
+              forge: forgeFor(config),
+              ctx: { env: process.env, log },
+              signal,
             }),
-          ),
-          forge: forgeFor(config),
-          ctx: { env: process.env, log: (line) => console.log(`  ${line}`) },
-          signal,
-        })
+          log,
+          { signal },
+        )
+        if (!result) throw new Error('interrupted while waiting for the worker user')
         console.log(
           `${unit}: ${result.status}, ${counted(result.commits, 'commit')} on the local branch in ${result.dir}; output in ${result.out}`,
         )
