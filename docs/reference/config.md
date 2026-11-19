@@ -37,6 +37,7 @@ with:
 | `gates` | map | `{}` | Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills |
+| `network` | string[] | `[]` | Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; without any, nothing runs |
 | `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
@@ -287,6 +288,7 @@ A custom source: any command that prints your open items as JSON.
 | `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
 | `verify` | string |  | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
 | `gates` | map | `{}` | Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill |
+| `network` | string[] | `[]` | Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
 | `image` | string |  | Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain |
@@ -331,6 +333,7 @@ First matching rule wins; top = highest priority.
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
+| `network` | string[] | `[]` | Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet |
 | `deliver` | "draft_pr" \| "pr" \| "report" \| "push" \| "pending_review" \| "plan" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, a step asks questions with ask in its status file, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans |
 | `wait` | boolean |  | deliver: plan or report: the post waits for your reply on the item, approve as its first line letting the next stage take it, anything else running the step again; default true for plan, false for report; a gate of the rule's own that fires makes it wait anyway |
 | `gates` | map |  | Gates of the rule's own, under names no top-level or repo gate has. On a rule that opens a PR or pushes they run with those, and one that fires does what theirs does; on deliver: plan or report, where those never run, they run on what the step left, without changed, and one that fires puts its line on the post and makes it wait, a planned rule's task holding its card's other tasks until you answer; not on pending_review |

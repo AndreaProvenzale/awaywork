@@ -111,6 +111,7 @@ export function chainUnits(
       ...at,
       id,
       verify: settings.verify,
+      network: [...new Set([...config.network, ...settings.network, ...(rule.network ?? [])])],
       // Gates check what a model wrote, and a merge with no model has nothing of its; the top-level and repo ones need commits, so a plan or report takes its rule's own only.
       gates: decides
         ? gatesOf(rule.gates)

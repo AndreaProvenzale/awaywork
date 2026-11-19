@@ -10,6 +10,8 @@ import { killGroupWhenDone } from '#util/process'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
+/** A denied connection in a Bash result's `<sandbox_violations>`. */
+const REFUSED = /deny network-outbound ([^\s:]+)/g
 const TOKEN = 'CLAUDE_CODE_OAUTH_TOKEN'
 const knownWindows: Record<string, { span: 'short' | 'long'; minutes: number }> = {
   five_hour: { span: 'short', minutes: 300 },
@@ -121,7 +123,7 @@ export function claudeProvider(
 
 export const claude = claudeProvider()
 
-/** Bash offline, without the login or the MCP secrets. */
+/** Bash reaching only the unit's `network` hosts, none by default, without the login or the MCP secrets. */
 function sandbox(job: Job, theirs?: { allowWrite?: string[] }) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
@@ -130,7 +132,7 @@ function sandbox(job: Job, theirs?: { allowWrite?: string[] }) {
     enabled: true,
     failIfUnavailable: false,
     allowUnsandboxedCommands: false,
-    network: { allowedDomains: [] },
+    network: { allowedDomains: job.unit.network ?? [] },
     ...(home && { filesystem: { ...theirs, allowWrite: [...(theirs?.allowWrite ?? []), home] } }),
     credentials: { envVars: [TOKEN, ...secrets].map((name) => ({ name, mode: 'deny' })) },
   }
@@ -179,6 +181,18 @@ export function toEvents(line: string): WorkerEvent[] {
         const arg = block.input.command ?? block.input.file_path ?? block.input.pattern ?? mcp
         return { type: 'log', line: `${block.name}: ${String(arg)}` }
       })
+  if (event?.type === 'user') {
+    const results: { content?: unknown }[] = (event.message?.content ?? []).filter(
+      (block: { type: string }) => block.type === 'tool_result',
+    )
+    const hosts = results.flatMap(({ content }) =>
+      [...String(content).matchAll(REFUSED)].map((m) => m[1] as string),
+    )
+    return [...new Set(hosts)].map((host) => ({
+      type: 'log',
+      line: `network: refused ${host} (agent shell)`,
+    }))
+  }
   if (event?.type === 'result') {
     // A run that couldn't start, logged out say, still ends with subtype `success`.
     const reason =

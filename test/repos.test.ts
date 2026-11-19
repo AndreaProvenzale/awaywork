@@ -24,7 +24,7 @@ const problems = (text: string): string[] => {
 describe('repos', () => {
   it('takes a bare key as a listed repo with no settings', () => {
     const { repos } = parseConfig(config('repos:\n  acme/api:\n  acme/*: { setup: yarn }'))
-    expect(repos['acme/api']).toEqual({ secrets: [], gates: {} })
+    expect(repos['acme/api']).toEqual({ secrets: [], network: [], gates: {} })
     expect(repoListed(repos, 'acme/api')).toBe(true)
     expect(repoListed(repos, 'Acme/Web')).toBe(true)
     expect(repoListed(repos, 'other/api')).toBe(false)
@@ -43,6 +43,7 @@ describe('repos', () => {
       test: 'npm test',
       verify: 'yarn lint',
       secrets: ['NPM_TOKEN', 'SENTRY_DSN'],
+      network: [],
       gates: { deps: { changed: ['package.json'] }, routes: { command: './routes.sh' } },
     })
     expect(settingsFor(repos, 'acme/web')).toMatchObject({
@@ -50,7 +51,20 @@ describe('repos', () => {
       verify: 'yarn test',
     })
     expect(settingsFor(repos, 'other/docs')).toMatchObject({ setup: 'npm ci', secrets: [] })
-    expect(settingsFor({}, 'acme/api')).toEqual({ secrets: [], gates: {} })
+    expect(settingsFor({}, 'acme/api')).toEqual({ secrets: [], network: [], gates: {} })
+  })
+
+  it('adds up the network hosts of every key naming a repo, and checks them', () => {
+    const { repos } = parseConfig(
+      config(`repos:
+  acme/api: { network: [registry.yarnpkg.com] }
+  acme/*: { network: ["*.prisma.sh", registry.yarnpkg.com] }`),
+    )
+    expect(settingsFor(repos, 'acme/api').network).toEqual(['*.prisma.sh', 'registry.yarnpkg.com'])
+    expect(settingsFor(repos, 'acme/web').network).toEqual(['*.prisma.sh', 'registry.yarnpkg.com'])
+    expect(parseConfig(config('repos: { acme/api: }\nnetwork: ["*"]')).network).toEqual(['*'])
+    for (const bad of ['https://npmjs.org', 'npmjs.org:443', 'npmjs.org/x', 'a b', ''])
+      expect(problems(config(`repos: { acme/api: }\nnetwork: ["${bad}"]`))).toHaveLength(1)
   })
 
   it('needs an image for a repo under isolation: container, its own or a glob’s', () => {
@@ -126,6 +140,26 @@ describe('keys that moved', () => {
     expect(problems(config(''))).toEqual([
       'repos: the github source reads the repos listed here: add one, e.g. acme/api or acme/*',
     ])
+  })
+})
+
+describe("a unit's network", () => {
+  it('adds the top level, the repo and the rule', () => {
+    const cfg = parseConfig(
+      config(
+        'network: [a.example]\nrepos: { acme/*: { network: [b.example] } }',
+        "{ tracker: { command: 'echo []' } }\nqueue: [{ skill: plan, network: [c.example, a.example] }]",
+      ),
+    )
+    const item = fakeItem({
+      source: 'tracker',
+      key: 'ENG-1',
+      type: 'task',
+      fields: { repo: 'acme/api' },
+    })
+    const setup = setupOf(cfg, { builtin: builtinSkills })
+    const plan = planRun({ setup, items: [item], allowances: {} })
+    expect(plan.units.map((u) => u.unit.network)).toEqual([['a.example', 'b.example', 'c.example']])
   })
 })
 
