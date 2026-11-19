@@ -116,3 +116,45 @@ Accept, tweak or decline each by number. Kept rules and routines go through the 
 ## Running it again
 
 There's no memory between runs, on purpose for now. What you accepted comes back as "already rule #3"; what you declined comes back as a fresh candidate. Nothing nudges you: ask again when habits change or a new repo shows up.
+
+## Prune
+
+What's already written down grows too, and goes stale. Ask for a pass over it:
+
+```text
+/away prune my AGENTS.md
+```
+
+It reads no sessions, so unlike suggest it asks nothing first; with no config, `/away` still sets awaywork up first. It reads the `AGENTS.md` and `CLAUDE.md` of the repo you're in, its `.awaywork/instructions.md`, and the [`instructions`](./config/repos.md#repos-and-instructions) files your config gives its units, a line other repos share going only when its test holds in each of them. Four tests, most mechanical first; the first that fits wins:
+
+```text
+Read AGENTS.md (38 lines), CLAUDE.md (imports AGENTS.md), .awaywork/instructions.md (5 lines),
+and notes/acme-api.md from your config (repos.acme/api).
+
+AGENTS.md
+  1  "Release with scripts/release.sh."            contradicted by the code
+     no scripts/release.sh; package.json has "release"
+     → "Release with `pnpm release`."
+  2  "Never use `any` in TypeScript."              enforced already
+     biome.json: suspicious.noExplicitAny is "error"; `pnpm lint` runs biome
+     → delete
+  3  "IMPORTANT: you MUST NEVER push to main."     emphatic
+     IMPORTANT, MUST, NEVER
+     → "Never push to main."
+  4  "Stack: Next.js, Prisma, Postgres, Tailwind." shown by the code
+     package.json dependencies, prisma/schema.prisma
+     → delete
+
+notes/acme-api.md
+  5  "Flag any change to migrations/ in the PR body."   enforced already
+     gates.schema: changed ["**/migrations/**"] puts it on the PR's decision card
+     → delete
+
+Apply which? (e.g. 1, 3)
+```
+
+A line saying when to run what ("run `pnpm format`; `pnpm lint` checks") isn't a listing, so neither "enforced already" nor "shown by the code" takes it: neither a check nor the tree says when. A `verify` or [gate](./workflows/gates.md) runs only in awaywork's chains, so it covers a line in `.awaywork/instructions.md` or an `instructions` file, for the units it runs on, never an `AGENTS.md` line your own sessions read.
+
+Each line is its own yes, a local edit for you to commit. Nothing declined is written or remembered.
+
+It's static: it reads the files, not your history, so it can't tell whether a line ever mattered. A line no agent ever needed passes every test and stays; that call is yours.

@@ -21,7 +21,7 @@ Pass `--config <path>` to every command when the developer uses one. `awaywork c
 
 ## Route
 
-[`setup.md`](setup.md), [`queue.md`](queue.md), [`suggest.md`](suggest.md) and [`prove.md`](prove.md), beside this file, hold the longer routes: read the one a route names, whole, and follow it.
+[`setup.md`](setup.md), [`queue.md`](queue.md), [`suggest.md`](suggest.md), [`prove.md`](prove.md) and [`prune.md`](prune.md), beside this file, hold the longer routes: read the one a route names, whole, and follow it.
 
 Every route starts with `awaywork config path`. Exit 1 with the line `<path> not found; awaywork init writes one`, whatever the request: read `setup.md`, which writes the config with them. Any other failure (`can't reach AWAYWORK_REMOTE`, say): show its line and stop. A path that isn't on this machine is the server's that `AWAYWORK_REMOTE` forwards to (https://andreaprovenzale.github.io/awaywork/guide/scheduling/laptop.md): the commands work as here, but the config isn't here to read: a rule change goes in the control repo's `.awaywork/config.yml` and a push, so say that rather than following `queue.md`, `suggest.md` or `prove.md` for one.
 
@@ -31,4 +31,5 @@ Every route starts with `awaywork config path`. Exit 1 with the line `<path> not
 - **Offload, stop or tweak work**: `queue.md`.
 - **Proof, evidence or QA of what awaywork ships** ("show me it works before I review"): `queue.md`'s steps 1 and 4 for the draft, then `prove.md` on it, which writes the repo's own proving skill and its gates with them, then `queue.md` from step 5 to check, write and validate.
 - **"What could you take off my plate?"**, or a yes to `queue.md`'s first-setup offer: `suggest.md`.
+- **Prune their agent instructions** ("prune my AGENTS.md"): `prune.md`.
 - **Continue a unit here**: `awaywork report --unit <n|key>` (`awaywork report <run-id> --unit …` for an older run, `report --list` names them) prints its links, steps, files and PR body or report. Check out its branch and carry on from what it left.
