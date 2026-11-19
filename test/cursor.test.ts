@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -161,6 +161,15 @@ describe('cursor provider', () => {
     expect(env.XDG_CONFIG_HOME).toBeUndefined()
   })
 
+  it("keeps the MCP servers' secrets out of the shell's env", async () => {
+    const file = join(tmp, 'env-mcp.json')
+    const mcp = { db: { command: 'npx', secrets: ['DB_URL', 'CURSOR_API_KEY'] } }
+    await run({ ...job({ FAKE_ENV: file, DB_URL: 'pg://x', CURSOR_API_KEY: 'key' }), mcp })
+    const env = JSON.parse(await readFile(file, 'utf8'))
+    expect(env.DB_URL).toBeUndefined()
+    expect(env.CURSOR_API_KEY).toBe('key')
+  })
+
   it("writes the run's HOME afresh: its permissions and MCP servers", async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-agent-home-'))
     const home = join(dir, '.away/agent-home/.cursor')
@@ -175,7 +184,7 @@ describe('cursor provider', () => {
         tools: ['search_issues'],
       },
     }
-    await provider.prepare?.({ ...job(), dir, mcp })
+    await provider.prepare?.({ ...job({ DB_URL: 'pg://x', SENTRY_TOKEN: 'tok' }), dir, mcp })
     const read = async (name: string) => JSON.parse(await readFile(join(home, name), 'utf8'))
     expect(await read('cli-config.json')).toEqual({
       version: 1,
@@ -189,18 +198,19 @@ describe('cursor provider', () => {
         db: {
           command: 'npx',
           args: ['db-mcp'],
-          env: { READ_ONLY: '1', DB_URL: '${env:DB_URL}' },
+          env: { READ_ONLY: '1', DB_URL: 'pg://x' },
           startupTimeoutSec: 60,
         },
         sentry: {
           url: 'https://mcp.sentry.dev/mcp',
-          headers: { Authorization: 'Bearer ${env:SENTRY_TOKEN}', 'X-Org': 'acme' },
+          headers: { Authorization: 'Bearer tok', 'X-Org': 'acme' },
         },
       },
     })
+    expect((await stat(join(home, 'mcp.json'))).mode & 0o777).toBe(0o600)
     await expect(readFile(join(home, 'hooks.json'))).rejects.toThrow()
     expect(cliConfig({}).permissions.allow).toEqual(['Shell(*)', 'Read(**)', 'Write(**)'])
-    expect(mcpConfig({})).toEqual({ mcpServers: {} })
+    expect(mcpConfig({}, {})).toEqual({ mcpServers: {} })
   })
 
   it('refuses a linked .away', async () => {

@@ -82,7 +82,7 @@ Also open:
 
 - **Prompt injection.** Strangers' GitHub comments are [hidden](./index.md#public-repos), but issue bodies, CI logs, check names and links, other sources' text and trusted people's quotes may be anyone's. The harness calls them data; a model can still be talked into things, with the reach above.
 - **Hooks and MCP servers across a loop's rounds:** on your repo, Claude Code loads the clone's `.claude/settings.json` and `.mcp.json`, and starts their servers unapproved, outside its sandbox and with its whole env [V, tested on macOS, Claude Code 2.1.327]. Claude's sandboxed Bash can't write them, but Codex, Cursor, setup, and Claude where its sandbox doesn't start can, so a round can leave hooks or servers the next runs. A `.mcp.json` committed to your own repo starts its server the same way; awaywork doesn't change that.
-- **MCP secrets in Cursor's shell,** and in Claude's where its sandbox doesn't start, on your items ([MCP servers](./index.md#mcp-servers); [#155](https://github.com/AndreaProvenzale/awaywork/issues/155)).
+- **MCP secrets in Claude's Bash where its sandbox doesn't start**, on your items ([MCP servers](./index.md#mcp-servers); [#155](https://github.com/AndreaProvenzale/awaywork/issues/155)). Cursor's shell can read them from its `mcp.json`.
 - **Codex and Cursor read a PR author's `AGENTS.md`**, Cursor also `CLAUDE.md`, `.cursor/rules` and skills.
 - **A command provider's repo config** on someone else's PR, e.g. MCP servers or hooks in its config dir.
 

@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { chmod, mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -28,7 +30,7 @@ const job: Job = {
     instructions: [],
     deliver: 'draft_pr',
   },
-  dir: tmpdir(),
+  dir: await mkdtemp(join(tmpdir(), 'awaywork-job-')),
   prompt: 'fix it',
   maxTurns: 3,
   env: process.env,
@@ -74,6 +76,62 @@ describe('worker', () => {
       watch: () => idle,
     })
     expect(order).toEqual(['prepare', 'run'])
+  })
+
+  it("removes the run's agent home once the worker is back", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+    const home = join(dir, '.away/agent-home/.cursor')
+    const provider = {
+      ...fakeProvider(),
+      prepare: async () => {
+        await mkdir(home, { recursive: true })
+        await writeFile(join(home, 'mcp.json'), '{"DB_URL":"pg://x"}')
+      },
+    }
+    await runWorker(provider, { ...job, dir }, allowance(budget, quota, now, windows), {
+      log: () => {},
+      watch: () => idle,
+    })
+    expect(existsSync(join(dir, '.away/agent-home'))).toBe(false)
+  })
+
+  it('does not follow a .away link the worker left', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+    const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+    await mkdir(join(outside, 'agent-home'))
+    await writeFile(join(outside, 'agent-home/keep.txt'), 'x')
+    const provider = { ...fakeProvider(), prepare: () => symlink(outside, join(dir, '.away')) }
+    const lines: string[] = []
+    await runWorker(provider, { ...job, dir }, allowance(budget, quota, now, windows), {
+      log: (l) => lines.push(l),
+      watch: () => idle,
+    })
+    expect(existsSync(join(outside, 'agent-home/keep.txt'))).toBe(true)
+    expect(lines.at(-1)).toContain('.away in the clone is a symlink')
+  })
+
+  it("still gives the worker's result and stops the watchdog when the home can't be removed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+    const locked = join(dir, '.away/agent-home/locked')
+    const provider = {
+      ...fakeProvider(),
+      prepare: async () => {
+        await mkdir(join(locked, 'inner'), { recursive: true })
+        await chmod(locked, 0o000)
+      },
+    }
+    const stop = vi.fn(async () => {})
+    const lines: string[] = []
+    const result = await runWorker(
+      provider,
+      { ...job, dir },
+      allowance(budget, quota, now, windows),
+      { log: (l) => lines.push(l), watch: () => ({ stop }) },
+    )
+    await chmod(locked, 0o700)
+    expect(result.status).toBe('done')
+    expect(stop).toHaveBeenCalled()
+    expect(lines.at(-1)).toContain("couldn't remove the agent home")
   })
 
   it("carries a failed worker's reason, and a stop's over it", async () => {

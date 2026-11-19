@@ -19,6 +19,8 @@ const INSTALL = [
   'agent --version',
 ].join('\n')
 
+const OWN_SECRETS = ['CURSOR_API_KEY']
+
 /** The `HOME` of a run, fresh each time: with yours, Cursor loads your skills, MCP servers, hooks and rules. */
 const homeOf = (job: Job) => join(job.dir, AGENT_HOME)
 
@@ -32,7 +34,7 @@ export function cursorProvider(bin = 'agent'): Provider {
     quota: 'credits',
     unattended: 'allowed',
     install: { script: INSTALL },
-    secrets: ['CURSOR_API_KEY'],
+    secrets: OWN_SECRETS,
 
     async detect() {
       const version = (await execa(bin, ['--version']).catch(() => undefined))?.stdout.trim()
@@ -53,7 +55,9 @@ export function cursorProvider(bin = 'agent'): Provider {
       await mkdir(dir, { recursive: true, mode: 0o700 })
       const servers = job.mcp ?? {}
       await writeFile(join(dir, 'cli-config.json'), JSON.stringify(cliConfig(servers)))
-      await writeFile(join(dir, 'mcp.json'), JSON.stringify(mcpConfig(servers)))
+      await writeFile(join(dir, 'mcp.json'), JSON.stringify(mcpConfig(servers, job.env)), {
+        mode: 0o600,
+      })
     },
 
     async *run(job, signal) {
@@ -63,6 +67,9 @@ export function cursorProvider(bin = 'agent'): Provider {
       const plugin = job.plugin ? ['--plugin-dir', job.plugin] : []
       // Either would point Cursor at your own config.
       const { CURSOR_CONFIG_DIR, XDG_CONFIG_HOME, ...env } = job.env
+      // Their values sit in `mcp.json`, so the shell's env doesn't carry them; Cursor's own stay.
+      for (const server of Object.values(job.mcp ?? {}))
+        for (const n of server.secrets) if (!OWN_SECRETS.includes(n)) delete env[n]
       const child = launch(bin, [...PRINT, ...model, ...plugin], {
         cwd: job.dir,
         // Without it, Cursor saves its session to the Keychain, and macOS asks.
@@ -118,16 +125,16 @@ export function cliConfig(servers: Record<string, McpServer>) {
   return { version: 1, permissions: { allow: [...TOOLS, ...mcp], deny: [] } }
 }
 
-/** The servers as `mcp.json`; Cursor expands `${env:NAME}` from its own env, and a stdio server gets only the env named here. */
-export function mcpConfig(servers: Record<string, McpServer>) {
-  const fromEnv = (name: string) => `\${env:${name}}`
+/** The servers as `mcp.json`, secrets as literals from `env`: a `${env:NAME}` would keep them in Cursor's env, and so its shell's. */
+export function mcpConfig(servers: Record<string, McpServer>, env: NodeJS.ProcessEnv) {
+  const literal = (name: string) => env[name] ?? ''
   const entries = Object.entries(servers).map(([name, s]) => [
     name,
     s.command
       ? {
           command: s.command,
           args: s.args,
-          env: { ...s.env, ...Object.fromEntries(s.secrets.map((n) => [n, fromEnv(n)])) },
+          env: { ...s.env, ...Object.fromEntries(s.secrets.map((n) => [n, literal(n)])) },
           // A server still starting drops out, e.g. an `npx -y` download on a fresh machine.
           startupTimeoutSec: 60,
         }
@@ -138,7 +145,7 @@ export function mcpConfig(servers: Record<string, McpServer>) {
             Object.fromEntries(
               Object.entries(s.headers).map(([h, v]) => [
                 h,
-                v.replace(/\$\{(\w+)\}/g, (_, n) => fromEnv(n)),
+                v.replace(/\$\{(\w+)\}/g, (_, n) => literal(n)),
               ]),
             ),
         },
