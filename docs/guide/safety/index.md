@@ -107,6 +107,10 @@ It can't hide the item's own title and body (the default `review` rule skips str
 
 The classic token `schedule install` asks for reaches every repo you can; a dedicated account is your call. A fine-grained token reaches less but [can't call the Checks API](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations), which `checks` and `checks.md` read, so those likely break. Untried.
 
+## Network hosts
+
+Claude's Bash reaches only the hosts [`network`](../config/repos.md) lists, so a steered agent can send what it reads to any of them, and `*` reopens it. Not on someone else's PR.
+
 ## MCP servers
 
 A rule's `mcp` gives its units your servers, and more reach:

@@ -26,7 +26,7 @@ repos:
 
 - **`setup`** runs once per unit in the fresh clone, before any agent, outside the model; the agent is told it ran.
 - **`verify`** runs once the chain ends, before publishing. A failure still publishes, its tail in the PR body or push summary, and a `deliver: pr` PR opens as a draft; the tail also lands in `verify.log` in the unit's `out/` in the run dir.
-- **`network`** lists the hosts Claude's Bash may reach, [offline](../safety/isolation.md#claude-s-shell-is-offline) otherwise. A top-level `network`, the repo keys that name the repo and the rule's own `network` add up. An entry is `host.tld`, `*.host.tld` or `*`, which opens everything. Codex, Cursor, `setup`, `verify`, `until`, `when` and gate scripts aren't limited by it yet, and the judge gate's Claude gets none.
+- **`network`** lists the hosts Claude's Bash may reach, [offline](../safety/isolation.md#claude-s-shell-is-offline) otherwise. A top-level `network`, the repo keys that name the repo and the rule's own `network` add up. An entry is `host.tld`, `*.host.tld` or `*`, which opens everything. Codex, Cursor, `setup`, `verify`, `until`, `when` and gate scripts aren't limited by it yet, and the judge gate's Claude gets none, nor does a unit on someone else's PR: its code would get the hosts, as with MCP servers.
 - **`test`** is a line in the agent's prompt.
 - **`image`** is what the repo's units run in under [`isolation: container`](../safety/isolation.md#in-a-container).
 - **`instructions`** (top level, per repo, per rule) are file paths relative to the config they're in. A repo can also carry `.awaywork/instructions.md`, read unless the unit is on someone else's PR.

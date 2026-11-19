@@ -330,12 +330,14 @@ async function gated(
   })
   const runs: string[] = []
   const models: string[] = []
+  const networks: string[] = []
   const worker = (id: string): Provider => ({
     ...fakeProvider(id),
     ...provider,
     async *run(job) {
       runs.push(`${id}:${job.unit.skill}:${job.unit.items[0]?.id}`)
       models.push(`${job.unit.skill} ${job.model}`)
+      networks.push(`${job.unit.skill} ${job.unit.network}`)
       const body = await act(job.dir, job.unit.skill, job.env)
       const text = typeof body === 'string' ? body : `${job.unit.skill}\n\nDone.`
       // A gate's judge only reports.
@@ -363,6 +365,7 @@ async function gated(
     opened,
     runs,
     models,
+    networks,
     outcomes: report.results.map((r) => r.outcome),
     statuses: report.results.map((r) => [r.planned.unit.id, r.status]),
   }
@@ -677,6 +680,14 @@ it("runs a judge on the rule's second model when the first is past its own ceili
     },
   )
   expect(models).toEqual(['implement opus', 'judge opus'])
+})
+
+it("gives the judge no network hosts, the rule's step its own", async () => {
+  const { networks } = await gated(
+    `network: [a.example]\n${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    judgedBy(verdict('clear')),
+  )
+  expect(networks).toEqual(['implement a.example', 'judge undefined'])
 })
 
 it("fires the gate when its judge can't run", async () => {
