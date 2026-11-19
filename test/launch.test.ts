@@ -49,7 +49,9 @@ describe('the launcher', () => {
 
   it('starts each provider’s agent', async () => {
     const lockFile = join(dir, 'codex.lock')
-    await drain(claudeProvider(fake('claude')).run(job, new AbortController().signal))
+    await drain(
+      claudeProvider(fake('claude'), async () => true).run(job, new AbortController().signal),
+    )
     await drain(codexProvider(fake('codex'), lockFile).run(job, new AbortController().signal))
     const command = { command: 'true', secrets: [], skills_dir: '.agents/skills' }
     await drain(commandProvider('mine', command).run(job, new AbortController().signal))

@@ -219,9 +219,14 @@ export async function restoreGitConfig(dir: string, config: string): Promise<voi
     if (entry.isSymbolicLink() && !/^hooks($|\/)/.test(path))
       throw new Error(`.git/${path} in the clone is a symlink`)
   }
-  for (const path of ['commondir', 'objects/info/alternates', 'info/grafts'])
-    if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
-      throw new Error(`.git/${path} in the clone points elsewhere`)
+  // Claude's sandbox leaves an empty `alternates`, which borrows nothing.
+  const alternates = join(git, 'objects/info/alternates')
+  const empty = await lstat(alternates).catch(() => undefined)
+  if (empty?.isFile() && empty.size === 0) await rm(alternates)
+  for (const path of ['commondir', 'objects/info/alternates', 'info/grafts']) {
+    const stat = await lstat(join(git, path)).catch(() => undefined)
+    if (stat) throw new Error(`.git/${path} in the clone points elsewhere`)
+  }
   await rm(join(git, 'config'), { recursive: true, force: true })
   await rm(join(git, 'info', 'attributes'), { recursive: true, force: true })
   await writeFile(join(git, 'config'), config, { flag: 'wx' })

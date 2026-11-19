@@ -13,8 +13,14 @@ import { runWorker } from '#worker/process/worker'
 import { providerContract } from './contracts/provider.contract'
 import { fakeItem } from './fakes/items'
 
+const home = vi.hoisted(() => ({ dir: undefined as string | undefined }))
+vi.mock('#core/isolation', async (original) => ({
+  ...(await original<typeof import('#core/isolation')>()),
+  workerHome: () => home.dir,
+}))
+
 const bin = fileURLToPath(new URL('./fakes/claude.mjs', import.meta.url))
-const provider = claudeProvider(bin)
+const provider = claudeProvider(bin, async () => true)
 const dir = await mkdtemp(join(tmpdir(), 'awaywork-claude-'))
 const recorded = (name: string) =>
   readFileSync(new URL(`./fixtures/claude/${name}.jsonl`, import.meta.url), 'utf8').split('\n')
@@ -308,7 +314,7 @@ describe('claude provider', () => {
     try {
       const own = await argv(true)
       expect(flag(own, '--setting-sources')).toBe('project,local')
-      expect(flag(own, '--settings')).toBe('{"autoMemoryEnabled":false}')
+      expect(JSON.parse(flag(own, '--settings') as string).autoMemoryEnabled).toBe(false)
       expect(own).not.toContain('--strict-mcp-config')
       const foreign = await argv(false)
       expect(flag(foreign, '--setting-sources')).toBe('')
@@ -329,10 +335,92 @@ describe('claude provider', () => {
       const run = { ...job(), config: { settings: 'worker.json' }, configDir: dir, plugin }
       await collect(provider.run(run, new AbortController().signal))
       const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
-      expect(args[args.indexOf('--settings') + 1]).toBe(
-        '{"env":{"A":"1"},"autoMemoryEnabled":false}',
+      const { sandbox, permissions, ...rest } = JSON.parse(
+        args[args.indexOf('--settings') + 1] as string,
       )
+      expect(rest).toEqual({ env: { A: '1' }, autoMemoryEnabled: false })
+      expect(sandbox.enabled).toBe(true)
+      expect(permissions).toBeUndefined()
       expect(args[args.indexOf('--plugin-dir') + 1]).toBe(plugin)
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("runs Bash offline in Claude's sandbox, unsetting the login and the MCP secrets", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    await writeFile(join(dir, 'worker.json'), '{"permissions":{"deny":["Read(.env)"]}}')
+    try {
+      const mcp = { db: { command: 'npx', secrets: ['DATABASE_URL'] } }
+      const run = { ...job(), mcp, config: { settings: 'worker.json' }, configDir: dir }
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const settings = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(settings.sandbox).toEqual({
+        enabled: true,
+        failIfUnavailable: false,
+        allowUnsandboxedCommands: false,
+        network: { allowedDomains: [] },
+        credentials: {
+          envVars: [
+            { name: 'CLAUDE_CODE_OAUTH_TOKEN', mode: 'deny' },
+            { name: 'DATABASE_URL', mode: 'deny' },
+          ],
+        },
+      })
+      expect(settings.permissions.deny).toEqual(['Read(.env)'])
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("keeps the developer's other sandbox keys, ours winning", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    const theirs = { sandbox: { excludedCommands: ['docker'], enabled: false } }
+    await writeFile(join(dir, 'worker.json'), JSON.stringify(theirs))
+    try {
+      const run = { ...job(), config: { settings: 'worker.json' }, configDir: dir }
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox).toMatchObject({ excludedCommands: ['docker'], enabled: true })
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("merges the developer's sandbox filesystem with the worker's HOME", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    const filesystem = { denyRead: ['~/.aws'], allowWrite: ['/tmp/build'] }
+    await writeFile(join(dir, 'worker.json'), JSON.stringify({ sandbox: { filesystem } }))
+    home.dir = '/tmp/awaywork-abc123'
+    try {
+      const run = { ...job(), config: { settings: 'worker.json' }, configDir: dir }
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox.filesystem).toEqual({
+        denyRead: ['~/.aws'],
+        allowWrite: ['/tmp/build', '/tmp/awaywork-abc123'],
+      })
+    } finally {
+      home.dir = undefined
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("leaves the sandbox out and says so where it can't start", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    try {
+      const events = await collect(
+        claudeProvider(bin, async () => false).run(job(), new AbortController().signal),
+      )
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      expect(JSON.parse(args[args.indexOf('--settings') + 1] as string).sandbox).toBeUndefined()
+      expect(events).toContainEqual({
+        type: 'log',
+        line: "Claude's sandbox can't start here: Bash runs unsandboxed",
+      })
     } finally {
       delete process.env.FAKE_ARGV
     }
@@ -386,7 +474,9 @@ describe('claude provider', () => {
   })
 
   it('reports a failed run when the binary exits without a result', async () => {
-    const events = await collect(claudeProvider('false').run(job(), new AbortController().signal))
+    const events = await collect(
+      claudeProvider('false', async () => true).run(job(), new AbortController().signal),
+    )
     expect(events).toEqual([{ type: 'done', ok: false, turns: 0 }])
   })
 
@@ -396,7 +486,7 @@ describe('claude provider', () => {
     const script = join(root, 'leaves.sh')
     const leaves = `/bin/sleep 30 >/dev/null 2>&1 & echo $! > ${pid}`
     await writeFile(script, `#!/bin/sh\n${leaves}\n`, { mode: 0o755 })
-    await collect(claudeProvider(script).run(job(), new AbortController().signal))
+    await collect(claudeProvider(script, async () => true).run(job(), new AbortController().signal))
     const left = Number(await readFile(pid, 'utf8'))
     await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
   })

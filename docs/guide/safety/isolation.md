@@ -69,7 +69,7 @@ The image is yours to build, and all the units get:
 
 ## Not a sandbox
 
-With `isolation: none`, the default on your machine and a self-hosted runner, all of the above keeps credentials out of the agent's way, not its reach. It runs as you, and its tools aren't sandboxed: Claude Code has Bash and file tools pre-approved, Codex runs `--sandbox danger-full-access` (it needs it to commit), Cursor any shell command with read and write (no `--force`, no sandbox), a command provider whatever your command does. So what it reads can leave [I, from the code]:
+With `isolation: none`, the default on your machine and a self-hosted runner, all of the above keeps credentials out of the agent's way, not its reach. It runs as you, and its tools aren't sandboxed, except Claude's Bash ([below](#claude-s-shell-is-offline)): Claude Code has file tools pre-approved, Codex runs `--sandbox danger-full-access` (it needs it to commit), Cursor any shell command with read and write (no `--force`, no sandbox), a command provider whatever your command does. So what it reads can leave [I, from the code]:
 
 - `~/.config/awaywork/.env`, with your `GH_TOKEN` and tracker tokens.
 - gh's login, by unsetting the placeholders (an empty `GH_CONFIG_DIR` doesn't hide a keyring from `gh auth token`); `glab`'s keyring login needs nothing unset. Git credential helpers too: the worker's config names none, but your `~/.gitconfig` and the system one are readable, and a helper answers when run directly.
@@ -81,12 +81,23 @@ With `isolation: none`, the default on your machine and a self-hosted runner, al
 Also open:
 
 - **Prompt injection.** Strangers' GitHub comments are [hidden](./index.md#public-repos), but issue bodies, CI logs, check names and links, other sources' text and trusted people's quotes may be anyone's. The harness calls them data; a model can still be talked into things, with the reach above.
-- **Hooks across a loop's rounds:** on your repo, Claude Code loads the clone's `.claude/settings.json`, so a round can leave hooks the next runs.
-- **MCP secrets in Claude's Bash** and Cursor's shell, on your items ([MCP servers](./index.md#mcp-servers); fix in [#155](https://github.com/AndreaProvenzale/awaywork/issues/155)).
+- **Hooks and MCP servers across a loop's rounds:** on your repo, Claude Code loads the clone's `.claude/settings.json` and `.mcp.json`, and starts their servers unapproved, outside its sandbox and with its whole env [V, tested on macOS, Claude Code 2.1.327]. Claude's sandboxed Bash can't write them, but Codex, Cursor, setup, and Claude where its sandbox doesn't start can, so a round can leave hooks or servers the next runs. A `.mcp.json` committed to your own repo starts its server the same way; awaywork doesn't change that.
+- **MCP secrets in Cursor's shell,** and in Claude's where its sandbox doesn't start, on your items ([MCP servers](./index.md#mcp-servers); [#155](https://github.com/AndreaProvenzale/awaywork/issues/155)).
 - **Codex and Cursor read a PR author's `AGENTS.md`**, Cursor also `CLAUDE.md`, `.cursor/rules` and skills.
 - **A command provider's repo config** on someone else's PR, e.g. MCP servers or hooks in its config dir.
 
-So run awaywork where that's acceptable, or give it a [worker user](#a-worker-user-on-your-linux-machine) on Linux or a [container](#a-container-on-your-machine) wherever Docker runs. GitHub's hosted runners [always get a worker user](#a-worker-user-on-github-hosted-runners), as does [awaywork's image](#a-worker-user-in-awaywork-s-image).
+### Claude's shell is offline
+
+Whatever the isolation, Claude's Bash runs in Claude Code's own sandbox: no network, and the login and the unit's MCP secrets unset in each command. `allowUnsandboxedCommands` is off, so the agent can't retry outside it, and with that off the clone's own settings can't widen the sandbox [V, tested on macOS, Claude Code 2.1.327]. It unsets the login in the environment only: a login file in `~/.claude` stays readable to its Bash. The agent CLI itself still reaches its API. Commits and tests work through it [V, tested on macOS and a hosted runner]. Its Bash writes only the clone, its own temp dir and, under `user`, the worker's `/tmp/awaywork-*` `HOME`, which awaywork allows with `sandbox.filesystem.allowWrite`; `/tmp` is read-only [V, tested on a hosted runner]. Under `none` it can't write `HOME` either, so tools that cache there (Go's build cache, `npx`, pnpm's store) fail; under `container`, `HOME` is in the clone.
+
+It needs Seatbelt on macOS, and bubblewrap, socat and unprivileged user namespaces on Linux; without socat Claude turns its sandbox off itself and Bash runs open [V, tested on a hosted runner]. Before a Claude unit runs where Linux does (as the worker user, as you, or in the container, on a macOS host too), awaywork runs the namespaces and mounts Claude's sandbox sets up there, once per process for each image or user: `bwrap --unshare-user --unshare-net --unshare-pid --ro-bind / / --proc /proc --dev /dev bwrap --unshare-user --ro-bind / / socat -V`. The inner `bwrap` stands for the user namespace Claude's `apply-seccomp` helper nests, which AppArmor can refuse where the outer one starts; `socat -V` fails where socat is missing. If it fails, the sandbox is left out, the unit's `worker.log` says so, and Bash runs unsandboxed, shell open, rather than every command failing. `doctor` runs the same probe, in each repo's image under `container`. That's the case:
+
+- **On a default Docker,** including awaywork's image, which has no bubblewrap. [V, tested by hand in containers on Colima, Claude Code 2.1.327: the probe and Claude's Bash agreed on a default container, one with seccomp and AppArmor unconfined, and root with `SYS_ADMIN`, where both fail on the masked `/proc`.] A container can also refuse the nested namespace after the outer one starts [V, once, with `systempaths=unconfined`].
+- **On GitHub's `ubuntu-latest` hosted runner,** with or without the action's worker user: bubblewrap is preinstalled, socat isn't, and AppArmor's `bwrap-userns-restrict` profile lets bwrap start but refuses the nested namespace, so every Bash call would fail with `apply-seccomp: write /proc/self/setgroups`; the probe fails there and the shell stays open [V, tested: the probe and awaywork's Claude provider on a runner]. Setting `kernel.apparmor_restrict_unprivileged_userns=0` alone doesn't change that; unloading the profile (`apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict`) does, with socat installed too, and then the sandbox runs: offline, secrets unset, commits work [V, tested]. That's your runner image's call, not the action's.
+
+Where the sandbox does run, it leaves an empty `.git/objects/info/alternates` and `.git/config.worktree` and `.claude-sandbox-noreplace` folders under `.git` [V, tested on a hosted runner]. awaywork removes the empty `alternates` when it puts the clone's git config back, and still refuses one with content or a link. Setup, checks, MCP servers, Codex and Cursor stay open.
+
+So run awaywork where that's acceptable, or give it a [worker user](#a-worker-user-on-your-linux-machine) on Linux or a [container](#a-container-on-your-machine) wherever Docker runs. GitHub's hosted runners [always get a worker user](#a-worker-user-on-github-hosted-runners), as does [awaywork's image](#a-worker-user-in-awaywork-s-image), but neither starts Claude's sandbox as they are.
 
 ### A worker user on your Linux machine
 
@@ -133,7 +144,7 @@ Tried with only those two lines (sudo 1.9.13p3):
 
 Still open:
 
-- **The network.**
+- **The network,** except Claude's shell ([offline](#claude-s-shell-is-offline) where its sandbox starts: not in Docker, and not on a stock GitHub-hosted runner).
 - **The worker's own login,** in its env as it must be: `CLAUDE_CODE_OAUTH_TOKEN`, `CURSOR_API_KEY`, or a copy of your Codex `auth.json` in its `HOME` ([the lent Codex login](#the-lent-codex-login)).
 - **`/tmp`:** every unit is the same user, so a file left in `/tmp` or `/var/tmp` outside its folders is there for a later unit. Nothing runs it unless something looks.
 - **The machine:** localhost services answer it, and anything world-writable is a place to plant a binary you run later. Hosted runners clear that bit; on your machine `find / -xdev -perm -o+w ! -type l ! -perm -1000` lists them.
@@ -175,7 +186,7 @@ agent: left a detached sleep 4242 behind
 
 No container or `sleep` was left; an agent hung past `unit_minutes: 1` was stopped at 64 s. Still open:
 
-- **The network:** what it reads, it can send. Colima's gateway didn't reach a Mac `localhost` service here, but your LAN is reachable, and Docker Desktop's `host.docker.internal` is your Mac. Domain allowlists: [#316](https://github.com/AndreaProvenzale/awaywork/issues/316).
+- **The network:** what it reads, it can send, except from Claude's shell where its sandbox starts (not inside the image). Colima's gateway didn't reach a Mac `localhost` service here, but your LAN is reachable, and Docker Desktop's `host.docker.internal` is your Mac. Domain allowlists: [#316](https://github.com/AndreaProvenzale/awaywork/issues/316).
 - **The agent's secrets:** its token, Codex's `auth.json` for the run, its MCP servers' secrets. The Codex login it hands back has [the worker user's](#the-lent-codex-login) limits.
 - **The clone:** what a phase leaves is what checks run and awaywork publishes, though awaywork restores git config and refuses links after each phase.
 - **The image:** a token baked into a layer or `.npmrc` reaches every unit.
