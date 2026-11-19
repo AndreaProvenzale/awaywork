@@ -74,10 +74,21 @@ Their own PRs with the reviews on them (trimmed: a review's body is someone else
 | Event on an item, then an action | A queue rule: a `where` on a configured source, with real names from `awaywork sources --json` as in `queue.md`'s step 3 (fields per source: https://andreaprovenzale.github.io/awaywork/guide/config/where.md#fields), and a skill |
 | Same time each week, then an action | A routine, `sources.routines.<name>: { days, at, repo, title, description }`, and a rule with `source: routines`, `where: { name: <name> }` and `deliver: report`; `run: soon` when it shouldn't wait for a window (https://andreaprovenzale.github.io/awaywork/guide/config/sources.md#routines) |
 | The action | A skill from `awaywork skills list`: built-in, ejected, or the repo's own |
-| A correction every agent on the repo needs | A line in the repo's `AGENTS.md`, or `CLAUDE.md` when that's what it has |
-| A correction only awaywork's workers need | A line in an awaywork `instructions` file, global or per repo |
-| A correction already written down, still made | A command instead of a second line: `repos.<repo>.verify` for a check every slice should pass, like `pnpm lint`, or a command gate when a human should look |
 | After an agent's change, the same ask to show it works | The repo's own proving skill, with its gates: [`prove.md`](prove.md) |
+
+A correction becomes the first row whose test holds:
+
+| Correction | Becomes | Test |
+| --- | --- | --- |
+| One the repo's checks already catch | `repos.<repo>.verify` with that command | The command catches this mistake: its rule is on in the linter's config, or it fails on a tree with the mistake. That the command exists is not enough |
+| One a script could catch, shown in the tree | A check (a lint rule, a test or a grep script) plus fixing the existing occurrences, as an issue awaywork works on: step 7's hand-off | The mistake is a call, an import or a pattern, you can write the pattern, and every `git grep` hit is the mistake. 0 hits is fine: the check lands green |
+| One that shows only in the change | A gate: `changed` globs for a path or file kind, else a `command` | The mistake is a touched path, a file kind or an added dependency: a linter sees the tree, not the diff, and a gate's command diffs from `$AWAYWORK_FROM`. Also when the trigger is mechanical but the answer is a person's |
+| One that needs judgment, every agent on the repo | A line in the repo's `AGENTS.md`, or `CLAUDE.md` when that's what it has | No script decides it, and the code doesn't show it: an agent reading the `README`, the manifest and the tree wouldn't learn it |
+| The same, only awaywork's workers | A line in an awaywork `instructions` file, global or per repo | As above |
+
+A correction already written down and still made is evidence when one of the first three rows holds: a strong candidate for it, and with a check its line goes when the check lands. Otherwise it's a match.
+
+A `git grep` hit that is a legit use: narrow the pattern, or it needs judgment and becomes a line. The count only sizes the job; show it. The check's form is the worker's call: name the linter you found (`biome.json`, `eslint.config.*`, `ruff` or `[tool.ruff]`, `.golangci.yml`, `.rubocop.yml`, clippy) for the body, which gives the order. The check goes into the command agents already run, the repo's `lint` or `test` script, so the developer's own sessions hit it before a PR and CI follows; no workflow file changes. No lint script and no test runner: it becomes a line, and say why. A check's evidence comes from the repo, not the sessions: the pattern and its `git grep` count, since the issue may be public and Paraphrase only still holds.
 
 Compare every candidate with what's there: the queue, the routines, the instructions files, the repo's `AGENTS.md` and `CLAUDE.md`. A match is shown as "already rule #2" or "already in AGENTS.md", not proposed again.
 
@@ -89,11 +100,11 @@ A routine spends quota on every occurrence, work or not: show its units per week
 
 Copy the config to a draft as `queue.md`'s step 4 does, or from setup use its draft, and add every rule and routine candidate. `awaywork --config <draft> plan --rules --json` gives, per rule, what it takes now (`taken`), what an earlier rule takes first (`takenBy`), and the `unmatched` items that fit the pattern, with the reason. A new routine's latest occurrence shows up as taken: it runs at the next window, or within minutes with `run: soon`. A config error goes to stderr: fix the candidate or drop it. Then, once for the whole draft, `awaywork --config <draft> doctor --json` and `awaywork --config <draft> plan --json`, whose `routines` holds each routine's next occurrence by name; both probe quota, so not per candidate. From setup, skip `doctor`, which setup runs once at the end, and `plan --json` when there's no routine candidate.
 
-For a correction, check the target file for the line, or one meaning the same.
+For a correction, check the target file for the line, or one meaning the same. For a check candidate, run `git grep -n -E '<pattern>' <default branch> -- <paths>`, read the hits against step 5's test and keep the count and the command, and look in the queue for the rule that takes the developer's own items with `skill: implement` or the repo's own, e.g. a GitHub label (`{ type: issue, label: awaywork }`) or an Asana section.
 
 ## 7. Show and pick
 
-Numbered candidates in three groups, each with its evidence as a count and where it came from, the config it becomes, and what it takes now:
+Numbered candidates in four groups, each with its evidence as a count and where it came from, the config or issue it becomes, and what it takes now:
 
 ```text
 Looked at 30 days: 84 Claude Code sessions in 1 repo, 143 PRs and 20 failed runs on GitHub.
@@ -111,16 +122,34 @@ Routines
      skill: triage   deliver: report   1 unit a week
      takes now: sentry-triage-20261026-0900   next: Mon 2 Nov 09:00
 
-Corrections
-  4  run the formatter before committing  corrected in 5 sessions
-     already in AGENTS.md, still corrected → repos.acme/api.verify: pnpm lint
-  5  use pnpm, never npm                  a saved memory + 3 sessions
-     → AGENTS.md: "Use pnpm, never npm."
+Checks
+  4  await the render, not a setTimeout   in AGENTS.md, still corrected in 5 sessions
+     git grep -E 'setTimeout\(' main -- '*.test.ts': 7 hits, all the mistake   linter: biome
+     → an issue for rule #3 (implement): the check, the 7 fixed, the AGENTS.md line deleted
 
-Keep which? (e.g. 2, 3, 5)
+Corrections
+  5  keep a refactor and a behavior change in separate PRs   a saved memory + 3 sessions
+     → AGENTS.md: "Keep a refactor and a behavior change in separate PRs."
+
+Keep which? (e.g. 2, 4, 5)
 ```
 
 Nothing found in a group: say so in one line, and under 3 weeks just "no routines: window too short", without what fell short. The developer accepts, tweaks or declines each. Accepted rules and routines go through `queue.md`'s steps 4 to 7 (draft, check, write, validate), starting from the draft above with the declined ones taken out; from setup, take the declined ones out of its draft and go back to setup's step 6 with the picks. Widening still needs its own yes. A correction: show the file and the exact line, and edit only on a yes; it's a local change they commit themselves. Nothing declined is written, and nothing is remembered: a declined candidate comes back next run.
+
+A check goes out as an issue the developer files, never you. With step 6's rule, print the issue's title and body and the command for them to run in their own terminal, as you give `run`: `gh issue create -R <repo> --label <label> --assignee @me --title "<title>" --body-file - <<'EOF'`, the body, then `EOF`: the quoted delimiter keeps the shell off the body's backticks. On another tracker, the same text and where to create it: the place the rule reads (its project, section or status), assigned to them where the source needs it. With no such rule, print the body and "file it, or paste it into a session", plus one line that a rule like `{ type: issue, label: awaywork }` with `skill: implement` would take it; propose no rule for it. The body, filled in:
+
+```text
+Add a check for <pattern>; <n> occurrences today (`<the git grep command step 6 ran>`). Linter here: <biome | none>.
+- Form, first that fits: a restricted-import or restricted-syntax rule the linter has, a test, a grep script.
+- Wire it into the `lint` or `test` script, so it runs locally and in CI. Edit no workflow file.
+- Its message says the root cause and the fix, e.g. "setTimeout to wait for a render hides a race: await <event> instead".
+- Up to 30 occurrences: fix them all in the same PR, so the check lands green.
+- Over 30: land the check with the existing files excluded, and list them in the PR body.
+- Where the wrong path is small and not exported (a helper), remove it instead of adding a rule. Exported: say so in the PR body.
+- Delete the line it replaces from <the file it's in>: <line>.
+```
+
+Keep the last bullet only when the line is in a file the repo carries: its `AGENTS.md`, `CLAUDE.md` or `.awaywork/instructions.md`. Drop it otherwise: no line written down, a memory, a user-level file, or a config's `instructions` file, which the worker can't reach.
 
 ## End
 
