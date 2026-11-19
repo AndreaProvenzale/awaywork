@@ -51,7 +51,7 @@ providers:
 
 Workers skip your user-level agent config. What you do want them to have, on every unit including someone else's PR, goes here:
 
-- `claude: { settings }`: a settings file, relative to the config, passed as `--settings`. Auto-memory stays off, its `sandbox` keys merge with the [Bash sandbox](../safety/isolation.md#claude-s-shell-is-offline)'s (ours win; your `filesystem` and `network` keys stay, your `allowedDomains` join the unit's [`network`](./repos.md), and under `user` the worker's HOME joins `allowWrite`), and workers run in `dontAsk` mode: a tool not pre-approved, by awaywork or your `permissions.allow`, is denied.
+- `claude: { settings }`: a settings file, relative to the config, passed as `--settings`. Auto-memory stays off, its `sandbox` keys merge with the [Bash sandbox](../safety/isolation.md#claude-s-shell-is-offline)'s (ours win; your `filesystem` and `network` keys stay, your `allowedDomains` join the unit's [`network`](./repos.md) and, like it, are left out on someone else's PR, and under `user` the worker's HOME joins `allowWrite`), and workers run in `dontAsk` mode: a tool not pre-approved, by awaywork or your `permissions.allow`, is denied.
 - `codex: { config }`: each key passed as `codex exec -c key=value`.
 
 Cursor takes only `model` (its `auto` when unset). Details:

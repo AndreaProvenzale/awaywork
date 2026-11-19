@@ -270,7 +270,7 @@ const network = z
   .array(host)
   .default([])
   .describe(
-    "Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet",
+    "Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default, and none on someone else's PR. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet",
   )
 const stepSettings = {
   provider: oneOrMany

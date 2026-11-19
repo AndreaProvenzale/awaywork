@@ -825,7 +825,7 @@
               },
               "network": {
                 "default": [],
-                "description": "Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet",
+                "description": "Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default, and none on someone else's PR. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet",
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -931,7 +931,7 @@
     },
     "network": {
       "default": [],
-      "description": "Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet",
+      "description": "Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default, and none on someone else's PR. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet",
       "type": "array",
       "items": {
         "type": "string",
@@ -1116,7 +1116,7 @@
           },
           "network": {
             "default": [],
-            "description": "Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet",
+            "description": "Hosts Claude's Bash may reach, on top of the other levels' (top level, repos and rule add up); * opens all; none by default, and none on someone else's PR. Codex, Cursor, setup, verify, until, when and gate scripts are not limited by it yet",
             "type": "array",
             "items": {
               "type": "string",

@@ -461,7 +461,7 @@ export interface Unit {
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all. */
+  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on someone else's PR. */
   network?: string[]
   /** Checks run before publishing commits, the top-level ones merged with the repo's and the rule's own: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own alone, on what its step left. */
   gates?: Record<string, Gate>

@@ -682,6 +682,7 @@ it("gives a worker its step's MCP servers, else its rule's, whose secrets are se
 providers: [claude: {}]
 budget: { fallback: { units: 8, turns: 60 } }
 repos: { acme/*: {} }
+network: [a.example]
 sources: { github: {} }
 mcp:
   db: { command: db-mcp, secrets: [DB_URL] }
@@ -758,6 +759,10 @@ queue:
   expect(await log('acme-api-2')).toContain('mcp: jira not started, unset: JIRA_TOKEN')
   expect(await log('acme-api-3')).toContain("mcp: sentry, jira not started on someone else's PR")
   expect(await log('acme-api-4')).toContain("mcp: sentry, jira not started on someone else's PR")
+  const notOpened = "network: not opened on someone else's PR"
+  expect(await log('acme-api-2')).not.toContain(notOpened)
+  expect(await log('acme-api-3')).toContain(notOpened)
+  expect(await log('acme-api-4')).toContain(notOpened)
 })
 
 it('stops a unit at unit_minutes', async () => {
