@@ -1,5 +1,5 @@
 import { rm } from 'node:fs/promises'
-import { isolated, lostToWorker, workerRoot } from '#core/isolation'
+import { holdingWorker, isolated, lostToWorker, workerRoot } from '#core/isolation'
 import type { Item, Quota } from '#core/types'
 import { namesUnit, type PlannedUnit, type RunPlan } from '#plan/foreman'
 import type { RunReport, UnitResult } from '#posts/report'
@@ -91,18 +91,28 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const done =
         'skip' in ready
           ? skipTask(chain, ready.skip)
-          : await turn(() =>
-              runChain(
-                run,
-                onto
-                  ? chain.map((p) => ({
-                      ...p,
-                      unit: { ...p.unit, base: onto.branch, stackedOn: onto.url },
-                    }))
-                  : chain,
-                ready,
-              ),
-            )
+          : await turn(() => {
+              const chained = () =>
+                runChain(
+                  run,
+                  onto
+                    ? chain.map((p) => ({
+                        ...p,
+                        unit: { ...p.unit, base: onto.branch, stackedOn: onto.url },
+                      }))
+                    : chain,
+                  ready,
+                )
+              return input.dryRun
+                ? chained()
+                : holdingWorker(chained, (line) => input.ctx.log(`${head.unit.id}: ${line}`), {
+                    signal: waitSignal(input.signal, input.until),
+                  }).then(
+                    (done) =>
+                      done ??
+                      skipTask(chain, input.signal?.aborted ? 'interrupted' : 'the window ended'),
+                  )
+            })
       if (done.some((r) => r.status !== 'skipped')) run.started.add(head.unit.id)
       const lead = done.find((r) => !r.planned.chain && !r.retried)
       const of = head.unit.items[0] as Item
@@ -145,4 +155,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const finishedAt = new Date()
   const scoped = Object.keys(models).length > 0 && { models }
   return { runId, dryRun, startedAt, finishedAt, plan, results, quotas, ...scoped }
+}
+
+/** What ends a wait for the worker lock: the run's signal or the window's end. */
+function waitSignal(signal?: AbortSignal, until?: Date): AbortSignal | undefined {
+  const ends = [signal, until && AbortSignal.timeout(Math.max(0, until.getTime() - Date.now()))]
+  const set = ends.filter((s) => s !== undefined)
+  return set.length ? AbortSignal.any(set) : undefined
 }

@@ -12,7 +12,8 @@ export GIT_AUTHOR_NAME=${user#*+} GIT_COMMITTER_NAME=${user#*+}
 export GIT_AUTHOR_EMAIL=$user@users.noreply.github.com GIT_COMMITTER_EMAIL=$user@users.noreply.github.com
 
 # Only this container uses the state volume, so no lock in it is held: a lock's pid may be ours again after a restart.
-rm -f ~/.local/state/awaywork/run.lock ~/.local/state/awaywork/watch.lock
+state=~/.local/state/awaywork
+rm -f "$state"/{run,watch,worker,codex}.lock
 
 # The daemon's log is the container's output, for `docker logs` and Coolify's Logs tab.
 tail -n0 -F ~/.local/state/awaywork/watch.log 2> /dev/null &

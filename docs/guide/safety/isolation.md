@@ -137,7 +137,7 @@ Still open:
 - **The worker's own login,** in its env as it must be: `CLAUDE_CODE_OAUTH_TOKEN`, `CURSOR_API_KEY`, or a copy of your Codex `auth.json` in its `HOME` ([the lent Codex login](#the-lent-codex-login)).
 - **`/tmp`:** every unit is the same user, so a file left in `/tmp` or `/var/tmp` outside its folders is there for a later unit. Nothing runs it unless something looks.
 - **The machine:** localhost services answer it, and anything world-writable is a place to plant a binary you run later. Hosted runners clear that bit; on your machine `find / -xdev -perm -o+w ! -type l ! -perm -1000` lists them.
-- **Other developers:** the `chown` line reaches any awaywork clone, so one developer per worker user.
+- **Other developers:** the `chown` line reaches any awaywork clone, so one developer per worker user. Profiles of one developer share it: a unit holds `~/.local/state/awaywork/worker.lock` from its first phase to its last, so units of two profiles take turns, as ending a phase kills every process of the worker user.
 
 #### The lent Codex login
 
