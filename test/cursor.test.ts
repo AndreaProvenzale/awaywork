@@ -143,6 +143,23 @@ describe('cursor provider', () => {
     await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
   })
 
+  it('ends the run soon after its result, with what the binary left running', async () => {
+    const pid = join(tmp, 'waited.pid')
+    const script = join(tmp, 'waits.sh')
+    const fixture = fileURLToPath(new URL('./fixtures/cursor/exec.jsonl', import.meta.url))
+    const waits = `cat ${fixture}; echo warning >&2; /bin/sleep 30 >/dev/null 2>&1 & echo $! > ${pid}; wait`
+    await writeFile(script, `#!/bin/sh\n${waits}\n`, { mode: 0o755 })
+    const started = Date.now()
+    const events = await collect(cursorProvider(script).run(job(), new AbortController().signal))
+    expect(Date.now() - started).toBeLessThan(8000)
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: 'log', line: expect.stringMatching(/^error:/) }),
+    )
+    expect(events.at(-1)).toEqual({ type: 'done', ok: true, turns: 4 })
+    const left = Number(await readFile(pid, 'utf8'))
+    await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
+  })
+
   it('runs in print mode on the prompt, never forcing or approving MCP servers', async () => {
     const file = join(tmp, 'argv.json')
     const argv = async (more: Partial<Job>) => {

@@ -6,7 +6,7 @@ import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
-import { killGroupWhenDone } from '#util/process'
+import { killGroupSoon, killGroupWhenDone } from '#util/process'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
@@ -111,8 +111,11 @@ export function claudeProvider(
       let done: WorkerEvent | undefined
       for await (const line of child)
         for (const event of toEvents(line)) {
-          if (event.type === 'done') done = event
-          else yield event
+          if (event.type !== 'done') yield event
+          else {
+            done = event
+            killGroupSoon(child)
+          }
         }
       await child
       yield done && !signal.aborted ? done : { type: 'done', ok: false, turns: 0 }

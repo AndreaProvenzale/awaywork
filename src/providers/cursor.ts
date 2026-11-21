@@ -7,7 +7,7 @@ import { AGENT_HOME } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
-import { killGroupWhenDone } from '#util/process'
+import { killGroupSoon, killGroupWhenDone } from '#util/process'
 
 /** Never `--force` or `--approve-mcps`: the allowlist in `cli-config.json` decides, and the clone's `.cursor/mcp.json` stays off. */
 const PRINT = ['-p', '--output-format', 'stream-json', '--trust']
@@ -98,14 +98,18 @@ export function cursorProvider(bin = 'agent'): Provider {
           capped.abort()
           break
         }
-        if (event?.type === 'result') result = event.subtype
+        if (event?.type === 'result') {
+          result = event.subtype
+          killGroupSoon(child)
+        }
         yield* toEvents(event)
       }
-      const { exitCode, stderr } = await child
+      const { exitCode, isTerminated, stderr } = await child
       const stopped = signal.aborted || capped.signal.aborted
-      if (exitCode !== 0 && !stopped && stderr)
+      const exited = exitCode === 0 || (result !== undefined && isTerminated)
+      if (!exited && !stopped && stderr)
         yield { type: 'log', line: `error: ${String(stderr).trim().split('\n')[0]}` }
-      yield { type: 'done', ok: result === 'success' && exitCode === 0 && !stopped, turns }
+      yield { type: 'done', ok: result === 'success' && exited && !stopped, turns }
     },
 
     instructionsFile: 'AGENTS.md',

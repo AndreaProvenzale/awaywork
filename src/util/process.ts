@@ -21,6 +21,15 @@ export function killGroupWhenDone(child: Child, stop?: AbortSignal): () => void 
   return () => stop?.removeEventListener('abort', kill)
 }
 
+/** How long a CLI gets to exit once it has printed its result. */
+const RESULT_GRACE_MS = 5000
+
+/** Kills a child's group a grace after its result: a CLI doesn't exit while a server its shell started runs. */
+export function killGroupSoon(child: Child): void {
+  const timer = setTimeout(() => killGroup(child), RESULT_GRACE_MS)
+  child.nodeChildProcess.once('exit', () => clearTimeout(timer))
+}
+
 /** Awaits a `detached` child, then kills its group; this process exiting first kills it too. */
 export async function awaitGroup<T extends Child & PromiseLike<unknown>>(
   child: T,

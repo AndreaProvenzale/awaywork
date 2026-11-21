@@ -9,7 +9,7 @@ import { launch } from '#core/launch'
 import type { McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
 import { lock } from '#util/lock'
-import { killGroupWhenDone } from '#util/process'
+import { killGroupSoon, killGroupWhenDone } from '#util/process'
 
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
@@ -196,17 +196,20 @@ export function codexProvider(
             break
           }
           for (const e of toEvents(event)) {
-            if (e.type === 'done') done = e
-            else yield e
+            if (e.type !== 'done') yield e
+            else {
+              done = e
+              killGroupSoon(child)
+            }
           }
         }
-        const { exitCode } = await child
+        const { exitCode, isTerminated } = await child
         // The stream carries no quota; reading it mid-run would start a second process on auth.json.
         if (!signal.aborted) {
           const quota = await probe(process.env).catch(() => null)
           if (quota) yield { type: 'quota', quota }
         }
-        const ok = done?.type === 'done' && done.ok && exitCode === 0
+        const ok = done?.type === 'done' && done.ok && (exitCode === 0 || isTerminated)
         yield { type: 'done', ok: ok && !signal.aborted && !capped.signal.aborted, turns }
       } finally {
         await release()
