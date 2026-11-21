@@ -122,10 +122,11 @@ export async function writablePaths(
   for (const path of written) {
     const full = resolve(path.startsWith('~/') ? join(homedir(), path.slice(2)) : path)
     const resolved = await realpath(full).catch(() => undefined)
+    const clash =
+      resolved && own.find((folder) => inside(folder, resolved) || inside(resolved, folder))
     if (!resolved) log(`writable: ${path} doesn't exist, skipped`)
     else if (inside(home, resolved)) log(`writable: ${path} holds your home, refused`)
-    else if (own.some((folder) => inside(folder, resolved) || inside(resolved, folder)))
-      log(`writable: ${path} overlaps awaywork's own files, refused`)
+    else if (clash) log(`writable: ${path} overlaps awaywork's own ${clash}, refused`)
     else if (!found.includes(resolved)) {
       if (resolved !== full) log(`writable: ${path} is ${resolved}`)
       found.push(resolved)

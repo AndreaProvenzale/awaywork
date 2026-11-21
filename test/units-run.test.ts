@@ -907,7 +907,9 @@ queue: [{ skill: review }]
     expect(own).toContain(`writable: ${join(root, 'gone')} doesn't exist, skipped`)
     expect(own).toContain('writable: / holds your home, refused')
     expect(own).toContain(`writable: ${homedir()} holds your home, refused`)
-    expect(own).toContain(`writable: ${loaded} overlaps awaywork's own files, refused`)
+    expect(own).toContain(
+      `writable: ${loaded} overlaps awaywork's own ${await realpath(loaded)}, refused`,
+    )
     expect(await log('host', 'acme-api-2')).toContain("writable: not opened on someone else's PR")
   } finally {
     await rm(underHome, { recursive: true, force: true })

@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, it, vi } from 'vitest'
+import { afterAll, expect, it, vi } from 'vitest'
 import type { Unit } from '#core/types'
 import { writablePaths } from '#worker/chain/step'
 
@@ -20,6 +20,8 @@ vi.mock('#config/paths', async (original) => {
     rootStateDir: `${dir}/state`,
   }
 })
+
+afterAll(() => rm(root.dir, { recursive: true, force: true }))
 
 const unitOf = (...writable: string[]) => ({ writable }) as Unit
 
