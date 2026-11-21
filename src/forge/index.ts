@@ -11,8 +11,11 @@ export const forgeFor = (config: Config): Forge =>
     ? bitbucketForge(bitbucketWorkspaces(config))
     : {
         ...githubForge(undefined, githubHost(config)),
-        threads: githubThreads(undefined, githubHost(config), config.repos, (repo) =>
-          trustFor(config, repo),
+        threads: githubThreads(
+          undefined,
+          githubHost(config),
+          (repo) => trustFor(config, repo),
+          config.repos,
         ),
       }
 

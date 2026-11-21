@@ -26,7 +26,7 @@ const config = z
 /** With the config's `repos` keys, the authors each trusts and the forge's host, which the loaded config adds. */
 type Config = z.infer<typeof config> & {
   repos: string[]
-  trust?: Record<string, string[]>
+  trust: Record<string, string[]>
   host?: string
 }
 
@@ -248,11 +248,9 @@ export function githubSource(base: Exec = exec): Source<Config> {
       const run = onHost(base, cfg.host)
       const inScope = (repo: string) => cfg.repos.some((glob) => globToRegExp(glob).test(repo))
       const trustOf = (repo: string) =>
-        cfg.trust
-          ? Object.entries(cfg.trust).flatMap(([glob, list]) =>
-              globToRegExp(glob).test(repo) ? list : [],
-            )
-          : ['collaborators']
+        Object.entries(cfg.trust).flatMap(([glob, list]) =>
+          globToRegExp(glob).test(repo) ? list : [],
+        )
       const byId = new Map<string, Item>()
       const extra = (cfg.search ?? []).map((q) => ({
         q: `is:open archived:false ${q}`,
@@ -362,9 +360,9 @@ export const github = githubSource()
 /** The forge's thread issues on GitHub, read and written as you through `gh`: listed, not searched, so one opened a minute ago is found. */
 export function githubThreads(
   base: Exec = exec,
-  host?: string,
+  host: string | undefined,
+  trustOf: (repo: string) => string[],
   repos?: Record<string, unknown>,
-  trustOf: (repo: string) => string[] = () => ['collaborators'],
 ): ThreadHost {
   const run = onHost(base, host)
   // No write lands in a repo `repos` doesn't list.

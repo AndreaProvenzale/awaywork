@@ -139,6 +139,27 @@ queue:
       "     quota: the window resets within 1 run (doesn't hold on the probe)",
     )
   })
+
+  it("says why a unit on an untrusted author's PR runs bare, and says nothing on a trusted one", () => {
+    const config = parseConfig(`
+providers: [claude: {}]
+repos: { acme/api: {} }
+sources: { github: {} }
+queue: [{ skill: review, deliver: report }]
+`)
+    const textFor = (fields: Partial<Item['fields']>) =>
+      formatPlan(
+        planRun({
+          setup: setupOf(config, { builtin: builtinSkills }),
+          items: [githubPr(2, { mine: false, ...fields })],
+          allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+        }),
+      )
+    expect(textFor({ trusted: false, author: 'Bob' })).toContain(
+      "   runs bare: its author isn't on trust",
+    )
+    expect(textFor({ trusted: true })).not.toContain('runs bare')
+  })
 })
 
 const paneIssues: Record<string, Partial<Item>> = await import(

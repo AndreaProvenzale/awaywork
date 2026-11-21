@@ -323,7 +323,7 @@ describe('the allowlist', () => {
 
   it('opens, comments on and closes a thread issue only in a repo a key names', async () => {
     const run = recorded([])
-    const threads = githubThreads(run, undefined, { 'acme/*': {} })
+    const threads = githubThreads(run, undefined, () => [], { 'acme/*': {} })
     const refused = "other/unlisted isn't in repos: awaywork writes only in the repos listed there"
     const thread = { host: 'github', key: 'other/unlisted#7', url: 'https://github.com/x' }
     await expect(threads.openThread('other/unlisted', fakeItem())).rejects.toThrow(refused)

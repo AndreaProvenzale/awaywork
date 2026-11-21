@@ -72,6 +72,8 @@ export interface WorkspaceInput {
   replay?: { commit: string; context: string }
   /** A gate's judge of what the steps left, copied to `out`, and of the chain's commits since `from`, if any: its unit is `untrusted`, as the agent wrote the clone. */
   judge?: Judged
+  /** Whether the chain's setup was skipped, when this unit isn't the chain's: a judge, always `untrusted`. */
+  setupSkipped?: boolean
   /** For a task: the files its tasks in other repos ship, read from their PRs. */
   shipped?: Shipped[]
   /** By item key: the folder of the files awaywork's posts on it pin, read back from the store, a folder per post. */
@@ -194,7 +196,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     instructions: await Promise.all(w.config.instructions.map(read)),
     repo: {
       setup: repo.setup,
-      setupSkipped: unit.untrusted,
+      setupSkipped: w.setupSkipped ?? unit.untrusted,
       test: repo.test,
       serveRefused: unit.rule.serve ? serveRefusal(unit, repo.serve) : undefined,
       instructions: repo.instructions && (await read(repo.instructions)),

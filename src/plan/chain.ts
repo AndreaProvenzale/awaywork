@@ -75,7 +75,6 @@ export function chainUnits(
     (decides || (rule.deliver === 'report' && rule.on_done?.comment === 'result')) &&
     !lead.task &&
     (rule.post ?? (config.store ? 'summary' : 'full')) === 'summary'
-  const settings = settingsFor(config.repos, repo)
   const at = {
     base,
     foreign: landed.foreign,
@@ -96,6 +95,7 @@ export function chainUnits(
       }),
     ...(left && { continued: left.continued }),
   }
+  const settings = settingsFor(config.repos, repo)
   const units: PlannedUnit[] = []
   for (const { written, id, loop } of [{ written: rule, id: group.id }, ...group.steps]) {
     const step = written === rule ? rule : inherit(rule, written)

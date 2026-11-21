@@ -727,6 +727,20 @@ it("takes the judge from awaywork, never the repo the steps wrote, nor the rule'
   expect(prompt).not.toContain('lenient')
 })
 
+it('tells the judge on your own item that setup ran', async () => {
+  const prompts: Record<string, string> = {}
+  await gated(
+    `repos: { acme/*: { setup: 'true' } }\n${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    async (dir, skill) => {
+      prompts[skill] = await readFile(join(dir, '.away/prompt.md'), 'utf8')
+      if (skill === 'judge') return verdict('clear')(dir)
+      await commitFile(dir, 'src/app.ts', 'x')
+    },
+  )
+  expect(prompts.implement).toContain('Setup, already run: `true`')
+  expect(prompts.judge).toContain('Setup, already run: `true`')
+})
+
 it("shows the judge the slice as pushed, whatever the steps did to the clone's replace refs, git config and attributes", async () => {
   for (const hide of [
     async (dir: string) => {

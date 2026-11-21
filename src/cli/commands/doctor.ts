@@ -278,27 +278,24 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
 
 /** Who each repo trusts, in words, and where that is risky or does nothing. */
 export async function trustChecks(config: Config, run: Exec): Promise<Check[]> {
+  if (config.forge.id === 'bitbucket')
+    return [{ status: 'ok', what: 'trust', detail: 'does nothing on Bitbucket' }]
   const checks: Check[] = []
   for (const repo of Object.keys(config.repos)) {
     const trust = trustFor(config, repo)
     const what = `trust ${repo}`
     const words = trust.map((name) => (name === '*' ? 'anyone' : name))
     checks.push({ status: 'ok', what, detail: words.join(', ') || 'nobody but you' })
-    if (config.forge.id === 'bitbucket') {
-      checks.push({ status: 'warn', what, detail: 'does nothing on Bitbucket' })
-      continue
-    }
-    if (trust.includes('*') && !repo.includes('*')) {
-      const visibility = await run('gh', ['api', `repos/${repo}`, '--jq', '.private']).catch(
-        () => undefined,
-      )
-      if (visibility?.trim() === 'false')
-        checks.push({
-          status: 'warn',
-          what,
-          detail: '* trusts anyone with a PR on a public repo: their code runs with your setup',
-        })
-    }
+    if (!trust.includes('*')) continue
+    const isPrivate = repo.includes('*')
+      ? undefined
+      : await run('gh', ['api', `repos/${repo}`, '--jq', '.private']).catch(() => undefined)
+    if (isPrivate?.trim() !== 'true')
+      checks.push({
+        status: 'warn',
+        what,
+        detail: `* trusts anyone with a PR on ${repo.includes('*') ? 'any public repo it names' : 'a public repo'}: their code runs with your setup`,
+      })
   }
   return checks
 }

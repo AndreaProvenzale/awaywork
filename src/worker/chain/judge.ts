@@ -74,6 +74,7 @@ export const judge =
         ctx: { ...input.ctx, log },
         reuse: true,
         judge: on,
+        setupSkipped: unit.untrusted,
       })
       const withheld = secrets.filter((name) => !provider.secrets.includes(name))
       const job = {

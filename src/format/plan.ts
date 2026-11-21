@@ -125,6 +125,7 @@ export function planUnitTable(
     })
     const repo = taskRepo(p.unit.items[0])
     if (repo) out.push(`   in ${repo}`)
+    if (p.unit.untrusted) out.push("   runs bare: its author isn't on trust")
     const goes = goesOnLine(p)
     if (goes) out.push(`   ${goes}`)
     const stacks = stackLine(p)
