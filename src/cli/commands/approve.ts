@@ -3,6 +3,7 @@ import { configPath, loadConfig } from '#config/load'
 import type { Config } from '#config/schema'
 import type { Ctx, Forge, Item, Source } from '#core/types'
 import { forgeFor } from '#forge/index'
+import { resolveTeams } from '#forge/teams'
 import { approveReply, commentTask, postState } from '#posts/comments'
 import { decisionPost, taskResults } from '#posts/posts'
 import { checkPins } from '#posts/store'
@@ -19,7 +20,13 @@ export function approveCommand(program: Command): void {
     )
     .action((key: string, notes: string[]) =>
       printOutcome(async () =>
-        approveItem(key, await loadConfig(configPath(program.opts().config)), notes.join(' ')),
+        approveItem(
+          key,
+          await resolveTeams(await loadConfig(configPath(program.opts().config)), (line) =>
+            console.error(line),
+          ),
+          notes.join(' '),
+        ),
       ),
     )
 }

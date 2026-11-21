@@ -433,6 +433,41 @@ describe('doctor on trust', () => {
     })
   })
 
+  describe('on a team', () => {
+    const config = parseConfig(
+      'providers: [claude]\nsources: { github: {} }\nrepos: { acme/api: { trust: [acme/platform, acme/gone] }, acme/web: { trust: [acme/platform] } }',
+    )
+    const run: Exec = async (_cmd, args) => {
+      if (args[1]?.includes('/platform/')) return 'alice\nbob'
+      throw new Error('gh: Not Found (HTTP 404)')
+    }
+
+    it('counts the members of a readable team once, and warns on one it cannot read', async () => {
+      const found = await trustChecks(config, run, {})
+      expect(found.slice(0, 2)).toEqual([
+        { status: 'ok', what: 'trust acme/platform', detail: '2 members' },
+        {
+          status: 'warn',
+          what: 'trust acme/gone',
+          detail: "can't read acme/gone, or it doesn't exist, so it trusts nobody",
+        },
+      ])
+      expect(found.map((c) => c.what)).toEqual([
+        'trust acme/platform',
+        'trust acme/gone',
+        'trust acme/api',
+        'trust acme/web',
+      ])
+    })
+
+    it("asks for a token with read:org under Actions, whose token can't read teams", async () => {
+      const found = await trustChecks(config, run, { GITHUB_ACTIONS: 'true' })
+      expect(found[1]?.detail).toBe(
+        "can't read acme/gone, or it doesn't exist, so it trusts nobody; Actions' GITHUB_TOKEN can't read teams, set a PAT or app token with read:org",
+      )
+    })
+  })
+
   it('says once that trust does nothing on Bitbucket', async () => {
     const config = parseConfig(
       "providers: [claude]\nforge: bitbucket\nsources: { tracker: { command: 'echo []' } }\nrepos: { acme/web: { trust: [alice] }, acme/api: }",

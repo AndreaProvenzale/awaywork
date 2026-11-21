@@ -3,6 +3,7 @@ import type { Config } from '#config/schema'
 import { readSetup } from '#config/skills'
 import type { Ctx, Forge, Item, Rule, Source } from '#core/types'
 import { forgeFor } from '#forge/index'
+import { resolveTeams } from '#forge/teams'
 import { clip } from '#format/terminal'
 import { renderLink } from '#posts/footer'
 import { withApproved } from '#posts/posts'
@@ -29,7 +30,7 @@ import { DEFAULT_LOOKBACK, itemState, lookback, spanMs } from './where'
  * With `moves`, a run's, it first makes the moves on_done held on the posts you approved since, a dry run only saying them.
  */
 export async function probeAndPlan(
-  config: Config,
+  given: Config,
   userSkillsDir: string,
   opts: {
     /** A unit by name, which no cap, skip or attempt holds back. */
@@ -53,9 +54,12 @@ export async function probeAndPlan(
   ctx: Ctx
   sources: Record<string, Source>
   secrets: string[]
+  /** The config with its trusted teams resolved to logins. */
+  config: Config
 }> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
+  const config = await resolveTeams(given, ctx.log)
 
   const long =
     ctx.env.RUNNER_ENVIRONMENT === 'github-hosted' ? tooLongForHosted(config.windows) : []
@@ -147,6 +151,7 @@ export async function probeAndPlan(
     ctx,
     sources,
     secrets,
+    config,
   }
 }
 

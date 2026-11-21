@@ -37,6 +37,7 @@ import {
 import type { Ctx, Provider } from '#core/types'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '#forge/bitbucket'
 import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
+import { teamMembers, teamsIn, unreadable } from '#forge/teams'
 import { describeAllowance } from '#format/allowances'
 import { NO_QUEUE } from '#format/rules'
 import { type Status, statusMarker } from '#format/terminal'
@@ -277,10 +278,31 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
 }
 
 /** Who each repo trusts, in words, and where that is risky or does nothing. */
-export async function trustChecks(config: Config, run: Exec): Promise<Check[]> {
+export async function trustChecks(
+  config: Config,
+  run: Exec,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<Check[]> {
   if (config.forge.id === 'bitbucket')
     return [{ status: 'ok', what: 'trust', detail: 'does nothing on Bitbucket' }]
   const checks: Check[] = []
+  for (const team of teamsIn(config)) {
+    const members = await teamMembers(run, team)
+    const what = `trust ${team}`
+    if (members) {
+      checks.push({ status: 'ok', what, detail: counted(members.length, 'member') })
+      continue
+    }
+    const token =
+      env.GITHUB_ACTIONS === 'true'
+        ? "; Actions' GITHUB_TOKEN can't read teams, set a PAT or app token with read:org"
+        : ''
+    checks.push({
+      status: 'warn',
+      what,
+      detail: `${unreadable(team)}, so it trusts nobody${token}`,
+    })
+  }
   for (const repo of Object.keys(config.repos)) {
     const trust = trustFor(config, repo)
     const what = `trust ${repo}`

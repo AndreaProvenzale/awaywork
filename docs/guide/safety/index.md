@@ -86,13 +86,13 @@ Reviewing a PR means running its tests with your agent's login around, so the de
 
 ### Trusting an author
 
-`trust` lists the authors whose PRs and comments awaywork acts on. An entry is `collaborators` (owners, members and collaborators), a GitHub login (a bot as GitHub shows it, `dependabot[bot]`; a user and a bot of the same name are different entries), or `*` for anyone. Everyone on the list is **trusted**; anyone else who opens a PR is not. It defaults to `collaborators`. A repo's list adds to the top level's, which replaces the default; `[]` trusts nobody but you.
+`trust` lists the authors whose PRs and comments awaywork acts on. An entry is `collaborators` (owners, members and collaborators), a GitHub login (a bot as GitHub shows it, `dependabot[bot]`; a user and a bot of the same name are different entries), a GitHub team as `org/slug` (its active members, child teams' too), or `*` for anyone. Everyone on the list is **trusted**; anyone else who opens a PR is not. It defaults to `collaborators`. A repo's list adds to the top level's, which replaces the default; `[]` trusts nobody but you.
 
 ```yaml
 trust: [collaborators]            # the default, every repo
 repos:
   acme/api:
-    trust: [alice]                # and alice, in this repo
+    trust: [alice, acme/platform] # alice and a team, in this repo
   acme/sandbox:
     trust: ["*"]                  # anyone's PR in this repo
 ```
@@ -112,6 +112,8 @@ Trust is about what the worker gets, never what awaywork writes: on a trusted au
 
 Narrowing the list narrows comments too: with `trust: [alice]`, a teammate's review on your own PR is hidden, and so is a thread they started. Bots' comments reach the agent as before.
 
+A team's members are read once per run with `gh api orgs/<org>/teams/<slug>/members`, which needs a token with `read:org`. A team that can't be read, or doesn't exist (GitHub answers both with a 404), trusts nobody: the run log and `doctor` say "can't read `org/slug`, or it doesn't exist". Actions' `GITHUB_TOKEN` can never read teams, so a hosted run needs a PAT or app token with `read:org` in `GH_TOKEN`.
+
 What trusting implies:
 
 - The branch's `.mcp.json` stdio servers start unapproved, outside Claude's sandbox and with its whole env, and its hooks run.
@@ -119,7 +121,7 @@ What trusting implies:
 - Its setup and tests run with the repo's `secrets`.
 - With `network`, all of that can leave.
 
-So trusting someone means trusting their branch and everything it pulls in (dependencies, install scripts), not just them. In a company org `collaborators` is every member: name logins instead when that is too many. Under `isolation: none` that code also gets your home folder and your MCP servers' data; set `isolation: user` or `container` to keep it away. `doctor` prints who each repo trusts and warns on `*` for a public repo. `trust` does nothing on Bitbucket, where awaywork reads only your own PRs.
+So trusting someone means trusting their branch and everything it pulls in (dependencies, install scripts), not just them. In a company org `collaborators` is every member: name a team instead when that is too many. Under `isolation: none` that code also gets your home folder and your MCP servers' data; set `isolation: user` or `container` to keep it away. `doctor` prints who each repo trusts, counts each team's members and warns on `*` for a public repo. `trust` does nothing on Bitbucket, where awaywork reads only your own PRs.
 
 ### Not your agent config
 
