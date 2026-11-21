@@ -24,7 +24,7 @@ it("gives the image's developer user the sudoers lines isolation: user asks for"
   vi.spyOn(process, 'getuid').mockReturnValue(Number(uid))
   vi.spyOn(process, 'getgid').mockReturnValue(Number(gid))
   const sudoers = dockerfile.match(/<<"EOF" \/etc\/sudoers\.d\/awaywork\n([\s\S]*?)\nEOF\n/)?.[1]
-  expect(sudoers).toBe(sudoersLines('away', undefined, 'awaywork').join('\n'))
+  expect(sudoers).toBe(sudoersLines('away').join('\n'))
 })
 
 it('pins the awaywork version it ships in', () => {

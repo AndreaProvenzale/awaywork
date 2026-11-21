@@ -36,7 +36,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: bash scripts/worker-user.sh
-      # A second profile's worker user, for the proof that one's kill leaves the other's processes.
+      # A second profile's worker user, for the proof that two profiles run at once, each kill reaching only its own user.
       - run: |
           sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin awaywork-proof
           echo awaywork-proof | sudo tee -a /etc/cron.deny > /dev/null

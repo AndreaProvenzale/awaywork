@@ -9,7 +9,7 @@ vi.mock('#config/paths', async (original) => {
   const { tmpdir } = await import('node:os')
   return {
     ...(await original<typeof import('#config/paths')>()),
-    stateDir: await mkdtemp(`${tmpdir()}/awaywork-state-`),
+    rootStateDir: await mkdtemp(`${tmpdir()}/awaywork-state-`),
   }
 })
 

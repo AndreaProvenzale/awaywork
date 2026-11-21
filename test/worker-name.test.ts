@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { workerFor, workerNamed } from '#core/isolation'
+import { MAX_USER, workerFor, workerNamed } from '#core/isolation'
 
 vi.mock('#config/paths', async (original) => ({
   ...(await original<typeof import('#config/paths')>()),
@@ -11,6 +11,11 @@ it('names the worker user after the profile, always awaywork on a hosted runner 
   expect(workerNamed('work')).toBe('awaywork-work')
   expect(workerNamed('work', { RUNNER_ENVIRONMENT: 'github-hosted' })).toBe('awaywork')
   expect(workerNamed('work', { AWAYWORK_IMAGE: '1' })).toBe('awaywork')
+})
+
+it("fits Linux's 32 characters up to a 23-character profile name", () => {
+  expect(workerNamed('x'.repeat(23))).toHaveLength(MAX_USER)
+  expect(workerNamed('x'.repeat(24))).toHaveLength(MAX_USER + 1)
 })
 
 it("refuses a profile whose worker user is over Linux's 32 characters", async () => {

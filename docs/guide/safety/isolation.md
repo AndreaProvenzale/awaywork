@@ -11,7 +11,7 @@ isolation: user # default: none; or container
 ```
 
 - **`none`:** as you. [Safety](./index.md)'s measures keep credentials out of the agent's way, not its reach ([Not a sandbox](#not-a-sandbox)).
-- **`user`:** as `awaywork`, a user with nothing of yours, which you make once on Linux; `awaywork-<profile>` for a [profile](../config/index.md) other than `default`.
+- **`user`:** as `awaywork`, a user with nothing of yours, which you make once on Linux; `awaywork-<profile>` on your machine for a [profile](../config/index.md) other than `default` (`awaywork` on a hosted runner and in the image, below).
 - **`container`:** a fresh container of the repo's image per command: [In a container](#in-a-container).
 
 `doctor` says how to make the user, here for a user `runner` (uid and gid 1001):
@@ -162,9 +162,9 @@ Still open:
 
 - **The network,** except Claude's, Codex's and Cursor's shells (limited to [`network`](#claude-s-shell-is-offline) where their sandboxes start: not in Docker, and Claude's not on a stock GitHub-hosted runner).
 - **The worker's own login,** in its env as it must be: `CLAUDE_CODE_OAUTH_TOKEN`, `CURSOR_API_KEY`, or a copy of your Codex `auth.json` in its `HOME` ([the lent Codex login](#the-lent-codex-login)).
-- **`/tmp`:** every unit is the same user, so a file left in `/tmp` or `/var/tmp` outside its folders is there for a later unit. Nothing runs it unless something looks.
+- **`/tmp`:** every unit of a profile is the same user, so a file left in `/tmp` or `/var/tmp` outside its folders is there for a later unit. Nothing runs it unless something looks.
 - **The machine:** localhost services answer it, and anything world-writable is a place to plant a binary you run later. Hosted runners clear that bit; on your machine `find / -xdev -perm -o+w ! -type l ! -perm -1000` lists them.
-- **Other developers:** the `chown` line reaches any awaywork clone, so one developer per worker user. Each profile of one developer has a worker user of its own, so ending a phase kills only that profile's processes. Within a profile a unit holds `worker.lock` in its state dir from its first phase to its last, so its units take turns.
+- **Other developers:** the `chown` line reaches any awaywork clone, so one developer per worker user. Each profile of one developer has a worker user of its own, so ending a phase kills only that profile's processes. A unit holds its worker user's lock (`workers/<user>.lock` in the root state dir) from its first phase to its last, so units of one worker user take turns, and profiles sharing `awaywork` do too.
 
 #### The lent Codex login
 

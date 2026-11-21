@@ -4,7 +4,7 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { execa, type Options } from 'execa'
-import { bin, profile, stateDir } from '#config/paths'
+import { bin, profile, rootStateDir } from '#config/paths'
 import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Config } from '#config/schema'
 import { lock } from '#util/lock'
@@ -435,16 +435,12 @@ export async function isolateFor(
 }
 
 /** The sudoers lines `isolation: user` needs from `user` (uid:gid `owner`): anything as the worker, and the two chowns it does, on a clone's folder only. */
-export function sudoersLines(
-  user = userInfo().username,
-  owner = developer(),
-  worker = WORKER,
-): string[] {
+export function sudoersLines(user = userInfo().username, owner = developer()): string[] {
   const clone = `${ROOT}${'[A-Za-z0-9]'.repeat(6)}`
   const line = (to: string) => [...CHOWN, to.replace(':', '\\:'), clone].join(' ')
   return [
-    `${user} ALL=(${worker}) NOPASSWD:SETENV: ALL`,
-    `${user} ALL=(root) NOPASSWD: ${line(`${worker}:`)}, ${line(owner)}`,
+    `${user} ALL=(${WORKER}) NOPASSWD:SETENV: ALL`,
+    `${user} ALL=(root) NOPASSWD: ${line(`${WORKER}:`)}, ${line(owner)}`,
   ]
 }
 
@@ -479,10 +475,10 @@ export async function asWorker<T>(dir: string, run: () => Promise<T>, login?: Lo
   }
 }
 
-/** Held across the processes of one profile, which share its worker user: `killWorker` ends every process of that user, whoever's unit it belongs to. */
-export const WORKER_LOCK = join(stateDir, 'worker.lock')
+/** Held across every process of one worker user, whichever profile: `killWorker` ends every process of that user, whoever's unit it belongs to. */
+export const WORKER_LOCK = join(rootStateDir, 'workers', `${WORKER}.lock`)
 
-/** Runs a whole unit under the worker lock when launches run as the worker user, waiting while another unit of the profile holds it. Returns undefined, without running, when `signal` aborts the wait. */
+/** Runs a whole unit under the worker lock when launches run as the worker user, waiting while another unit of the worker user holds it. Returns undefined, without running, when `signal` aborts the wait. */
 export async function holdingWorker<T>(
   run: () => Promise<T>,
   log: (line: string) => void,
