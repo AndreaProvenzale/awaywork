@@ -418,6 +418,22 @@ describe('claude provider', () => {
     }
   })
 
+  it("gives a lent PR the hosts and the repo's config, but not an untrusted one", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    try {
+      const run = job()
+      Object.assign(run.unit, { network: ['npmjs.org'], foreign: true, lent: true })
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox.network.allowedDomains).toEqual(['npmjs.org'])
+      expect(args[args.indexOf('--setting-sources') + 1]).toBe('project,local')
+      expect(args).not.toContain('--strict-mcp-config')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
   it("adds the developer's allowed domains and lets them close loopback", async () => {
     process.env.FAKE_ARGV = join(dir, 'argv.json')
     const theirs = {

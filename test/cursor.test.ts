@@ -332,6 +332,11 @@ describe('cursor shell walled to the network hosts', () => {
     }
   })
 
+  it('lists the hosts on a lent PR', async () => {
+    const { read } = await walled({ network: ['pypi.org'], foreign: true, lent: true })
+    expect((await read('sandbox.json')).networkPolicy.allow).toContain('pypi.org')
+  })
+
   it("keeps the shell open where the sandbox can't start, and says so", async () => {
     const { dir, read } = await walled({ network: ['pypi.org'] }, unwalled)
     expect(await read('cli-config.json')).toEqual({

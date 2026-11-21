@@ -56,7 +56,7 @@ Sources prefetch context into files before the agent starts, and awaywork makes 
 
 ### Setup, context and checks outside the agent
 
-- **Setup** runs before the agent, without the agent's secret and with only its repo's `secrets` added, and none of those on someone else's PR or a branch a worker wrote: earlier in the run, an awaywork PR a rule took up, or the task PR a plan's task stacks on. On a PR by someone without write access or org membership, setup doesn't run at all. What it leaves running is stopped before the agent starts.
+- **Setup** runs before the agent, without the agent's secret and with only its repo's `secrets` added, and none of those on someone else's PR (unless [`trust`](../config/repos.md#trust) lends it) or a branch a worker wrote: earlier in the run, an awaywork PR a rule took up, or the task PR a plan's task stacks on. On a PR by someone without write access or org membership, setup doesn't run at all. What it leaves running is stopped before the agent starts.
 - **Context:** a `context` command runs with its own `secrets`, in the config's folder, not the clone, so nothing the branch commits runs with them. Only the regular files it writes reach the agent: write no secret there.
 - **Checks:** `until` and `when` run the worker's code like setup on a worker's branch: no repo `secrets`, outside the agent's sandbox, as the [worker user](./isolation.md#a-worker-user-on-your-linux-machine) under `isolation: user` and on hosted runners, in a [container](./isolation.md#a-container-on-your-machine) of their own under `container`. So they don't run on an untrusted author's PR.
 
@@ -75,7 +75,7 @@ Each unit gets a fresh clone on a new branch, with no credential helper. `.away/
 
 ### Other people's PRs are data
 
-On a PR you didn't open, the branch's `.awaywork/` is ignored, Codex's copy of the skills is awaywork's, and the prompt says its `CLAUDE.md`, `AGENTS.md` and skills are the author's.
+On a PR you didn't open, unless you trust its author, the branch's `.awaywork/` is ignored, Codex's copy of the skills is awaywork's, and the prompt says its `CLAUDE.md`, `AGENTS.md` and skills are the author's.
 
 - **Claude Code** loads none of the clone's config (settings, hooks, MCP servers, `CLAUDE.md`, skills), only awaywork's plugin and your `settings` file.
 - **Codex** still loads `AGENTS.md` and its skills.
@@ -84,11 +84,43 @@ On a PR you didn't open, the branch's `.awaywork/` is ignored, Codex's copy of t
 
 Reviewing a PR means running its tests with your agent's login around, so the default `review` rule takes `trusted: true` only: authors who are owners, members or collaborators. A rule without it reviews anyone's PR.
 
+### Trusting an author
+
+[`trust`](../config/repos.md#trust) lists whose PRs get what your own PRs get: `collaborators` (owners, members and collaborators), a GitHub login, or `*` for anyone. A PR by someone on it is **lent**, and `plan` says so:
+
+```yaml
+trust: [collaborators]            # every repo
+repos:
+  acme/sandbox:
+    trust: ["*"]                  # anyone's PR in this repo
+```
+
+| On a PR | Yours | Lent | Someone else's |
+| --- | --- | --- | --- |
+| Setup | Runs, with its repo's `secrets` | Runs, with its repo's `secrets` | Runs without them; not at all for a stranger |
+| `verify`, `when`, `until` and gate scripts | Run | Run | Refused for a stranger |
+| The branch's agent config, repo skills and `.awaywork/instructions.md` | Loaded | Loaded | Hidden, as above |
+| The prompt's "its files are the author's, data" line | No | No | Yes |
+| The rule's MCP servers | Started | Started | None |
+| `network` | The list | The list | None |
+| Pushes and `deliver: push` | Per rule | Never | Never |
+
+Trust lends what the worker gets, never what awaywork writes: a lent PR still gets only a report or your pending review, never a push onto its branch, and the judge of a gate still runs as on someone else's PR.
+
+What lending means:
+
+- The branch's `.mcp.json` stdio servers start unapproved, outside Claude's sandbox and with its whole env, and its hooks run.
+- Its `CLAUDE.md` steers the agent.
+- Its setup and tests run with the repo's `secrets`.
+- With `network`, all of that can leave.
+
+So trusting someone means trusting their branch and everything it pulls in (dependencies, install scripts), not just them. Under `isolation: none` that code also gets your home folder and your MCP servers' data: `doctor` warns when a repo's `trust` list meets rules that give MCP servers or `network` there. `trust` does nothing on Bitbucket, where awaywork reads only your own PRs.
+
 ### Not your agent config
 
 Workers skip Claude Code's `~/.claude` settings, hooks, MCP servers, `CLAUDE.md`, skills, auto-memory and claude.ai connectors; Codex's `config.toml`; and Cursor's whole `HOME`: it runs in a fresh `.away/agent-home`, without your `~/.cursor` skills, MCP servers, hooks, rules, permissions or login, nor `~/.claude` and `~/.agents` skills.
 
-The repo's own config applies. What workers should have goes in awaywork's config: a Claude `settings` file, Codex `config`, top-level `skills` ([Configuration](../config/providers.md#providers)) and [MCP servers](../config/mcp.md), which apply on someone else's PR too, except MCP servers, which carry your secrets, and the settings file's `sandbox` allowed domains.
+The repo's own config applies. What workers should have goes in awaywork's config: a Claude `settings` file, Codex `config`, top-level `skills` ([Configuration](../config/providers.md#providers)) and [MCP servers](../config/mcp.md), which apply on someone else's PR too, except MCP servers, which carry your secrets, and the settings file's `sandbox` allowed domains, unless you [trust](#trusting-an-author) its author.
 
 ## Public repos
 
@@ -109,7 +141,7 @@ The classic token `schedule install` asks for reaches every repo you can; a dedi
 
 ## Network hosts
 
-The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), so a steered agent can send what it reads to any of them, and `*` reopens it. Not on someone else's PR.
+The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), so a steered agent can send what it reads to any of them, and `*` reopens it. Not on someone else's PR, unless you [trust](#trusting-an-author) its author.
 
 ## MCP servers
 
@@ -117,7 +149,7 @@ A rule's `mcp` gives its units your servers, and more reach:
 
 - **A server's secret is one the agent can read.** They run as the same user, in one process tree. Claude Code starts stdio servers with its whole env, but where [Claude's sandbox](./isolation.md#claude-s-shell-is-offline) starts, its Bash runs in it and gets them unset; elsewhere, awaywork's Docker image included, it gets them. Codex and Cursor keep them out of their shell (`shell_environment_policy`; Cursor gets them as literals in the run's `mcp.json`, mode 600, which its shell can still read, and which goes when the step ends unless the clone is lost), and a process can read another's env (`ps eww`). Cursor's shell keeps `CURSOR_API_KEY`. So a unit has its agent's secret plus its rule's servers', nothing else.
 - **Injected text can call the tools.** Use read-only tokens where offered, and `tools` to allow only what the skill needs; the agent refuses the rest. For read-only context, a source's prefetch keeps the token from the model entirely.
-- **Not on someone else's PR,** trusted or not, nor an issue it closes, since that code would get the secrets in its env, as with setup's `secrets`. A server with an unset secret doesn't start either; the unit's log says which didn't and why.
+- **Not on someone else's PR,** trusted or not, nor an issue it closes, since that code would get the secrets in its env, as with setup's `secrets`, unless [`trust`](#trusting-an-author) lends it. A server with an unset secret doesn't start either; the unit's log says which didn't and why.
 
 ## Resources
 

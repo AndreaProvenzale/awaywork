@@ -38,6 +38,7 @@ with:
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills |
 | `network` | string[] | `[]` | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet |
+| `trust` | string[] | `[]` | Whose PRs get what your own PRs get: setup secrets, the branch's agent config and skills, MCP servers and network; collaborators (write access or org membership), a login, or * for anyone. The top level and repos add up. awaywork still writes nothing there |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; without any, nothing runs |
 | `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
@@ -289,6 +290,7 @@ A custom source: any command that prints your open items as JSON.
 | `verify` | string |  | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
 | `gates` | map | `{}` | Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill |
 | `network` | string[] | `[]` | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet |
+| `trust` | string[] | `[]` | Whose PRs get what your own PRs get: setup secrets, the branch's agent config and skills, MCP servers and network; collaborators (write access or org membership), a login, or * for anyone. The top level and repos add up. awaywork still writes nothing there |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
 | `image` | string |  | Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain |

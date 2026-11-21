@@ -414,6 +414,7 @@ describe('github source', () => {
       intoHead: 'def5678',
       ours: false,
       mine: true,
+      author: 'dev',
       trusted: true,
     }
     expect(pr1?.linkedPrs).toEqual([link])

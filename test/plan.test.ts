@@ -578,6 +578,33 @@ queue:
     ])
   })
 
+  it("lends a trusted author's PR what your own gets, still foreign, and shows it", () => {
+    const yaml = (trust: string, repoTrust = '') =>
+      `providers: [claude]\ntrust: ${trust}\nrepos: { acme/api: { ${repoTrust} } }\nsources: { github: {} }\nqueue: [{ skill: review, deliver: report }]`
+    const flags = (config: string, fields: Item['fields']) => {
+      const result = plan(config, [githubPr(2, { mine: false, ...fields })], {})
+      const unit = result.units[0]?.unit
+      return { foreign: unit?.foreign, lent: unit?.lent, untrusted: unit?.untrusted, result }
+    }
+    const stranger = { trusted: false, author: 'Bob' }
+    expect(flags(yaml('[]'), stranger)).toMatchObject({ foreign: true, untrusted: true })
+    expect(flags(yaml('[]'), stranger).lent).toBeUndefined()
+    expect(flags(yaml('[]'), { author: 'carol' }).lent).toBeUndefined()
+    for (const lent of [
+      flags(yaml('[bob]'), stranger),
+      flags(yaml('[]', 'trust: [BOB]'), stranger),
+      flags(yaml('["*"]'), stranger),
+      flags(yaml('[collaborators]'), { author: 'carol' }),
+    ])
+      expect(lent).toMatchObject({ foreign: true, lent: true, untrusted: false })
+    expect(flags(yaml('[collaborators]'), stranger).lent).toBeUndefined()
+    expect(flags(yaml('["*"]'), { mine: true }).lent).toBeUndefined()
+    expect(formatPlan(flags(yaml('[bob]'), stranger).result)).toContain(
+      '   lent: its author is on your trust list, so it gets what your own PRs get',
+    )
+    expect(formatPlan(flags(yaml('[]'), stranger).result)).not.toContain('lent:')
+  })
+
   it("refuses a chain that could commit onto someone else's PR or a fork, and reports there", () => {
     const yaml = `
 providers: [claude]

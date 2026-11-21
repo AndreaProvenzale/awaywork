@@ -24,7 +24,7 @@ const problems = (text: string): string[] => {
 describe('repos', () => {
   it('takes a bare key as a listed repo with no settings', () => {
     const { repos } = parseConfig(config('repos:\n  acme/api:\n  acme/*: { setup: yarn }'))
-    expect(repos['acme/api']).toEqual({ secrets: [], network: [], gates: {} })
+    expect(repos['acme/api']).toEqual({ secrets: [], network: [], trust: [], gates: {} })
     expect(repoListed(repos, 'acme/api')).toBe(true)
     expect(repoListed(repos, 'Acme/Web')).toBe(true)
     expect(repoListed(repos, 'other/api')).toBe(false)
@@ -44,6 +44,7 @@ describe('repos', () => {
       verify: 'yarn lint',
       secrets: ['NPM_TOKEN', 'SENTRY_DSN'],
       network: [],
+      trust: [],
       gates: { deps: { changed: ['package.json'] }, routes: { command: './routes.sh' } },
     })
     expect(settingsFor(repos, 'acme/web')).toMatchObject({
@@ -51,7 +52,25 @@ describe('repos', () => {
       verify: 'yarn test',
     })
     expect(settingsFor(repos, 'other/docs')).toMatchObject({ setup: 'npm ci', secrets: [] })
-    expect(settingsFor({}, 'acme/api')).toEqual({ secrets: [], network: [], gates: {} })
+    expect(settingsFor({}, 'acme/api')).toEqual({ secrets: [], network: [], trust: [], gates: {} })
+  })
+
+  it('adds up the trust of every key naming a repo with the top level, and checks its entries', () => {
+    const { repos } = parseConfig(
+      config(`trust: [collaborators]
+repos:
+  acme/api: { trust: [alice, collaborators] }
+  acme/*: { trust: [Bob, "*"] }`),
+    )
+    expect(settingsFor(repos, 'acme/api').trust).toEqual(['Bob', '*', 'alice', 'collaborators'])
+    expect(parseConfig(config('repos: { acme/api: }\ntrust: [collaborators]')).trust).toEqual([
+      'collaborators',
+    ])
+    for (const bad of ['acme/platform', '@alice', '-alice', 'a b'])
+      expect(problems(config(`repos: { acme/api: }\ntrust: ["${bad}"]`))).toHaveLength(1)
+    expect(problems(config('repos: { acme/api: }\ntrust: [acme/platform]'))[0]).toContain(
+      "a team (org/slug) isn't supported yet",
+    )
   })
 
   it('adds up the network hosts of every key naming a repo, and checks them', () => {

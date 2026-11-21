@@ -49,12 +49,12 @@ A name, a rule's or in `skills`, is looked up in order:
 2. `.awaywork/skills/<name>/` in the unit's repo, the team's;
 3. the built-ins.
 
-Extra skills also fall back to the [repo's own skill folders](#bring-your-repo-s-skills). Claude Code gets the unit's skills as a plugin outside the clone (`--plugin-dir`), named `awaywork:<name>`, on every unit, someone else's PR included; Cursor the same plugin through its `--plugin-dir`; Codex a copy in the clone's `.agents/skills/`, where a repo skill of the same name wins except on someone else's PR.
+Extra skills also fall back to the [repo's own skill folders](#bring-your-repo-s-skills). Claude Code gets the unit's skills as a plugin outside the clone (`--plugin-dir`), named `awaywork:<name>`, on every unit, someone else's PR included; Cursor the same plugin through its `--plugin-dir`; Codex a copy in the clone's `.agents/skills/`, where a repo skill of the same name wins except on someone else's PR whose author you don't trust.
 
 Details:
 
 - A config outside `~/.config/awaywork/` (`--config`, `AWAYWORK_CONFIG`) uses its own `skills/`; `doctor` warns while the default folder holds skills it doesn't use.
-- On someone else's PR, `.awaywork/skills/` is the author's and skipped.
+- On someone else's PR, `.awaywork/skills/` is the author's and skipped, unless its author is on your [`trust`](./config/repos.md#trust) list.
 - A skill from `~/.claude/skills/`: link it in, `ln -s ~/.claude/skills/<name> ~/.config/awaywork/skills/<name>`.
 - On a runner or in a container, yours are the copy `schedule install` puts in `.awaywork/skills/`.
 - `doctor` sees user and built-in skills only, so it warns about repo skills, which resolve at run time; a skill found nowhere fails the unit with `unknown skill`.
@@ -87,7 +87,7 @@ Details:
 
 - Not in top-level `skills`: that joins every unit, other repos and others' PRs too, where it fails with `unknown skill`.
 - They only fill in names: a rule's main skill never comes from them, so `.claude/skills/implement` doesn't replace the built-in. Move one to `.awaywork/skills/` to make it a main skill.
-- Like `.awaywork/skills/`, skipped on someone else's PR, where naming one fails with `unknown skill`.
+- Like `.awaywork/skills/`, skipped on someone else's PR unless you trust its author, where naming one fails with `unknown skill`.
 - They resolve at run time, so `doctor` warns.
 
 ## Try an edit on a past unit

@@ -272,6 +272,18 @@ const network = z
   .describe(
     "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet",
   )
+const trustEntry = z
+  .string()
+  .regex(
+    /^(\*|[A-Za-z\d](-?[A-Za-z\d])*(\[bot\])?)$/,
+    "expected collaborators, *, or a login like alice; a team (org/slug) isn't supported yet",
+  )
+const trust = z
+  .array(trustEntry)
+  .default([])
+  .describe(
+    "Whose PRs get what your own PRs get: setup secrets, the branch's agent config and skills, MCP servers and network; collaborators (write access or org membership), a login, or * for anyone. The top level and repos add up. awaywork still writes nothing there",
+  )
 const stepSettings = {
   provider: oneOrMany
     .default([])
@@ -642,6 +654,7 @@ const repoSettings = z.strictObject({
     "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill",
   ),
   network,
+  trust,
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
   image: z
@@ -742,6 +755,7 @@ const configShape = z.strictObject({
       "Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
     ),
   network,
+  trust,
   mcp: z
     .record(z.string(), mcpServer)
     .default({})

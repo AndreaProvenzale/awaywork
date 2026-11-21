@@ -832,6 +832,15 @@
                   "pattern": "^(\\*|(\\*\\.)?[\\w-]+(\\.[\\w-]+)*)$"
                 }
               },
+              "trust": {
+                "default": [],
+                "description": "Whose PRs get what your own PRs get: setup secrets, the branch's agent config and skills, MCP servers and network; collaborators (write access or org membership), a login, or * for anyone. The top level and repos add up. awaywork still writes nothing there",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(\\*|[A-Za-z\\d](-?[A-Za-z\\d])*(\\[bot\\])?)$"
+                }
+              },
               "test": {
                 "description": "Targeted test command, given to the worker in its prompt",
                 "type": "string"
@@ -936,6 +945,15 @@
       "items": {
         "type": "string",
         "pattern": "^(\\*|(\\*\\.)?[\\w-]+(\\.[\\w-]+)*)$"
+      }
+    },
+    "trust": {
+      "default": [],
+      "description": "Whose PRs get what your own PRs get: setup secrets, the branch's agent config and skills, MCP servers and network; collaborators (write access or org membership), a login, or * for anyone. The top level and repos add up. awaywork still writes nothing there",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(\\*|[A-Za-z\\d](-?[A-Za-z\\d])*(\\[bot\\])?)$"
       }
     },
     "mcp": {

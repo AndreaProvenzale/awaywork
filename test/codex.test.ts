@@ -173,6 +173,12 @@ describe('codex provider', () => {
     }
   })
 
+  it('gives a lent PR the hosts', () => {
+    const run = job()
+    Object.assign(run.unit, { network: ['npmjs.org'], foreign: true, lent: true })
+    expect(wall(run)).toContain('permissions.awaywork.network.domains={"npmjs.org"="allow"}')
+  })
+
   it('keeps the shell open where the sandbox cannot start, and says so', async () => {
     process.env.FAKE_ARGV = join(tmp, 'argv.json')
     try {

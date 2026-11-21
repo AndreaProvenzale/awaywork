@@ -459,6 +459,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       agentsSkills?: string,
       authorCopy = true,
       away?: { at: string; to: string },
+      lent = false,
     ) => {
       const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
       const dir = join(root, 'clone')
@@ -511,6 +512,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           repo: 'acme/api',
           base: 'sessions',
           foreign: !mine,
+          ...(lent && { lent: true as const }),
           untrusted: false,
           branch: 'away/acme-api-2',
           rule: { skill: 'review', provider: [], skills: [], instructions: [] },
@@ -633,6 +635,25 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         review(false, claude, undefined, true, { at: '.away/context/fake-1/item.md', to: victim }),
       ).rejects.toThrow('.away in the clone comes from the branch')
       expect(await readFile(victim, 'utf8')).toBe('KEEP')
+    })
+
+    it("keeps them on a lent PR, as on the developer's own, with no author's-files line", async () => {
+      const { dir, plugin, prompt } = await review(false, claude, undefined, true, undefined, true)
+      expect(prompt).toContain('AUTHOR NOTE')
+      expect(prompt).toContain('AUTHOR SKILL')
+      expect(prompt).not.toContain('someone else opened')
+      expect(await readFile(join(plugin, 'skills/review/SKILL.md'), 'utf8')).toBe('AUTHOR SKILL')
+      expect(await readFile(join(dir, '.claude/skills/review/SKILL.md'), 'utf8')).toBe(
+        'AUTHOR SKILL',
+      )
+      const codexClone = await review(false, codex, undefined, true, undefined, true)
+      expect(await readFile(join(codexClone.dir, '.agents/skills/review/SKILL.md'), 'utf8')).toBe(
+        'AUTHOR SKILL',
+      )
+      const cursorClone = await review(false, cursor, undefined, true, undefined, true)
+      expect(await readFile(join(cursorClone.dir, '.cursor/hooks.json'), 'utf8')).toBe(
+        'AUTHOR HOOKS',
+      )
     })
 
     it("keeps them on the developer's own PR", async () => {

@@ -33,4 +33,4 @@ Swap `plan` for any skill; a committing step has the PR body in `$AWAYWORK_REPOR
 
 - **Deterministic:** the page is written whenever the step is done, in your script's shape, not when the model remembers.
 - **The token stays with you:** a server's secret is one the agent can read, and its tools are ones injected text can call ([Safety](../guide/safety/index.md#mcp-servers)). The hook runs after the worker; the agent never sees its secrets.
-- **Every PR:** MCP servers never start on someone else's PR, so a `review` of a teammate's PR would have no Notion. The hook still sees that step.
+- **Every PR:** MCP servers don't start on someone else's PR unless you put its author on [`trust`](../guide/config/repos.md#trust), so a `review` of a teammate's PR would have no Notion. The hook still sees that step.

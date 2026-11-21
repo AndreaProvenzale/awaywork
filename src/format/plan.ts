@@ -129,6 +129,8 @@ export function planUnitTable(
     if (goes) out.push(`   ${goes}`)
     const stacks = stackLine(p)
     if (stacks) out.push(`   ${stacks}`)
+    if (p.unit.lent)
+      out.push('   lent: its author is on your trust list, so it gets what your own PRs get')
     const waits = waitLine(p)
     if (waits) out.push(`   waits for ${waits}`)
     for (const check of checkLines(p)) out.push(`   after ${check}`)

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
+import { guest } from '#core/guest'
 import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
@@ -89,7 +90,7 @@ export function claudeProvider(
       if (!sandboxed && !signal.aborted)
         yield { type: 'log', line: "Claude's sandbox can't start here: Bash runs unsandboxed" }
       args.push(
-        ...(job.unit.foreign ? isolated : repoOnly),
+        ...(guest(job.unit) ? isolated : repoOnly),
         '--settings',
         await settings(job, sandboxed),
       )
@@ -137,9 +138,9 @@ function sandbox(job: Job, theirs?: Theirs) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
-  const { foreign, untrusted, network = [] } = job.unit
+  const { untrusted, network = [] } = job.unit
   const hosts =
-    foreign || untrusted
+    guest(job.unit) || untrusted
       ? []
       : [...new Set([...(theirs?.network?.allowedDomains ?? []), ...network])]
   return {

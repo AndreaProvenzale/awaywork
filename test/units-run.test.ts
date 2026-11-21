@@ -765,6 +765,99 @@ queue:
   expect(await log('acme-api-4')).toContain(notOpened)
 })
 
+it("lends a trusted author's PR the setup secrets, checks, MCP, network and agent config, and still keeps it foreign", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-trust-'))
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, _branch: string, dir: string) => {
+      await execa(bin('git'), ['init', '-q', dir])
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    },
+  }
+  const config = parseConfig(`
+providers: [claude: {}]
+budget: { fallback: { units: 8, turns: 60 } }
+repos:
+  acme/api:
+    setup: 'echo "$NPM_TOKEN" > setup.txt'
+    secrets: [NPM_TOKEN]
+trust: [Alice]
+network: [a.example]
+sources: { github: {} }
+mcp:
+  db: { command: db-mcp, secrets: [DB_URL] }
+queue:
+  - { skill: review, mcp: [db], deliver: report, then: { skill: fix, when: { command: "true" } } }
+`)
+  const plan = planRun({
+    setup: setupOf(config, { builtin: builtinSkills }),
+    items: [
+      githubPr(1),
+      githubPr(2, { mine: false, trusted: false, author: 'alice' }),
+      githubPr(3, { mine: false, trusted: false, author: 'bob' }),
+      githubPr(4, { mine: false, author: 'carol' }),
+    ],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+  })
+  const seen: Record<string, { setup: string; mcp: string[]; foreign: boolean; lent?: true }> = {}
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: {
+      claude: {
+        ...worker,
+        async *run(job) {
+          const setup = await readFile(join(job.dir, 'setup.txt'), 'utf8').catch(() => 'not run')
+          const { foreign, lent } = job.unit
+          seen[job.unit.id] = { setup, mcp: Object.keys(job.mcp ?? {}), foreign, lent }
+          await writeFile(join(job.dir, '.away/out/report.md'), 'Done.')
+          yield { type: 'done', ok: true, turns: 1 }
+        },
+      },
+    },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: '/bin', DB_URL: 'db', NPM_TOKEN: 'npm' }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(seen).toMatchObject({
+    'acme-api-1': { setup: 'npm\n', mcp: ['db'], foreign: false },
+    'acme-api-2': { setup: 'npm\n', mcp: ['db'], foreign: true, lent: true },
+    'acme-api-3': { setup: 'not run', mcp: [], foreign: true },
+    'acme-api-4': { setup: '\n', mcp: [], foreign: true },
+  })
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-fix', 'done'],
+    ['acme-api-2', 'done'],
+    ['acme-api-2-fix', 'done'],
+    ['acme-api-3', 'done'],
+    ['acme-api-3-fix', 'skipped'],
+    ['acme-api-4', 'done'],
+    ['acme-api-4-fix', 'done'],
+  ])
+  const log = (unit: string) =>
+    readFile(join(root, `run/units/${unit}/1-review/worker.log`), 'utf8')
+  const notOpened = "network: not opened on someone else's PR"
+  expect(await log('acme-api-2')).not.toContain(notOpened)
+  expect(await log('acme-api-2')).not.toContain('not started on someone else')
+  for (const id of ['acme-api-3', 'acme-api-4']) {
+    expect(await log(id)).toContain(notOpened)
+    expect(await log(id)).toContain("mcp: db not started on someone else's PR")
+  }
+  const prompt = (unit: string) =>
+    readFile(join(root, `run/units/${unit}/1-review/prompt.md`), 'utf8')
+  expect(await prompt('acme-api-2')).not.toContain('someone else opened')
+  expect(await prompt('acme-api-3')).toContain('someone else opened')
+})
+
 it('stops a unit at unit_minutes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-time-'))
   const forge = {

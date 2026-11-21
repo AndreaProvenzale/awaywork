@@ -14,6 +14,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path'
 import { execa } from 'execa'
 import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '#config/paths'
 import type { Config } from '#config/schema'
+import { guest } from '#core/guest'
 import { gitUnrestored, markGitRestored } from '#core/isolation'
 import type { Ctx, Forge, Item, Provider, Source, Unit } from '#core/types'
 import { type LoopRound, slug } from '#plan/foreman'
@@ -100,7 +101,7 @@ export interface Previous {
  */
 export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   const { unit, dir, provider } = w
-  const { foreign } = unit
+  const foreign = guest(unit)
   const names = [...new Set([unit.skill, ...unit.skills])]
   if (w.reuse) {
     await refuseSymlinks(dir, [
@@ -268,7 +269,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
   for (const [name, source] of sources) {
     const target = join(w.dir, skillsDir, name)
     const theirs = !mine.has(target) && existsSync(target)
-    if (theirs && !w.unit.foreign) {
+    if (theirs && !guest(w.unit)) {
       w.ctx.log(`skill ${name}: kept the repo's own ${skillsDir}/${name}`)
       continue
     }
@@ -279,7 +280,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
       await rm(target, { recursive: true, force: true })
       await copySkill(w.dir, source, target)
       w.ctx.log(`skill ${name}: restored awaywork's copy of ${skillsDir}/${name}`)
-      if (w.unit.foreign) replaced.push(target)
+      if (guest(w.unit)) replaced.push(target)
       continue
     }
     if (theirs) {
@@ -307,7 +308,7 @@ async function hideAuthorConfig(dir: string, paths: string[]) {
 
 /**
  * Puts back, as they are in `tree`, the repo's config and the skill folder a judge's workspace hid in a clone whose
- * chain isn't foreign, so its later steps see them, git included. awaywork's copy of the skill goes with its exclude.
+ * chain isn't a guest's, so its later steps see them, git included. awaywork's copy of the skill goes with its exclude.
  */
 export async function revealHidden(dir: string, provider: Provider, skill: string, tree: string) {
   const paths = [...(provider.repoConfig ?? [])]

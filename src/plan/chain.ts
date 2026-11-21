@@ -46,6 +46,12 @@ export function landing(
   }
 }
 
+/** Whether the `trust` list names the author of someone else's PR. */
+const lends = (trust: string[], pr: PrRef): boolean =>
+  trust.includes('*') ||
+  (pr.trusted && trust.includes('collaborators')) ||
+  trust.some((t) => t.toLowerCase() === pr.author?.toLowerCase())
+
 /** The units of a rule's chain on the group, its first step first, each routed to a provider; `counts` when the first one runs. */
 export function chainUnits(
   run: PlanRun,
@@ -74,10 +80,13 @@ export function chainUnits(
     (decides || (rule.deliver === 'report' && rule.on_done?.comment === 'result')) &&
     !lead.task &&
     (rule.post ?? (config.store ? 'summary' : 'full')) === 'summary'
+  const settings = settingsFor(config.repos, repo)
+  const lent = landed.foreign && !!pr && lends([...config.trust, ...settings.trust], pr)
   const at = {
     base,
     foreign: landed.foreign,
-    untrusted: pr ? !pr.trusted : false,
+    ...(lent && { lent: true as const }),
+    untrusted: pr ? !pr.trusted && !lent : false,
     fork: landed.fork,
     ...(merging && { merge: pr?.into }),
     branch: draft ? base : landed.branch,
@@ -94,7 +103,6 @@ export function chainUnits(
       }),
     ...(left && { continued: left.continued }),
   }
-  const settings = settingsFor(config.repos, repo)
   const units: PlannedUnit[] = []
   for (const { written, id, loop } of [{ written: rule, id: group.id }, ...group.steps]) {
     const step = written === rule ? rule : inherit(rule, written)

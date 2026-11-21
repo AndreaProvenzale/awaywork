@@ -65,7 +65,7 @@ A change that lets awaywork write more, or exposes the agent to more, is shown o
 - `deliver: pr` (opens ready for review, pinging reviewers and code owners), `push` (pushes onto the developer's own PR branch), `pending_review` (leaves their pending review on the PR), `plan` (posts a plan on the item and waits for approval).
 - `on_done`, or a wider one: posts the result on the item, moves it in the tracker.
 - Dropping `trusted: true`, or `trusted: false`, on a rule over other people's PRs: the agent then reads untrusted authors' text.
-- `mcp` servers, `secrets` or `isolation` changes.
+- `mcp` servers, `secrets`, `network`, `trust` or `isolation` changes: `trust` lends other people's PRs your setup secrets, MCP servers and network.
 - `notify` commands, and dropping a `gates` entry or `verify`.
 - `wait: false` on a plan (it goes ahead unless a gate fires), `wait: true` or `gates` on a report (it posts on the item), `thread` (opens an issue or page for the item), `store` (sends the step's files off the machine).
 

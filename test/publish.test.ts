@@ -215,7 +215,7 @@ describe('publish', () => {
       unpublished: true,
     })
     await body('Fixed the flaky test.\n')
-    for (const refused of [{ base: '' }, { foreign: true }])
+    for (const refused of [{ base: '' }, { foreign: true }, { foreign: true, lent: true as const }])
       expect(await publish({ ...unit('push'), ...refused }, dir, forge, 'r1', start)).toEqual({
         kind: 'none',
         reason: "push goes only onto your own PR's branch, not pushed",

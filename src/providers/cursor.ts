@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { bin as resolveBin } from '#config/paths'
+import { guest } from '#core/guest'
 import { AGENT_HOME, cursorSandboxStarts, whereRuns } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, WorkerEvent } from '#core/types'
@@ -168,7 +169,7 @@ export function cursorProvider(
 export const cursor = cursorProvider()
 
 /** The hosts a unit's shell reaches: the `network` list, none on someone else's PR. */
-const shellHosts = ({ unit }: Job) => (unit.foreign || unit.untrusted ? [] : (unit.network ?? []))
+const shellHosts = ({ unit }: Job) => (guest(unit) || unit.untrusted ? [] : (unit.network ?? []))
 
 /** Cursor's own tools, and each server's tools, or all of them when the server names none; the shell too, open, unless `network` says to wall it. */
 export function cliConfig(servers: Record<string, McpServer>, network?: string[]) {

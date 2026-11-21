@@ -22,6 +22,8 @@ export interface PrRef {
   ours: boolean
   /** Opened by the developer, by hand or through awaywork. */
   mine: boolean
+  /** Its author's login. */
+  author?: string
   /** Its author has write access or org membership; always, when it's mine. */
   trusted: boolean
   /** Its branch lives on a fork, not in `repo`. */
@@ -459,13 +461,15 @@ export interface Unit {
   base: string
   /** `base` is a PR someone else opened: its in-repo config is the author's, not the developer's. */
   foreign: boolean
-  /** `base` is a PR by an author without write access or org membership: setup doesn't run on it. */
+  /** `base` is someone else's PR whose author is on the `trust` list: it gets what your own PRs get, and awaywork still writes nothing there. */
+  lent?: true
+  /** `base` is a PR by an author without write access or org membership, and not lent: setup doesn't run on it. */
   untrusted: boolean
   /** `base` is PR `number`'s branch on a fork, read at `head`: only a report delivers there. */
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on someone else's PR. */
+  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on someone else's PR unless it's lent. */
   network?: string[]
   /** Checks run before publishing commits, the top-level ones merged with the repo's and the rule's own: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own alone, on what its step left. */
   gates?: Record<string, Gate>

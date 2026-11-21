@@ -30,6 +30,8 @@ repos:                          # the only repos awaywork works in
     branch: feat/{key}-{title}
     setup: pnpm install --frozen-lockfile   # run before the worker
     secrets: [NPM_TOKEN]        # only setup sees these
+    network: [registry.npmjs.org]   # hosts the agent's shell may reach
+    trust: [alice]              # her PRs get what yours get: setup secrets, MCP, network
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
 sources:
@@ -40,6 +42,7 @@ sources:
     repo_map: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
     every: 15m                  # poll it for run: soon rules at most this often
 branch: away/{key}             # default; {key} or {title} is required
+trust: [collaborators]          # authors whose PRs get what yours get, every repo; * is anyone
 instructions: [notes/me.md]     # every unit
 skills: [house-style]           # every unit, next to a rule's skills; yours, in skills/ beside this file
 queue:                          # first matching rule wins; top = highest priority

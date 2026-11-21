@@ -33,13 +33,14 @@ import {
   WORKER,
   workerFor,
 } from '#core/isolation'
-import type { Ctx, Provider } from '#core/types'
+import type { Ctx, Provider, Rule } from '#core/types'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '#forge/bitbucket'
 import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
 import { describeAllowance } from '#format/allowances'
 import { NO_QUEUE } from '#format/rules'
 import { type Status, statusMarker } from '#format/terminal'
 import { ruleThread } from '#plan/queue'
+import { settingsFor } from '#plan/repos'
 import { codexLogin } from '#providers/codex'
 import { commandBinary, isCommandProvider } from '#providers/command'
 import { providerFor, providers } from '#providers/index'
@@ -253,10 +254,51 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     for (const id of scope.filter((id) => !sourceFor(id, config.sources[id])?.write))
       report('warn', at, `${id} can't write to its items: ${lost.join(', ')}`)
   })
+  for (const c of await trustChecks(config, queue, onHost(exec, github?.host)))
+    report(c.status, c.what, c.detail)
   for (const [name, server] of Object.entries(config.mcp)) {
     const unset = server.secrets.filter((s) => !process.env[s])
     const facts = [server.command ?? server.url, ...server.secrets.map(secret)].join(', ')
     report(unset.length > 0 ? 'warn' : 'ok', `mcp ${name}`, facts)
+  }
+  return checks
+}
+
+/** Each repo's `trust` list, and where lending a PR to it is risky or does nothing. */
+export async function trustChecks(config: Config, queue: Rule[], run: Exec): Promise<Check[]> {
+  const checks: Check[] = []
+  const rulesReach = queue.some((r) => r.mcp?.length || r.network?.length)
+  for (const repo of Object.keys(config.repos)) {
+    const settings = settingsFor(config.repos, repo)
+    const trust = [...new Set([...config.trust, ...settings.trust])]
+    if (!trust.length) continue
+    const what = `trust ${repo}`
+    checks.push({ status: 'ok', what, detail: trust.join(', ') })
+    if (config.forge.id === 'bitbucket') {
+      checks.push({ status: 'warn', what, detail: 'does nothing on Bitbucket' })
+      continue
+    }
+    if (trust.includes('*') && !repo.includes('*')) {
+      const visibility = await run('gh', ['api', `repos/${repo}`, '--jq', '.private']).catch(
+        () => undefined,
+      )
+      if (visibility?.trim() === 'false')
+        checks.push({
+          status: 'warn',
+          what,
+          detail: '* lends your setup to anyone with a PR on a public repo',
+        })
+    }
+    if (
+      config.isolation === 'none' &&
+      (rulesReach || config.network.length || settings.network.length)
+    )
+      checks.push({
+        status: 'warn',
+        what,
+        detail:
+          "a lent PR's code gets your home folder, your MCP servers' data and the network hosts; set isolation: user or container",
+      })
   }
   return checks
 }

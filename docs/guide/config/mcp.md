@@ -32,5 +32,5 @@ The shape is a subset of Claude Code's `.mcp.json`, translated per agent. A `the
 - A stdio server gets its `secrets` in its env; an HTTP one in headers, as `${NAME}` or `Bearer ${NAME}`. Never in `command`, `args` or `url` (the process list shows them) or `env` (Codex takes literals only).
 - `GH_`, `GITHUB_` and `TWG_` names are reserved: workers never get forge logins, and Actions refuses `GITHUB_` secrets.
 - `tools` limits what the agent may call. Only units naming a server get its secrets; `schedule` maps them into Actions, and `doctor` shows whether each is set.
-- Servers start for your own PRs, issues and tasks, never on someone else's PR or an issue it closes, nor with a secret unset.
+- Servers start for your own PRs, issues and tasks, never on someone else's PR (unless its author is on your [`trust`](./repos.md#trust) list) or an issue it closes, nor with a secret unset.
 - Only token-based servers work unattended; workers never get your claude.ai connectors. Its secret is one the agent can read, its tools ones injected text can call: [Safety](../safety/index.md#mcp-servers).
