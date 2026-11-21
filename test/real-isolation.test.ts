@@ -33,6 +33,8 @@ const env = {
   AWAYWORK_PARENT: `${process.pid}`,
 }
 const leftover = async () => (await execa('pgrep', ['-u', WORKER], { reject: false })).stdout
+/** A second profile's worker user, made by CI beside `awaywork`. */
+const OTHER_WORKER = 'awaywork-proof'
 const owner = async (path: string) => (await stat(path)).uid
 const allowance: Allowance = { kind: 'fallback', units: 1, turns: MAX_TURNS, reason: 'test' }
 
@@ -298,6 +300,19 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     } finally {
       delete process.env.GH_TOKEN
       await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', '/tmp/awaywork-hooked'])
+    }
+  })
+
+  it("ends one worker's processes and leaves another worker user's alone", async () => {
+    const asOther = (...command: string[]) =>
+      execa('sudo', ['-n', '-u', OTHER_WORKER, ...command], { reject: false })
+    await asOther('sh', '-c', 'sleep 300 >/dev/null 2>&1 &')
+    try {
+      await runCommand('sleep 300 >/dev/null 2>&1 &', dir, env, { secrets: [] })
+      expect(await leftover()).toBe('')
+      expect((await execa('pgrep', ['-u', OTHER_WORKER], { reject: false })).stdout).not.toBe('')
+    } finally {
+      await asOther('kill', '-9', '--', '-1')
     }
   })
 })

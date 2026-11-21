@@ -4,13 +4,27 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { execa, type Options } from 'execa'
-import { bin, rootStateDir } from '#config/paths'
+import { bin, profile, stateDir } from '#config/paths'
+import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Config } from '#config/schema'
 import { lock } from '#util/lock'
 import type { Login } from './types'
 
-/** The user repo code runs as under `isolation: user`, made by `action.yml` on a GitHub-hosted runner, by you elsewhere. */
-export const WORKER = 'awaywork'
+/** Linux's longest user name. */
+export const MAX_USER = 32
+/** Set by awaywork's Dockerfile, whose image runs every launch as the worker user, as a GitHub-hosted runner does. */
+export const inAwayworkImage = (env: NodeJS.ProcessEnv) => Boolean(env.AWAYWORK_IMAGE)
+const hostedRunner = (env: NodeJS.ProcessEnv) => env.RUNNER_ENVIRONMENT === 'github-hosted'
+
+/** The user repo code runs as under `isolation: user`: one per profile, so one's kill reaches no other's processes; always `awaywork` on a hosted runner and in the image. */
+export const workerNamed = (profileName: string, env: NodeJS.ProcessEnv = {}) =>
+  profileName === DEFAULT_PROFILE || hostedRunner(env) || inAwayworkImage(env)
+    ? 'awaywork'
+    : `awaywork-${profileName}`
+
+/** The worker user of the profile in force, made by `action.yml` on a GitHub-hosted runner, by you elsewhere. */
+export const WORKER = workerNamed(profile.name, process.env)
+
 /** Each clone is a folder straight under the sticky `/tmp`, so no folder of the developer's sits on its path for a link to be planted in. */
 const ROOT = '/tmp/awaywork-'
 const CHOWN = ['/usr/bin/chown', '-R', '-h', '-P']
@@ -360,9 +374,6 @@ export function isolate(user: string | undefined): void {
 
 export const isolated = () => worker !== undefined
 
-/** Set by awaywork's Dockerfile, whose image runs every launch as the worker user, as a GitHub-hosted runner does. */
-export const inAwayworkImage = (env: NodeJS.ProcessEnv) => Boolean(env.AWAYWORK_IMAGE)
-
 /**
  * The worker user every launch runs as: always on a GitHub-hosted runner and in awaywork's image, elsewhere under `isolation: user`.
  * One that can't run as it, or where it can sudo, is refused rather than run as the developer's user.
@@ -371,37 +382,42 @@ export async function workerFor(
   isolation: Config['isolation'],
   env: NodeJS.ProcessEnv,
 ): Promise<string | undefined> {
-  const hosted = env.RUNNER_ENVIRONMENT === 'github-hosted'
+  const hosted = hostedRunner(env)
   const image = inAwayworkImage(env)
   if (isolation !== 'user' && !hosted && !image) return undefined
+  const user = workerNamed(profile.name, env)
+  if (user.length > MAX_USER)
+    throw new Error(
+      `the worker user ${user} is over ${MAX_USER} characters, Linux's limit: pick a profile name of ${MAX_USER - 'awaywork-'.length} or fewer`,
+    )
   if (process.platform !== 'linux')
     throw new Error(`isolation: user runs on Linux only, not ${process.platform}`)
   const as = (...command: string[]) =>
-    execa(bin('sudo'), ['-n', '-u', WORKER, ...command], { reject: false })
+    execa(bin('sudo'), ['-n', '-u', user, ...command], { reject: false })
   const ran = await as('true')
   if (ran.failed)
     throw new Error(
       hosted
-        ? `can't run as the ${WORKER} user on this GitHub-hosted runner: run awaywork through its action, which creates it`
+        ? `can't run as the ${user} user on this GitHub-hosted runner: run awaywork through its action, which creates it`
         : image
-          ? `can't run as the ${WORKER} user in this image: build it from awaywork's Dockerfile, which creates it`
-          : `can't run as the ${WORKER} user (${ran.stderr.split('\n')[0] || ran.shortMessage})`,
+          ? `can't run as the ${user} user in this image: build it from awaywork's Dockerfile, which creates it`
+          : `can't run as the ${user} user (${ran.stderr.split('\n')[0] || ran.shortMessage})`,
     )
   if (!(await as('sudo', '-n', 'true')).failed)
     throw new Error(
-      `the ${WORKER} user can sudo on this ${hosted ? 'runner' : 'machine'}, so it isolates nothing`,
+      `the ${user} user can sudo on this ${hosted ? 'runner' : 'machine'}, so it isolates nothing`,
     )
   for (const key of ['protected_hardlinks', 'protected_symlinks'])
     if ((await readFile(`/proc/sys/fs/${key}`, 'utf8')).trim() !== '1')
       throw new Error(`fs.${key} is off, so a link the worker makes could hand it a file of yours`)
   const root = await workerRoot()
-  const there = await chown(`${WORKER}:`, root)
+  const there = await chown(`${user}:`, root)
   const back = there.failed ? there : await chown(developer(), root)
   // Left the worker's by a failed chown back, it's only the worker's to remove.
   await rm(root, { recursive: true }).catch(() => as('rmdir', root))
   if (back.failed)
-    throw new Error(`can't chown a clone to the ${WORKER} user and back (${failure(back)})`)
-  return WORKER
+    throw new Error(`can't chown a clone to the ${user} user and back (${failure(back)})`)
+  return user
 }
 
 /** Sets how every later launch runs: as the worker user, in a container once docker answers, or as the developer. */
@@ -419,12 +435,16 @@ export async function isolateFor(
 }
 
 /** The sudoers lines `isolation: user` needs from `user` (uid:gid `owner`): anything as the worker, and the two chowns it does, on a clone's folder only. */
-export function sudoersLines(user = userInfo().username, owner = developer()): string[] {
+export function sudoersLines(
+  user = userInfo().username,
+  owner = developer(),
+  worker = WORKER,
+): string[] {
   const clone = `${ROOT}${'[A-Za-z0-9]'.repeat(6)}`
   const line = (to: string) => [...CHOWN, to.replace(':', '\\:'), clone].join(' ')
   return [
-    `${user} ALL=(${WORKER}) NOPASSWD:SETENV: ALL`,
-    `${user} ALL=(root) NOPASSWD: ${line(`${WORKER}:`)}, ${line(owner)}`,
+    `${user} ALL=(${worker}) NOPASSWD:SETENV: ALL`,
+    `${user} ALL=(root) NOPASSWD: ${line(`${worker}:`)}, ${line(owner)}`,
   ]
 }
 
@@ -459,10 +479,10 @@ export async function asWorker<T>(dir: string, run: () => Promise<T>, login?: Lo
   }
 }
 
-/** Held machine-wide across profiles: `killWorker` ends every process of the one worker user, whoever's unit it belongs to. */
-export const WORKER_LOCK = join(rootStateDir, 'worker.lock')
+/** Held across the processes of one profile, which share its worker user: `killWorker` ends every process of that user, whoever's unit it belongs to. */
+export const WORKER_LOCK = join(stateDir, 'worker.lock')
 
-/** Runs a whole unit under the worker lock when launches run as the worker user, waiting while another profile's unit holds it. Returns undefined, without running, when `signal` aborts the wait. */
+/** Runs a whole unit under the worker lock when launches run as the worker user, waiting while another unit of the profile holds it. Returns undefined, without running, when `signal` aborts the wait. */
 export async function holdingWorker<T>(
   run: () => Promise<T>,
   log: (line: string) => void,
