@@ -24,6 +24,7 @@ if (args.includes('--version')) {
 } else {
   if (process.env.FAKE_ARGV) writeFileSync(process.env.FAKE_ARGV, JSON.stringify(args))
   process.stdin.resume()
+  if (process.env.FAKE_CODEX_STDERR) process.stderr.write(process.env.FAKE_CODEX_STDERR)
   process.stdout.write(recorded(process.env.FAKE_CODEX_RUN ?? 'exec'))
   if (process.env.FAKE_CODEX_HANG) setTimeout(() => {}, 60_000)
   else process.exitCode = process.env.FAKE_CODEX_RUN === 'failed' ? 1 : 0

@@ -18,7 +18,7 @@ const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
 const FULL_ACCESS = ['--sandbox', 'danger-full-access']
 const PROFILE = 'awaywork'
 /** The proxy's line in a command's output when it reached a host outside the profile's `domains`. */
-const BLOCKED = /Network access to "([^"]+)" was blocked/g
+const BLOCKED = /Network access to \\*"([^"\\]+)\\*" was blocked/g
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
 const DAY_MINS = 24 * 60
 const HOSTED_RUNNER =
@@ -212,7 +212,9 @@ export function codexProvider(
             else yield e
           }
         }
-        const { exitCode } = await child
+        const { exitCode, stderr } = await child
+        // Codex rejects some blocked commands at spawn, with no item in the stream.
+        if (walled && !signal.aborted) yield* refusals(String(stderr ?? ''))
         // The stream carries no quota; reading it mid-run would start a second process on auth.json.
         if (!signal.aborted) {
           const quota = await probe(process.env).catch(() => null)
@@ -243,7 +245,14 @@ export function shellWall(job: Job): string[] {
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
   const writable = [job.dir, join(job.dir, '.git'), ...(home ? [home] : [])]
-  const filesystem = { ':root': 'read', ...Object.fromEntries(writable.map((p) => [p, 'write'])) }
+  // Codex keeps `.codex` and `.agents` read-only itself; a later Claude round would load these two.
+  const hooked = ['.claude', '.mcp.json'].map((p) => join(job.dir, p))
+  const filesystem = {
+    ':root': 'read',
+    ':tmpdir': 'write',
+    ...Object.fromEntries(writable.map((p) => [p, 'write'])),
+    ...Object.fromEntries(hooked.map((p) => [p, 'read'])),
+  }
   const set = (key: string, value: unknown) => ['-c', `${key}=${toml(value)}`]
   const net = `permissions.${PROFILE}.network`
   return [
@@ -311,6 +320,13 @@ function toml(value: unknown): string {
   return `{${pairs.join(',')}}`
 }
 
+/** The hosts the proxy refused in `text`, as log lines. */
+const refusals = (text: string): WorkerEvent[] =>
+  [...new Set([...text.matchAll(BLOCKED)].map((m) => m[1]))].map((host) => ({
+    type: 'log',
+    line: `network: refused ${host} (agent shell)`,
+  }))
+
 /** Worker events in one `codex exec --json` event: tool calls and errors as log lines, and the turn's end. */
 export function toEvents(
   // biome-ignore lint/suspicious/noExplicitAny: an untyped JSON event
@@ -318,13 +334,9 @@ export function toEvents(
 ): WorkerEvent[] {
   const item = event?.item
   if (event?.type === 'item.completed' && item?.type === 'command_execution') {
-    const refused = [...String(item.aggregated_output ?? '').matchAll(BLOCKED)].map((m) => m[1])
     return [
       { type: 'log', line: `command: ${item.command} (exit ${item.exit_code})` },
-      ...[...new Set(refused)].map((host) => ({
-        type: 'log' as const,
-        line: `network: refused ${host} (agent shell)`,
-      })),
+      ...refusals(String(item.aggregated_output ?? '')),
     ]
   }
   if (event?.type === 'item.completed' && item?.type === 'file_change')

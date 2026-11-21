@@ -277,8 +277,8 @@ async function shellSandbox(
     if (await starts({ image, user: asWorker ? WORKER : undefined })) continue
     const needs = inAwayworkImage(process.env)
       ? ''
-      : ' (needs bubblewrap, socat and user namespaces)'
-    return `bwrap can't start${image ? ` in ${image}` : ' here'}${needs}: ${agent}'s shell runs unsandboxed, with network access`
+      : ` (needs bubblewrap${agent === 'claude' ? ', socat' : ''} and user namespaces)`
+    return `bwrap can't start${image ? ` in ${image}` : ' here'}${needs}: ${agent[0]?.toUpperCase()}${agent.slice(1)}'s shell runs unsandboxed, with network access`
   }
 }
 

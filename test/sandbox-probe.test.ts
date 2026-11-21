@@ -84,6 +84,7 @@ describe('sandboxStarts', () => {
     await sandboxStarts({ user: 'probe-both' }, undefined, fake(false))
     expect(await codexSandboxStarts({ user: 'probe-both' }, undefined, fake(true))).toBe(false)
     expect(calls[1]?.args.at(-1)).toBe('true')
+    expect(calls[1]?.args).not.toContain('--proc')
     expect(calls).toHaveLength(2)
   })
 

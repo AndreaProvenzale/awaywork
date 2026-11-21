@@ -150,7 +150,7 @@ describe('codex provider', () => {
     run.unit.network = ['registry.npmjs.org', '*.prisma.sh']
     expect(wall(run)).toEqual([
       'default_permissions="awaywork"',
-      `permissions.awaywork.filesystem={":root"="read","${tmp}"="write","${tmp}/.git"="write"}`,
+      `permissions.awaywork.filesystem={":root"="read",":tmpdir"="write","${tmp}"="write","${tmp}/.git"="write","${tmp}/.claude"="read","${tmp}/.mcp.json"="read"}`,
       'features.network_proxy=true',
       'permissions.awaywork.network.enabled=true',
       'permissions.awaywork.network.domains={"registry.npmjs.org"="allow","*.prisma.sh"="allow"}',
@@ -189,6 +189,20 @@ describe('codex provider', () => {
       })
     } finally {
       delete process.env.FAKE_ARGV
+    }
+  })
+
+  it('logs a refusal Codex returns on stderr, when it rejects the command at spawn', async () => {
+    process.env.FAKE_CODEX_STDERR =
+      'ERROR codex_core::tools::router: error=exec_command failed: Rejected(\\"Network access to \\\\\\"httpbin.org\\\\\\" was blocked: domain is not on the allowlist\\")\\n'
+    try {
+      const events = await collect(provider.run(job(), new AbortController().signal))
+      expect(events).toContainEqual({
+        type: 'log',
+        line: 'network: refused httpbin.org (agent shell)',
+      })
+    } finally {
+      delete process.env.FAKE_CODEX_STDERR
     }
   })
 

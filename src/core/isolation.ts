@@ -211,18 +211,9 @@ export interface Where {
 export const whereRuns = (dir: string): Where =>
   boxed ? { image: boxes.get(dir)?.image } : { user: worker }
 
-const BWRAP_PROBE = [
-  '--unshare-user',
-  '--unshare-net',
-  '--unshare-pid',
-  '--ro-bind',
-  '/',
-  '/',
-  '--proc',
-  '/proc',
-  '--dev',
-  '/dev',
-]
+const BWRAP_PROBE = ['--unshare-user', '--unshare-net', '--unshare-pid', '--ro-bind', '/', '/']
+const PROC = ['--proc', '/proc']
+const DEV = ['--dev', '/dev']
 // Claude's apply-seccomp nests a user namespace, which AppArmor refuses inside bwrap on hosted runners.
 const CLAUDE_INNER = ['bwrap', '--unshare-user', '--ro-bind', '/', '/', 'socat', '-V']
 const sandboxes = new Map<string, boolean>()
@@ -232,11 +223,11 @@ const sandboxes = new Map<string, boolean>()
  * It runs outside `start`, so no exit kills the worker's processes, and once per process for each image or user.
  */
 export const sandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
-  probeBwrap(where, CLAUDE_INNER, signal, run)
+  probeBwrap(where, [...PROC, ...DEV, ...CLAUDE_INNER], signal, run)
 
-/** Whether Codex's sandbox can start `where`: the same, without the nested namespace Claude's helper needs. */
+/** Whether Codex's sandbox can start `where`: the same, without the nested namespace or fresh `/proc` mount, which Docker's masked `/proc` refuses and Codex doesn't need. */
 export const codexSandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
-  probeBwrap(where, ['true'], signal, run)
+  probeBwrap(where, [...DEV, 'true'], signal, run)
 
 async function probeBwrap(
   { image, user }: Where,
@@ -246,7 +237,7 @@ async function probeBwrap(
 ): Promise<boolean> {
   if (!image && process.platform !== 'linux') return true
   const bwrapArgs = [...BWRAP_PROBE, ...inner]
-  const key = `${inner[0]} ${image ?? user ?? ''}`
+  const key = `${inner.at(-1)} ${image ?? user ?? ''}`
   const known = sandboxes.get(key)
   if (known !== undefined) return known
   const options = { reject: false, cancelSignal: signal } as const
