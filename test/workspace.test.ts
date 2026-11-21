@@ -120,7 +120,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       '- FAKE-1: Fix the thing (https://example.com/1); context in `.away/context/fake-1/`',
     )
     expect(parts[0]).toContain(
-      'Deliver: commits for a draft PR. Commit on this branch and write `.away/out/pr.md`, the PR body.',
+      "Deliver: commits for a draft PR. Commit on this branch and write `.away/out/pr.md` right after your first commit and keep it current, the PR's title",
     )
     expect(parts[1]).toMatch(/^# Fix\n/)
     expect(parts.slice(2)).toEqual([

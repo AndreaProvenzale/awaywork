@@ -251,10 +251,10 @@ repos:
   const setup = await readFile(join(root, 'run/units/acme-api-1/2-implement/setup.txt'), 'utf8')
   expect(setup).toBe('npm\n')
   expect(prompts[0]).toContain(
-    "Deliver: commits pushed onto `feature-1`, the developer's own pull request. Commit on this branch and write `.away/out/pr.md`, a summary for the developer.",
+    "Deliver: commits pushed onto `feature-1`, the developer's own pull request. Commit on this branch and write `.away/out/pr.md` right after your first commit and keep it current, a summary for the developer: without it nothing is pushed.",
   )
   expect(prompts[1]).toContain(
-    'Commit on this branch and keep `.away/out/pr.md` current: it holds what the chain did so far, a summary for the developer.',
+    'Commit on this branch and keep `.away/out/pr.md` current: it holds what the chain did so far, a summary for the developer: without it nothing is pushed.',
   )
   const text = formatReport(report)
   expect(text).toContain(
