@@ -383,6 +383,8 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     const named = unit.rule.mcp ?? []
     if (named.length > 0 && unit.foreign)
       log(`mcp: ${named.join(', ')} not started on someone else's PR`)
+    if (unit.network?.length && (unit.foreign || unit.untrusted))
+      log("network: not opened on someone else's PR")
     const mcp: Record<string, McpServer> = {}
     for (const name of unit.foreign ? [] : named) {
       const server = input.config.mcp[name] as McpServer

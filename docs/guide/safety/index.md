@@ -88,7 +88,7 @@ Reviewing a PR means running its tests with your agent's login around, so the de
 
 Workers skip Claude Code's `~/.claude` settings, hooks, MCP servers, `CLAUDE.md`, skills, auto-memory and claude.ai connectors; Codex's `config.toml`; and Cursor's whole `HOME`: it runs in a fresh `.away/agent-home`, without your `~/.cursor` skills, MCP servers, hooks, rules, permissions or login, nor `~/.claude` and `~/.agents` skills.
 
-The repo's own config applies. What workers should have goes in awaywork's config: a Claude `settings` file, Codex `config`, top-level `skills` ([Configuration](../config/providers.md#providers)) and [MCP servers](../config/mcp.md), which apply on someone else's PR too, except MCP servers, which carry your secrets.
+The repo's own config applies. What workers should have goes in awaywork's config: a Claude `settings` file, Codex `config`, top-level `skills` ([Configuration](../config/providers.md#providers)) and [MCP servers](../config/mcp.md), which apply on someone else's PR too, except MCP servers, which carry your secrets, and the settings file's `sandbox` allowed domains.
 
 ## Public repos
 
@@ -106,6 +106,10 @@ _Hidden: 2 comments from outside the repo's owners, members and collaborators._
 It can't hide the item's own title and body (the default `review` rule skips strangers' PRs with `trusted: true`), an untrusted author's diff when a rule reviews it anyway, CI logs and check names and links in `checks.md` or a task's `item.md`, or what a trusted person or bot quotes. So the agent can still be steered, and without a worker user it can read your `GH_TOKEN` ([Not a sandbox](./isolation.md#not-a-sandbox)).
 
 The classic token `schedule install` asks for reaches every repo you can; a dedicated account is your call. A fine-grained token reaches less but [can't call the Checks API](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations), which `checks` and `checks.md` read, so those likely break. Untried.
+
+## Network hosts
+
+The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's so far, Codex and Cursor next), so a steered agent can send what it reads to any of them, and `*` reopens it. Not on someone else's PR.
 
 ## MCP servers
 

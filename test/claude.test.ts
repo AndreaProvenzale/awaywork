@@ -374,6 +374,85 @@ describe('claude provider', () => {
     }
   })
 
+  it('logs the hosts the sandbox refused', () => {
+    const refused = (host: string) => `deny network-outbound ${host}:443 (user denied)`
+    const content = `Exit code 56\n<sandbox_violations>\n${['registry.npmjs.org', 'registry.npmjs.org', 'evil.example'].map(refused).join('\n')}\n</sandbox_violations>`
+    const line = (text: string) =>
+      JSON.stringify({
+        type: 'user',
+        message: { content: [{ type: 'tool_result', content: text }] },
+      })
+    expect(toEvents(line(content))).toEqual([
+      { type: 'log', line: 'network: refused registry.npmjs.org (agent shell)' },
+      { type: 'log', line: 'network: refused evil.example (agent shell)' },
+    ])
+    expect(toEvents(line('Exit code 1\nnope'))).toEqual([])
+  })
+
+  it('logs refusals only from a sandbox_violations block', () => {
+    const block = (host: string) =>
+      `<sandbox_violations>\ndeny network-outbound ${host}:443 (user denied)\n</sandbox_violations>`
+    const event = (content: unknown) =>
+      JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content }] } })
+    const source = 'const REFUSED = /deny network-outbound ([^\\s:]+)/g'
+    expect(toEvents(event(source))).toEqual([])
+    expect(toEvents(event('test: `deny network-outbound ${host}:443 (user denied)`'))).toEqual([])
+    expect(toEvents(event([{ type: 'text', text: block('[::1]') }]))).toEqual([
+      { type: 'log', line: 'network: refused [::1] (agent shell)' },
+    ])
+  })
+
+  it("withholds the hosts from someone else's PR", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    try {
+      for (const flag of ['foreign', 'untrusted'] as const) {
+        const run = job()
+        Object.assign(run.unit, { network: ['npmjs.org'], [flag]: true })
+        await collect(provider.run(run, new AbortController().signal))
+        const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+        const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+        expect(sandbox.network).toEqual({ allowedDomains: [] })
+      }
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("adds the developer's allowed domains and keeps their other network keys", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    const theirs = {
+      sandbox: { network: { allowedDomains: ['mine.example'], allowLocalBinding: true } },
+    }
+    await writeFile(join(dir, 'worker.json'), JSON.stringify(theirs))
+    try {
+      const run = { ...job(), config: { settings: 'worker.json' }, configDir: dir }
+      run.unit.network = ['ours.example']
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox.network).toEqual({
+        allowLocalBinding: true,
+        allowedDomains: ['mine.example', 'ours.example'],
+      })
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("lets Bash reach the unit's network hosts", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    try {
+      const run = job()
+      run.unit.network = ['npmjs.org', '*.prisma.sh']
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox.network).toEqual({ allowedDomains: ['npmjs.org', '*.prisma.sh'] })
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
   it("keeps the developer's other sandbox keys, ours winning", async () => {
     process.env.FAKE_ARGV = join(dir, 'argv.json')
     const theirs = { sandbox: { excludedCommands: ['docker'], enabled: false } }

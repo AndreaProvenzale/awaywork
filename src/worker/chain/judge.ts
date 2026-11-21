@@ -48,6 +48,7 @@ export const judge =
       foreign: true,
       stackedOn: undefined,
       lean: undefined,
+      network: undefined,
       // The gate's own instructions, from the config: the rule's are written for the worker it judges.
       rule: {
         ...unit.rule,

@@ -263,6 +263,15 @@ const where: z.ZodType<Where, unknown> = z.lazy(() =>
 )
 
 const skill = z.string().min(1).describe('The skill that does the work')
+const host = z
+  .string()
+  .regex(/^(\*|(\*\.)?[\w-]+(\.[\w-]+)*)$/, 'expected a host like npmjs.org or *.npmjs.org, or *')
+const network = z
+  .array(host)
+  .default([])
+  .describe(
+    "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Only Claude's shell is limited so far: Codex, Cursor, setup, verify, until, when and gate scripts are not yet",
+  )
 const stepSettings = {
   provider: oneOrMany
     .default([])
@@ -455,6 +464,7 @@ const rule: z.ZodType<Rule, unknown> = z
         'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where, or an any entry under one, that never names state matches open items only',
       ),
     ...stepSettings,
+    network,
     deliver: z
       .enum(['draft_pr', 'pr', 'report', 'push', 'pending_review', 'plan'])
       .optional()
@@ -631,6 +641,7 @@ const repoSettings = z.strictObject({
   gates: gates.describe(
     "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill",
   ),
+  network,
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
   image: z
@@ -730,6 +741,7 @@ const configShape = z.strictObject({
     .describe(
       "Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
     ),
+  network,
   mcp: z
     .record(z.string(), mcpServer)
     .default({})

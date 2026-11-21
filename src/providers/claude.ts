@@ -10,6 +10,9 @@ import { killGroupWhenDone } from '#util/process'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
+const VIOLATIONS = /<sandbox_violations>([\s\S]*?)<\/sandbox_violations>/g
+/** A denied connection, one line of a `<sandbox_violations>` block. */
+const REFUSED = /^deny network-outbound (\S+):\d+/gm
 const TOKEN = 'CLAUDE_CODE_OAUTH_TOKEN'
 const knownWindows: Record<string, { span: 'short' | 'long'; minutes: number }> = {
   five_hour: { span: 'short', minutes: 300 },
@@ -121,17 +124,29 @@ export function claudeProvider(
 
 export const claude = claudeProvider()
 
-/** Bash offline, without the login or the MCP secrets. */
-function sandbox(job: Job, theirs?: { allowWrite?: string[] }) {
+type Theirs = { filesystem?: { allowWrite?: string[] }; network?: { allowedDomains?: string[] } }
+
+/** Bash reaching only the unit's `network` hosts, none by default, without the login or the MCP secrets. */
+function sandbox(job: Job, theirs?: Theirs) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
+  const { foreign, untrusted, network = [] } = job.unit
+  const hosts =
+    foreign || untrusted
+      ? []
+      : [...new Set([...(theirs?.network?.allowedDomains ?? []), ...network])]
   return {
     enabled: true,
     failIfUnavailable: false,
     allowUnsandboxedCommands: false,
-    network: { allowedDomains: [] },
-    ...(home && { filesystem: { ...theirs, allowWrite: [...(theirs?.allowWrite ?? []), home] } }),
+    network: { ...theirs?.network, allowedDomains: hosts },
+    ...(home && {
+      filesystem: {
+        ...theirs?.filesystem,
+        allowWrite: [...(theirs?.filesystem?.allowWrite ?? []), home],
+      },
+    }),
     credentials: { envVars: [TOKEN, ...secrets].map((name) => ({ name, mode: 'deny' })) },
   }
 }
@@ -141,7 +156,7 @@ async function settings(job: Job, sandboxed: boolean): Promise<string> {
   const { settings: file } = configSchema.parse(job.config ?? {})
   const theirs = file && JSON.parse(await readFile(resolve(job.configDir ?? '', file), 'utf8'))
   const merged = sandboxed
-    ? { ...theirs?.sandbox, ...sandbox(job, theirs?.sandbox?.filesystem) }
+    ? { ...theirs?.sandbox, ...sandbox(job, theirs?.sandbox) }
     : theirs?.sandbox
   return JSON.stringify({ ...theirs, ...noMemory, ...(merged && { sandbox: merged }) })
 }
@@ -179,6 +194,23 @@ export function toEvents(line: string): WorkerEvent[] {
         const arg = block.input.command ?? block.input.file_path ?? block.input.pattern ?? mcp
         return { type: 'log', line: `${block.name}: ${String(arg)}` }
       })
+  if (event?.type === 'user') {
+    const results: { content?: unknown }[] = (event.message?.content ?? []).filter(
+      (block: { type: string }) => block.type === 'tool_result',
+    )
+    const hosts = results.flatMap(({ content }) => {
+      const text = Array.isArray(content)
+        ? content.map((block: { text?: string }) => block.text ?? '').join('\n')
+        : String(content)
+      return [...text.matchAll(VIOLATIONS)].flatMap(([, block]) =>
+        [...(block as string).matchAll(REFUSED)].map((m) => m[1] as string),
+      )
+    })
+    return [...new Set(hosts)].map((host) => ({
+      type: 'log',
+      line: `network: refused ${host} (agent shell)`,
+    }))
+  }
   if (event?.type === 'result') {
     // A run that couldn't start, logged out say, still ends with subtype `success`.
     const reason =

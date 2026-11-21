@@ -15,16 +15,18 @@ repos:
   acme/api:
     secrets: [NPM_TOKEN]                 # only setup sees these
     verify: pnpm lint && pnpm test
+    network: [registry.npmjs.org]        # hosts the agent's shell may reach
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
 ```
 
 - **It's the allowlist.** The `github` source reads these repos, and an item from any source, a custom one too, that names a repo no key matches, as its `repo` or its linked PR's, is skipped; `awaywork plan --skipped unlisted_repo` shows them. A repo the config names itself, a routine's `repo` or a `repo_map` value, has to be listed, or the config is refused.
 - **A key** is `owner/name` or a `*` glob, which stays within the owner or the name (`acme/*`, `acme/api-*`).
-- **Settings merge.** A repo takes the settings of every key that names it: globs first, in the order written, then its own key, a later one winning per setting. `secrets` add up and `gates` merge by name. Above, `acme/api` gets the glob's `setup` and its own `verify`.
+- **Settings merge.** A repo takes the settings of every key that names it: globs first, in the order written, then its own key, a later one winning per setting. `secrets` and `network` add up and `gates` merge by name. Above, `acme/api` gets the glob's `setup` and its own `verify`.
 
 - **`setup`** runs once per unit in the fresh clone, before any agent, outside the model; the agent is told it ran.
 - **`verify`** runs once the chain ends, before publishing. A failure still publishes, its tail in the PR body or push summary, and a `deliver: pr` PR opens as a draft; the tail also lands in `verify.log` in the unit's `out/` in the run dir.
+- **`network`** lists the hosts the agent's shell may reach, [offline](../safety/isolation.md#claude-s-shell-is-offline) otherwise. A top-level `network`, the repo keys that name the repo and the rule's own `network` add up. An entry is `host.tld`, `*.host.tld` (its subdomains, not `host.tld` itself: list both for both) or `*`, which opens every host to clients that use the proxy (`HTTPS_PROXY`). Only Claude's shell is limited so far: Codex, Cursor, `setup`, `verify`, `until`, `when` and gate scripts aren't yet, and the judge gate's Claude gets none, nor does a unit on someone else's PR: its code would get the hosts, as with MCP servers.
 - **`test`** is a line in the agent's prompt.
 - **`image`** is what the repo's units run in under [`isolation: container`](../safety/isolation.md#in-a-container).
 - **`instructions`** (top level, per repo, per rule) are file paths relative to the config they're in. A repo can also carry `.awaywork/instructions.md`, read unless the unit is on someone else's PR.
