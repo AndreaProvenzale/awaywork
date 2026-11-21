@@ -543,6 +543,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (start && !lost)
       try {
         await restoreGit(dir)
+        // Only matters after a throw; the run's own call already ran otherwise.
         const lines = (await provider.finish?.(dir)) ?? []
         const stamp = new Date().toISOString()
         await appendFile(

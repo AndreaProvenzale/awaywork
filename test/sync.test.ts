@@ -446,8 +446,7 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
       await writeFile(join(dir, '.git/MERGE_HEAD'), `${at.feature1}\n`)
       await writeFile(join(dir, '.git/info/exclude'), '')
     })
-    const settings = withRepo('true', 'test -f .cursor/sandbox.json')
-    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
     expect(report.results[0]?.outcome?.kind).toBe('pushed')
     const head = await git(at.origin, 'rev-parse', 'feature-1')
     expect(await git(at.origin, 'rev-parse', `${head}^@`)).toBe(`${at.feature1}\n${at.main}`)
@@ -592,8 +591,7 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
       await rm(join(dir, 'db/schema.sql'))
       await writeFile(join(dir, 'x.txt'), 'old')
     })
-    const settings = withRepo('true', 'test -f .cursor/sandbox.json')
-    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
     expect(report.results[0]?.outcome).toEqual({
       kind: 'none',
       reason: "the resolution undoes main's change to db/schema.sql, x.txt, not pushed",
@@ -731,8 +729,7 @@ gates: { risk: { skill: judge } }
       await writeFile(join(dir, '.away/out/questions.md'), 'Which line wins?\n')
       await writeFile(join(dir, '.away/out/status'), 'ask\n')
     })
-    const settings = withRepo('true', 'test -f .cursor/sandbox.json')
-    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
     expect(report.results.map((r) => [r.status, r.outcome, r.questions?.text])).toEqual([
       ['done', { kind: 'none', reason: 'asked questions' }, 'Which line wins?'],
     ])
