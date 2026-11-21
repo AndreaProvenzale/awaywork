@@ -21,185 +21,185 @@ with:
 
 ## Top level
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `extends` | string |  | A base config file this one goes on top of, relative to this file: maps merge, this file's keys winning, and a list replaces the base's; relative paths resolve against the file they're in. A base can't extend another |
-| `windows` | object[] | `[{"start":"01:00","end":"07:00"}]` | Local hours a scheduled run may start units in; each opening is one run; [] for none |
-| `watch` | object | `{}` | awaywork watch, the daemon schedule install keeps running |
-| `limits` | object | `{}` | Unit counts and time per run, for every provider |
-| `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, a worker user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image |
-| `budget` | object | `{}` | Quota shares, for every provider |
-| `providers` (required) | ("claude" \| "codex" \| "cursor" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
-| `forge` | "github" \| "bitbucket" \| object | `"github"` | Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } } |
-| `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
-| `branch` | string | `"away/{key}"` | Branch name template; {key} or {title} is required, {type} is the conventional-commit type |
-| `repos` | map | `{}` | The repos awaywork works in: each key an owner/name or a * glob such as acme/*, with its settings or nothing. A repo takes the settings of every key naming it, globs in the order written and its own key last, a later one winning; an item in a repo no key names is skipped |
-| `gates` | map | `{}` | Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body |
-| `instructions` | string \| string[] |  | Instruction files added to every unit |
-| `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills |
-| `network` | string[] | `[]` | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet |
-| `trust` | string[] | `["collaborators"]` | Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you |
-| `writable` | string[] | `[]` | Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container |
-| `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
-| `queue` | object[] |  | Rules mapping items to skills; without any, nothing runs |
-| `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
-| `store` | object |  | Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back |
-| `keep_runs` | string | `"30d"` | How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report |
+| Key | Type | Description |
+|---|---|---|
+| `extends` | string | A base config file this one goes on top of, relative to this file: maps merge, this file's keys winning, and a list replaces the base's; relative paths resolve against the file they're in. A base can't extend another |
+| `windows` | object[] | Local hours a scheduled run may start units in; each opening is one run; [] for none<br>Default: `[{"start":"01:00","end":"07:00"}]` |
+| `watch` | object | awaywork watch, the daemon schedule install keeps running<br>Default: `{}` |
+| `limits` | object | Unit counts and time per run, for every provider<br>Default: `{}` |
+| `isolation` | "none" \| "user" \| "container" | Who setup, the agent and the checks run as: none, you; user, a worker user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image<br>Default: `"none"` |
+| `budget` | object | Quota shares, for every provider<br>Default: `{}` |
+| `providers` (required) | ("claude" \| "codex" \| "cursor" \| object)[] | Providers to use, a name or a map to override; order = routing preference |
+| `forge` | "github" \| "bitbucket" \| object | Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } }<br>Default: `"github"` |
+| `sources` (required) | object | Where work comes from: built-in sources or your own commands; at least one |
+| `branch` | string | Branch name template; {key} or {title} is required, {type} is the conventional-commit type<br>Default: `"away/{key}"` |
+| `repos` | map | The repos awaywork works in: each key an owner/name or a * glob such as acme/*, with its settings or nothing. A repo takes the settings of every key naming it, globs in the order written and its own key last, a later one winning; an item in a repo no key names is skipped<br>Default: `{}` |
+| `gates` | map | Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body<br>Default: `{}` |
+| `instructions` | string \| string[] | Instruction files added to every unit |
+| `skills` | string[] | Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills<br>Default: `[]` |
+| `network` | string[] | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet<br>Default: `[]` |
+| `trust` | string[] | Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you<br>Default: `["collaborators"]` |
+| `writable` | string[] | Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container<br>Default: `[]` |
+| `mcp` | map | MCP servers a rule or step names in its mcp<br>Default: `{}` |
+| `queue` | object[] | Rules mapping items to skills; without any, nothing runs |
+| `notify` | object | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
+| `store` | object | Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back |
+| `keep_runs` | string | How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report<br>Default: `"30d"` |
 
 ## `windows[]`
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `days` | ("sun" \| "mon" \| "tue" \| "wed" \| "thu" \| "fri" \| "sat")[] |  | Weekdays the window opens on; every day when unset |
-| `start` (required) | time |  | When a scheduled run starts, local time |
-| `end` (required) | time |  | No unit starts after this |
+| Key | Type | Description |
+|---|---|---|
+| `days` | ("sun" \| "mon" \| "tue" \| "wed" \| "thu" \| "fri" \| "sat")[] | Weekdays the window opens on; every day when unset |
+| `start` (required) | time | When a scheduled run starts, local time |
+| `end` (required) | time | No unit starts after this |
 
 ## `watch`
 
 awaywork watch, the daemon schedule install keeps running.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `every` | string | `"5m"` | How often the daemon polls the sources of run: soon rules; a source's own every can make it less often |
-| `debug` | boolean | `false` | Also write each run's full output to the daemon log |
+| Key | Type | Description |
+|---|---|---|
+| `every` | string | How often the daemon polls the sources of run: soon rules; a source's own every can make it less often<br>Default: `"5m"` |
+| `debug` | boolean | Also write each run's full output to the daemon log<br>Default: `false` |
 
 ## `limits`
 
 Unit counts and time per run, for every provider.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `units` | integer |  | At most this many units per run |
-| `units_per_repo` | integer |  | At most this many units per run in one repo |
-| `unit_minutes` | integer |  | Stop a worker after this many minutes |
+| Key | Type | Description |
+|---|---|---|
+| `units` | integer | At most this many units per run |
+| `units_per_repo` | integer | At most this many units per run in one repo |
+| `unit_minutes` | integer | Stop a worker after this many minutes |
 
 ## `budget`
 
 Quota shares, for every provider.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `reserve` | percent | `"10%"` | Never go past 1 - reserve of any window |
-| `per_run` | percent |  | At most this share of the long window per run |
-| `session_max` | percent | `"90%"` | Stop a worker past this share of the short window |
-| `present_session_max` | percent | `"40%"` | Stop a worker past this share of the short window in a run started outside every window |
-| `fallback` | object | `{"units":4,"turns":60}` | Caps when the provider's quota can't be read |
+| Key | Type | Description |
+|---|---|---|
+| `reserve` | percent | Never go past 1 - reserve of any window<br>Default: `"10%"` |
+| `per_run` | percent | At most this share of the long window per run |
+| `session_max` | percent | Stop a worker past this share of the short window<br>Default: `"90%"` |
+| `present_session_max` | percent | Stop a worker past this share of the short window in a run started outside every window<br>Default: `"40%"` |
+| `fallback` | object | Caps when the provider's quota can't be read<br>Default: `{"units":4,"turns":60}` |
 
 ## `budget.fallback`
 
 Caps when the provider's quota can't be read.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `units` (required) | integer |  | Units per run |
-| `turns` | integer | `60` | Turns per unit |
+| Key | Type | Description |
+|---|---|---|
+| `units` (required) | integer | Units per run |
+| `turns` | integer | Turns per unit<br>Default: `60` |
 
 ## `providers[]`
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `claude` | object |  | claude settings |
-| `codex` | object |  | codex settings |
-| `cursor` | object |  | cursor settings |
+| Key | Type | Description |
+|---|---|---|
+| `claude` | object | claude settings |
+| `codex` | object | codex settings |
+| `cursor` | object | cursor settings |
 
 ## `providers[].claude`
 
 claude settings.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `settings` | string |  | Settings file for every worker, relative to the config file; passed as --settings |
-| `model` | string |  | Model passed to the provider's binary; default the binary's |
-| `config_dir` | string |  | Folder of the login it runs on, passed as CLAUDE_CONFIG_DIR, e.g. ~/.claude-work; default the environment's; CLAUDE_CODE_OAUTH_TOKEN wins when set; not with isolation: user or container |
+| Key | Type | Description |
+|---|---|---|
+| `settings` | string | Settings file for every worker, relative to the config file; passed as --settings |
+| `model` | string | Model passed to the provider's binary; default the binary's |
+| `config_dir` | string | Folder of the login it runs on, passed as CLAUDE_CONFIG_DIR, e.g. ~/.claude-work; default the environment's; CLAUDE_CODE_OAUTH_TOKEN wins when set; not with isolation: user or container |
 
 ## `providers[].codex`
 
 codex settings.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `config` | map |  | Config values for every worker, e.g. { model_reasoning_effort: high }; passed as -c |
-| `model` | string |  | Model passed to the provider's binary; default the binary's |
-| `config_dir` | string |  | Folder of the login it runs on, passed as CODEX_HOME, e.g. ~/.codex-work; default the environment's |
+| Key | Type | Description |
+|---|---|---|
+| `config` | map | Config values for every worker, e.g. { model_reasoning_effort: high }; passed as -c |
+| `model` | string | Model passed to the provider's binary; default the binary's |
+| `config_dir` | string | Folder of the login it runs on, passed as CODEX_HOME, e.g. ~/.codex-work; default the environment's |
 
 ## `providers[].cursor`
 
 cursor settings.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `model` | string |  | Model passed to the provider's binary; default the binary's |
+| Key | Type | Description |
+|---|---|---|
+| `model` | string | Model passed to the provider's binary; default the binary's |
 
 ## `providers[].<key>`
 
 A custom provider: any agent CLI, run by a command.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `command` (required) | string |  | Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log |
-| `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt, minutes? }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply |
-| `secrets` | string[] | `[]` | Env vars the command reads; withheld from other workers, listed in Actions |
-| `skills_dir` | string | `".agents/skills"` | Where the CLI finds skills in the clone |
+| Key | Type | Description |
+|---|---|---|
+| `command` (required) | string | Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log |
+| `probe` | string | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt, minutes? }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply |
+| `secrets` | string[] | Env vars the command reads; withheld from other workers, listed in Actions<br>Default: `[]` |
+| `skills_dir` | string | Where the CLI finds skills in the clone<br>Default: `".agents/skills"` |
 
 ## `forge`
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `github` (required) | object |  | GitHub, through gh |
+| Key | Type | Description |
+|---|---|---|
+| `github` (required) | object | GitHub, through gh |
 
 ## `forge.github`
 
 GitHub, through gh.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
-| `user` | string |  | The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins |
+| Key | Type | Description |
+|---|---|---|
+| `host` | string | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
+| `user` | string | The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins |
 
 ## `sources`
 
 Where work comes from: built-in sources or your own commands; at least one.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `github` | object |  | My PRs, PRs awaiting my review and issues assigned to me, in the repos the top-level repos lists, plus any extra searches |
-| `asana` | object |  | My incomplete Asana tasks |
-| `linear` | object |  | My open Linear issues |
-| `jira` | object |  | My unresolved Jira Cloud issues |
-| `routines` | object |  | Routines by name, each an item that comes due on the clock, like a weekly triage |
+| Key | Type | Description |
+|---|---|---|
+| `github` | object | My PRs, PRs awaiting my review and issues assigned to me, in the repos the top-level repos lists, plus any extra searches |
+| `asana` | object | My incomplete Asana tasks |
+| `linear` | object | My open Linear issues |
+| `jira` | object | My unresolved Jira Cloud issues |
+| `routines` | object | Routines by name, each an item that comes due on the clock, like a weekly triage |
 
 ## `sources.github`
 
 My PRs, PRs awaiting my review and issues assigned to me, in the repos the top-level repos lists, plus any extra searches.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `search` | string[] |  | Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
-| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
-| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
+| Key | Type | Description |
+|---|---|---|
+| `search` | string[] | Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
+| `context` | object | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 
 ## `sources.github.context`
 
 Fetches more context for an item, with secrets kept out of the agent's environment.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `command` (required) | string |  | Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder |
-| `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
+| Key | Type | Description |
+|---|---|---|
+| `command` (required) | string | Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder |
+| `secrets` | string[] | Env vars the command needs; withheld from workers, listed in Actions<br>Default: `[]` |
 
 ## `sources.asana`
 
 My incomplete Asana tasks.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `workspace` (required) | string |  | Workspace gid |
-| `projects` | string[] |  | Only tasks in these project gids |
-| `repo_map` | map |  | Project gid -> owner/repo where its tasks' code lives |
-| `token_env` | string | `"ASANA_TOKEN"` | Env var holding the Asana token |
-| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
-| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
-| `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}` |
+| Key | Type | Description |
+|---|---|---|
+| `workspace` (required) | string | Workspace gid |
+| `projects` | string[] | Only tasks in these project gids |
+| `repo_map` | map | Project gid -> owner/repo where its tasks' code lives |
+| `token_env` | string | Env var holding the Asana token<br>Default: `"ASANA_TOKEN"` |
+| `context` | object | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
+| `link` | string | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}` |
 
 ## `sources.asana.context`
 
@@ -209,13 +209,13 @@ Same keys as `sources.github.context`.
 
 My open Linear issues.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `repo_map` | map |  | Team key -> owner/repo where its issues' code lives |
-| `token_env` | string | `"LINEAR_API_KEY"` | Env var holding the Linear personal API key |
-| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
-| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
-| `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}` |
+| Key | Type | Description |
+|---|---|---|
+| `repo_map` | map | Team key -> owner/repo where its issues' code lives |
+| `token_env` | string | Env var holding the Linear personal API key<br>Default: `"LINEAR_API_KEY"` |
+| `context` | object | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
+| `link` | string | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}` |
 
 ## `sources.linear.context`
 
@@ -225,17 +225,17 @@ Same keys as `sources.github.context`.
 
 My unresolved Jira Cloud issues.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `site` (required) | string |  | Jira Cloud site host, e.g. acme.atlassian.net |
-| `email` (required) | string |  | Atlassian account email the API token belongs to |
-| `cloud_id` | string |  | Site cloud id: set for a scoped token, which calls api.atlassian.com |
-| `jql` | string |  | JQL condition ANDed with my unresolved issues |
-| `repo_map` | map |  | Project key -> owner/repo where its issues' code lives |
-| `token_env` | string | `"JIRA_API_TOKEN"` | Env var holding the Atlassian API token |
-| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
-| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
-| `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none |
+| Key | Type | Description |
+|---|---|---|
+| `site` (required) | string | Jira Cloud site host, e.g. acme.atlassian.net |
+| `email` (required) | string | Atlassian account email the API token belongs to |
+| `cloud_id` | string | Site cloud id: set for a scoped token, which calls api.atlassian.com |
+| `jql` | string | JQL condition ANDed with my unresolved issues |
+| `repo_map` | map | Project key -> owner/repo where its issues' code lives |
+| `token_env` | string | Env var holding the Atlassian API token<br>Default: `"JIRA_API_TOKEN"` |
+| `context` | object | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
+| `link` | string | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none |
 
 ## `sources.jira.context`
 
@@ -245,10 +245,10 @@ Same keys as `sources.github.context`.
 
 Routines by name, each an item that comes due on the clock, like a weekly triage.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
-| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
+| Key | Type | Description |
+|---|---|---|
+| `context` | object | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 
 ## `sources.routines.context`
 
@@ -258,63 +258,63 @@ Same keys as `sources.github.context`.
 
 A routine: an item that comes due on the clock.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `days` | ("sun" \| "mon" \| "tue" \| "wed" \| "thu" \| "fri" \| "sat")[] |  | Weekdays it comes due on; every day when unset |
-| `at` (required) | time \| time[] |  | When it comes due, local time: one time or a list |
-| `repo` (required) | string |  | The repo its work happens in, owner/name |
-| `title` (required) | string |  | The item's title |
-| `description` | string | `""` | The item's description, what the worker reads |
+| Key | Type | Description |
+|---|---|---|
+| `days` | ("sun" \| "mon" \| "tue" \| "wed" \| "thu" \| "fri" \| "sat")[] | Weekdays it comes due on; every day when unset |
+| `at` (required) | time \| time[] | When it comes due, local time: one time or a list |
+| `repo` (required) | string | The repo its work happens in, owner/name |
+| `title` (required) | string | The item's title |
+| `description` | string | The item's description, what the worker reads<br>Default: `""` |
 
 ## `sources.<key>`
 
 A custom source: any command that prints your open items as JSON.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `command` (required) | string |  | Shell command printing the items as a JSON array; runs in the config file's folder |
-| `fields` | string[] | `[]` | Item fields rules may match on |
-| `secrets` | string[] | `[]` | Env vars the command reads; the GitHub Actions workflow passes them in |
-| `setup` | string |  | Runs in the config file's folder before awaywork on GitHub Actions, and at build in awaywork's container image |
-| `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's |
-| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
-| `write` | string |  | Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item's updated times as {"before":"…","after":"…"}. Without it, on_done writes nothing to this source |
-| `thread` | boolean |  | A thread host: a rule's `thread` may name this source, whose `write` then also answers {"op":"open","item":"\<card key>","title":"…","body":"…"} with {"key":"…","url":"…"}, and `command` lists the threads it opened as items, their comments the replies |
+| Key | Type | Description |
+|---|---|---|
+| `command` (required) | string | Shell command printing the items as a JSON array; runs in the config file's folder |
+| `fields` | string[] | Item fields rules may match on<br>Default: `[]` |
+| `secrets` | string[] | Env vars the command reads; the GitHub Actions workflow passes them in<br>Default: `[]` |
+| `setup` | string | Runs in the config file's folder before awaywork on GitHub Actions, and at build in awaywork's container image |
+| `link` | string | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's |
+| `every` | string | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
+| `write` | string | Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item's updated times as {"before":"…","after":"…"}. Without it, on_done writes nothing to this source |
+| `thread` | boolean | A thread host: a rule's `thread` may name this source, whose `write` then also answers {"op":"open","item":"\<card key>","title":"…","body":"…"} with {"key":"…","url":"…"}, and `command` lists the threads it opened as items, their comments the replies |
 
 ## `repos.<key>`
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `branch` | string |  | Branch name template for this repo |
-| `setup` | string |  | Setup command, run in the clone before the worker; a failure skips the unit |
-| `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
-| `serve` | object |  | The app a step with serve: true gets, under isolation: none; it can't see your secrets |
-| `verify` | string |  | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
-| `gates` | map | `{}` | Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill |
-| `network` | string[] | `[]` | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet |
-| `trust` | string[] | `[]` | Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you |
-| `writable` | string[] | `[]` | Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container |
-| `test` | string |  | Targeted test command, given to the worker in its prompt |
-| `instructions` | string |  | Instruction file for units in this repo |
-| `image` | string |  | Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain |
+| Key | Type | Description |
+|---|---|---|
+| `branch` | string | Branch name template for this repo |
+| `setup` | string | Setup command, run in the clone before the worker; a failure skips the unit |
+| `secrets` | string[] | Env vars setup needs; withheld from workers, listed in Actions<br>Default: `[]` |
+| `serve` | object | The app a step with serve: true gets, under isolation: none; it can't see your secrets |
+| `verify` | string | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
+| `gates` | map | Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill<br>Default: `{}` |
+| `network` | string[] | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet<br>Default: `[]` |
+| `trust` | string[] | Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you<br>Default: `[]` |
+| `writable` | string[] | Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container<br>Default: `[]` |
+| `test` | string | Targeted test command, given to the worker in its prompt |
+| `instructions` | string | Instruction file for units in this repo |
+| `image` | string | Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain |
 
 ## `repos.<key>.serve`
 
 The app a step with serve: true gets, under isolation: none; it can't see your secrets.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `command` (required) | string |  | Starts the app for a step with serve: true, after setup, with its port in $AWAYWORK_PORT; it stops when the agent does |
-| `ready` (required) | string |  | URL awaywork polls, $AWAYWORK_PORT substituted, until it answers with less than a 500; the step runs without the app after 5 minutes |
+| Key | Type | Description |
+|---|---|---|
+| `command` (required) | string | Starts the app for a step with serve: true, after setup, with its port in $AWAYWORK_PORT; it stops when the agent does |
+| `ready` (required) | string | URL awaywork polls, $AWAYWORK_PORT substituted, until it answers with less than a 500; the step runs without the app after 5 minutes |
 
 ## `repos.<key>.gates.<key>`
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `changed` | string \| string[] |  | Git globs from the repo root; fires when the chain's commits change a matching path; not on a plan or report rule's gate, which has no commits |
-| `command` | string |  | A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, unset on a plan or report, and reads AWAYWORK_OUT_DIR, a read-only copy of what the steps left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with |
-| `skill` | string |  | A skill, yours or built in, that a model runs on the chain's commits and a read-only copy of what the steps left in .away/out, a plan's or report's out files alone, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops |
-| `instructions` | string \| string[] |  | Instruction files a skill gate's judge reads, relative to the config file; never the repo's, and never the rule's |
+| Key | Type | Description |
+|---|---|---|
+| `changed` | string \| string[] | Git globs from the repo root; fires when the chain's commits change a matching path; not on a plan or report rule's gate, which has no commits |
+| `command` | string | A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, unset on a plan or report, and reads AWAYWORK_OUT_DIR, a read-only copy of what the steps left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with |
+| `skill` | string | A skill, yours or built in, that a model runs on the chain's commits and a read-only copy of what the steps left in .away/out, a plan's or report's out files alone, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops |
+| `instructions` | string \| string[] | Instruction files a skill gate's judge reads, relative to the config file; never the repo's, and never the rule's |
 
 ## `gates.<key>`
 
@@ -322,91 +322,91 @@ Same keys as `repos.<key>.gates.<key>`.
 
 ## `mcp.<key>`
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `command` | string |  | Command that starts a stdio server |
-| `args` | string[] |  | The command's arguments |
-| `env` | map |  | The server's env vars, besides its secrets; plain values |
-| `url` | string |  | URL of an HTTP server |
-| `headers` | map |  | HTTP headers; a value may be ${NAME}, or Bearer ${NAME} for Authorization |
-| `secrets` | string[] | `[]` | Env vars the server reads, in its env under their own names or in headers; given only to units whose rule names it, listed in Actions |
-| `tools` | string[] |  | Tools the worker may call; default all the server's |
+| Key | Type | Description |
+|---|---|---|
+| `command` | string | Command that starts a stdio server |
+| `args` | string[] | The command's arguments |
+| `env` | map | The server's env vars, besides its secrets; plain values |
+| `url` | string | URL of an HTTP server |
+| `headers` | map | HTTP headers; a value may be ${NAME}, or Bearer ${NAME} for Authorization |
+| `secrets` | string[] | Env vars the server reads, in its env under their own names or in headers; given only to units whose rule names it, listed in Actions<br>Default: `[]` |
+| `tools` | string[] | Tools the worker may call; default all the server's |
 
 ## `queue[]`
 
 First matching rule wins; top = highest priority.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `skill` (required) | string |  | The skill that does the work |
-| `source` | string |  | Match only items from this source |
-| `where` | object | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where, or an any entry under one, that never names state matches open items only |
-| `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
-| `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet } or { claude: [sonnet, opus] }; default the provider's |
-| `skills` | string[] | `[]` | Extra skills available to the worker; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills |
-| `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
-| `serve` | boolean |  | Start the repo's serve command for the worker, which gets the app's URL |
-| `instructions` | string \| string[] |  | Instruction files added for this rule |
-| `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
-| `network` | string[] | `[]` | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet |
-| `writable` | string[] | `[]` | Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container |
-| `deliver` | "draft_pr" \| "pr" \| "report" \| "push" \| "pending_review" \| "plan" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, a step asks questions with ask in its status file, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans |
-| `wait` | boolean |  | deliver: plan or report: the post waits for your reply on the item, approve as its first line letting the next stage take it, anything else running the step again; default true for plan, false for report; a gate of the rule's own that fires makes it wait anyway |
-| `gates` | map |  | Gates of the rule's own, under names no top-level or repo gate has. On a rule that opens a PR or pushes they run with those, and one that fires does what theirs does; on deliver: plan or report, where those never run, they run on what the step left, without changed, and one that fires puts its line on the post and makes it wait, a planned rule's task holding its card's other tasks until you answer; not on pending_review |
-| `post` | "summary" \| "full" |  | deliver: plan, or a report that posts: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full |
-| `thread` | string |  | Where its posts go and their replies are read: item (default), the item itself; github, an issue awaywork opens as the item's thread in its repo, assigned to you; or a custom source with thread: true, whose write opens one; for a tracker that can't take them; from then on all of the item's posts go there, its plan's tasks' too, and it closes once its source says the item is done |
-| `branch` | string |  | Branch name template for this rule |
-| `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
-| `quota` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
-| `plan_tasks` | integer |  | deliver: plan: at most this many tasks in its plan; default 8 |
-| `units` | integer |  | At most this many units per run from this rule; a chain counts once |
-| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; the chain publishes once, when it ends; a {loop} repeats its steps |
-| `on_done` | object |  | Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported |
-| `run` | "soon" \| "window" |  | When its units start: window (default), in the next window run; soon, as soon as awaywork watch sees one due (a new item, or one changed since its last attempt), polling every watch.every |
+| Key | Type | Description |
+|---|---|---|
+| `skill` (required) | string | The skill that does the work |
+| `source` | string | Match only items from this source |
+| `where` | object | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where, or an any entry under one, that never names state matches open items only<br>Default: `{}` |
+| `provider` | string \| string[] | Providers for this rule, in order; default the providers order |
+| `model` | map | Model per provider for this rule, e.g. { claude: sonnet } or { claude: [sonnet, opus] }; default the provider's |
+| `skills` | string[] | Extra skills available to the worker; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills<br>Default: `[]` |
+| `mcp` | string[] | MCP servers the worker gets, by their name under the top-level mcp |
+| `serve` | boolean | Start the repo's serve command for the worker, which gets the app's URL |
+| `instructions` | string \| string[] | Instruction files added for this rule |
+| `with` | map | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
+| `network` | string[] | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet<br>Default: `[]` |
+| `writable` | string[] | Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container<br>Default: `[]` |
+| `deliver` | "draft_pr" \| "pr" \| "report" \| "push" \| "pending_review" \| "plan" | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, a step asks questions with ask in its status file, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans |
+| `wait` | boolean | deliver: plan or report: the post waits for your reply on the item, approve as its first line letting the next stage take it, anything else running the step again; default true for plan, false for report; a gate of the rule's own that fires makes it wait anyway |
+| `gates` | map | Gates of the rule's own, under names no top-level or repo gate has. On a rule that opens a PR or pushes they run with those, and one that fires does what theirs does; on deliver: plan or report, where those never run, they run on what the step left, without changed, and one that fires puts its line on the post and makes it wait, a planned rule's task holding its card's other tasks until you answer; not on pending_review |
+| `post` | "summary" \| "full" | deliver: plan, or a report that posts: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full |
+| `thread` | string | Where its posts go and their replies are read: item (default), the item itself; github, an issue awaywork opens as the item's thread in its repo, assigned to you; or a custom source with thread: true, whose write opens one; for a tracker that can't take them; from then on all of the item's posts go there, its plan's tasks' too, and it closes once its source says the item is done |
+| `branch` | string | Branch name template for this rule |
+| `order` | "oldest" \| "newest" \| "updated" | Which item goes first: oldest, newest or last updated; default the source order |
+| `quota` | object | Run this rule's unit only when the quota holds; otherwise skip it |
+| `plan_tasks` | integer | deliver: plan: at most this many tasks in its plan; default 8 |
+| `units` | integer | At most this many units per run from this rule; a chain counts once |
+| `then` | string \| object \| (string \| object)[] | Steps run in turn after this rule's unit, in its clone; the chain publishes once, when it ends; a {loop} repeats its steps |
+| `on_done` | object | Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported |
+| `run` | "soon" \| "window" | When its units start: window (default), in the next window run; soon, as soon as awaywork watch sees one due (a new item, or one changed since its last attempt), polling every watch.every |
 
 ## `queue[].where`
 
 Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where, or an any entry under one, that never names state matches open items only.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `any` | object[] |  | Matches when at least one of these conditions does; each is a where of its own |
+| Key | Type | Description |
+|---|---|---|
+| `any` | object[] | Matches when at least one of these conditions does; each is a where of its own |
 
 ## `queue[].where.<key>`
 
 Matches items whose field has none of these values.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `not` (required) | string \| number \| boolean \| (string \| number \| boolean)[] |  |  |
+| Key | Type | Description |
+|---|---|---|
+| `not` (required) | string \| number \| boolean \| (string \| number \| boolean)[] |  |
 
 ## `queue[].where.<key>` (gt)
 
 Matches items whose number field passes every comparison.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `gt` | number |  | Greater than |
-| `gte` | number |  | Greater than or equal to |
-| `lt` | number |  | Less than |
-| `lte` | number |  | Less than or equal to |
+| Key | Type | Description |
+|---|---|---|
+| `gt` | number | Greater than |
+| `gte` | number | Greater than or equal to |
+| `lt` | number | Less than |
+| `lte` | number | Less than or equal to |
 
 ## `queue[].where.<key>` (older_than)
 
 Matches items whose date field is this long before now, e.g. { older_than: 3d }.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `older_than` | string |  | Longer ago than this span |
-| `newer_than` | string |  | More recent than this span |
+| Key | Type | Description |
+|---|---|---|
+| `older_than` | string | Longer ago than this span |
+| `newer_than` | string | More recent than this span |
 
 ## `queue[].where.<key>` (matches)
 
 Matches items whose text field contains a match, e.g. `{ matches: '^\[bug\]' }`.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `matches` (required) | string |  | A regular expression, case-insensitive |
+| Key | Type | Description |
+|---|---|---|
+| `matches` (required) | string | A regular expression, case-insensitive |
 
 ## `queue[].gates.<key>`
 
@@ -416,52 +416,52 @@ Same keys as `repos.<key>.gates.<key>`.
 
 Run this rule's unit only when the quota holds; otherwise skip it.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `runs_until_reset` | integer |  | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window |
-| `headroom` | percent |  | Holds when at least this share of the long window is left under this run's ceiling |
+| Key | Type | Description |
+|---|---|---|
+| `runs_until_reset` | integer | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window |
+| `headroom` | percent | Holds when at least this share of the long window is left under this run's ceiling |
 
 ## `queue[].then`
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `skill` (required) | string |  | The skill that does the work |
-| `provider` | string \| string[] |  | Providers for this step, in order; default the rule's, [] the providers order |
-| `model` | map |  | Model per provider for this step; default the rule's |
-| `skills` | string[] |  | Extra skills available to the worker; default the rule's, [] none |
-| `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none |
-| `serve` | boolean |  | Start the repo's serve command for this step; default the rule's |
-| `instructions` | string \| string[] |  | Instruction files added for this step; default the rule's, [] none |
-| `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
-| `when` | object |  | Run this step only when every key holds; otherwise skip it |
+| Key | Type | Description |
+|---|---|---|
+| `skill` (required) | string | The skill that does the work |
+| `provider` | string \| string[] | Providers for this step, in order; default the rule's, [] the providers order |
+| `model` | map | Model per provider for this step; default the rule's |
+| `skills` | string[] | Extra skills available to the worker; default the rule's, [] none |
+| `mcp` | string[] | MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none |
+| `serve` | boolean | Start the repo's serve command for this step; default the rule's |
+| `instructions` | string \| string[] | Instruction files added for this step; default the rule's, [] none |
+| `with` | map | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
+| `when` | object | Run this step only when every key holds; otherwise skip it |
 
 ## `queue[].then.when`
 
 Run this step only when every key holds; otherwise skip it.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `verdict` | string \| string[] \| object |  | The latest verdict in the chain; a list means any of, {not} negates |
-| `command` | string |  | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
-| `changed` | string \| string[] |  | Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started |
+| Key | Type | Description |
+|---|---|---|
+| `verdict` | string \| string[] \| object | The latest verdict in the chain; a list means any of, {not} negates |
+| `command` | string | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
+| `changed` | string \| string[] | Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started |
 
 ## `queue[].then.when.verdict`
 
 Matches every verdict but these.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `not` (required) | string \| string[] |  |  |
+| Key | Type | Description |
+|---|---|---|
+| `not` (required) | string \| string[] |  |
 
 ## `queue[].then` (loop)
 
 Steps repeated until a condition holds.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `loop` (required) | string \| object \| (string \| object)[] |  | Steps run in turn every round, in the chain's clone |
-| `until` (required) | object |  | Ends the loop as soon as it holds; checked after every step |
-| `max` (required) | integer |  | At most this many rounds, up to 5 |
+| Key | Type | Description |
+|---|---|---|
+| `loop` (required) | string \| object \| (string \| object)[] | Steps run in turn every round, in the chain's clone |
+| `until` (required) | object | Ends the loop as soon as it holds; checked after every step |
+| `max` (required) | integer | At most this many rounds, up to 5 |
 
 ## `queue[].then.loop`
 
@@ -491,10 +491,10 @@ Same keys as `queue[].then.when.verdict`.
 
 Ends the loop as soon as it holds; checked after every step.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `verdict` | string \| string[] \| object |  | The latest verdict a loop step wrote; a list means any of, {not} negates |
-| `command` | string |  | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
+| Key | Type | Description |
+|---|---|---|
+| `verdict` | string \| string[] \| object | The latest verdict a loop step wrote; a list means any of, {not} negates |
+| `command` | string | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
 
 ## `queue[].then.until.verdict`
 
@@ -552,36 +552,36 @@ Same keys as `queue[].then.when.verdict`.
 
 Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `move` | string |  | Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add |
-| `comment` | string |  | result posts the unit's result as awaywork's comment, before any move: a report rule's report, else a link to what it published |
+| Key | Type | Description |
+|---|---|---|
+| `move` | string | Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add |
+| `comment` | string | result posts the unit's result as awaywork's comment, before any move: a report rule's report, else a link to what it published |
 
 ## `notify`
 
 Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `command` (required) | string |  | Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS, _ITEM_URL, _ITEM_KEY and _SOURCE (one line per item), _REPO and, when there is one, _VERDICT, _PR_URL, _REPORT or _OUT_DIR for a unit |
-| `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
+| Key | Type | Description |
+|---|---|---|
+| `command` (required) | string | Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS, _ITEM_URL, _ITEM_KEY and _SOURCE (one line per item), _REPO and, when there is one, _VERDICT, _PR_URL, _REPORT or _OUT_DIR for a unit |
+| `secrets` | string[] | Env vars the command needs; withheld from workers, listed in Actions<br>Default: `[]` |
 
 ## `store`
 
 Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `command` (required) | string |  | Shell command run like a custom source's, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or {"skip":true} to keep the file out of the store, or reads {"op":"get","url"} and prints the file's bytes |
-| `secrets` | string[] | `[]` | Env vars the command reads; withheld from workers, listed in Actions |
-| `get` | boolean | `true` | false: the command only puts, and awaywork reads a file back with a plain HTTP GET of its URL |
-| `read` | object | `{}` | What comes back into a unit's context when it reads its item's thread |
+| Key | Type | Description |
+|---|---|---|
+| `command` (required) | string | Shell command run like a custom source's, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or {"skip":true} to keep the file out of the store, or reads {"op":"get","url"} and prints the file's bytes |
+| `secrets` | string[] | Env vars the command reads; withheld from workers, listed in Actions<br>Default: `[]` |
+| `get` | boolean | false: the command only puts, and awaywork reads a file back with a plain HTTP GET of its URL<br>Default: `true` |
+| `read` | object | What comes back into a unit's context when it reads its item's thread<br>Default: `{}` |
 
 ## `store.read`
 
 What comes back into a unit's context when it reads its item's thread.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `max_mb` | number | `10` | At most this many MB of a unit's files come back; the rest stay links |
-| `files` | string[] | `[]` | Globs of the file names that come back, e.g. ["*.md", "*.yml"]; default every file |
+| Key | Type | Description |
+|---|---|---|
+| `max_mb` | number | At most this many MB of a unit's files come back; the rest stay links<br>Default: `10` |
+| `files` | string[] | Globs of the file names that come back, e.g. ["*.md", "*.yml"]; default every file<br>Default: `[]` |
