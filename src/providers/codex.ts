@@ -264,7 +264,7 @@ export const codex = codexProvider()
 
 /** On Linux, Codex masks an absent read-only path with an empty file: this global excludes file, outside the clone, keeps `HOOKED` out of a commit. Returns its folder. */
 async function writeMaskExcludes(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'awaywork-excludes-'))
+  const dir = await mkdtemp('/tmp/awaywork-excludes-')
   // The worker user reads it; it can't write it.
   await chmod(dir, 0o755)
   await writeFile(join(dir, 'ignore'), HOOKED.map((p) => `/${p}\n`).join(''), { mode: 0o644 })
@@ -274,14 +274,11 @@ async function writeMaskExcludes(): Promise<string> {
 /** Codex's own policy sets the git config in its shell, as its default excludes drop any variable named `*KEY*`. */
 const ignoreMasks = (dir: string | undefined) =>
   dir
-    ? [
-        '-c',
-        `shell_environment_policy.set=${toml({
-          GIT_CONFIG_COUNT: '1',
-          GIT_CONFIG_KEY_0: 'core.excludesFile',
-          GIT_CONFIG_VALUE_0: join(dir, 'ignore'),
-        })}`,
-      ]
+    ? Object.entries({
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'core.excludesFile',
+        GIT_CONFIG_VALUE_0: join(dir, 'ignore'),
+      }).flatMap(([name, value]) => ['-c', `shell_environment_policy.set.${name}=${toml(value)}`])
     : []
 
 /** A profile whose shell writes the clone and reaches only the unit's `network` hosts, none by default. */

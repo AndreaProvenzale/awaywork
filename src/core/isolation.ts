@@ -83,7 +83,7 @@ export interface Box {
 
 export function start<O extends LaunchOptions>(file: string, args: readonly string[], options: O) {
   if (boxed) return inContainer(file, args, options)
-  const { home, ...rest } = options
+  const { home, tmpdir: _, ...rest } = options
   if (!worker)
     return execa(file, args, (home ? { ...rest, env: { ...rest.env, HOME: home } } : rest) as O)
   const subprocess = execa(bin('sudo'), sudoArgs(worker, file, args, options), {
