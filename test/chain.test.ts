@@ -28,7 +28,14 @@ import { summarize } from '#format/report'
 import { type Attempts, recordAttempts } from '#plan/attempts'
 import { planRun } from '#plan/foreman'
 import { footer } from '#posts/footer'
-import { formatReport, type RunReport, runHeadline, runLine } from '#posts/report'
+import {
+  formatReport,
+  type RunReport,
+  runHeadline,
+  runLine,
+  type UnitResult,
+  unitNotes,
+} from '#posts/report'
 import { allowance } from '#quota/budget'
 import { runUnits } from '#worker/units/run'
 import { withRepos } from './fakes/acme'
@@ -612,6 +619,30 @@ it("keeps a publish error whole in the last step's worker.log", async () => {
   const last = await readFile(join(unitDir, '2-review/worker.log'), 'utf8')
   expect(last).toMatch(/^\S+Z publish error: Error: gh: y+ PUB-TAIL/m)
   expect(await readFile(join(unitDir, '1-implement/worker.log'), 'utf8')).not.toContain('PUB-TAIL')
+})
+
+it("logs what a provider set aside and what it refused, and shows the set-aside in the chain's notes", async () => {
+  const calls: string[] = []
+  const provider: Provider = {
+    ...worker({}),
+    setAside: async () => ['network: set aside .cursor/sandbox.json (adds pypi.org)'],
+    finish: async () => {
+      calls.push('finish')
+      return ['network: refused evil.example (agent shell)']
+    },
+  }
+  const { runDir, report } = await run(
+    'queue: [{ skill: implement, deliver: pr }]\n',
+    [issue(1)],
+    provider,
+  )
+  const log = await readFile(join(runDir, 'units/acme-api-1/1-implement/worker.log'), 'utf8')
+  expect(log).toMatch(/network: set aside \.cursor\/sandbox\.json \(adds pypi\.org\)\n/)
+  expect(log).toMatch(/network: refused evil\.example \(agent shell\)\n/)
+  expect(calls).toEqual(['finish'])
+  expect(unitNotes(report.results[0] as UnitResult)).toEqual([
+    'network: set aside .cursor/sandbox.json (adds pypi.org)',
+  ])
 })
 
 it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {

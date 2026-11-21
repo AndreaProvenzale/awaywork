@@ -243,6 +243,10 @@ export interface Provider {
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
   /** Writes what `run` reads in the clone, before the worker user or a container gets it. */
   prepare?(job: Job): Promise<void>
+  /** Sets files of the clone aside for the run, after `prepare`; returns a line each, for `worker.log` and the result. */
+  setAside?(job: Job): Promise<string[]>
+  /** Once the worker is done and awaywork has put the clone's git config back: puts back what `setAside` took, and returns lines for `worker.log`. */
+  finish?(dir: string): Promise<string[]>
   /** Under a worker user, whose `HOME` is fresh for each clone: lends it the machine's own login for the run. */
   login?: Login
   /** The env var naming the folder its login is in, which a config's `config_dir` sets; the folder without it, and how to log in. */
@@ -415,7 +419,7 @@ export interface Rule extends Step {
   /** How the chain publishes its commits: one draft or ready PR, or a push onto your PR; report, pending_review and plan commit nothing. */
   deliver?: Deliver
   branch?: string
-  /** Hosts added to the repo's and the top level's for Claude's Bash. */
+  /** Hosts added to the repo's and the top level's for the agent's shell. */
   network?: string[]
   source?: string
   where: Where

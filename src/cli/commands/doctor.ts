@@ -22,6 +22,7 @@ import type { Config } from '#config/schema'
 import { hasSkills, readSetup, unknownSkillsWarning } from '#config/skills'
 import { canMatch } from '#config/validate/where'
 import {
+  cursorSandboxStarts,
   DOCKER_TIMEOUT_MS,
   dockerVersion,
   inAwayworkImage,
@@ -190,6 +191,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       const sandbox = await claudeSandbox(config, boxed, asWorker)
       report(sandbox ? 'warn' : 'ok', 'claude sandbox', sandbox ?? 'Bash runs offline')
     }
+    if (id === 'cursor' && !keyless && !isolation.some((c) => c.status === 'FAIL')) {
+      const sandbox = await cursorSandbox(config, boxed, asWorker, provider.bin)
+      report(sandbox ? 'warn' : 'ok', 'cursor sandbox', sandbox ?? 'its shell runs offline')
+    }
     if (!keyless && asWorker && !provider.login && unset.length > 0)
       report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
     const pin = pins.find((p) => p.what === id)
@@ -261,21 +266,39 @@ export const configFailure = (error: Error, path: string): Check => ({
   detail: error.message.split('\n').slice(1).join('; ').trim(),
 })
 
-/** Why Claude's Bash sandbox can't start where units run (in each repo's image under a container), if it can't. */
-async function claudeSandbox(
+/** Where an agent's sandbox can't start (in each repo's image under a container), as ` in <image>` or ` here`, if anywhere. */
+async function noSandbox(
   config: Config,
   boxed: boolean,
   asWorker: boolean,
+  starts: (where: { image?: string; user?: string }) => Promise<boolean>,
 ): Promise<string | undefined> {
   const images = boxed ? [...new Set(Object.values(config.repos).map((r) => r.image))] : [undefined]
   for (const image of images) {
     if (boxed && !image) continue
-    if (await sandboxStarts({ image, user: asWorker ? WORKER : undefined })) continue
-    const needs = inAwayworkImage(process.env)
-      ? ''
-      : ' (needs bubblewrap, socat and user namespaces)'
-    return `bwrap can't start${image ? ` in ${image}` : ' here'}${needs}: Claude's Bash runs unsandboxed, with network access`
+    if (!(await starts({ image, user: asWorker ? WORKER : undefined })))
+      return image ? ` in ${image}` : ' here'
   }
+}
+
+/** Why Claude's Bash sandbox can't start where units run, if it can't. */
+async function claudeSandbox(config: Config, boxed: boolean, asWorker: boolean) {
+  const where = await noSandbox(config, boxed, asWorker, (w) => sandboxStarts(w))
+  const needs = inAwayworkImage(process.env) ? '' : ' (needs bubblewrap, socat and user namespaces)'
+  return (
+    where &&
+    `bwrap can't start${where}${needs}: Claude's Bash runs unsandboxed, with network access`
+  )
+}
+
+/** Why Cursor's shell sandbox can't start where units run, if it can't. */
+async function cursorSandbox(config: Config, boxed: boolean, asWorker: boolean, bin = 'agent') {
+  const where = await noSandbox(config, boxed, asWorker, (w) => cursorSandboxStarts(bin, w))
+  const needs = ' (needs user namespaces, which Ubuntu 24.04 refuses without an AppArmor profile)'
+  return (
+    where &&
+    `its sandbox can't start${where}${needs}: Cursor's shell runs unsandboxed, with network access`
+  )
 }
 
 const GH_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']

@@ -56,6 +56,15 @@ runs:
       run: env -i PATH="$PATH" HOME="$HOME" USER="$USER" bash -eo pipefail -c "$SCRIPTS"
       env:
         SCRIPTS: ${{ inputs.scripts }}
+    # Ubuntu's AppArmor refuses user namespaces to Cursor's sandbox helper without a profile.
+    - name: Let Cursor's sandbox start
+      if: runner.environment == 'github-hosted'
+      shell: bash
+      run: |
+        [ -d /opt/cursor/.local/share/cursor-agent/versions ] || exit 0
+        printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+          'profile cursor_sandbox /opt/cursor/.local/share/cursor-agent/versions/*/cursorsandbox flags=(unconfined) { userns, }' |
+          sudo apparmor_parser -r
     # The machine's own installs and logins stay as they are; this folder is emptied every job.
     - name: Install for this job
       if: runner.environment != 'github-hosted'

@@ -238,25 +238,50 @@ const sandboxes = new Map<string, boolean>()
  * It runs outside `start`, so no exit kills the worker's processes, and once per process for each image or user.
  */
 export async function sandboxStarts(
-  { image, user }: Where,
+  where: Where,
   signal?: AbortSignal,
   run: typeof execa = execa,
 ): Promise<boolean> {
-  if (!image && process.platform !== 'linux') return true
-  const key = image ?? user ?? ''
+  if (!where.image && process.platform !== 'linux') return true
+  return probeStarts('bwrap', where, 'bwrap', BWRAP_PROBE, signal, run)
+}
+
+/** Cursor's own startup check, as its bundle runs it: the helper beside `agent` (`$0`), no model call; exit 0 when its sandbox starts. */
+const CURSOR_PROBE = [
+  '-c',
+  `D=$(dirname "$(readlink -f "$(command -v "$0")")") && echo '{"sandbox":{"type":"workspace_readwrite","cwd":"/tmp"}}' | "$D/cursorsandbox" --policy /dev/stdin --preflight-only -- /bin/true`,
+]
+
+/** Whether Cursor's sandbox can start `where`, for the binary `agent`; once per process for each image or user. */
+export const cursorSandboxStarts = (
+  agent: string,
+  where: Where,
+  signal?: AbortSignal,
+  run: typeof execa = execa,
+) => probeStarts(`cursor ${agent}`, where, 'sh', [...CURSOR_PROBE, agent], signal, run)
+
+async function probeStarts(
+  tool: string,
+  { image, user }: Where,
+  file: string,
+  args: string[],
+  signal: AbortSignal | undefined,
+  run: typeof execa,
+): Promise<boolean> {
+  const key = `${tool} ${image ?? user ?? ''}`
   const known = sandboxes.get(key)
   if (known !== undefined) return known
   const options = { reject: false, cancelSignal: signal } as const
   const ran = image
-    ? await run(bin('docker'), inImage(image, ['bwrap', ...BWRAP_PROBE]), options)
+    ? await run(bin('docker'), inImage(image, [file, ...args]), options)
     : user
-      ? await run(
-          bin('sudo'),
-          sudoArgs(user, 'bwrap', BWRAP_PROBE, { env: {}, extendEnv: false }),
-          { ...options, env: {}, extendEnv: false },
-        )
-      : await run(bin('bwrap'), BWRAP_PROBE, options)
-  // Docker's own failure (125) says nothing about bwrap, and may pass later.
+      ? await run(bin('sudo'), sudoArgs(user, file, args, { env: {}, extendEnv: false }), {
+          ...options,
+          env: {},
+          extendEnv: false,
+        })
+      : await run(bin(file), args, options)
+  // Docker's own failure (125) says nothing about the sandbox, and may pass later.
   if (!signal?.aborted && ran.exitCode !== 125) sandboxes.set(key, !ran.failed)
   return !ran.failed
 }

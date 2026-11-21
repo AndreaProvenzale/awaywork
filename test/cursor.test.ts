@@ -3,14 +3,16 @@ import { mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/prom
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '#core/types'
-import { cliConfig, cursorProvider, mcpConfig, toEvents } from '#providers/cursor'
+import { cliConfig, cursorProvider, mcpConfig, refusedLines, toEvents } from '#providers/cursor'
 import { providerContract } from './contracts/provider.contract'
 import { fakeItem } from './fakes/items'
 
 const bin = fileURLToPath(new URL('./fakes/cursor.mjs', import.meta.url))
-const provider = cursorProvider(bin)
+const provider = cursorProvider(bin, async () => true)
+const unwalled = cursorProvider(bin, async () => false)
 const tmp = await mkdtemp(join(tmpdir(), 'awaywork-cursor-'))
 const recorded = (name: string) =>
   readFileSync(new URL(`./fixtures/cursor/${name}.jsonl`, import.meta.url), 'utf8')
@@ -155,7 +157,7 @@ describe('cursor provider', () => {
       HOME: join(tmp, '.away/agent-home'),
       AGENT_CLI_CREDENTIAL_STORE: 'memory',
       CURSOR_API_KEY: 'key',
-      prompt: 'fix it',
+      prompt: expect.stringMatching(/^fix it\n/),
     })
     expect(env.CURSOR_CONFIG_DIR).toBeUndefined()
     expect(env.XDG_CONFIG_HOME).toBeUndefined()
@@ -188,9 +190,17 @@ describe('cursor provider', () => {
     const read = async (name: string) => JSON.parse(await readFile(join(home, name), 'utf8'))
     expect(await read('cli-config.json')).toEqual({
       version: 1,
+      sandbox: { mode: 'enabled', networkAccess: 'user_config_only' },
       permissions: {
-        allow: ['Shell(*)', 'Read(**)', 'Write(**)', 'Mcp(db:*)', 'Mcp(sentry:search_issues)'],
-        deny: [],
+        allow: ['Read(**)', 'Write(**)', 'Mcp(db:*)', 'Mcp(sentry:search_issues)'],
+        deny: ['Write(**/.cursor/**)'],
+      },
+    })
+    expect(await read('sandbox.json')).toEqual({
+      networkPolicy: {
+        default: 'deny',
+        allow: ['localhost', '127.0.0.1'],
+        logging: { decisionLogPath: join(dir, '.away/cursor-network.jsonl'), logFormat: 'jsonl' },
       },
     })
     expect(await read('mcp.json')).toEqual({
@@ -210,6 +220,7 @@ describe('cursor provider', () => {
     expect((await stat(join(home, 'mcp.json'))).mode & 0o777).toBe(0o600)
     await expect(readFile(join(home, 'hooks.json'))).rejects.toThrow()
     expect(cliConfig({}).permissions.allow).toEqual(['Shell(*)', 'Read(**)', 'Write(**)'])
+    expect(cliConfig({}, ['*']).sandbox).toEqual({ mode: 'enabled', networkAccess: 'allow_all' })
     expect(mcpConfig({}, {})).toEqual({ mcpServers: {} })
   })
 
@@ -232,6 +243,147 @@ describe('cursor provider', () => {
     expect(provider.unavailable).toBeUndefined()
     expect(provider.install).toEqual({
       script: expect.stringContaining('| HOME=/opt/cursor bash'),
+    })
+  })
+})
+
+describe('cursor shell walled to the network hosts', () => {
+  const homeOf = (dir: string) => join(dir, '.away/agent-home/.cursor')
+  const walled = async (unit: Partial<Job['unit']>, make = provider) => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-cursor-wall-'))
+    await make.prepare?.({ ...job(), unit: { ...job().unit, ...unit }, dir })
+    const read = async (name: string) => JSON.parse(await readFile(join(homeOf(dir), name), 'utf8'))
+    return { dir, read }
+  }
+
+  it("lists the unit's hosts in sandbox.json, and opens the shell for *", async () => {
+    const hosts = await walled({ network: ['pypi.org', '*.prisma.sh'] })
+    expect((await hosts.read('sandbox.json')).networkPolicy).toMatchObject({
+      default: 'deny',
+      allow: ['localhost', '127.0.0.1', 'pypi.org', '*.prisma.sh'],
+    })
+    expect((await hosts.read('cli-config.json')).sandbox.networkAccess).toBe('user_config_only')
+    const all = await walled({ network: ['*'] })
+    expect((await all.read('cli-config.json')).sandbox.networkAccess).toBe('allow_all')
+  })
+
+  it("lists no host on someone else's PR", async () => {
+    for (const unit of [{ foreign: true }, { untrusted: true }]) {
+      const { read } = await walled({ network: ['pypi.org'], ...unit })
+      expect((await read('sandbox.json')).networkPolicy.allow).toEqual(['localhost', '127.0.0.1'])
+    }
+  })
+
+  it("keeps the shell open where the sandbox can't start, and says so", async () => {
+    const { dir, read } = await walled({ network: ['pypi.org'] }, unwalled)
+    expect(await read('cli-config.json')).toEqual({
+      version: 1,
+      permissions: { allow: ['Shell(*)', 'Read(**)', 'Write(**)'], deny: [] },
+    })
+    await expect(readFile(join(homeOf(dir), 'sandbox.json'))).rejects.toThrow()
+    const file = join(tmp, 'open-env.json')
+    const events = await collect(
+      unwalled.run(job({ FAKE_ENV: file }), new AbortController().signal),
+    )
+    expect(events[0]).toEqual({
+      type: 'log',
+      line: "Cursor's sandbox can't start here: its shell runs unsandboxed",
+    })
+    expect(JSON.parse(await readFile(file, 'utf8')).prompt).toBe('fix it')
+  })
+
+  it('tells the model the shell is sandboxed, with its hosts', async () => {
+    const file = join(tmp, 'walled-env.json')
+    const network = ['pypi.org']
+    await run({ ...job({ FAKE_ENV: file }), unit: { ...job().unit, network } })
+    expect(JSON.parse(await readFile(file, 'utf8')).prompt).toMatch(
+      /^fix it\n\nYour shell is sandboxed: .* reaches pypi\.org\./,
+    )
+  })
+
+  it('reads the refused hosts from the decision log, skipping its metadata line', () => {
+    const rows = [
+      { type: 'sandbox_metadata', version: 1 },
+      { host: 'example.org', port: 443, decision: 'deny', reason: 'allow_list' },
+      { host: 'pypi.org', port: 443, decision: 'allow' },
+      { host: 'example.org', port: 80, decision: 'deny' },
+      { host: 'evil.test', port: 443, decision: 'deny' },
+    ]
+    expect(refusedLines(`${rows.map((r) => JSON.stringify(r)).join('\n')}\nnot json\n`)).toEqual([
+      'network: refused example.org (agent shell)',
+      'network: refused evil.test (agent shell)',
+    ])
+    expect(refusedLines('')).toEqual([])
+  })
+
+  it("logs the refusals from the run's decision log once it is over", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-cursor-log-'))
+    await mkdir(join(dir, '.away'))
+    const row = { host: 'example.org', port: 443, decision: 'deny' }
+    await writeFile(join(dir, '.away/cursor-network.jsonl'), `${JSON.stringify(row)}\n`)
+    expect(await provider.finish?.(dir)).toEqual(['network: refused example.org (agent shell)'])
+    expect(await provider.finish?.(tmp)).toEqual([])
+  })
+
+  describe("a clone's own .cursor/sandbox.json", () => {
+    const git = (dir: string, ...args: string[]) =>
+      execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+    const clone = async (committed: boolean) => {
+      const dir = await mkdtemp(join(tmpdir(), 'awaywork-cursor-aside-'))
+      await git(dir, 'init', '-q')
+      await mkdir(join(dir, '.cursor'))
+      await writeFile(join(dir, 'a.txt'), 'a')
+      if (committed)
+        await writeFile(
+          join(dir, '.cursor/sandbox.json'),
+          JSON.stringify({ networkPolicy: { allow: ['pypi.org', 'files.pythonhosted.org'] } }),
+        )
+      await git(dir, 'add', '-A')
+      await git(dir, 'commit', '-qm', 'init')
+      return dir
+    }
+    const status = async (dir: string) => (await git(dir, 'status', '--porcelain')).stdout
+
+    it('moves out for the run, stays out of its commits, and comes back with a clean tree', async () => {
+      const dir = await clone(true)
+      const j = { ...job(), dir }
+      expect(await provider.setAside?.(j)).toEqual([
+        'network: set aside .cursor/sandbox.json (adds pypi.org, files.pythonhosted.org)',
+      ])
+      await expect(stat(join(dir, '.cursor/sandbox.json'))).rejects.toThrow()
+      expect(await status(dir)).toBe('')
+      await writeFile(join(dir, 'b.txt'), 'b')
+      await git(dir, 'add', '-A')
+      await git(dir, 'commit', '-qm', 'work')
+      expect((await git(dir, 'show', '--name-status', '--format=', 'HEAD')).stdout).toBe('A\tb.txt')
+      await provider.finish?.(dir)
+      expect(await readFile(join(dir, '.cursor/sandbox.json'), 'utf8')).toContain('pypi.org')
+      expect(await status(dir)).toBe('')
+      expect((await git(dir, 'ls-files', '-v', '--', '.cursor')).stdout).toMatch(/^H /)
+    })
+
+    it('leaves a clone without one, and an unwalled run, alone', async () => {
+      const bare = await clone(false)
+      expect(await provider.setAside?.({ ...job(), dir: bare })).toEqual([])
+      await provider.finish?.(bare)
+      const open = await clone(true)
+      expect(await unwalled.setAside?.({ ...job(), dir: open })).toEqual([])
+      await provider.finish?.(open)
+      expect(await status(open)).toBe('')
+      expect(await readFile(join(open, '.cursor/sandbox.json'), 'utf8')).toContain('pypi.org')
+    })
+
+    it('refuses one that links outside the clone', async () => {
+      const dir = await clone(false)
+      const outside = join(await mkdtemp(join(tmpdir(), 'awaywork-outside-')), 'sandbox.json')
+      await writeFile(outside, '{}')
+      await symlink(outside, join(dir, '.cursor/sandbox.json'))
+      await expect(provider.setAside?.({ ...job(), dir })).rejects.toThrow('links outside')
+      expect(await readFile(outside, 'utf8')).toBe('{}')
+    })
+
+    it("is one of the files a PR author's clone hides from Cursor", () => {
+      expect(provider.repoConfig).toContain('.cursor/sandbox.json')
     })
   })
 })

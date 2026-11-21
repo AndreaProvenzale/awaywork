@@ -421,6 +421,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
       watch: input.watch,
     })
     await restoreGit(dir)
+    for (const line of (await provider.finish?.(dir)) ?? []) log(line)
     Object.assign(result, worker)
     if (worker.reason) result.reason = maskSecrets(worker.reason, secrets, input.ctx.env)
     if (loop && p.loop) loop.rounds = p.loop.round
