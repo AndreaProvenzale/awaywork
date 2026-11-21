@@ -15,4 +15,5 @@ Open-source harness that runs headless coding agents on a developer's real tasks
 - **Formatters own the layout.** Biome formats code, Prettier Markdown and YAML; Markdown prose is one line per paragraph. Run `pnpm format`; `pnpm lint` checks.
 - **No dates in docs.** Git history owns time.
 - **Docs follow the code.** A change to the CLI or the config schema runs `pnpm docs:gen` (from source, no build) and updates the guides it touches; CI fails on stale generated docs.
+- **Conventional commits.** Commit subjects and PR titles are `type(scope): summary`, scope optional, types `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`; `!` before the colon marks a breaking change. The summary is imperative, lowercase, no period; the whole subject fits in 72 characters. Branches are `type/short-slug` (`fix/table-test-rows`). Squash subjects become the release notes.
 - **Branches only move forward.** Merge on green CI. Update a pushed branch by merging `main` into it; never rebase or force-push it.
