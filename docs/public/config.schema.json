@@ -825,7 +825,7 @@
               },
               "network": {
                 "default": [],
-                "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet",
+                "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR unless lent. Setup, verify, until, when and gate scripts aren't limited yet",
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -940,7 +940,7 @@
     },
     "network": {
       "default": [],
-      "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet",
+      "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR unless lent. Setup, verify, until, when and gate scripts aren't limited yet",
       "type": "array",
       "items": {
         "type": "string",
@@ -1134,7 +1134,7 @@
           },
           "network": {
             "default": [],
-            "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet",
+            "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR unless lent. Setup, verify, until, when and gate scripts aren't limited yet",
             "type": "array",
             "items": {
               "type": "string",

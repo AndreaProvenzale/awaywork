@@ -47,10 +47,14 @@ export function landing(
 }
 
 /** Whether the `trust` list names the author of someone else's PR. */
-const lends = (trust: string[], pr: PrRef): boolean =>
-  trust.includes('*') ||
-  (pr.trusted && trust.includes('collaborators')) ||
-  trust.some((t) => t.toLowerCase() === pr.author?.toLowerCase())
+const lends = (trust: string[], pr: PrRef): boolean => {
+  const names = trust.map((t) => t.toLowerCase().replace('[bot]', ''))
+  return (
+    names.includes('*') ||
+    (pr.trusted && names.includes('collaborators')) ||
+    names.includes(pr.author?.toLowerCase() ?? '')
+  )
+}
 
 /** The units of a rule's chain on the group, its first step first, each routed to a provider; `counts` when the first one runs. */
 export function chainUnits(

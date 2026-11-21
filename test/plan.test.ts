@@ -593,6 +593,8 @@ queue:
     for (const lent of [
       flags(yaml('[bob]'), stranger),
       flags(yaml('[]', 'trust: [BOB]'), stranger),
+      flags(yaml('["bob[bot]"]'), stranger),
+      flags(yaml('[Collaborators]'), { author: 'carol' }),
       flags(yaml('["*"]'), stranger),
       flags(yaml('[collaborators]'), { author: 'carol' }),
     ])

@@ -787,7 +787,7 @@ sources: { github: {} }
 mcp:
   db: { command: db-mcp, secrets: [DB_URL] }
 queue:
-  - { skill: review, mcp: [db], deliver: report, then: { skill: fix, when: { command: "true" } } }
+  - { skill: review, mcp: [db], deliver: report, gates: { risk: { skill: judge } }, then: { skill: fix, when: { command: "true" } } }
 `)
   const plan = planRun({
     setup: setupOf(config, { builtin: builtinSkills }),
@@ -799,6 +799,7 @@ queue:
     ],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
   })
+  const judged: Record<string, { foreign: boolean; lent?: true }> = {}
   const seen: Record<string, { setup: string; mcp: string[]; foreign: boolean; lent?: true }> = {}
   const report = await runUnits({
     config,
@@ -813,7 +814,8 @@ queue:
         async *run(job) {
           const setup = await readFile(join(job.dir, 'setup.txt'), 'utf8').catch(() => 'not run')
           const { foreign, lent } = job.unit
-          seen[job.unit.id] = { setup, mcp: Object.keys(job.mcp ?? {}), foreign, lent }
+          if (job.unit.skill === 'judge') judged[job.unit.id] = { foreign, lent }
+          else seen[job.unit.id] = { setup, mcp: Object.keys(job.mcp ?? {}), foreign, lent }
           await writeFile(join(job.dir, '.away/out/report.md'), 'Done.')
           yield { type: 'done', ok: true, turns: 1 }
         },
@@ -833,6 +835,7 @@ queue:
     'acme-api-3': { setup: 'not run', mcp: [], foreign: true },
     'acme-api-4': { setup: '\n', mcp: [], foreign: true },
   })
+  expect(judged['acme-api-2']).toEqual({ foreign: true, lent: undefined })
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-1', 'done'],
     ['acme-api-1-fix', 'done'],

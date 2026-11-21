@@ -28,7 +28,7 @@ const noMemory = { autoMemoryEnabled: false }
 const noConnectors = { ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }
 /** The repo's settings, hooks, MCP servers, CLAUDE.md and skills; nothing from ~/.claude. */
 const repoOnly = ['--setting-sources', 'project,local']
-/** Neither ~/.claude nor the clone's own config: on someone else's PR it is the author's. */
+/** Neither ~/.claude nor the clone's own config: on someone else's PR it is the author's unless lent. */
 const isolated = ['--setting-sources', '', '--strict-mcp-config']
 
 const configSchema = z.strictObject({

@@ -168,7 +168,7 @@ export function cursorProvider(
 
 export const cursor = cursorProvider()
 
-/** The hosts a unit's shell reaches: the `network` list, none on someone else's PR. */
+/** The hosts a unit's shell reaches: the `network` list, none on someone else's PR unless lent. */
 const shellHosts = ({ unit }: Job) => (guest(unit) || unit.untrusted ? [] : (unit.network ?? []))
 
 /** Cursor's own tools, and each server's tools, or all of them when the server names none; the shell too, open, unless `network` says to wall it. */

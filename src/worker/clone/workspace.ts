@@ -96,7 +96,7 @@ export interface Previous {
 
 /**
  * Clones the unit's repo onto its new branch, installs its skills, prefetches context and writes the prompt.
- * On a PR someone else opened, the branch's `.awaywork/` and skills are the author's: they are ignored.
+ * On a PR someone else opened and not lent, the branch's `.awaywork/` and skills are the author's: they are ignored.
  * A later step reuses the chain's clone and its context, and only swaps in its skills, `previous/` and prompt.
  */
 export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
@@ -259,7 +259,7 @@ async function writeGitConfig(dir: string, env: NodeJS.ProcessEnv): Promise<void
 /** The skill copies awaywork made in each clone, which a chain's later steps replace rather than keep. Per process. */
 const copied = new Map<string, Set<string>>()
 
-/** Copies skills into the clone, keeping the repo's own unless someone else opened the PR or awaywork copied it. */
+/** Copies skills into the clone, keeping the repo's own unless someone else opened the PR (not lent) or awaywork copied it. */
 async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<string, string>) {
   const excluded: string[] = []
   const replaced: string[] = []

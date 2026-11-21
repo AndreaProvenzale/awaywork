@@ -291,6 +291,8 @@ export async function trustChecks(config: Config, queue: Rule[], run: Exec): Pro
     }
     if (
       config.isolation === 'none' &&
+      process.env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
+      !inAwayworkImage(process.env) &&
       (rulesReach || config.network.length || settings.network.length)
     )
       checks.push({

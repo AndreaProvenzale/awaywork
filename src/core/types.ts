@@ -260,7 +260,7 @@ export interface Provider {
   instructionsFile: string
   /** The binary's name, when it isn't the id. */
   bin?: string
-  /** Files in the clone that make the binary run commands or allow it more, like hooks: on someone else's PR they're the author's, so it doesn't see them. */
+  /** Files in the clone that make the binary run commands or allow it more, like hooks: on someone else's PR they're the author's, so it doesn't see them unless lent. */
   repoConfig?: string[]
 }
 

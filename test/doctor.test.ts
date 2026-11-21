@@ -421,6 +421,9 @@ describe('doctor on trust', () => {
     expect(await warned('network: [npmjs.org]')).toHaveLength(1)
     expect(await warned(`isolation: user\n${mcp}`)).toEqual([])
     expect(await warned('queue: [{ skill: review }]')).toEqual([])
+    vi.stubEnv('AWAYWORK_IMAGE', '1')
+    expect(await warned(mcp)).toEqual([])
+    vi.unstubAllEnvs()
   })
 
   it('says trust does nothing on Bitbucket', async () => {

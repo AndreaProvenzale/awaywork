@@ -54,7 +54,7 @@ Extra skills also fall back to the [repo's own skill folders](#bring-your-repo-s
 Details:
 
 - A config outside `~/.config/awaywork/` (`--config`, `AWAYWORK_CONFIG`) uses its own `skills/`; `doctor` warns while the default folder holds skills it doesn't use.
-- On someone else's PR, `.awaywork/skills/` is the author's and skipped, unless its author is on your [`trust`](./config/repos.md#trust) list.
+- On someone else's PR, `.awaywork/skills/` is the author's and skipped, unless its author is on your [`trust`](./safety/index.md#trusting-an-author) list.
 - A skill from `~/.claude/skills/`: link it in, `ln -s ~/.claude/skills/<name> ~/.config/awaywork/skills/<name>`.
 - On a runner or in a container, yours are the copy `schedule install` puts in `.awaywork/skills/`.
 - `doctor` sees user and built-in skills only, so it warns about repo skills, which resolve at run time; a skill found nowhere fails the unit with `unknown skill`.

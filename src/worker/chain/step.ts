@@ -320,7 +320,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (!reuse) await fetchContexts(unit.items, dir, { ...input, env: input.ctx.env, secrets, log })
     const settings = settingsFor(input.config.repos, unit.repo)
     if (!reuse && settings.setup && !unit.untrusted) {
-      // A PR someone else opened, or an awaywork PR's branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
+      // A PR someone else opened (unless lent), or an awaywork PR's branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
       const own = guest(unit) || pickedUp ? [] : settings.secrets
       const failed = await runSetup(
         settings.setup,
