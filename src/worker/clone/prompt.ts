@@ -62,7 +62,7 @@ export function unitSection(unit: Unit, items: string[], dir: string, w: Workspa
   const card = unit.items[0] as Item
   // Later steps of the chain find the body an earlier one wrote in the clone.
   const keep = !reportsOnly(unit.deliver) && existsSync(join(dir, output))
-  const commit = `Commit on this branch and ${keep ? `keep \`${output}\` current (it holds what the chain did so far)` : `write \`${output}\` right after your first commit and keep it current`}`
+  const commit = `Commit on this branch and ${keep ? `keep \`${output}\` current (it holds what the chain did so far)` : `write \`${output}\` right after your first commit and keep it current (with nothing to commit, it still says what you found and why)`}`
   const refine = 'and refine it as you go, so a run cut short still leaves one.'
   const early = `Write the report early ${refine}`
   const body = `\`${output}\`'s first line is the PR's title, the body after it, following the repo's PR template when there is one. A branch without \`${output}\` is not published.`
