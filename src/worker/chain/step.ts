@@ -2,7 +2,8 @@ import { createWriteStream } from 'node:fs'
 import { appendFile, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import { configDir, defaultConfigPath, envFile, rootStateDir } from '#config/paths'
+import { configDir, defaultConfigPath, profilesPath, rootStateDir } from '#config/paths'
+import { readRegistry } from '#config/profiles'
 import {
   AGENT_HOME,
   CONTAINER_HOME,
@@ -82,6 +83,14 @@ async function real(path: string): Promise<string> {
   }
 }
 
+const registeredConfigs = () => {
+  try {
+    return Object.values(readRegistry(profilesPath).profiles)
+  } catch {
+    return []
+  }
+}
+
 /** The unit's `writable` paths that exist, as real paths, `~/` as the developer's home; none on someone else's PR or in a container, a skipped or refused one logged. */
 export async function writablePaths(
   unit: Unit,
@@ -104,8 +113,8 @@ export async function writablePaths(
     [
       configDir,
       dirname(defaultConfigPath),
-      dirname(envFile),
       rootStateDir,
+      ...registeredConfigs().map(dirname),
       ...loaded.filter((folder) => folder !== undefined),
     ].map(real),
   )
