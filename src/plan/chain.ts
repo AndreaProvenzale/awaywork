@@ -48,7 +48,7 @@ export function landing(
 
 /** Whether the `trust` list names the author of someone else's PR. */
 const lends = (trust: string[], pr: PrRef): boolean => {
-  const names = trust.map((t) => t.toLowerCase().replace('[bot]', ''))
+  const names = trust.map((t) => t.toLowerCase())
   return (
     names.includes('*') ||
     (pr.trusted && names.includes('collaborators')) ||

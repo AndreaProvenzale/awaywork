@@ -423,6 +423,16 @@ describe('github source', () => {
     expect(pr2?.linkedPrs[0]).toMatchObject({ mine: false, trusted: false })
   })
 
+  it("names a bot author as GitHub shows it, `login[bot]`, so it can't pass for a user of that name", async () => {
+    const authored = JSON.parse(fixture('search-authored.json'))
+    authored.data.search.nodes[0].author = { login: 'renovate', __typename: 'Bot' }
+    const [pr1] = await githubSource(
+      recorded([[/author:@me/, JSON.stringify(authored)], ...githubRoutes()]),
+    ).items({ repos: ['acme/*'] }, ctx)
+    expect(pr1?.linkedPrs[0]?.author).toBe('renovate[bot]')
+    expect(pr1?.fields.author).toBe('renovate')
+  })
+
   it('runs each extra search ANDed with open and unarchived, without marking its items', async () => {
     const mentioned = JSON.parse(fixture('search-assigned.json'))
     mentioned.data.search.nodes = [{ ...mentioned.data.search.nodes[0], id: 'I_new', number: 9 }]

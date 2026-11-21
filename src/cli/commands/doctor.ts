@@ -26,6 +26,7 @@ import {
   cursorSandboxStarts,
   DOCKER_TIMEOUT_MS,
   dockerVersion,
+  forcesWorker,
   inAwayworkImage,
   inImage,
   sandboxStarts,
@@ -152,10 +153,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const image = root && (await staleDocker(root))
   if (image) report('warn', 'schedule', image)
   for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
-  const boxed =
-    config.isolation === 'container' &&
-    process.env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
-    !inAwayworkImage(process.env)
+  const boxed = config.isolation === 'container' && !forcesWorker(process.env)
   const isolation = boxed
     ? await containerChecks(config, process.env)
     : await isolationChecks(config.isolation, process.env)
@@ -291,8 +289,7 @@ export async function trustChecks(config: Config, queue: Rule[], run: Exec): Pro
     }
     if (
       config.isolation === 'none' &&
-      process.env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
-      !inAwayworkImage(process.env) &&
+      !forcesWorker(process.env) &&
       (rulesReach || config.network.length || settings.network.length)
     )
       checks.push({

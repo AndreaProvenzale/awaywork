@@ -363,6 +363,10 @@ export const isolated = () => worker !== undefined
 /** Set by awaywork's Dockerfile, whose image runs every launch as the worker user, as a GitHub-hosted runner does. */
 export const inAwayworkImage = (env: NodeJS.ProcessEnv) => Boolean(env.AWAYWORK_IMAGE)
 
+/** Whether every launch runs as the worker user whatever `isolation` says: on a GitHub-hosted runner and in awaywork's image. */
+export const forcesWorker = (env: NodeJS.ProcessEnv) =>
+  env.RUNNER_ENVIRONMENT === 'github-hosted' || inAwayworkImage(env)
+
 /**
  * The worker user every launch runs as: always on a GitHub-hosted runner and in awaywork's image, elsewhere under `isolation: user`.
  * One that can't run as it, or where it can sudo, is refused rather than run as the developer's user.
@@ -371,9 +375,9 @@ export async function workerFor(
   isolation: Config['isolation'],
   env: NodeJS.ProcessEnv,
 ): Promise<string | undefined> {
+  if (isolation !== 'user' && !forcesWorker(env)) return undefined
   const hosted = env.RUNNER_ENVIRONMENT === 'github-hosted'
   const image = inAwayworkImage(env)
-  if (isolation !== 'user' && !hosted && !image) return undefined
   if (process.platform !== 'linux')
     throw new Error(`isolation: user runs on Linux only, not ${process.platform}`)
   const as = (...command: string[]) =>

@@ -11,10 +11,10 @@ import { byName, linksItem, prText } from './pr'
 import { pushHead } from './push'
 
 /** Who opened a PR and who last edited its body, if anyone. */
-export const EDITED = 'viewerDidAuthor author { login } editor { login }'
+export const EDITED = 'viewerDidAuthor author { login __typename } editor { login }'
 export type Edited = {
   viewerDidAuthor: boolean
-  author: { login: string } | null
+  author: { login: string; __typename?: string } | null
   editor: { login: string } | null
 }
 

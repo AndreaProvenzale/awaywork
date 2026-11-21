@@ -86,7 +86,7 @@ Reviewing a PR means running its tests with your agent's login around, so the de
 
 ### Trusting an author
 
-[`trust`](#trusting-an-author) lists whose PRs get what your own PRs get: `collaborators` (owners, members and collaborators), a GitHub login, or `*` for anyone. A PR by someone on it is **lent**, and `plan` says so:
+[`trust`](#trusting-an-author) lists whose PRs get what your own PRs get: `collaborators` (owners, members and collaborators), a GitHub login (a bot as GitHub shows it, `dependabot[bot]`; a user and a bot of the same name are different entries), or `*` for anyone. A PR by someone on it is **lent**, and `plan` says so:
 
 ```yaml
 trust: [collaborators]            # every repo

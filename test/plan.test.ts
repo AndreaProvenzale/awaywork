@@ -593,13 +593,15 @@ queue:
     for (const lent of [
       flags(yaml('[bob]'), stranger),
       flags(yaml('[]', 'trust: [BOB]'), stranger),
-      flags(yaml('["bob[bot]"]'), stranger),
+      flags(yaml('["bob[bot]"]'), { ...stranger, author: 'bob[bot]' }),
       flags(yaml('[Collaborators]'), { author: 'carol' }),
       flags(yaml('["*"]'), stranger),
       flags(yaml('[collaborators]'), { author: 'carol' }),
     ])
       expect(lent).toMatchObject({ foreign: true, lent: true, untrusted: false })
     expect(flags(yaml('[collaborators]'), stranger).lent).toBeUndefined()
+    expect(flags(yaml('["bob[bot]"]'), stranger).lent).toBeUndefined()
+    expect(flags(yaml('[bob]'), { ...stranger, author: 'bob[bot]' }).lent).toBeUndefined()
     expect(flags(yaml('["*"]'), { mine: true }).lent).toBeUndefined()
     expect(formatPlan(flags(yaml('[bob]'), stranger).result)).toContain(
       '   lent: its author is on your trust list, so it gets what your own PRs get',

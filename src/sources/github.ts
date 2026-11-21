@@ -664,7 +664,9 @@ const toPrRef = (pr: PrLink): PrRef => ({
   ours: isOurs(pr.body),
   ...leftIn(pr.body, pr.isDraft, notYours(pr)),
   mine: pr.viewerDidAuthor,
-  ...(pr.author && { author: pr.author.login }),
+  ...(pr.author && {
+    author: pr.author.__typename === 'Bot' ? `${pr.author.login}[bot]` : pr.author.login,
+  }),
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),
   fork: pr.isCrossRepository,
 })
