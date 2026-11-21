@@ -26,7 +26,10 @@ const RESULT_GRACE_MS = 5000
 
 /** Kills a child's group a grace after its result: a CLI doesn't exit while a server its shell started runs. */
 export function killGroupSoon(child: Child): void {
+  const { exitCode, signalCode } = child.nodeChildProcess
+  if (exitCode !== null || signalCode !== null) return
   const timer = setTimeout(() => killGroup(child), RESULT_GRACE_MS)
+  timer.unref()
   child.nodeChildProcess.once('exit', () => clearTimeout(timer))
 }
 
