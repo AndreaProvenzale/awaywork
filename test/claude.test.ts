@@ -252,6 +252,7 @@ describe('claude provider', () => {
       'CLAUDE_CODE_ENTRYPOINT',
       'CLAUDE_CODE_EXECPATH',
       'CLAUDE_CODE_PLUGIN_DIRS',
+      'TRACEPARENT',
     ]
     const kept = { CLAUDE_CODE_OAUTH_TOKEN: 't', CLAUDE_CODE_USE_BEDROCK: '1', PATH: '/bin' }
     const env = { ...Object.fromEntries(session.map((name) => [name, 'x'])), ...kept }
@@ -308,6 +309,22 @@ describe('claude provider', () => {
       expect(await readFile(file, 'utf8')).toBe('false')
     } finally {
       delete process.env.FAKE_CONNECTORS
+    }
+  })
+
+  it("keeps the parent session's handles out of a probe and an account check", async () => {
+    const file = join(dir, 'session')
+    process.env.FAKE_SESSION = file
+    process.env.CLAUDECODE = '1'
+    try {
+      await provider.probe({ env: process.env, log: () => {} })
+      expect(await readFile(file, 'utf8')).toBe('unset')
+      await rm(file)
+      await provider.account?.(process.env).catch(() => {})
+      expect(await readFile(file, 'utf8')).toBe('unset')
+    } finally {
+      delete process.env.FAKE_SESSION
+      delete process.env.CLAUDECODE
     }
   })
 

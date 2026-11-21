@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 
 /** The handles of the Claude Code session awaywork runs in: its messaging socket and IDE bridge, its identity and plugin dirs. */
-const parentSession = [
+export const parentSession = [
   'CLAUDECODE',
   'CLAUDE_PID',
   'CLAUDE_EFFORT',
@@ -16,6 +16,7 @@ const parentSession = [
   'CLAUDE_CODE_ENTRYPOINT',
   'CLAUDE_CODE_EXECPATH',
   'CLAUDE_CODE_PLUGIN_DIRS',
+  'TRACEPARENT',
 ]
 
 export const withoutParentSession = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
