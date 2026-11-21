@@ -6,7 +6,7 @@ import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
-import { killGroupSoon, killGroupWhenDone } from '#util/process'
+import { killGroupSoon, killGroupWhenDone, withoutParentSession } from '#util/process'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
@@ -55,7 +55,7 @@ export function claudeProvider(
 
     async account(env) {
       const { stdout } = await execa(bin, ['auth', 'status', '--json'], {
-        env,
+        env: withoutParentSession(env),
         extendEnv: false,
         reject: false,
       })
@@ -74,7 +74,7 @@ export function claudeProvider(
       const args = ['-p', 'reply ok', '--model', PROBE_MODEL, '--max-turns', '1', ...stream]
       const settings = ['--settings', JSON.stringify(noMemory)]
       const { stdout } = await execa(bin, [...args, ...isolated, ...settings], {
-        env: { ...ctx.env, ...noConnectors },
+        env: { ...withoutParentSession(ctx.env), ...noConnectors },
         extendEnv: false,
         reject: false,
       })
