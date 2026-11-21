@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  codexSandboxStarts,
   contain,
   containerize,
   cursorSandboxStarts,
@@ -78,6 +79,14 @@ describe('sandboxStarts', () => {
 
   it('is false when bwrap fails or is missing', async () => {
     expect(await sandboxStarts({ user: 'probe-fails' }, undefined, fake(true))).toBe(false)
+  })
+
+  it("probes Codex's namespaces without the nested one, apart from Claude's answer", async () => {
+    await sandboxStarts({ user: 'probe-both' }, undefined, fake(false))
+    expect(await codexSandboxStarts({ user: 'probe-both' }, undefined, fake(true))).toBe(false)
+    expect(calls[1]?.args.at(-1)).toBe('true')
+    expect(calls[1]?.args).not.toContain('--proc')
+    expect(calls).toHaveLength(2)
   })
 
   it('probes once for each image or user', async () => {

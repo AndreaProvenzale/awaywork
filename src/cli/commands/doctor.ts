@@ -22,6 +22,7 @@ import type { Config } from '#config/schema'
 import { hasSkills, readSetup, unknownSkillsWarning } from '#config/skills'
 import { canMatch } from '#config/validate/where'
 import {
+  codexSandboxStarts,
   cursorSandboxStarts,
   DOCKER_TIMEOUT_MS,
   dockerVersion,
@@ -187,9 +188,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
         id,
         facts.filter(Boolean).join(', '),
       )
-    if (id === 'claude' && !isolation.some((c) => c.status === 'FAIL')) {
-      const sandbox = await claudeSandbox(config, boxed, asWorker)
-      report(sandbox ? 'warn' : 'ok', 'claude sandbox', sandbox ?? 'Bash runs offline')
+    const starts = { claude: sandboxStarts, codex: codexSandboxStarts }[id]
+    if (starts && !isolation.some((c) => c.status === 'FAIL')) {
+      const sandbox = await shellSandbox(id, starts, config, boxed, asWorker)
+      report(sandbox ? 'warn' : 'ok', `${id} sandbox`, sandbox ?? 'shell runs offline')
     }
     if (id === 'cursor' && !keyless && !isolation.some((c) => c.status === 'FAIL')) {
       const sandbox = await cursorSandbox(config, boxed, asWorker, provider.bin)
@@ -281,13 +283,21 @@ async function noSandbox(
   }
 }
 
-/** Why Claude's Bash sandbox can't start where units run, if it can't. */
-async function claudeSandbox(config: Config, boxed: boolean, asWorker: boolean) {
-  const where = await noSandbox(config, boxed, asWorker, (w) => sandboxStarts(w))
-  const needs = inAwayworkImage(process.env) ? '' : ' (needs bubblewrap, socat and user namespaces)'
+/** Why Claude's or Codex's shell sandbox can't start where units run, if it can't. */
+async function shellSandbox(
+  agent: string,
+  starts: typeof sandboxStarts,
+  config: Config,
+  boxed: boolean,
+  asWorker: boolean,
+) {
+  const where = await noSandbox(config, boxed, asWorker, (w) => starts(w))
+  const needs = inAwayworkImage(process.env)
+    ? ''
+    : ` (needs bubblewrap${agent === 'claude' ? ', socat' : ''} and user namespaces)`
   return (
     where &&
-    `bwrap can't start${where}${needs}: Claude's Bash runs unsandboxed, with network access`
+    `bwrap can't start${where}${needs}: ${agent[0]?.toUpperCase()}${agent.slice(1)}'s shell runs unsandboxed, with network access`
   )
 }
 

@@ -292,7 +292,6 @@ export default {
   'report-view': browsed(reportState(28), ['G', 'right', 'up', 'd']),
   'report-unit': reportUnit(),
   'report-piped': reportPiped(),
-  'readme-report': browsed(reportState(26)),
   'run-detach': command(
     'awaywork run --unit api#1 --detach',
     detachedLine('api#1', '20261109-095329'),

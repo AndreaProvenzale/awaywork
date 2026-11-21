@@ -66,8 +66,11 @@ let dockerTimeout = DOCKER_TIMEOUT_MS
 /** Containers a removal of timed out on. */
 const unanswered = new Set<string>()
 
-/** With `home`, the process runs with that `HOME` whatever the isolation; unset, the isolation's. */
-export type LaunchOptions = Options & { home?: string }
+/**
+ * With `home`, the process runs with that `HOME` whatever the isolation; unset, the isolation's.
+ * With `tmpdir`, a worker user's process gets that `TMPDIR`: sudo's glibc drops it from its env, so it goes on argv.
+ */
+export type LaunchOptions = Options & { home?: string; tmpdir?: string }
 
 export interface Box {
   /** The repo's image, with the agent CLIs and its toolchain. */
@@ -80,7 +83,7 @@ export interface Box {
 
 export function start<O extends LaunchOptions>(file: string, args: readonly string[], options: O) {
   if (boxed) return inContainer(file, args, options)
-  const { home, ...rest } = options
+  const { home, tmpdir: _, ...rest } = options
   if (!worker)
     return execa(file, args, (home ? { ...rest, env: { ...rest.env, HOME: home } } : rest) as O)
   const subprocess = execa(bin('sudo'), sudoArgs(worker, file, args, options), {
@@ -211,40 +214,34 @@ export interface Where {
 export const whereRuns = (dir: string): Where =>
   boxed ? { image: boxes.get(dir)?.image } : { user: worker }
 
-const BWRAP_PROBE = [
-  '--unshare-user',
-  '--unshare-net',
-  '--unshare-pid',
-  '--ro-bind',
-  '/',
-  '/',
-  '--proc',
-  '/proc',
-  '--dev',
-  '/dev',
-  // Claude's apply-seccomp nests a user namespace, which AppArmor refuses inside bwrap on hosted runners.
-  'bwrap',
-  '--unshare-user',
-  '--ro-bind',
-  '/',
-  '/',
-  'socat',
-  '-V',
-]
+const BWRAP_PROBE = ['--unshare-user', '--unshare-net', '--unshare-pid', '--ro-bind', '/', '/']
+const PROC = ['--proc', '/proc']
+const DEV = ['--dev', '/dev']
+// Claude's apply-seccomp nests a user namespace, which AppArmor refuses inside bwrap on hosted runners.
+const CLAUDE_INNER = ['bwrap', '--unshare-user', '--ro-bind', '/', '/', 'socat', '-V']
 const sandboxes = new Map<string, boolean>()
 
 /**
  * Whether Claude's sandbox can start `where`: bubblewrap with the namespaces it takes, on Linux; Seatbelt elsewhere needs nothing.
  * It runs outside `start`, so no exit kills the worker's processes, and once per process for each image or user.
  */
-export async function sandboxStarts(
+export const sandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
+  bwrapStarts('claude', where, [...PROC, ...DEV, ...CLAUDE_INNER], signal, run)
+
+/** Whether Codex's sandbox can start `where`: the same, without the nested namespace or fresh `/proc` mount, which Docker's masked `/proc` refuses and Codex doesn't need. */
+export const codexSandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
+  bwrapStarts('codex', where, [...DEV, 'true'], signal, run)
+
+const bwrapStarts = (
+  tool: string,
   where: Where,
-  signal?: AbortSignal,
-  run: typeof execa = execa,
-): Promise<boolean> {
-  if (!where.image && process.platform !== 'linux') return true
-  return probeStarts('bwrap', where, 'bwrap', BWRAP_PROBE, signal, run)
-}
+  inner: string[],
+  signal: AbortSignal | undefined,
+  run: typeof execa,
+) =>
+  !where.image && process.platform !== 'linux'
+    ? Promise.resolve(true)
+    : probeStarts(tool, where, 'bwrap', [...BWRAP_PROBE, ...inner], signal, run)
 
 /** Cursor's own startup check, as its bundle runs it: the helper beside `agent` (`$0`), no model call; exit 0 when its sandbox starts. */
 const CURSOR_PROBE = [
@@ -347,6 +344,7 @@ export function sudoArgs(
     '/usr/bin/env',
     ...developerFolders.flatMap((name) => ['-u', name]),
     ...(home ? [`HOME=${home}`] : []),
+    ...(options.tmpdir ? [`TMPDIR=${options.tmpdir}`] : []),
   ]
   // sudo looks a bare name up on its own secure_path, not the env's PATH.
   const command = options.shell

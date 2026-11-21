@@ -1,20 +1,35 @@
 import { constants } from 'node:fs'
-import { lstat, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { rootStateDir } from '#config/paths'
+import { codexSandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
-import type { McpServer, Provider, Quota, WorkerEvent } from '#core/types'
+import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
 import { lock } from '#util/lock'
 import { killGroupWhenDone } from '#util/process'
 
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
-/** workspace-write can't commit (.git is read-only). */
+/** Where the sandbox can't start: workspace-write can't commit (.git is read-only), so the shell is open. */
 const FULL_ACCESS = ['--sandbox', 'danger-full-access']
+const PROFILE = 'awaywork'
+const HOOKED = ['.claude', '.mcp.json']
+/** The proxy's line in a command's output when it reached a host outside the profile's `domains`. */
+const BLOCKED = /Network access to \\*"([^"\\]+)\\*" was blocked/g
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
 const DAY_MINS = 24 * 60
 const HOSTED_RUNNER =
@@ -41,6 +56,7 @@ export function codexProvider(
   bin = 'codex',
   lockFile = join(rootStateDir, 'codex.lock'),
   authPath?: string,
+  startsSandbox = (job: Job, signal: AbortSignal) => codexSandboxStarts(whereRuns(job.dir), signal),
 ): Provider {
   // Held from a login lent to the worker until it's saved back, the run in between.
   let lent = false
@@ -167,6 +183,8 @@ export function codexProvider(
       const capped = new AbortController()
       let turns = 0
       let done: WorkerEvent | undefined
+      const logged = new Set<string>()
+      let excludes: string | undefined
       try {
         const model = job.model ? ['-m', job.model] : []
         const { config = {} } = configSchema.parse(job.config ?? {})
@@ -175,10 +193,29 @@ export function codexProvider(
           `${k}=${JSON.stringify(v)}`,
         ])
         const mcp = mcpOverrides(job.mcp ?? {})
-        const args = [...EXEC, ...model, ...overrides, ...mcp, ...FULL_ACCESS, '-C', job.dir, '-']
+        const walled = await startsSandbox(job, signal)
+        if (!walled && !signal.aborted)
+          yield {
+            type: 'log',
+            line: "Codex's sandbox can't start here: its shell runs unsandboxed",
+          }
+        const shell = walled ? shellWall(job) : FULL_ACCESS
+        if (walled && process.platform === 'linux') excludes = await writeMaskExcludes()
+        const args = [
+          ...EXEC,
+          ...model,
+          ...overrides,
+          ...mcp,
+          ...shell,
+          ...ignoreMasks(excludes),
+          '-C',
+          job.dir,
+          '-',
+        ]
         const child = launch(bin, args, {
           cwd: job.dir,
           env: job.env,
+          tmpdir: walled && workerHome(job.dir) ? '/var/tmp' : undefined,
           extendEnv: false,
           input: job.prompt,
           cancelSignal: AbortSignal.any([signal, capped.signal]),
@@ -198,9 +235,13 @@ export function codexProvider(
           for (const e of toEvents(event)) {
             if (e.type === 'done') done = e
             else yield e
+            if (e.type === 'log') logged.add(e.line)
           }
         }
-        const { exitCode } = await child
+        const { exitCode, stderr } = await child
+        // Codex rejects some blocked commands at spawn, with no item in the stream.
+        if (walled && !signal.aborted)
+          for (const e of refusals(String(stderr ?? ''))) if (!logged.has(e.line)) yield e
         // The stream carries no quota; reading it mid-run would start a second process on auth.json.
         if (!signal.aborted) {
           const quota = await probe(process.env).catch(() => null)
@@ -209,6 +250,7 @@ export function codexProvider(
         const ok = done?.type === 'done' && done.ok && exitCode === 0
         yield { type: 'done', ok: ok && !signal.aborted && !capped.signal.aborted, turns }
       } finally {
+        if (excludes) await rm(excludes, { recursive: true, force: true })
         await release()
       }
     },
@@ -219,6 +261,52 @@ export function codexProvider(
 }
 
 export const codex = codexProvider()
+
+/** On Linux, Codex masks an absent read-only path with an empty file: this global excludes file, outside the clone, keeps `HOOKED` out of a commit. Returns its folder. */
+async function writeMaskExcludes(): Promise<string> {
+  const dir = await mkdtemp('/tmp/awaywork-excludes-')
+  // The worker user reads it; it can't write it.
+  await chmod(dir, 0o755)
+  await writeFile(join(dir, 'ignore'), HOOKED.map((p) => `/${p}\n`).join(''), { mode: 0o644 })
+  return dir
+}
+
+/** Codex's own policy sets the git config in its shell, as its default excludes drop any variable named `*KEY*`. */
+const ignoreMasks = (dir: string | undefined) =>
+  dir
+    ? Object.entries({
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'core.excludesFile',
+        GIT_CONFIG_VALUE_0: join(dir, 'ignore'),
+      }).flatMap(([name, value]) => ['-c', `shell_environment_policy.set.${name}=${toml(value)}`])
+    : []
+
+/** A profile whose shell writes the clone and reaches only the unit's `network` hosts, none by default. */
+export function shellWall(job: Job): string[] {
+  const { foreign, untrusted, network = [] } = job.unit
+  const hosts = foreign || untrusted ? [] : network
+  // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
+  const home = workerHome(job.dir)
+  const writable = [job.dir, join(job.dir, '.git'), ...(home ? [home] : [])]
+  // Codex keeps `.codex` and `.agents` read-only itself; a later Claude round would load these two.
+  const hooked = HOOKED.map((p) => join(job.dir, p))
+  const filesystem = {
+    ':root': 'read',
+    ':tmpdir': 'write',
+    ...Object.fromEntries(writable.map((p) => [p, 'write'])),
+    ...Object.fromEntries(hooked.map((p) => [p, 'read'])),
+  }
+  const set = (key: string, value: unknown) => ['-c', `${key}=${toml(value)}`]
+  const net = `permissions.${PROFILE}.network`
+  return [
+    ...set('default_permissions', PROFILE),
+    ...set(`permissions.${PROFILE}.filesystem`, filesystem),
+    ...set('features.network_proxy', true),
+    ...set(`${net}.enabled`, true),
+    ...set(`${net}.domains`, Object.fromEntries(hosts.map((h) => [h, 'allow']))),
+    ...set(`${net}.allow_local_binding`, true),
+  ]
+}
 
 /** The secret a header value names: `${NAME}`, or `Bearer ${NAME}` for Authorization; undefined for any other shape. */
 export function headerSecret(
@@ -252,6 +340,8 @@ export function mcpOverrides(servers: Record<string, McpServer>): string[] {
       http_headers: plain.length > 0 ? Object.fromEntries(plain) : undefined,
       env_http_headers: fromEnv.length > 0 ? Object.fromEntries(fromEnv) : undefined,
       enabled_tools: s.tools,
+      // Under a permissions profile, a tool that isn't read-only fails "requires approval" otherwise.
+      default_tools_approval_mode: 'approve',
       // The default 10 s drops a server silently, e.g. an `npx -y` download on a fresh runner.
       startup_timeout_sec: 60,
     }
@@ -273,14 +363,25 @@ function toml(value: unknown): string {
   return `{${pairs.join(',')}}`
 }
 
+/** The hosts the proxy refused in `text`, as log lines. */
+const refusals = (text: string): Extract<WorkerEvent, { type: 'log' }>[] =>
+  [...new Set([...text.matchAll(BLOCKED)].map((m) => m[1]))].map((host) => ({
+    type: 'log',
+    line: `network: refused ${host} (agent shell)`,
+  }))
+
 /** Worker events in one `codex exec --json` event: tool calls and errors as log lines, and the turn's end. */
 export function toEvents(
   // biome-ignore lint/suspicious/noExplicitAny: an untyped JSON event
   event: any,
 ): WorkerEvent[] {
   const item = event?.item
-  if (event?.type === 'item.completed' && item?.type === 'command_execution')
-    return [{ type: 'log', line: `command: ${item.command} (exit ${item.exit_code})` }]
+  if (event?.type === 'item.completed' && item?.type === 'command_execution') {
+    return [
+      { type: 'log', line: `command: ${item.command} (exit ${item.exit_code})` },
+      ...refusals(String(item.aggregated_output ?? '')),
+    ]
+  }
   if (event?.type === 'item.completed' && item?.type === 'file_change')
     return [
       { type: 'log', line: `edit: ${item.changes.map((c: { path: string }) => c.path).join(' ')}` },

@@ -360,7 +360,7 @@ describe('claude provider', () => {
         enabled: true,
         failIfUnavailable: false,
         allowUnsandboxedCommands: false,
-        network: { allowedDomains: [] },
+        network: { allowLocalBinding: true, allowedDomains: [] },
         credentials: {
           envVars: [
             { name: 'CLAUDE_CODE_OAUTH_TOKEN', mode: 'deny' },
@@ -411,17 +411,17 @@ describe('claude provider', () => {
         await collect(provider.run(run, new AbortController().signal))
         const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
         const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
-        expect(sandbox.network).toEqual({ allowedDomains: [] })
+        expect(sandbox.network).toEqual({ allowLocalBinding: true, allowedDomains: [] })
       }
     } finally {
       delete process.env.FAKE_ARGV
     }
   })
 
-  it("adds the developer's allowed domains and keeps their other network keys", async () => {
+  it("adds the developer's allowed domains and lets them close loopback", async () => {
     process.env.FAKE_ARGV = join(dir, 'argv.json')
     const theirs = {
-      sandbox: { network: { allowedDomains: ['mine.example'], allowLocalBinding: true } },
+      sandbox: { network: { allowedDomains: ['mine.example'], allowLocalBinding: false } },
     }
     await writeFile(join(dir, 'worker.json'), JSON.stringify(theirs))
     try {
@@ -431,7 +431,7 @@ describe('claude provider', () => {
       const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
       const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
       expect(sandbox.network).toEqual({
-        allowLocalBinding: true,
+        allowLocalBinding: false,
         allowedDomains: ['mine.example', 'ours.example'],
       })
     } finally {
@@ -447,7 +447,10 @@ describe('claude provider', () => {
       await collect(provider.run(run, new AbortController().signal))
       const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
       const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
-      expect(sandbox.network).toEqual({ allowedDomains: ['npmjs.org', '*.prisma.sh'] })
+      expect(sandbox.network).toEqual({
+        allowLocalBinding: true,
+        allowedDomains: ['npmjs.org', '*.prisma.sh'],
+      })
     } finally {
       delete process.env.FAKE_ARGV
     }
