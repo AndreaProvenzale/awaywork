@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { canMatch } from '#config/validate/where'
-import type { Provider } from '#core/types'
+import type { Provider, Rule } from '#core/types'
 import type { Exec } from '#forge/gh'
 import { workflow } from '#scheduler/github-actions'
 import { recorded } from './fakes/gh'
@@ -56,6 +56,7 @@ vi.mock('#config/paths', async (importOriginal) => {
 const {
   bitbucketChecks,
   containerChecks,
+  inertKeys,
   isolationChecks,
   runChecks,
   trustChecks,
@@ -440,6 +441,48 @@ describe('doctor on trust', () => {
     expect(await trustChecks(config, async () => '')).toEqual([
       { status: 'ok', what: 'trust', detail: 'does nothing on Bitbucket' },
     ])
+  })
+})
+
+describe('doctor notes on keys that do nothing', () => {
+  const keys = (yaml: string, mode: 'none' | 'user' | 'container', queue: Rule[] = []) =>
+    inertKeys(parseConfig(`providers: [claude]\nsources: { github: {} }\n${yaml}`), queue, mode)
+  const note = (what: string, detail: string) => ({
+    status: 'ok',
+    what,
+    detail: `no effect under isolation: ${detail}`,
+  })
+
+  it('notes writable under a container once, wherever it is set', () => {
+    const yaml = 'writable: [/a]\nrepos: { acme/api: { writable: [/b] }, acme/web: }'
+    expect(keys(yaml, 'container', [{ writable: ['/c'] }, {}] as Rule[])).toEqual([
+      note('writable', 'container (top level, acme/api, rule #1)'),
+    ])
+  })
+
+  it('leaves writable alone where it applies or is unset', () => {
+    const yaml = 'writable: [/a]\nrepos: { acme/api: }'
+    expect(keys(yaml, 'none')).toEqual([])
+    expect(keys(yaml, 'user')).toEqual([])
+    expect(keys('repos: { acme/api: }', 'container')).toEqual([])
+  })
+
+  it('notes image outside a container only', () => {
+    const yaml = 'repos: { acme/api: { image: node:22 }, acme/web: }'
+    expect(keys(yaml, 'none')).toEqual([note('image', 'none (acme/api)')])
+    expect(keys(yaml, 'user')).toEqual([note('image', 'user (acme/api)')])
+    expect(keys(yaml, 'container')).toEqual([])
+    expect(keys('repos: { acme/api: }', 'none')).toEqual([])
+  })
+
+  it('notes a serve command under user and container, unless a rule asks for it', () => {
+    const yaml =
+      'repos: { acme/api: { serve: { command: pnpm dev, ready: "http://localhost:$AWAYWORK_PORT" } } }'
+    expect(keys(yaml, 'user')).toEqual([note('serve', 'user (acme/api)')])
+    expect(keys(yaml, 'container')).toEqual([note('serve', 'container (acme/api)')])
+    expect(keys(yaml, 'none')).toEqual([])
+    expect(keys(yaml, 'user', [{ serve: true }] as Rule[])).toEqual([])
+    expect(keys('repos: { acme/api: }', 'user')).toEqual([])
   })
 })
 
