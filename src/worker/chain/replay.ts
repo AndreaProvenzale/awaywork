@@ -128,6 +128,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
     await keep(dir, gitConfig, unit.branch, log).catch((restore: Error) =>
       log(`its .git is as the worker left it: ${restore.message}`),
     )
+    await provider.finish?.(dir).catch(() => {})
     throw e
   }
   await keep(dir, gitConfig, unit.branch, log)

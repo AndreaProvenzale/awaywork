@@ -62,6 +62,7 @@ runs:
       shell: bash
       run: |
         [ -d /opt/cursor/.local/share/cursor-agent/versions ] || exit 0
+        [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ] || exit 0
         printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
           'profile cursor_sandbox /opt/cursor/.local/share/cursor-agent/versions/*/cursorsandbox flags=(unconfined) { userns, }' |
           sudo apparmor_parser -r

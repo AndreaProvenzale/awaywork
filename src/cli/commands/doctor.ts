@@ -294,7 +294,7 @@ async function claudeSandbox(config: Config, boxed: boolean, asWorker: boolean) 
 /** Why Cursor's shell sandbox can't start where units run, if it can't. */
 async function cursorSandbox(config: Config, boxed: boolean, asWorker: boolean, bin = 'agent') {
   const where = await noSandbox(config, boxed, asWorker, (w) => cursorSandboxStarts(bin, w))
-  const needs = ' (needs user namespaces, which Ubuntu 24.04 refuses without an AppArmor profile)'
+  const needs = ' (needs user namespaces)'
   return (
     where &&
     `its sandbox can't start${where}${needs}: Cursor's shell runs unsandboxed, with network access`

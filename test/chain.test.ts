@@ -36,6 +36,7 @@ import {
   type UnitResult,
   unitNotes,
 } from '#posts/report'
+import { cursorProvider } from '#providers/cursor'
 import { allowance } from '#quota/budget'
 import { runUnits } from '#worker/units/run'
 import { withRepos } from './fakes/acme'
@@ -643,6 +644,47 @@ it("logs what a provider set aside and what it refused, and shows the set-aside 
   expect(unitNotes(report.results[0] as UnitResult)).toEqual([
     'network: set aside .cursor/sandbox.json (adds pypi.org)',
   ])
+})
+
+it('calls finish after a run that throws, once', async () => {
+  const calls: string[] = []
+  const provider: Provider = {
+    ...worker({}),
+    // biome-ignore lint/correctness/useYield: it fails before it has anything to say
+    run: async function* () {
+      throw new Error('launch failed')
+    },
+    finish: async () => {
+      calls.push('finish')
+      return []
+    },
+  }
+  await run('queue: [{ skill: implement, deliver: pr }]\n', [issue(1)], provider)
+  expect(calls).toEqual(['finish'])
+})
+
+it("puts a cursor clone's set-aside file back when a later step throws, before verify", async () => {
+  const base = worker()
+  const aside = cursorProvider('agent', async () => true)
+  const provider: Provider = {
+    ...base,
+    prepare: aside.prepare,
+    setAside: aside.setAside,
+    finish: aside.finish,
+    async *run(job, signal) {
+      if (job.unit.id !== 'acme-api-1') throw new Error('launch failed')
+      await mkdir(join(job.dir, '.cursor'))
+      await writeFile(join(job.dir, '.cursor/sandbox.json'), '{}')
+      yield* base.run(job, signal)
+    },
+  }
+  const { opened, rows } = await run(
+    "repos: { acme/api: { verify: 'test -f .cursor/sandbox.json' } }\nqueue: [{ skill: implement, then: [fix] }]\n",
+    [issue(1)],
+    provider,
+  )
+  expect(rows[1]).toEqual(['acme-api-1-fix', 'error', 'launch failed'])
+  expect(JSON.stringify(opened)).not.toContain('failed')
 })
 
 it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {

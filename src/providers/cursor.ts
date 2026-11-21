@@ -20,6 +20,10 @@ const CLONE_SANDBOX = '.cursor/sandbox.json'
 /** The decision log: outside the agent home, which goes with the worker. */
 const NETWORK_LOG = '.away/cursor-network.jsonl'
 const clonesAside = new Set<string>()
+/** What `prepare` found, for `setAside` and `run` of the same job. */
+const sandboxedClones = new Map<string, boolean>()
+/** A host as the schema spells it: a log line is the shell's to write. */
+const HOST = /^[\w-]+(\.[\w-]+)*$/
 /** As the runner's user, not root, outside its home, which the worker user can't enter (docs/providers.md). */
 const INSTALL = [
   'sudo install -d -o "$USER" /opt/cursor',
@@ -71,6 +75,7 @@ export function cursorProvider(
       await mkdir(dir, { recursive: true, mode: 0o700 })
       const servers = job.mcp ?? {}
       const sandboxed = await startsSandbox(job)
+      sandboxedClones.set(job.dir, sandboxed)
       await writeFile(
         join(dir, 'cli-config.json'),
         JSON.stringify(cliConfig(servers, sandboxed ? shellHosts(job) : undefined)),
@@ -87,10 +92,11 @@ export function cursorProvider(
     },
 
     async setAside(job) {
-      return (await startsSandbox(job)) ? moveOut(job.dir) : []
+      return (sandboxedClones.get(job.dir) ?? (await startsSandbox(job))) ? moveOut(job.dir) : []
     },
 
     async finish(dir) {
+      sandboxedClones.delete(dir)
       const lines = await refusals(dir)
       if (clonesAside.delete(dir)) await putBack(dir)
       return lines
@@ -99,7 +105,7 @@ export function cursorProvider(
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
       const capped = new AbortController()
-      const sandboxed = await startsSandbox(job, signal)
+      const sandboxed = sandboxedClones.get(job.dir) ?? (await startsSandbox(job, signal))
       if (!sandboxed && !signal.aborted)
         yield { type: 'log', line: "Cursor's sandbox can't start here: its shell runs unsandboxed" }
       const model = job.model ? ['--model', job.model] : []
@@ -171,8 +177,8 @@ export function cliConfig(servers: Record<string, McpServer>, network?: string[]
   return {
     version: 1,
     sandbox: { mode: 'enabled', networkAccess },
-    // The edit tool could write a `.cursor/sandbox.json` that widens the list.
-    permissions: { allow, deny: ['Write(**/.cursor/**)'] },
+    // The edit tool runs outside the sandbox: `.cursor/sandbox.json` could widen the list, and `.claude/settings.json` holds hooks and permissions the next round loads unsandboxed.
+    permissions: { allow, deny: ['Write(**/.cursor/**)', 'Write(**/.claude/**)'] },
   }
 }
 
@@ -195,7 +201,9 @@ const stayInSandbox = (hosts: string[]) =>
 export function refusedLines(jsonl: string): string[] {
   const hosts = jsonl.split('\n').flatMap((line) => {
     const row = parseJson(line)
-    return row?.decision === 'deny' && typeof row.host === 'string' ? [row.host] : []
+    return row?.decision === 'deny' && typeof row.host === 'string' && HOST.test(row.host)
+      ? [row.host]
+      : []
   })
   return [...new Set(hosts)].map((host) => `network: refused ${host} (agent shell)`)
 }
@@ -203,7 +211,9 @@ export function refusedLines(jsonl: string): string[] {
 async function refusals(dir: string): Promise<string[]> {
   const file = join(dir, NETWORK_LOG)
   if (!(await lstat(file).catch(() => undefined))?.isFile()) return []
-  return refusedLines(await readFile(file, 'utf8'))
+  const lines = refusedLines(await readFile(file, 'utf8'))
+  await rm(file)
+  return lines
 }
 
 const inGit = (dir: string, ...args: string[]) =>
@@ -225,6 +235,8 @@ async function moveOut(dir: string): Promise<string[]> {
 }
 
 async function putBack(dir: string): Promise<void> {
+  const indexed = await inGit(dir, 'ls-files', '--', CLONE_SANDBOX)
+  if (!indexed.stdout) return
   await inGit(dir, 'update-index', '--no-skip-worktree', '--', CLONE_SANDBOX)
   await inGit(dir, 'checkout', '--', CLONE_SANDBOX)
 }

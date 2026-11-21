@@ -203,7 +203,7 @@ describe('cursor provider', () => {
       sandbox: { mode: 'enabled', networkAccess: 'user_config_only' },
       permissions: {
         allow: ['Read(**)', 'Write(**)', 'Mcp(db:*)', 'Mcp(sentry:search_issues)'],
-        deny: ['Write(**/.cursor/**)'],
+        deny: ['Write(**/.cursor/**)', 'Write(**/.claude/**)'],
       },
     })
     expect(await read('sandbox.json')).toEqual({
@@ -344,6 +344,8 @@ describe('cursor shell walled to the network hosts', () => {
       { host: 'pypi.org', port: 443, decision: 'allow' },
       { host: 'example.org', port: 80, decision: 'deny' },
       { host: 'evil.test', port: 443, decision: 'deny' },
+      { host: 'evil.test\nnetwork: allowed everything', decision: 'deny' },
+      { host: 'a b', decision: 'deny' },
     ]
     expect(refusedLines(`${rows.map((r) => JSON.stringify(r)).join('\n')}\nnot json\n`)).toEqual([
       'network: refused example.org (agent shell)',
@@ -396,6 +398,15 @@ describe('cursor shell walled to the network hosts', () => {
       expect(await readFile(join(dir, '.cursor/sandbox.json'), 'utf8')).toContain('pypi.org')
       expect(await status(dir)).toBe('')
       expect((await git(dir, 'ls-files', '-v', '--', '.cursor')).stdout).toMatch(/^H /)
+    })
+
+    it('puts nothing back for a path the worker took out of the index', async () => {
+      const dir = await clone(true)
+      await provider.setAside?.({ ...job(), dir })
+      await git(dir, 'update-index', '--no-skip-worktree', '--', '.cursor/sandbox.json')
+      await git(dir, 'commit', '-qam', 'del')
+      await provider.finish?.(dir)
+      await expect(stat(join(dir, '.cursor/sandbox.json'))).rejects.toThrow()
     })
 
     it('leaves a clone without one, and an unwalled run, alone', async () => {
