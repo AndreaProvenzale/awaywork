@@ -339,6 +339,23 @@ describe('codex provider', () => {
     await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
   })
 
+  it('ends the run soon after its result, with what the binary left running', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-left-'))
+    const pid = join(root, 'left.pid')
+    const script = join(root, 'waits.sh')
+    const fixture = fileURLToPath(new URL('./fixtures/codex/exec.jsonl', import.meta.url))
+    const waits = `[ "$1" = app-server ] && exit 1; cat ${fixture}; /bin/sleep 30 >/dev/null 2>&1 & echo $! > ${pid}; wait`
+    await writeFile(script, `#!/bin/sh\n${waits}\n`, { mode: 0o755 })
+    const started = Date.now()
+    const events = await collect(
+      codexProvider(script, lockFile).run(job(), new AbortController().signal),
+    )
+    expect(Date.now() - started).toBeLessThan(8000)
+    expect(events.at(-1)).toMatchObject({ type: 'done', ok: true })
+    const left = Number(await readFile(pid, 'utf8'))
+    await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
+  })
+
   it('is unavailable on a GitHub-hosted runner only', () => {
     expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'github-hosted' })).toMatch(/self-hosted/)
     expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'self-hosted' })).toBeUndefined()

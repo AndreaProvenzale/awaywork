@@ -572,4 +572,20 @@ describe('claude provider', () => {
     const left = Number(await readFile(pid, 'utf8'))
     await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
   })
+
+  it('ends the run soon after its result, with what the binary left running', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-left-'))
+    const pid = join(root, 'left.pid')
+    const script = join(root, 'waits.sh')
+    const fixture = fileURLToPath(new URL('./fixtures/claude/fable.jsonl', import.meta.url))
+    const waits = `cat ${fixture}; /bin/sleep 30 >/dev/null 2>&1 & echo $! > ${pid}; wait`
+    await writeFile(script, `#!/bin/sh\n${waits}\n`, { mode: 0o755 })
+    const started = Date.now()
+    const provider = claudeProvider(script, async () => true)
+    const events = await collect(provider.run(job(), new AbortController().signal))
+    expect(Date.now() - started).toBeLessThan(8000)
+    expect(events.at(-1)).toMatchObject({ type: 'done', ok: true })
+    const left = Number(await readFile(pid, 'utf8'))
+    await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
+  })
 })

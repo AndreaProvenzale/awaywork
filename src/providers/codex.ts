@@ -20,7 +20,7 @@ import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
 import { lock } from '#util/lock'
-import { killGroupWhenDone } from '#util/process'
+import { killGroupSoon, killGroupWhenDone } from '#util/process'
 
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
@@ -233,12 +233,14 @@ export function codexProvider(
             break
           }
           for (const e of toEvents(event)) {
-            if (e.type === 'done') done = e
-            else yield e
+            if (e.type === 'done') {
+              done = e
+              killGroupSoon(child)
+            } else yield e
             if (e.type === 'log') logged.add(e.line)
           }
         }
-        const { exitCode, stderr } = await child
+        const { exitCode, stderr, isTerminated } = await child
         // Codex rejects some blocked commands at spawn, with no item in the stream.
         if (walled && !signal.aborted)
           for (const e of refusals(String(stderr ?? ''))) if (!logged.has(e.line)) yield e
@@ -247,7 +249,7 @@ export function codexProvider(
           const quota = await probe(process.env).catch(() => null)
           if (quota) yield { type: 'quota', quota }
         }
-        const ok = done?.type === 'done' && done.ok && exitCode === 0
+        const ok = done?.type === 'done' && done.ok && (exitCode === 0 || isTerminated)
         yield { type: 'done', ok: ok && !signal.aborted && !capped.signal.aborted, turns }
       } finally {
         if (excludes) await rm(excludes, { recursive: true, force: true })
