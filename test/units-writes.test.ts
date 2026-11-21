@@ -293,7 +293,7 @@ it("posts a plan rule's plan once on your card with its report, and fires on_don
     planner(tasks, undefined, prompts),
   )
   expect(prompts[0]).toContain(
-    'Deliver: a plan. Write `.away/out/report.md` early and refine it as you go, so a run cut short still leaves one, and `.away/out/plan.yml`, and commit nothing. `plan.yml` is YAML: `tasks:`, a list of at most 8 tasks',
+    'Deliver: a plan. Write `.away/out/report.md` and `.away/out/plan.yml`. Write the report early and refine it as you go, so a run cut short still leaves one. Commit nothing. `plan.yml` is YAML: `tasks:`, a list of at most 8 tasks',
   )
   expect(writes).toEqual([
     [

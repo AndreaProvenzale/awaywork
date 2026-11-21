@@ -16,5 +16,5 @@ The unit is the developer's own pull request whose base branch moved on. awaywor
 - A file/directory conflict leaves git's copy of the file as `<name>~<sha>`: delete it as part of the resolution, once what it holds is where it belongs.
 - Edit or delete files the merge holds, but create none: awaywork's merge takes only those, and leaves out any new file, a check's output included. If a resolution needs a new file, `ask`.
 - Reading git is fine (`git diff`, `git log`, `git show`); awaywork concludes the merge, and refuses one whose HEAD moved.
-- In the summary, the morning report: one line per conflicted file saying how you resolved it, then the fallout you fixed and the checks you ran.
+- The summary (`pr.md`, which goes in the morning report): one line per conflicted file saying how you resolved it, then the fallout you fixed and the checks you ran.
 - When a conflict needs a decision only the developer can make, or you can't resolve it safely, `ask`: awaywork then pushes nothing.

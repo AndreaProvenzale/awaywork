@@ -11,8 +11,8 @@ The unit is an issue or task, with or without the developer's pull request. When
 
 - Read the item and its comments, then the code involved; reuse what is there.
 - When the item already has the developer's pull request, your branch is cut from it. Read the PR description and diff first, work out what is done and what is left, and do only the unambiguous next steps, in the style of the existing commits. Never undo or rewrite what the developer did. Leave anything that needs a decision for them.
-- When the item's comments hold awaywork's questions and the replies to them, go by the replies. When the item is too ambiguous to implement at all, `ask` instead of guessing.
+- When the item is too ambiguous to implement at all, `ask` instead of guessing.
 - Add or update tests for what you change.
-- When this unit goes on with awaywork's own draft, read its body and commits first, do what's left, and write the PR body for the whole PR.
+- When this unit goes on with awaywork's own draft, read its body and commits first, do what's left.
 
 In the PR body: the item named, what you implemented, the reading you chose where it was ambiguous, and what you ran to verify. On the developer's PR, also what you left for them and why.
