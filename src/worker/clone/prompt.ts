@@ -17,6 +17,7 @@ interface PromptParts {
     setup?: string
     setupSkipped?: boolean
     test?: string
+    serveRefused?: string
     instructions?: string
   }
   inRepo?: string
@@ -31,6 +32,8 @@ export function assemblePrompt(p: PromptParts): string {
         ? `Setup, not run because this PR's author isn't trusted: \`${p.repo.setup}\`. Don't run it or install dependencies.`
         : `Setup, already run: \`${p.repo.setup}\``),
     p.repo.test && `Test: \`${p.repo.test}\``,
+    p.repo.serveRefused &&
+      `Serve, not run: ${p.repo.serveRefused}. The app isn't running; don't start it yourself.`,
   ].filter(Boolean)
   // A raw multi-line value would break the list and could add its own headings.
   const params = Object.entries(p.params ?? {}).map(

@@ -127,6 +127,10 @@ export function describeResult(c: Commented): string {
     : `result posted on ${c.url}${describePost(c.post)}`
 }
 
+/** The notes of the chain's steps after the first: what their workers left. */
+export const laterNotes = ({ head, steps }: Chain): string[] =>
+  steps.filter((s) => s !== head).flatMap((s) => s.notes ?? [])
+
 /** What a chain's first step wrote to its items, in order: its questions or its plan, then its result and on_done's moves. */
 export const unitNotes = (u: UnitResult): string[] => [
   ...(u.notes ?? []),
@@ -239,8 +243,10 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     })
     const summed = listed.filter((c) => c.head.summary).map(({ head }) => head)
     if (summed.length > 0) out.push('', ...summed.map((u) => `- **${refOf(u)}**: ${u.summary}`))
-    const notes = listed.flatMap(({ head }) =>
-      unitNotes(head).map((note) => `- **${refOf(head)}**: ${note}`),
+    const notes = listed.flatMap((chain) =>
+      [...unitNotes(chain.head), ...laterNotes(chain)].map(
+        (note) => `- **${refOf(chain.head)}**: ${note}`,
+      ),
     )
     if (notes.length > 0) out.push('', ...notes)
   }

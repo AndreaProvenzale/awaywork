@@ -167,7 +167,7 @@ Other shapes:
       serve: true # a rule or step key, inherited like mcp
   ```
 
-  After setup and `when`, awaywork starts `command` on a free port (`$AWAYWORK_PORT`), polls `ready` for up to 5 minutes, then runs the agent with `The app runs at http://localhost:52113, started by awaywork from `pnpm dev --port $AWAYWORK_PORT`; it stops with you. Don't start it again.` in its prompt and `AWAYWORK_SERVE_URL` in its env. The agent still starts nothing. Output goes to `serve.log` in the step's run dir.
+  After setup and `when`, awaywork starts `command` on a free port (`$AWAYWORK_PORT`), polls `ready` for up to 5 minutes, then runs the agent with ``The app runs at http://localhost:52113, started by awaywork from `pnpm dev --port $AWAYWORK_PORT`; it stops with you. Don't start it again.`` in its prompt and `AWAYWORK_SERVE_URL` in its env. The agent still starts nothing. Output goes to `serve.log` in the step's run dir.
 
   The app stops with the agent, before `until`, `verify` and the gates, so a gate judges the files the step left, not the app. A step that wants the app again, say each round of a loop, asks again and gets a fresh one on the tree the step before left. Without secrets, the app boots on what the repo commits: `.env.example`, SQLite or mocks.
 

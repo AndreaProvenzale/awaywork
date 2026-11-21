@@ -29,7 +29,10 @@ import { type Attempts, recordAttempts } from '#plan/attempts'
 import { planRun } from '#plan/foreman'
 import { footer } from '#posts/footer'
 import {
+  type Chain,
+  chains,
   formatReport,
+  laterNotes,
   type RunReport,
   runHeadline,
   runLine,
@@ -644,6 +647,20 @@ it("logs what a provider set aside and what it refused, and shows the set-aside 
   expect(unitNotes(report.results[0] as UnitResult)).toEqual([
     'network: set aside .cursor/sandbox.json (adds pypi.org)',
   ])
+})
+
+it("shows a later step's notes in the chain's", async () => {
+  const provider: Provider = {
+    ...worker({}),
+    setAside: async (job) => (job.unit.id.endsWith('-fix') ? ['serve not run: boom'] : []),
+  }
+  const { report } = await run(
+    'queue: [{ skill: implement, deliver: pr, then: [fix] }]\n',
+    [issue(1)],
+    provider,
+  )
+  const [chain] = chains(report)
+  expect(laterNotes(chain as Chain)).toEqual(['serve not run: boom'])
 })
 
 it('calls finish after a run that throws, once', async () => {

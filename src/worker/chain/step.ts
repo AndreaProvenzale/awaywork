@@ -10,7 +10,7 @@ import type { UnitResult } from '#posts/report'
 import { MAX_TURNS, modelOver, quotaFacts, route, withQuota } from '#quota/budget'
 import { bounded, counted } from '#util/text'
 import { fetchContexts } from '#worker/clone/context'
-import { gateEnv, setupEnv, workerEnv } from '#worker/clone/env'
+import { commandEnv, gateEnv, setupEnv, workerEnv } from '#worker/clone/env'
 import {
   copyOut,
   notSymlink,
@@ -420,7 +420,12 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
       until: input.until,
       maxMinutes: input.config.limits.unit_minutes,
       watch: input.watch,
-      serve: serveRequest(unit, settings.serve, join(unitDir, 'serve.log')),
+      serve: serveRequest(
+        unit,
+        settings.serve,
+        join(unitDir, 'serve.log'),
+        commandEnv(input.ctx.env, dir, secrets),
+      ),
     })
     await restoreGit(dir)
     for (const line of (await provider.finish?.(dir)) ?? []) log(line)

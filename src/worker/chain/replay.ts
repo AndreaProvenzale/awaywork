@@ -124,7 +124,12 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
       signal: r.signal,
       maxMinutes: r.config.limits.unit_minutes,
       watch: r.watch,
-      serve: serveRequest(unit, settings.serve, join(root, 'serve.log')),
+      serve: serveRequest(
+        unit,
+        settings.serve,
+        join(root, 'serve.log'),
+        commandEnv(r.ctx.env, dir, secrets),
+      ),
     })
   } catch (e) {
     // The failure is the error to report; a restore failing after it is logged.

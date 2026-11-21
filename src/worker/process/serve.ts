@@ -19,6 +19,8 @@ export interface ServeRequest {
   command?: string
   ready?: string
   logFile: string
+  /** What serve starts with: no secrets. */
+  env: NodeJS.ProcessEnv
   refused?: string
 }
 
@@ -35,21 +37,25 @@ export const asksServe = (rule: Rule): boolean =>
   !!rule.serve ||
   (rule.then ?? []).some((s) => ('loop' in s ? s.loop : [s]).some((step) => step.serve))
 
-/** The serve request of a step that asks: it runs where setup does, and only under `isolation: none` for now. */
-export function serveRequest(
-  unit: Unit,
-  serve: { command: string; ready: string } | undefined,
-  logFile: string,
-): ServeRequest | undefined {
-  if (!unit.rule.serve) return undefined
-  const refused = !serve
+/** Why a step that asks doesn't get the app: it runs where setup does, and only under `isolation: none` for now. */
+export const serveRefusal = (unit: Unit, serve?: { command: string }): string | undefined =>
+  !serve
     ? `${unit.repo} has no serve command`
     : unit.untrusted
       ? "this PR's author isn't trusted"
       : isolated() || contained()
         ? "isolation: user and container don't support it yet"
         : undefined
-  return { ...serve, logFile, refused }
+
+/** The serve request of a step that asks, with the env setup gets on a PR someone else opened. */
+export function serveRequest(
+  unit: Unit,
+  serve: { command: string; ready: string } | undefined,
+  logFile: string,
+  env: NodeJS.ProcessEnv,
+): ServeRequest | undefined {
+  if (!unit.rule.serve) return undefined
+  return { ...serve, logFile, env, refused: serveRefusal(unit, serve) }
 }
 
 /** Starts the app for the agent and waits for it; the job it returns carries the prompt line and env for what came of it. */
@@ -60,14 +66,11 @@ export async function startServe(
   timeoutMs = READY_MS,
 ): Promise<Served> {
   const { command, ready, logFile, refused } = req
+  // The prompt already says so, from `prepareWorkspace`: nothing is written into the clone here.
   if (refused || !command || !ready)
-    return withLine(
-      job,
-      `Serve, not run: ${refused}. The app isn't running; don't start it yourself.`,
-      `serve not run: ${refused}`,
-    )
+    return { job, note: `serve not run: ${refused}`, stop: async () => {} }
   const port = await freePort()
-  const env = { ...job.env, AWAYWORK_PORT: String(port) }
+  const env = { ...req.env, AWAYWORK_PORT: String(port) }
   const url = ready.replaceAll(/\$\{?AWAYWORK_PORT\}?/g, String(port))
   const stopping = new AbortController()
   const child = launch(command, [], {
@@ -89,7 +92,9 @@ export async function startServe(
     exit = r.shortMessage ?? `exit ${r.exitCode}`
   })
   const stop = async () => {
-    if (child.pid) await killTree(child.pid)
+    const { exitCode, signalCode } = child.nodeChildProcess
+    // A reaped pid may be someone else's by now.
+    if (child.pid && exitCode === null && signalCode === null) await killTree(child.pid)
     stopping.abort()
     await exited
   }
@@ -110,7 +115,10 @@ export async function startServe(
   }
   const origin = new URL(url).origin
   return withLine(
-    { ...job, env: { ...env, AWAYWORK_SERVE_URL: origin } },
+    {
+      ...job,
+      env: { ...job.env, AWAYWORK_PORT: String(port), AWAYWORK_SERVE_URL: origin },
+    },
     `The app runs at ${origin}, started by awaywork from \`${command}\`; it stops with you. Don't start it again.`,
     `serve ready at ${origin}`,
     stop,
@@ -150,7 +158,9 @@ async function waitReady(
 
 async function answers(url: string): Promise<boolean> {
   try {
-    return (await fetch(url, { signal: AbortSignal.timeout(2000) })).status < 500
+    return (
+      (await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(2000) })).status < 500
+    )
   } catch {
     return false
   }

@@ -23,7 +23,7 @@ export interface WorkerResult {
   /** The last reading the worker saw. */
   quota?: Quota
   reason?: string
-  /** What the provider set aside or changed in the clone for the run. */
+  /** What the provider set aside or changed in the clone for the run, and what came of serve. */
   notes?: string[]
 }
 

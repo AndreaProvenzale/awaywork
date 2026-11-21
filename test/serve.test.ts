@@ -1,17 +1,23 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { isolate } from '#core/isolation'
 import type { Job, Provider, Unit } from '#core/types'
-import { allowance } from '#quota/budget'
+import type { Allowance } from '#quota/budget'
+import { assemblePrompt } from '#worker/clone/prompt'
 import { asksServe, type ServeRequest, serveRequest, startServe } from '#worker/process/serve'
-import { defaultLimits, startWatchdog } from '#worker/process/watchdog'
+import { defaultLimits, killTree, startWatchdog } from '#worker/process/watchdog'
 import { runWorker } from '#worker/process/worker'
 import { fakeItem } from './fakes/items'
 import { fakeProvider } from './fakes/provider'
+
+vi.mock('#worker/process/watchdog', async (original) => {
+  const actual = await original<typeof import('#worker/process/watchdog')>()
+  return { ...actual, killTree: vi.fn(actual.killTree) }
+})
 
 const server = fileURLToPath(new URL('./fakes/serve.mjs', import.meta.url))
 const settings = { command: `node ${server}`, ready: 'http://localhost:$AWAYWORK_PORT/healthz' }
@@ -36,15 +42,19 @@ const unit = (over: Partial<Unit> = {}): Unit => ({
 async function setup(env: NodeJS.ProcessEnv = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'awaywork-serve-'))
   await mkdir(join(dir, '.away'))
+  const serveEnv = { ...process.env, SERVE_PIDS: join(dir, 'pids'), ...env }
   const job: Job = {
     unit: unit(),
     dir,
     prompt: 'prove it',
     maxTurns: 1,
-    env: { ...process.env, SERVE_PIDS: join(dir, 'pids'), ...env },
+    env: { ...serveEnv, AGENT_LOGIN: 'login-secret' },
   }
-  return { dir, job, request: { ...settings, logFile: join(dir, 'serve.log') } as ServeRequest }
+  const request = { ...settings, logFile: join(dir, 'serve.log'), env: serveEnv } as ServeRequest
+  return { dir, job, request }
 }
+
+const fallback: Allowance = { kind: 'fallback', units: 1, turns: 60, reason: 'test' }
 
 const alive = (pid: number) => {
   try {
@@ -78,18 +88,7 @@ describe('serve', () => {
         yield { type: 'done', ok: true, turns: 1 }
       },
     }
-    const a = allowance(
-      {
-        reserve: 0.1,
-        session_max: 0.9,
-        present_session_max: 0.4,
-        fallback: { units: 4, turns: 60 },
-      },
-      await fakeProvider().probe({ env: {}, log: () => {} }),
-      Date.now(),
-      [{ start: '00:00', end: '23:59' }],
-    )
-    const result = await runWorker(agent, job, a, { log: () => {}, watch, serve: request })
+    const result = await runWorker(agent, job, fallback, { log: () => {}, watch, serve: request })
 
     expect(result).toMatchObject({ status: 'done' })
     const [first] = seen
@@ -134,28 +133,97 @@ describe('serve', () => {
   it("doesn't start it on a PR whose author isn't trusted", async () => {
     const started = join(await mkdtemp(join(tmpdir(), 'awaywork-serve-')), 'started')
     const { job } = await setup({ SERVE_STARTED: started })
-    const request = serveRequest(unit({ untrusted: true }), settings, join(job.dir, 'serve.log'))
+    const request = serveRequest(
+      unit({ untrusted: true }),
+      settings,
+      join(job.dir, 'serve.log'),
+      {},
+    )
     const served = await startServe(request as ServeRequest, job, new AbortController().signal)
 
     expect(existsSync(started)).toBe(false)
-    expect(served.job.prompt).toContain("Serve, not run: this PR's author isn't trusted")
+    expect(served.note).toBe("serve not run: this PR's author isn't trusted")
   })
 
   it("doesn't start it under isolation: user", async () => {
     isolate('awaywork')
     const { job } = await setup()
-    const request = serveRequest(unit(), settings, join(job.dir, 'serve.log'))
+    const request = serveRequest(unit(), settings, join(job.dir, 'serve.log'), {})
     const served = await startServe(request as ServeRequest, job, new AbortController().signal)
 
-    expect(served.job.prompt).toContain("isolation: user and container don't support it yet")
+    expect(served.note).toContain("isolation: user and container don't support it yet")
     expect(existsSync(join(job.dir, 'serve.log'))).toBe(false)
+  })
+
+  it("doesn't give serve the agent's login or secrets", async () => {
+    const { job, request } = await setup()
+    const served = await startServe(request, job, new AbortController().signal)
+    await served.stop()
+
+    expect(await readFile(request.logFile, 'utf8')).toContain('login=undefined')
+    expect(served.job.env.AGENT_LOGIN).toBe('login-secret')
+  })
+
+  it('counts a redirect as an answer, without following it', async () => {
+    const { job, request } = await setup({ SERVE_MODE: 'redirect' })
+    const served = await startServe(request, job, new AbortController().signal, 5000)
+    await served.stop()
+
+    expect(served.note).toMatch(/^serve ready at/)
+  })
+
+  it("doesn't kill a tree by the pid of a serve that already exited", async () => {
+    const { job, request } = await setup({ SERVE_MODE: 'exit' })
+    vi.mocked(killTree).mockClear()
+    await startServe(request, job, new AbortController().signal)
+    expect(killTree).not.toHaveBeenCalled()
+
+    const ready = await setup()
+    const served = await startServe(ready.request, ready.job, new AbortController().signal)
+    await served.stop()
+    expect(killTree).toHaveBeenCalledOnce()
+  })
+
+  it('runs the step without the app when the clone is closed to awaywork, writing nothing into it', async () => {
+    const { dir, job } = await setup()
+    const request = serveRequest(unit({ untrusted: true }), settings, join(dir, 'serve.log'), {})
+    let prompt = ''
+    const agent: Provider = {
+      ...fakeProvider(),
+      async *run(j) {
+        prompt = j.prompt
+        yield { type: 'done', ok: true, turns: 1 }
+      },
+    }
+    await chmod(join(dir, '.away'), 0o500)
+    const result = await runWorker(agent, job, fallback, { log: () => {}, watch, serve: request })
+    await chmod(join(dir, '.away'), 0o700)
+
+    expect(result).toMatchObject({
+      status: 'done',
+      notes: ["serve not run: this PR's author isn't trusted"],
+    })
+    expect(prompt).toBe('prove it')
+  })
+
+  it('tells the prompt why the app is not running', () => {
+    const prompt = assemblePrompt({
+      harness: 'h',
+      skill: 's',
+      instructions: [],
+      repo: { serveRefused: "isolation: user and container don't support it yet" },
+      rule: [],
+    })
+    expect(prompt).toContain(
+      "Serve, not run: isolation: user and container don't support it yet. The app isn't running",
+    )
   })
 
   it('asks nothing of a step that did not ask, and says when the repo has no command', () => {
     expect(
-      serveRequest(unit({ rule: { ...unit().rule, serve: undefined } }), settings, 'x'),
+      serveRequest(unit({ rule: { ...unit().rule, serve: undefined } }), settings, 'x', {}),
     ).toBeUndefined()
-    expect(serveRequest(unit(), undefined, 'x')?.refused).toBe('acme/api has no serve command')
+    expect(serveRequest(unit(), undefined, 'x', {})?.refused).toBe('acme/api has no serve command')
   })
 
   it('finds a rule that asks in a step or a loop', () => {
