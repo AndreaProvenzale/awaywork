@@ -87,7 +87,9 @@ export function cursorProvider(
       await rm(join(job.dir, NETWORK_LOG), { force: true })
       await writeFile(
         join(dir, 'sandbox.json'),
-        JSON.stringify(sandboxConfig(shellHosts(job), join(job.dir, NETWORK_LOG))),
+        JSON.stringify(
+          sandboxConfig(shellHosts(job), join(job.dir, NETWORK_LOG), job.writable ?? []),
+        ),
       )
     },
 
@@ -121,7 +123,9 @@ export function cursorProvider(
         env: { ...env, AGENT_CLI_CREDENTIAL_STORE: 'memory' },
         extendEnv: false,
         home: homeOf(job),
-        input: sandboxed ? `${job.prompt}\n\n${stayInSandbox(shellHosts(job))}` : job.prompt,
+        input: sandboxed
+          ? `${job.prompt}\n\n${stayInSandbox(shellHosts(job), job.writable ?? [])}`
+          : job.prompt,
         cancelSignal: AbortSignal.any([signal, capped.signal]),
         killDescendants: true,
         reject: false,
@@ -189,8 +193,9 @@ export function cliConfig(servers: Record<string, McpServer>, network?: string[]
 /** On macOS the sandbox refuses even loopback unless listed; test suites bind there. */
 const LOOPBACK = ['localhost', '127.0.0.1']
 
-/** The shell reaching only loopback and `hosts`, every refusal in `log`. */
-export const sandboxConfig = (hosts: string[], log: string) => ({
+/** The shell reaching only loopback and `hosts`, writing `writable` besides the clone, every refusal in `log`. */
+export const sandboxConfig = (hosts: string[], log: string, writable: string[] = []) => ({
+  ...(writable.length > 0 && { additionalReadwritePaths: writable }),
   networkPolicy: {
     default: 'deny',
     allow: [...LOOPBACK, ...hosts],
@@ -198,8 +203,8 @@ export const sandboxConfig = (hosts: string[], log: string) => ({
   },
 })
 
-const stayInSandbox = (hosts: string[]) =>
-  `Your shell is sandboxed: it writes only here and reaches ${hosts.length ? hosts.join(', ') : 'no host'}. Asking to run outside the sandbox or for the network is always refused.`
+const stayInSandbox = (hosts: string[], writable: string[]) =>
+  `Your shell is sandboxed: it writes only here${writable.map((path) => `, ${path}`).join('')} and reaches ${hosts.length ? hosts.join(', ') : 'no host'}. Asking to run outside the sandbox or for the network is always refused.`
 
 /** The refused hosts in a decision log, one `worker.log` line each; its first line is metadata. */
 export function refusedLines(jsonl: string): string[] {

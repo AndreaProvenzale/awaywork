@@ -111,6 +111,10 @@ The classic token `schedule install` asks for reaches every repo you can; a dedi
 
 The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), so a steered agent can send what it reads to any of them, and `*` reopens it. Not on someone else's PR.
 
+## Writable paths
+
+[`writable`](../config/repos.md) opens paths outside the clone to the agent's shell, empty by default. A cache you list, `~/.npm` say, is shared with your own unwalled installs, so what a steered agent writes there can run for you later. Not on someone else's PR.
+
 ## MCP servers
 
 A rule's `mcp` gives its units your servers, and more reach:

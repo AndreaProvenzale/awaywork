@@ -1,7 +1,17 @@
 import { createWriteStream } from 'node:fs'
-import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { AGENT_HOME, CONTAINER_HOME, contain, contained, lostToWorker } from '#core/isolation'
+import { appendFile, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { configDir, defaultConfigPath, profilesPath, rootStateDir } from '#config/paths'
+import { readRegistry } from '#config/profiles'
+import {
+  AGENT_HOME,
+  CONTAINER_HOME,
+  contain,
+  contained,
+  lostToWorker,
+  whereRuns,
+} from '#core/isolation'
 import type { McpServer, Unit } from '#core/types'
 import { describeCondition, holds } from '#plan/condition'
 import { modelFor, modelsFor, type PlannedUnit, slug } from '#plan/foreman'
@@ -58,6 +68,73 @@ const copyStep = (dir: string, unitDir: string) =>
         join(dir, AGENT_HOME),
       ].includes(src) && (await notSymlink(src)),
   }).catch(() => {})
+
+const inside = (path: string, folder: string) => {
+  const rel = relative(folder, path)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/** The real path of `path`, a missing tail kept as written under its nearest existing folder. */
+async function real(path: string): Promise<string> {
+  try {
+    return await realpath(path)
+  } catch {
+    const parent = dirname(path)
+    return parent === path ? path : join(await real(parent), basename(path))
+  }
+}
+
+const registeredConfigs = () => {
+  try {
+    return Object.values(readRegistry(profilesPath).profiles)
+  } catch {
+    return []
+  }
+}
+
+/** The unit's `writable` paths that exist, as real paths, `~/` as the developer's home; none on someone else's PR or in a container, a skipped or refused one logged. */
+export async function writablePaths(
+  unit: Unit,
+  dir: string,
+  log: (line: string) => void,
+  loaded: (string | undefined)[] = [],
+) {
+  const written = unit.writable ?? []
+  if (written.length === 0) return []
+  if ('image' in whereRuns(dir)) {
+    log('writable: not applied under isolation: container')
+    return []
+  }
+  if (unit.foreign || unit.untrusted) {
+    log("writable: not opened on someone else's PR")
+    return []
+  }
+  const home = await real(homedir())
+  const own = await Promise.all(
+    [
+      configDir,
+      dirname(defaultConfigPath),
+      rootStateDir,
+      ...registeredConfigs().map(dirname),
+      ...loaded.filter((folder) => folder !== undefined),
+    ].map(real),
+  )
+  const found: string[] = []
+  for (const path of written) {
+    const full = resolve(path.startsWith('~/') ? join(homedir(), path.slice(2)) : path)
+    const resolved = await realpath(full).catch(() => undefined)
+    const clash =
+      resolved && own.find((folder) => inside(folder, resolved) || inside(resolved, folder))
+    if (!resolved) log(`writable: ${path} doesn't exist, skipped`)
+    else if (inside(home, resolved)) log(`writable: ${path} holds your home, refused`)
+    else if (clash) log(`writable: ${path} overlaps awaywork's own ${clash}, refused`)
+    else if (!found.includes(resolved)) {
+      if (resolved !== full) log(`writable: ${path} is ${resolved}`)
+      found.push(resolved)
+    }
+  }
+  return found
+}
 
 /**
  * What follows awaywork's own merge when no worker resolves it: setup only when there's a `verify` to need it,
@@ -386,6 +463,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
       log(`mcp: ${named.join(', ')} not started on someone else's PR`)
     if (unit.network?.length && (unit.foreign || unit.untrusted))
       log("network: not opened on someone else's PR")
+    const writable = await writablePaths(unit, dir, log, [input.configDir, input.config.baseDir])
     const mcp: Record<string, McpServer> = {}
     for (const name of unit.foreign ? [] : named) {
       const server = input.config.mcp[name] as McpServer
@@ -408,6 +486,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
       configDir: input.configDir,
       plugin,
       mcp,
+      writable,
     }
     if (a.kind === 'quota') result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
     start = await head(dir)

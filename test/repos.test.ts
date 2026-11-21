@@ -24,7 +24,7 @@ const problems = (text: string): string[] => {
 describe('repos', () => {
   it('takes a bare key as a listed repo with no settings', () => {
     const { repos } = parseConfig(config('repos:\n  acme/api:\n  acme/*: { setup: yarn }'))
-    expect(repos['acme/api']).toEqual({ secrets: [], network: [], gates: {} })
+    expect(repos['acme/api']).toEqual({ secrets: [], network: [], writable: [], gates: {} })
     expect(repoListed(repos, 'acme/api')).toBe(true)
     expect(repoListed(repos, 'Acme/Web')).toBe(true)
     expect(repoListed(repos, 'other/api')).toBe(false)
@@ -44,6 +44,7 @@ describe('repos', () => {
       verify: 'yarn lint',
       secrets: ['NPM_TOKEN', 'SENTRY_DSN'],
       network: [],
+      writable: [],
       gates: { deps: { changed: ['package.json'] }, routes: { command: './routes.sh' } },
     })
     expect(settingsFor(repos, 'acme/web')).toMatchObject({
@@ -51,7 +52,12 @@ describe('repos', () => {
       verify: 'yarn test',
     })
     expect(settingsFor(repos, 'other/docs')).toMatchObject({ setup: 'npm ci', secrets: [] })
-    expect(settingsFor({}, 'acme/api')).toEqual({ secrets: [], network: [], gates: {} })
+    expect(settingsFor({}, 'acme/api')).toEqual({
+      secrets: [],
+      network: [],
+      writable: [],
+      gates: {},
+    })
   })
 
   it('adds up the network hosts of every key naming a repo, and checks them', () => {
@@ -65,6 +71,34 @@ describe('repos', () => {
     expect(parseConfig(config('repos: { acme/api: }\nnetwork: ["*"]')).network).toEqual(['*'])
     for (const bad of ['https://npmjs.org', 'npmjs.org:443', 'npmjs.org/x', 'a b', ''])
       expect(problems(config(`repos: { acme/api: }\nnetwork: ["${bad}"]`))).toHaveLength(1)
+  })
+
+  it('adds up the writable paths of every key naming a repo, and checks them', () => {
+    const { repos } = parseConfig(
+      config(`repos:
+  acme/api: { writable: ["~/.npm"] }
+  acme/*: { writable: ["~/.cache/yarn", "~/.npm", /var/cache] }`),
+    )
+    expect(settingsFor(repos, 'acme/api').writable).toEqual([
+      '~/.cache/yarn',
+      '~/.npm',
+      '/var/cache',
+    ])
+    expect(parseConfig(config('repos: { acme/api: }\nwritable: ["~/.npm"]')).writable).toEqual([
+      '~/.npm',
+    ])
+    for (const bad of [
+      '.npm',
+      '../x',
+      '~',
+      '~x/y',
+      '~/',
+      '~/.cache/*',
+      '/tmp/a?',
+      '/tmp/{a,b}',
+      '',
+    ])
+      expect(problems(config(`repos: { acme/api: }\nwritable: ["${bad}"]`))).toHaveLength(1)
   })
 
   it('needs an image for a repo under isolation: container, its own or a glob’s', () => {
@@ -160,6 +194,26 @@ describe("a unit's network", () => {
     const setup = setupOf(cfg, { builtin: builtinSkills })
     const plan = planRun({ setup, items: [item], allowances: {} })
     expect(plan.units.map((u) => u.unit.network)).toEqual([['a.example', 'b.example', 'c.example']])
+  })
+})
+
+describe("a unit's writable", () => {
+  it('adds the top level, the repo and the rule', () => {
+    const cfg = parseConfig(
+      config(
+        'writable: [~/.a]\nrepos: { acme/*: { writable: [~/.b] } }',
+        "{ tracker: { command: 'echo []' } }\nqueue: [{ skill: plan, writable: [~/.c, ~/.a] }]",
+      ),
+    )
+    const item = fakeItem({
+      source: 'tracker',
+      key: 'ENG-1',
+      type: 'task',
+      fields: { repo: 'acme/api' },
+    })
+    const setup = setupOf(cfg, { builtin: builtinSkills })
+    const plan = planRun({ setup, items: [item], allowances: {} })
+    expect(plan.units.map((u) => u.unit.writable)).toEqual([['~/.a', '~/.b', '~/.c']])
   })
 })
 
