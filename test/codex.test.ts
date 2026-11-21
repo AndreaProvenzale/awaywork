@@ -225,20 +225,22 @@ describe('codex provider', () => {
     }
   })
 
-  it('has git ignore the masked .claude and .mcp.json for the run only', async () => {
-    const dir = await mkdtemp(join(tmp, 'clone-'))
-    await mkdir(join(dir, '.git', 'info'), { recursive: true })
-    const exclude = join(dir, '.git', 'info', 'exclude')
-    await writeFile(exclude, '/.away/\n')
-    process.env.FAKE_EXCLUDE = join(dir, 'seen')
-    try {
-      await collect(provider.run({ ...job(), dir }, new AbortController().signal))
-      expect(await readFile(join(dir, 'seen'), 'utf8')).toBe('/.away/\n/.claude\n/.mcp.json\n')
-      expect(await readFile(exclude, 'utf8')).toBe('/.away/\n')
-    } finally {
-      delete process.env.FAKE_EXCLUDE
-    }
-  })
+  it.runIf(process.platform === 'linux')(
+    'has git ignore the masked .claude and .mcp.json from a file outside the clone, gone after the run',
+    async () => {
+      const dir = await mkdtemp(join(tmp, 'clone-'))
+      process.env.FAKE_EXCLUDE = join(tmp, 'seen')
+      try {
+        await collect(provider.run({ ...job(), dir }, new AbortController().signal))
+        const [file = '', ...lines] = (await readFile(join(tmp, 'seen'), 'utf8')).split('\n')
+        expect(lines.join('\n')).toBe('/.claude\n/.mcp.json\n')
+        expect(file.startsWith(dir)).toBe(false)
+        expect(existsSync(file)).toBe(false)
+      } finally {
+        delete process.env.FAKE_EXCLUDE
+      }
+    },
+  )
 
   it('logs the hosts the proxy refused, once each', () => {
     const blocked = (host: string) =>

@@ -66,8 +66,11 @@ let dockerTimeout = DOCKER_TIMEOUT_MS
 /** Containers a removal of timed out on. */
 const unanswered = new Set<string>()
 
-/** With `home`, the process runs with that `HOME` whatever the isolation; unset, the isolation's. */
-export type LaunchOptions = Options & { home?: string }
+/**
+ * With `home`, the process runs with that `HOME` whatever the isolation; unset, the isolation's.
+ * With `tmpdir`, a worker user's process gets that `TMPDIR`: sudo's glibc drops it from its env, so it goes on argv.
+ */
+export type LaunchOptions = Options & { home?: string; tmpdir?: string }
 
 export interface Box {
   /** The repo's image, with the agent CLIs and its toolchain. */
@@ -223,21 +226,22 @@ const sandboxes = new Map<string, boolean>()
  * It runs outside `start`, so no exit kills the worker's processes, and once per process for each image or user.
  */
 export const sandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
-  probeBwrap(where, [...PROC, ...DEV, ...CLAUDE_INNER], signal, run)
+  probeBwrap(where, [...PROC, ...DEV, ...CLAUDE_INNER], 'claude', signal, run)
 
 /** Whether Codex's sandbox can start `where`: the same, without the nested namespace or fresh `/proc` mount, which Docker's masked `/proc` refuses and Codex doesn't need. */
 export const codexSandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
-  probeBwrap(where, [...DEV, 'true'], signal, run)
+  probeBwrap(where, [...DEV, 'true'], 'codex', signal, run)
 
 async function probeBwrap(
   { image, user }: Where,
   inner: string[],
+  cacheKey: string,
   signal: AbortSignal | undefined,
   run: typeof execa,
 ): Promise<boolean> {
   if (!image && process.platform !== 'linux') return true
   const bwrapArgs = [...BWRAP_PROBE, ...inner]
-  const key = `${inner.at(-1)} ${image ?? user ?? ''}`
+  const key = `${cacheKey} ${image ?? user ?? ''}`
   const known = sandboxes.get(key)
   if (known !== undefined) return known
   const options = { reject: false, cancelSignal: signal } as const
@@ -316,8 +320,7 @@ export function sudoArgs(
     '/usr/bin/env',
     ...developerFolders.flatMap((name) => ['-u', name]),
     ...(home ? [`HOME=${home}`] : []),
-    // sudo's glibc drops TMPDIR from its env: awaywork's own goes on env's argv, never yours.
-    ...(env?.TMPDIR && env.TMPDIR !== process.env.TMPDIR ? [`TMPDIR=${env.TMPDIR}`] : []),
+    ...(options.tmpdir ? [`TMPDIR=${options.tmpdir}`] : []),
   ]
   // sudo looks a bare name up on its own secure_path, not the env's PATH.
   const command = options.shell

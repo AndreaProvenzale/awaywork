@@ -1,6 +1,16 @@
 import { constants } from 'node:fs'
-import { lstat, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
@@ -174,7 +184,7 @@ export function codexProvider(
       let turns = 0
       let done: WorkerEvent | undefined
       const logged = new Set<string>()
-      let restoreExclude = async () => {}
+      let excludes: string | undefined
       try {
         const model = job.model ? ['-m', job.model] : []
         const { config = {} } = configSchema.parse(job.config ?? {})
@@ -190,11 +200,22 @@ export function codexProvider(
             line: "Codex's sandbox can't start here: its shell runs unsandboxed",
           }
         const shell = walled ? shellWall(job) : FULL_ACCESS
-        if (walled) restoreExclude = await ignoreMasks(job.dir)
-        const args = [...EXEC, ...model, ...overrides, ...mcp, ...shell, '-C', job.dir, '-']
+        if (walled && process.platform === 'linux') excludes = await writeMaskExcludes()
+        const args = [
+          ...EXEC,
+          ...model,
+          ...overrides,
+          ...mcp,
+          ...shell,
+          ...ignoreMasks(excludes),
+          '-C',
+          job.dir,
+          '-',
+        ]
         const child = launch(bin, args, {
           cwd: job.dir,
-          env: walled ? wallEnv(job) : job.env,
+          env: job.env,
+          tmpdir: walled && workerHome(job.dir) ? '/var/tmp' : undefined,
           extendEnv: false,
           input: job.prompt,
           cancelSignal: AbortSignal.any([signal, capped.signal]),
@@ -229,7 +250,7 @@ export function codexProvider(
         const ok = done?.type === 'done' && done.ok && exitCode === 0
         yield { type: 'done', ok: ok && !signal.aborted && !capped.signal.aborted, turns }
       } finally {
-        await restoreExclude()
+        if (excludes) await rm(excludes, { recursive: true, force: true })
         await release()
       }
     },
@@ -241,22 +262,27 @@ export function codexProvider(
 
 export const codex = codexProvider()
 
-/** Under `user`, a CODEX_HOME in /tmp is under the temp dir, where Codex won't make its sandbox helper and every command fails. */
-const wallEnv = (job: Job) =>
-  workerHome(job.dir) && process.platform === 'linux' ? { ...job.env, TMPDIR: '/var/tmp' } : job.env
-
-/** On Linux, Codex masks an absent read-only path with an empty file; git ignores `HOOKED` for the run so a commit leaves them out. */
-async function ignoreMasks(dir: string): Promise<() => Promise<void>> {
-  const file = join(dir, '.git', 'info', 'exclude')
-  const before = await readFile(file, 'utf8').catch(() => undefined)
-  const ignored = HOOKED.map((p) => `/${p}\n`).join('')
-  const wrote = await writeFile(file, `${before ?? ''}${ignored}`).then(
-    () => true,
-    () => false,
-  )
-  if (!wrote) return async () => {}
-  return () => (before === undefined ? rm(file, { force: true }) : writeFile(file, before))
+/** On Linux, Codex masks an absent read-only path with an empty file: this global excludes file, outside the clone, keeps `HOOKED` out of a commit. Returns its folder. */
+async function writeMaskExcludes(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'awaywork-excludes-'))
+  // The worker user reads it; it can't write it.
+  await chmod(dir, 0o755)
+  await writeFile(join(dir, 'ignore'), HOOKED.map((p) => `/${p}\n`).join(''), { mode: 0o644 })
+  return dir
 }
+
+/** Codex's own policy sets the git config in its shell, as its default excludes drop any variable named `*KEY*`. */
+const ignoreMasks = (dir: string | undefined) =>
+  dir
+    ? [
+        '-c',
+        `shell_environment_policy.set=${toml({
+          GIT_CONFIG_COUNT: '1',
+          GIT_CONFIG_KEY_0: 'core.excludesFile',
+          GIT_CONFIG_VALUE_0: join(dir, 'ignore'),
+        })}`,
+      ]
+    : []
 
 /** A profile whose shell writes the clone and reaches only the unit's `network` hosts, none by default. */
 export function shellWall(job: Job): string[] {

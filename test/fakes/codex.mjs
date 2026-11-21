@@ -23,8 +23,10 @@ if (args.includes('--version')) {
   }
 } else {
   if (process.env.FAKE_ARGV) writeFileSync(process.env.FAKE_ARGV, JSON.stringify(args))
-  if (process.env.FAKE_EXCLUDE)
-    writeFileSync(process.env.FAKE_EXCLUDE, readFileSync('.git/info/exclude', 'utf8'))
+  if (process.env.FAKE_EXCLUDE) {
+    const file = args.join('\n').match(/GIT_CONFIG_VALUE_0"="([^"]+)"/)?.[1]
+    writeFileSync(process.env.FAKE_EXCLUDE, file ? `${file}\n${readFileSync(file, 'utf8')}` : '')
+  }
   process.stdin.resume()
   if (process.env.FAKE_CODEX_STDERR) process.stderr.write(process.env.FAKE_CODEX_STDERR)
   process.stdout.write(recorded(process.env.FAKE_CODEX_RUN ?? 'exec'))
