@@ -123,7 +123,9 @@ export function cursorProvider(
         env: { ...env, AGENT_CLI_CREDENTIAL_STORE: 'memory' },
         extendEnv: false,
         home: homeOf(job),
-        input: sandboxed ? `${job.prompt}\n\n${stayInSandbox(shellHosts(job))}` : job.prompt,
+        input: sandboxed
+          ? `${job.prompt}\n\n${stayInSandbox(shellHosts(job), job.writable ?? [])}`
+          : job.prompt,
         cancelSignal: AbortSignal.any([signal, capped.signal]),
         killDescendants: true,
         reject: false,
@@ -201,8 +203,8 @@ export const sandboxConfig = (hosts: string[], log: string, writable: string[] =
   },
 })
 
-const stayInSandbox = (hosts: string[]) =>
-  `Your shell is sandboxed: it writes only here and reaches ${hosts.length ? hosts.join(', ') : 'no host'}. Asking to run outside the sandbox or for the network is always refused.`
+const stayInSandbox = (hosts: string[], writable: string[]) =>
+  `Your shell is sandboxed: it writes only here${writable.map((path) => `, ${path}`).join('')} and reaches ${hosts.length ? hosts.join(', ') : 'no host'}. Asking to run outside the sandbox or for the network is always refused.`
 
 /** The refused hosts in a decision log, one `worker.log` line each; its first line is metadata. */
 export function refusedLines(jsonl: string): string[] {

@@ -274,12 +274,15 @@ const network = z
   )
 const writablePath = z
   .string()
-  .regex(/^(\/|~\/)[^*?[\]{}]*$/, 'expected an absolute path or one under ~/, with no glob')
+  .regex(
+    /^(\/|~\/[^*?[\]{}])[^*?[\]{}]*$/,
+    'expected an absolute path or one under ~/, with no glob',
+  )
 const writable = z
   .array(writablePath)
   .default([])
   .describe(
-    "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+    "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
   )
 const stepSettings = {
   provider: oneOrMany

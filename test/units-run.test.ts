@@ -1,20 +1,31 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
-import { bin, builtinSkillsDir } from '#config/paths'
+import { bin, builtinSkillsDir, rootStateDir } from '#config/paths'
 import { setupOf } from '#config/skills'
+import { containerize } from '#core/isolation'
 import { builtinSkills } from '#core/skills'
-import type { Provider, Source } from '#core/types'
+import type { Provider, Source, Unit } from '#core/types'
 import { formatRun, summarize } from '#format/report'
 import { recordAttempts } from '#plan/attempts'
 import { planRun, slug } from '#plan/foreman'
 import { footer } from '#posts/footer'
 import { formatReport, runLine } from '#posts/report'
 import { allowance } from '#quota/budget'
+import { writablePaths } from '#worker/chain/step'
 import { namedChains, runUnits } from '#worker/units/run'
 import type { RunInput } from '#worker/units/state'
 import { fakeForge } from './fakes/forge'
@@ -683,7 +694,7 @@ providers: [claude: {}]
 budget: { fallback: { units: 8, turns: 60 } }
 repos: { acme/*: {} }
 network: [a.example]
-writable: [/tmp, /no/such/dir]
+writable: [/no/such/dir]
 sources: { github: {} }
 mcp:
   db: { command: db-mcp, secrets: [DB_URL] }
@@ -766,7 +777,6 @@ queue:
   expect(await log('acme-api-4')).toContain(notOpened)
   const notWritable = "writable: not opened on someone else's PR"
   expect(await log('acme-api-2')).toContain("writable: /no/such/dir doesn't exist, skipped")
-  expect(await log('acme-api-2')).not.toContain('/tmp')
   expect(await log('acme-api-2')).not.toContain(notWritable)
   expect(await log('acme-api-3')).toContain(notWritable)
   expect(await log('acme-api-4')).toContain(notWritable)
@@ -820,4 +830,100 @@ it('stops a unit at unit_minutes', async () => {
   } finally {
     vi.useRealTimers()
   }
+})
+
+it("hands the agent's shell the real, existing writable paths, none of awaywork's or the home's, and none on someone else's PR or in a container", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'awaywork-writable-')))
+  const target = join(root, 'target')
+  await mkdir(target)
+  await symlink(target, join(root, 'link'))
+  const underHome = await mkdtemp(join(homedir(), '.awaywork-writable-'))
+  await mkdir(rootStateDir, { recursive: true })
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, _branch: string, dir: string) => {
+      await execa(bin('git'), ['init', '-q', dir])
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    },
+  }
+  const asked = [
+    join(root, 'link'),
+    `~/${basename(underHome)}`,
+    join(root, 'gone'),
+    '/',
+    homedir(),
+    dirname(rootStateDir),
+    join(rootStateDir, 'runs'),
+  ]
+  const config = parseConfig(`
+providers: [claude: {}]
+repos: { acme/*: {} }
+writable: ${JSON.stringify(asked)}
+sources: { github: {} }
+queue: [{ skill: review }]
+`)
+  const run = async (name: string, items: ReturnType<typeof githubPr>[]) => {
+    const jobs: Record<string, string[] | undefined> = {}
+    await runUnits({
+      config,
+      configDir: root,
+      plan: planRun({
+        setup: setupOf(config, { builtin: builtinSkills }),
+        items,
+        allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+      }),
+      runId: 'r1',
+      runDir: join(root, name),
+      dryRun: false,
+      providers: {
+        claude: {
+          ...worker,
+          async *run(job) {
+            jobs[job.unit.id] = job.writable
+            await writeFile(join(job.dir, '.away/out/report.md'), 'Done.')
+            yield { type: 'done', ok: true, turns: 1 }
+          },
+        },
+      },
+      sources: { github: fakeSource() as Source },
+      forge,
+      ctx: { env: { PATH: '/bin' }, log: () => {} },
+      watch: () => ({ stop: async () => {} }),
+      shortage: async () => undefined,
+      skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+    })
+    return jobs
+  }
+  const log = (name: string, unit: string) =>
+    readFile(join(root, `${name}/units/${unit}/1-review/worker.log`), 'utf8')
+  try {
+    const items = [githubPr(1), githubPr(2, { mine: false, trusted: false })]
+    expect(await run('host', items)).toEqual({
+      'acme-api-1': [target, underHome],
+      'acme-api-2': [],
+    })
+    const own = await log('host', 'acme-api-1')
+    expect(own).toContain(`writable: ${join(root, 'link')} is ${target}`)
+    expect(own).toContain(`writable: ${join(root, 'gone')} doesn't exist, skipped`)
+    expect(own).toContain('writable: / holds your home, refused')
+    expect(own).toContain(`writable: ${homedir()} holds your home, refused`)
+    expect(own).toContain(`${dirname(rootStateDir)} overlaps awaywork's own files, refused`)
+    expect(own).toContain(`${join(rootStateDir, 'runs')} overlaps awaywork's own files, refused`)
+    expect(await log('host', 'acme-api-2')).toContain("writable: not opened on someone else's PR")
+  } finally {
+    await rm(underHome, { recursive: true, force: true })
+  }
+})
+
+it('applies no writable path in a container, and says so', async () => {
+  const lines: string[] = []
+  containerize(true)
+  try {
+    expect(
+      await writablePaths({ writable: ['/tmp'] } as Unit, '/clone', (l) => lines.push(l)),
+    ).toEqual([])
+  } finally {
+    containerize(false)
+  }
+  expect(lines).toEqual(['writable: not applied under isolation: container'])
 })

@@ -834,11 +834,11 @@
               },
               "writable": {
                 "default": [],
-                "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+                "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "pattern": "^(\\/|~\\/)[^*?[\\]{}]*$"
+                  "pattern": "^(\\/|~\\/[^*?[\\]{}])[^*?[\\]{}]*$"
                 }
               },
               "test": {
@@ -949,11 +949,11 @@
     },
     "writable": {
       "default": [],
-      "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+      "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^(\\/|~\\/)[^*?[\\]{}]*$"
+        "pattern": "^(\\/|~\\/[^*?[\\]{}])[^*?[\\]{}]*$"
       }
     },
     "mcp": {
@@ -1143,11 +1143,11 @@
           },
           "writable": {
             "default": [],
-            "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+            "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^(\\/|~\\/)[^*?[\\]{}]*$"
+              "pattern": "^(\\/|~\\/[^*?[\\]{}])[^*?[\\]{}]*$"
             }
           },
           "deliver": {

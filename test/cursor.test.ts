@@ -369,6 +369,12 @@ describe('cursor shell walled to the network hosts', () => {
     )
   })
 
+  it('names the writable paths in the sandbox note', async () => {
+    const file = join(tmp, 'walled-writable.json')
+    await run({ ...job({ FAKE_ENV: file }), writable: ['/a/b'] })
+    expect(JSON.parse(await readFile(file, 'utf8')).prompt).toContain('writes only here, /a/b and')
+  })
+
   it('reads the refused hosts from the decision log, skipping its metadata line', () => {
     const rows = [
       { type: 'sandbox_metadata', version: 1 },

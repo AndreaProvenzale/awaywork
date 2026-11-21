@@ -87,7 +87,17 @@ describe('repos', () => {
     expect(parseConfig(config('repos: { acme/api: }\nwritable: ["~/.npm"]')).writable).toEqual([
       '~/.npm',
     ])
-    for (const bad of ['.npm', '../x', '~', '~x/y', '~/.cache/*', '/tmp/a?', '/tmp/{a,b}', ''])
+    for (const bad of [
+      '.npm',
+      '../x',
+      '~',
+      '~x/y',
+      '~/',
+      '~/.cache/*',
+      '/tmp/a?',
+      '/tmp/{a,b}',
+      '',
+    ])
       expect(problems(config(`repos: { acme/api: }\nwritable: ["${bad}"]`))).toHaveLength(1)
   })
 

@@ -1,7 +1,8 @@
 import { createWriteStream } from 'node:fs'
-import { appendFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative } from 'node:path'
+import { configDir, defaultConfigPath, envFile, rootStateDir } from '#config/paths'
 import {
   AGENT_HOME,
   CONTAINER_HOME,
@@ -66,19 +67,41 @@ const copyStep = (dir: string, unitDir: string) =>
       ].includes(src) && (await notSymlink(src)),
   }).catch(() => {})
 
-/** The unit's `writable` paths that exist, `~/` as the developer's home; none on someone else's PR or in a container, a skipped one logged. */
-async function writablePaths(unit: Unit, dir: string, log: (line: string) => void) {
+const inside = (path: string, folder: string) => {
+  const rel = relative(folder, path)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+const real = (path: string) => realpath(path).catch(() => path)
+
+/** The unit's `writable` paths that exist, as real paths, `~/` as the developer's home; none on someone else's PR or in a container, a skipped or refused one logged. */
+export async function writablePaths(unit: Unit, dir: string, log: (line: string) => void) {
   const written = unit.writable ?? []
-  if (written.length === 0 || 'image' in whereRuns(dir)) return []
+  if (written.length === 0) return []
+  if ('image' in whereRuns(dir)) {
+    log('writable: not applied under isolation: container')
+    return []
+  }
   if (unit.foreign || unit.untrusted) {
     log("writable: not opened on someone else's PR")
     return []
   }
+  const home = await real(homedir())
+  const own = await Promise.all(
+    [configDir, dirname(defaultConfigPath), dirname(envFile), rootStateDir].map(real),
+  )
   const found: string[] = []
   for (const path of written) {
     const full = path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
-    if (await stat(full).catch(() => undefined)) found.push(full)
-    else log(`writable: ${path} doesn't exist, skipped`)
+    const resolved = await realpath(full).catch(() => undefined)
+    if (!resolved) log(`writable: ${path} doesn't exist, skipped`)
+    else if (inside(home, resolved)) log(`writable: ${path} holds your home, refused`)
+    else if (own.some((folder) => inside(folder, resolved) || inside(resolved, folder)))
+      log(`writable: ${path} overlaps awaywork's own files, refused`)
+    else {
+      if (resolved !== full) log(`writable: ${path} is ${resolved}`)
+      found.push(resolved)
+    }
   }
   return found
 }
