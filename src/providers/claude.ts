@@ -124,9 +124,12 @@ export function claudeProvider(
 
 export const claude = claudeProvider()
 
-type Theirs = { filesystem?: { allowWrite?: string[] }; network?: { allowedDomains?: string[] } }
+type Theirs = {
+  filesystem?: { allowWrite?: string[] }
+  network?: { allowedDomains?: string[]; allowLocalBinding?: boolean }
+}
 
-/** Bash reaching only the unit's `network` hosts, none by default, without the login or the MCP secrets. */
+/** Bash reaching only loopback and the unit's `network` hosts, without the login or the MCP secrets. */
 function sandbox(job: Job, theirs?: Theirs) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
@@ -140,7 +143,7 @@ function sandbox(job: Job, theirs?: Theirs) {
     enabled: true,
     failIfUnavailable: false,
     allowUnsandboxedCommands: false,
-    network: { ...theirs?.network, allowedDomains: hosts },
+    network: { allowLocalBinding: true, ...theirs?.network, allowedDomains: hosts },
     ...(home && {
       filesystem: {
         ...theirs?.filesystem,
