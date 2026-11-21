@@ -92,7 +92,7 @@ export function cursorProvider(
     },
 
     async setAside(job) {
-      return (sandboxedClones.get(job.dir) ?? (await startsSandbox(job))) ? moveOut(job.dir) : []
+      return sandboxedClones.get(job.dir) ? moveOut(job.dir) : []
     },
 
     async finish(dir) {
@@ -105,7 +105,7 @@ export function cursorProvider(
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
       const capped = new AbortController()
-      const sandboxed = sandboxedClones.get(job.dir) ?? (await startsSandbox(job, signal))
+      const sandboxed = sandboxedClones.get(job.dir)
       if (!sandboxed && !signal.aborted)
         yield { type: 'log', line: "Cursor's sandbox can't start here: its shell runs unsandboxed" }
       const model = job.model ? ['--model', job.model] : []

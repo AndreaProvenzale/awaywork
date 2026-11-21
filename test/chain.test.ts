@@ -629,7 +629,7 @@ it("logs what a provider set aside and what it refused, and shows the set-aside 
     setAside: async () => ['network: set aside .cursor/sandbox.json (adds pypi.org)'],
     finish: async () => {
       calls.push('finish')
-      return ['network: refused evil.example (agent shell)']
+      return calls.length === 1 ? ['network: refused evil.example (agent shell)'] : []
     },
   }
   const { runDir, report } = await run(
@@ -639,8 +639,8 @@ it("logs what a provider set aside and what it refused, and shows the set-aside 
   )
   const log = await readFile(join(runDir, 'units/acme-api-1/1-implement/worker.log'), 'utf8')
   expect(log).toMatch(/network: set aside \.cursor\/sandbox\.json \(adds pypi\.org\)\n/)
-  expect(log).toMatch(/network: refused evil\.example \(agent shell\)\n/)
-  expect(calls).toEqual(['finish'])
+  expect(log.match(/network: refused evil\.example/g)).toHaveLength(1)
+  expect(calls).toEqual(['finish', 'finish'])
   expect(unitNotes(report.results[0] as UnitResult)).toEqual([
     'network: set aside .cursor/sandbox.json (adds pypi.org)',
   ])

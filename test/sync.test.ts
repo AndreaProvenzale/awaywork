@@ -12,6 +12,7 @@ import { formatWhy } from '#format/why'
 import { pushedOnto, recordAttempts, unchangedSince } from '#plan/attempts'
 import { planRun } from '#plan/foreman'
 import { formatReport } from '#posts/report'
+import { cursorProvider } from '#providers/cursor'
 import { allowance } from '#quota/budget'
 import { runUnits } from '#worker/units/run'
 import { fakeForge } from './fakes/forge'
@@ -445,7 +446,8 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
       await writeFile(join(dir, '.git/MERGE_HEAD'), `${at.feature1}\n`)
       await writeFile(join(dir, '.git/info/exclude'), '')
     })
-    const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
+    const settings = withRepo('true', 'test -f .cursor/sandbox.json')
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
     expect(report.results[0]?.outcome?.kind).toBe('pushed')
     const head = await git(at.origin, 'rev-parse', 'feature-1')
     expect(await git(at.origin, 'rev-parse', `${head}^@`)).toBe(`${at.feature1}\n${at.main}`)
@@ -590,7 +592,8 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
       await rm(join(dir, 'db/schema.sql'))
       await writeFile(join(dir, 'x.txt'), 'old')
     })
-    const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
+    const settings = withRepo('true', 'test -f .cursor/sandbox.json')
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
     expect(report.results[0]?.outcome).toEqual({
       kind: 'none',
       reason: "the resolution undoes main's change to db/schema.sql, x.txt, not pushed",
@@ -613,6 +616,28 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
         'Resolved: a.txt\n\nAlso changed: b.txt, feature.txt\n\na.txt: kept both lines.',
       ),
     })
+  })
+
+  it("merges with a Cursor worker's set-aside .cursor/sandbox.json back, not deleted", async () => {
+    const sandbox = '{"networkPolicy":{"allow":["pypi.org"]}}'
+    const at = await origin(
+      { 'a.txt': 'theirs' },
+      { 'a.txt': 'mine' },
+      { '.cursor/sandbox.json': sandbox },
+    )
+    const { prepare, setAside, finish } = cursorProvider('agent', async () => true)
+    const worker = { ...resolver(bothSides), prepare, setAside, finish }
+    const settings = withRepo('true', 'test -f .cursor/sandbox.json')
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
+    const outcome = report.results[0]?.outcome
+    expect(outcome).toMatchObject({ kind: 'pushed' })
+    expect(JSON.stringify(outcome)).not.toContain('Also changed')
+    expect(await git(at.origin, 'ls-tree', '-r', '--name-only', 'feature-1')).toContain(
+      '.cursor/sandbox.json',
+    )
+    expect(
+      await git(at.origin, 'diff', '--name-status', `${at.feature1}`, 'feature-1'),
+    ).not.toMatch(/^D/m)
   })
 
   it('leaves a conflicted submodule to you, with no worker and no attempt', async () => {
@@ -706,7 +731,8 @@ gates: { risk: { skill: judge } }
       await writeFile(join(dir, '.away/out/questions.md'), 'Which line wins?\n')
       await writeFile(join(dir, '.away/out/status'), 'ask\n')
     })
-    const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
+    const settings = withRepo('true', 'test -f .cursor/sandbox.json')
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
     expect(report.results.map((r) => [r.status, r.outcome, r.questions?.text])).toEqual([
       ['done', { kind: 'none', reason: 'asked questions' }, 'Which line wins?'],
     ])

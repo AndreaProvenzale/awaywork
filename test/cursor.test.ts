@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import {
+  appendFile,
   chmod,
   lstat,
   mkdir,
@@ -60,7 +61,10 @@ async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[
   return all
 }
 
-const run = (j: Job) => collect(provider.run(j, new AbortController().signal))
+const run = async (j: Job) => {
+  await provider.prepare?.(j)
+  return collect(provider.run(j, new AbortController().signal))
+}
 
 describe('cursor provider', () => {
   it('logs each tool call once it completes, and the result', () => {
@@ -131,6 +135,7 @@ describe('cursor provider', () => {
   it('kills the binary when aborted mid-run', async () => {
     const abort = new AbortController()
     const events: WorkerEvent[] = []
+    await provider.prepare?.(job())
     for await (const e of provider.run(job({ FAKE_CURSOR_HANG: '1' }), abort.signal)) {
       events.push(e)
       abort.abort()
@@ -318,6 +323,7 @@ describe('cursor shell walled to the network hosts', () => {
     })
     await expect(readFile(join(homeOf(dir), 'sandbox.json'))).rejects.toThrow()
     const file = join(tmp, 'open-env.json')
+    await unwalled.prepare?.(job())
     const events = await collect(
       unwalled.run(job({ FAKE_ENV: file }), new AbortController().signal),
     )
@@ -369,6 +375,7 @@ describe('cursor shell walled to the network hosts', () => {
     const clone = async (committed: boolean) => {
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-cursor-aside-'))
       await git(dir, 'init', '-q')
+      await appendFile(join(dir, '.git/info/exclude'), '.away\n')
       await mkdir(join(dir, '.cursor'))
       await writeFile(join(dir, 'a.txt'), 'a')
       if (committed)
@@ -385,6 +392,7 @@ describe('cursor shell walled to the network hosts', () => {
     it('moves out for the run, stays out of its commits, and comes back with a clean tree', async () => {
       const dir = await clone(true)
       const j = { ...job(), dir }
+      await provider.prepare?.(j)
       expect(await provider.setAside?.(j)).toEqual([
         'network: set aside .cursor/sandbox.json (adds pypi.org, files.pythonhosted.org)',
       ])
@@ -402,6 +410,7 @@ describe('cursor shell walled to the network hosts', () => {
 
     it('puts nothing back for a path the worker took out of the index', async () => {
       const dir = await clone(true)
+      await provider.prepare?.({ ...job(), dir })
       await provider.setAside?.({ ...job(), dir })
       await git(dir, 'update-index', '--no-skip-worktree', '--', '.cursor/sandbox.json')
       await git(dir, 'commit', '-qam', 'del')
@@ -411,9 +420,11 @@ describe('cursor shell walled to the network hosts', () => {
 
     it('leaves a clone without one, and an unwalled run, alone', async () => {
       const bare = await clone(false)
+      await provider.prepare?.({ ...job(), dir: bare })
       expect(await provider.setAside?.({ ...job(), dir: bare })).toEqual([])
       await provider.finish?.(bare)
       const open = await clone(true)
+      await unwalled.prepare?.({ ...job(), dir: open })
       expect(await unwalled.setAside?.({ ...job(), dir: open })).toEqual([])
       await provider.finish?.(open)
       expect(await status(open)).toBe('')
@@ -425,6 +436,7 @@ describe('cursor shell walled to the network hosts', () => {
       const outside = join(await mkdtemp(join(tmpdir(), 'awaywork-outside-')), 'sandbox.json')
       await writeFile(outside, '{}')
       await symlink(outside, join(dir, '.cursor/sandbox.json'))
+      await provider.prepare?.({ ...job(), dir })
       await expect(provider.setAside?.({ ...job(), dir })).rejects.toThrow('links outside')
       expect(await readFile(outside, 'utf8')).toBe('{}')
     })
