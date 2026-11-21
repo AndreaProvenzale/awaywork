@@ -300,4 +300,37 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', '/tmp/awaywork-hooked'])
     }
   })
+
+  it('runs a serve: true step without the app, the prompt saying why', async () => {
+    const { serveRequest } = await import('#worker/process/serve')
+    const clone = await workerRoot(0o700)
+    await execa('git', ['init', '-q', clone])
+    await mkdir(join(clone, '.away'))
+    await writeFile(join(clone, '.away', 'prompt.md'), 'prove it\n')
+    await writeFile(join(clone, 'agent.sh'), 'id -un > seen; cat "$AWAYWORK_PROMPT" >> seen\n')
+    const agent = commandProvider('mine', {
+      command: 'sh agent.sh',
+      secrets: [],
+      skills_dir: '.agents/skills',
+    })
+    const unit = { repo: 'acme/api', rule: { serve: true } }
+    const job = { dir: clone, prompt: 'prove it', maxTurns: 1, env, unit } as unknown as Job
+    const serve = serveRequest(
+      unit as never,
+      { command: 'touch served', ready: 'http://localhost:$AWAYWORK_PORT/' },
+      join(clone, '..', 'serve.log'),
+      env,
+    )
+    const result = await runWorker(agent, job, allowance, {
+      log: () => {},
+      serve,
+      watch: () => ({ stop: async () => {} }),
+    })
+    expect(result).toMatchObject({
+      status: 'done',
+      notes: ["serve not run: isolation: user and container don't support it yet"],
+    })
+    expect(await readFile(join(clone, 'seen'), 'utf8')).toBe(`${WORKER}\nprove it\n`)
+    expect(existsSync(join(clone, 'served'))).toBe(false)
+  })
 })

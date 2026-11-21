@@ -89,7 +89,7 @@ export async function startServe(
   killGroupWhenDone(child, stopping.signal)
   let exit: string | undefined
   const exited = child.then((r) => {
-    exit = r.shortMessage ?? `exit ${r.exitCode}`
+    exit = r.signal ? `killed by ${r.signal}` : `exit ${r.exitCode}`
   })
   const stop = async () => {
     const { exitCode, signalCode } = child.nodeChildProcess

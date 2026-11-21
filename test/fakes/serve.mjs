@@ -5,7 +5,9 @@ import { createServer } from 'node:http'
 
 const { SERVE_MODE = 'ready', SERVE_PIDS, SERVE_STARTED, AWAYWORK_PORT } = process.env
 if (SERVE_STARTED) writeFileSync(SERVE_STARTED, 'started')
-console.log(`booting in ${SERVE_MODE} mode, login=${process.env.AGENT_LOGIN}`)
+console.log(
+  `booting in ${SERVE_MODE} mode, login=${process.env.AGENT_LOGIN} token=${process.env.FAKE_AGENT_TOKEN}`,
+)
 if (SERVE_MODE === 'exit') {
   console.error('boom: no database')
   process.exit(1)

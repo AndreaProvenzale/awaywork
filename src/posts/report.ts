@@ -127,9 +127,17 @@ export function describeResult(c: Commented): string {
     : `result posted on ${c.url}${describePost(c.post)}`
 }
 
-/** The notes of the chain's steps after the first: what their workers left. */
-export const laterNotes = ({ head, steps }: Chain): string[] =>
-  steps.filter((s) => s !== head).flatMap((s) => s.notes ?? [])
+/** The notes of the chain's steps after the first, each tagged with its step's id; a note an earlier step already left is dropped. */
+export const laterNotes = ({ head, steps }: Chain): string[] => {
+  const seen = new Set(head.notes)
+  return steps
+    .filter((s) => s !== head)
+    .flatMap((s) =>
+      (s.notes ?? [])
+        .filter((n) => !seen.has(n) && seen.add(n))
+        .map((n) => `${s.planned.unit.id}: ${n}`),
+    )
+}
 
 /** What a chain's first step wrote to its items, in order: its questions or its plan, then its result and on_done's moves. */
 export const unitNotes = (u: UnitResult): string[] => [
