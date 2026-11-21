@@ -433,6 +433,13 @@ describe('github source', () => {
     expect(pr1?.fields.author).toBe('renovate')
   })
 
+  it("asks for the PR item's own author type, which a bot's login alone can't tell", async () => {
+    const run = recorded(githubRoutes())
+    await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const query = run.calls.flat().find((arg) => arg.includes('... on PullRequest {'))
+    expect(query).toMatch(/\.\.\. on PullRequest \{[^]*?author \{ login __typename \}/)
+  })
+
   it('runs each extra search ANDed with open and unarchived, without marking its items', async () => {
     const mentioned = JSON.parse(fixture('search-assigned.json'))
     mentioned.data.search.nodes = [{ ...mentioned.data.search.nodes[0], id: 'I_new', number: 9 }]

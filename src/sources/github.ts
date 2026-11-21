@@ -41,7 +41,7 @@ const COMMENTS = `pageInfo { hasPreviousPage startCursor } nodes { ${BY} body cr
 const common = `
   id number title body url state createdAt updatedAt closedAt
   repository { nameWithOwner }
-  author { login } authorAssociation
+  author { login __typename } authorAssociation
   assignees(first: 10) { nodes { login } }
   labels(first: 20) { nodes { name } }
   comments(last: 50) { ${COMMENTS} }`
@@ -138,9 +138,9 @@ const writeQuery = `query($owner: String!, $name: String!, $number: Int!) {
 
 type Nodes<T> = { nodes: T[] }
 type Files = Nodes<{ path: string }> & { pageInfo: { hasNextPage: boolean; endCursor: string } }
-type Login = { login: string } | null
+type Author = { login: string; __typename: string } | null
 type By = {
-  author: { login: string; __typename: string } | null
+  author: Author
   authorAssociation: string
   viewerDidAuthor: boolean
 }
@@ -170,7 +170,7 @@ interface Node extends PrLink {
   createdAt: string
   updatedAt: string
   closedAt: string | null
-  author: Login
+  author: Author
   assignees: Nodes<{ login: string }>
   labels: Nodes<{ name: string }>
   comments: Comments
