@@ -167,6 +167,16 @@ ${withRepos(repos)}
   return { tried, logs, found, tracked, report, failed, units }
 }
 
+it('runs a failed step once on a single model', async () => {
+  const { tried, report, failed } = await retried(
+    () => 'fail',
+    '{ skill: fix, where: { checks: failing }, model: { claude: sonnet } }',
+  )
+  expect(tried).toEqual(['fix sonnet'])
+  expect(report.results.map((u) => [u.status, u.retried])).toEqual([['failed', undefined]])
+  expect(failed).toBe(1)
+})
+
 it('retries a failed step once on the next model', async () => {
   const { tried, logs, report, failed } = await retried((_, model) =>
     model === 'sonnet' ? 'fail' : 'ok',
