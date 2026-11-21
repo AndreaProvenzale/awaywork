@@ -14,6 +14,7 @@ import { commandEnv, workerEnv } from '#worker/clone/env'
 import { copyOut, WORK_DIR } from '#worker/clone/files'
 import { inClone, prepareWorkspace, restoreGitConfig } from '#worker/clone/workspace'
 import { runSetup } from '#worker/process/command'
+import { serveRequest } from '#worker/process/serve'
 import { runWorker, type WorkerOptions, type WorkerResult } from '#worker/process/worker'
 
 /** What a chain's first step leaves in `units/<id>/1-<skill>/replay.json` so it can be rebuilt: the clone's commit before any worker ran. */
@@ -97,7 +98,8 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const gitConfig = await readFile(join(dir, '.git', 'config'), 'utf8')
   let worker: WorkerResult
   try {
-    const setup = settingsFor(r.config.repos, unit.repo).setup
+    const settings = settingsFor(r.config.repos, unit.repo)
+    const setup = settings.setup
     if (setup && !unit.untrusted) {
       const failed = await runSetup(setup, dir, commandEnv(r.ctx.env, dir, secrets), log, {
         secrets: [],
@@ -122,6 +124,12 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
       signal: r.signal,
       maxMinutes: r.config.limits.unit_minutes,
       watch: r.watch,
+      serve: serveRequest(
+        unit,
+        settings.serve,
+        join(root, 'serve.log'),
+        commandEnv(r.ctx.env, dir, secrets),
+      ),
     })
   } catch (e) {
     // The failure is the error to report; a restore failing after it is logged.

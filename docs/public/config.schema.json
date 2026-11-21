@@ -766,6 +766,27 @@
                   "minLength": 1
                 }
               },
+              "serve": {
+                "description": "The app a step with serve: true gets, under isolation: none; it can't see your secrets",
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Starts the app for a step with serve: true, after setup, with its port in $AWAYWORK_PORT; it stops when the agent does"
+                  },
+                  "ready": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "URL awaywork polls, $AWAYWORK_PORT substituted, until it answers with less than a 500; the step runs without the app after 5 minutes"
+                  }
+                },
+                "required": [
+                  "command",
+                  "ready"
+                ],
+                "additionalProperties": false
+              },
               "verify": {
                 "description": "Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published",
                 "type": "string"
@@ -834,11 +855,20 @@
               },
               "trust": {
                 "default": [],
-                "description": "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers or network, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
+                "description": "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
                 "type": "array",
                 "items": {
                   "type": "string",
                   "pattern": "^(\\*|[A-Za-z\\d](-?[A-Za-z\\d])*(\\[bot\\])?)$"
+                }
+              },
+              "writable": {
+                "default": [],
+                "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(\\/|~\\/[^*?[\\]{}])[^*?[\\]{}]*$"
                 }
               },
               "test": {
@@ -951,11 +981,20 @@
       "default": [
         "collaborators"
       ],
-      "description": "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers or network, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
+      "description": "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
       "type": "array",
       "items": {
         "type": "string",
         "pattern": "^(\\*|[A-Za-z\\d](-?[A-Za-z\\d])*(\\[bot\\])?)$"
+      }
+    },
+    "writable": {
+      "default": [],
+      "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(\\/|~\\/[^*?[\\]{}])[^*?[\\]{}]*$"
       }
     },
     "mcp": {
@@ -1105,6 +1144,10 @@
               "type": "string"
             }
           },
+          "serve": {
+            "description": "Start the repo's serve command for the worker, which gets the app's URL",
+            "type": "boolean"
+          },
           "instructions": {
             "description": "Instruction files added for this rule",
             "anyOf": [
@@ -1141,6 +1184,15 @@
             "items": {
               "type": "string",
               "pattern": "^(\\*|(\\*\\.)?[\\w-]+(\\.[\\w-]+)*)$"
+            }
+          },
+          "writable": {
+            "default": [],
+            "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(\\/|~\\/[^*?[\\]{}])[^*?[\\]{}]*$"
             }
           },
           "deliver": {
@@ -1339,6 +1391,10 @@
                           "type": "string"
                         }
                       },
+                      "serve": {
+                        "description": "Start the repo's serve command for this step; default the rule's",
+                        "type": "boolean"
+                      },
                       "instructions": {
                         "description": "Instruction files added for this step; default the rule's, [] none",
                         "anyOf": [
@@ -1525,6 +1581,10 @@
                                   "type": "string"
                                 }
                               },
+                              "serve": {
+                                "description": "Start the repo's serve command for this step; default the rule's",
+                                "type": "boolean"
+                              },
                               "instructions": {
                                 "description": "Instruction files added for this step; default the rule's, [] none",
                                 "anyOf": [
@@ -1707,6 +1767,10 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "serve": {
+                                  "description": "Start the repo's serve command for this step; default the rule's",
+                                  "type": "boolean"
                                 },
                                 "instructions": {
                                   "description": "Instruction files added for this step; default the rule's, [] none",
@@ -1970,6 +2034,10 @@
                                 "type": "string"
                               }
                             },
+                            "serve": {
+                              "description": "Start the repo's serve command for this step; default the rule's",
+                              "type": "boolean"
+                            },
                             "instructions": {
                               "description": "Instruction files added for this step; default the rule's, [] none",
                               "anyOf": [
@@ -2156,6 +2224,10 @@
                                         "type": "string"
                                       }
                                     },
+                                    "serve": {
+                                      "description": "Start the repo's serve command for this step; default the rule's",
+                                      "type": "boolean"
+                                    },
                                     "instructions": {
                                       "description": "Instruction files added for this step; default the rule's, [] none",
                                       "anyOf": [
@@ -2338,6 +2410,10 @@
                                         "items": {
                                           "type": "string"
                                         }
+                                      },
+                                      "serve": {
+                                        "description": "Start the repo's serve command for this step; default the rule's",
+                                        "type": "boolean"
                                       },
                                       "instructions": {
                                         "description": "Instruction files added for this step; default the rule's, [] none",

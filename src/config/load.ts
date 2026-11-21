@@ -39,6 +39,7 @@ export async function loadConfig(path: string, { pin = true } = {}): Promise<Con
   })
   const files = layers(text, path)
   const config = validate(files)
+  if (files[1]) config.baseDir = dirname(resolve(files[1].path))
   const dirOf = (...keys: string[]) => dirname(resolve(fileOf(files, keys)))
   for (const [id, cfg] of Object.entries(config.sources)) {
     if (isCommand(cfg)) cfg.dir = dirOf('sources', id, 'command')

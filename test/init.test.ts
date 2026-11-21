@@ -101,7 +101,9 @@ describe('init --yes', () => {
       window: ['22:00', '06:00'],
     })
     expect(cfg.providers.map((p) => p.id)).toEqual(['codex', 'claude'])
-    expect(cfg.repos).toEqual({ 'octo/*': { secrets: [], network: [], trust: [], gates: {} } })
+    expect(cfg.repos).toEqual({
+      'octo/*': { secrets: [], network: [], trust: [], writable: [], gates: {} },
+    })
     expect(Object.keys(cfg.sources)).toEqual(['github', 'routines'])
     expect(cfg.windows).toEqual([{ start: '22:00', end: '06:00' }])
   })

@@ -158,6 +158,12 @@ describe('codex provider', () => {
     ])
   })
 
+  it("lets the shell write the job's writable paths", () => {
+    const run = { ...job(), writable: ['/h/.npm', '/h/.cache/yarn'] }
+    expect(wall(run)[1]).toContain('"/h/.npm"="write","/h/.cache/yarn"="write"')
+    expect(wall(job())[1]).not.toContain('/h/')
+  })
+
   it('is offline by default, and `*` passes through', () => {
     expect(wall(job())).toContain('permissions.awaywork.network.domains={}')
     const run = job()

@@ -824,6 +824,11 @@ sources: { github: { every: 15m } }
     expect((await loadConfig(join(dir, 'dev.yml'))).limits.unit_minutes).toBe(45)
   })
 
+  it("records the base's folder", async () => {
+    const dir = await files({ 'team/base.yml': base, 'dev.yml': 'extends: team/base.yml\n' })
+    expect((await loadConfig(join(dir, 'dev.yml'))).baseDir).toBe(join(dir, 'team'))
+  })
+
   it("resolves a base's relative paths against the base, and the role's as before", async () => {
     const dir = await files({
       'team/base.yml': `providers: [claude: { settings: claude.json }]

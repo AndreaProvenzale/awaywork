@@ -14,7 +14,7 @@ export const trustFor = (config: Pick<Config, 'trust' | 'repos'>, repo: string):
   ...new Set([...config.trust, ...settingsFor(config.repos, repo).trust]),
 ]
 
-/** A repo's settings: those of every `repos` key naming it, globs in the order written and its own key last, a later one winning per setting; secrets, network hosts and trusted authors add up and gates merge by name. */
+/** A repo's settings: those of every `repos` key naming it, globs in the order written and its own key last, a later one winning per setting; secrets, network hosts, writable paths and trusted authors add up and gates merge by name. */
 export function settingsFor(repos: Record<string, Settings>, repo: string): Settings {
   const keys = Object.keys(repos).filter((key) => globToRegExp(key).test(repo))
   const named = [...keys.filter(isGlob), ...keys.filter((key) => !isGlob(key))].map(
@@ -25,6 +25,7 @@ export function settingsFor(repos: Record<string, Settings>, repo: string): Sett
     secrets: [...new Set(named.flatMap((s) => s.secrets))],
     network: [...new Set(named.flatMap((s) => s.network))],
     trust: [...new Set(named.flatMap((s) => s.trust))],
+    writable: [...new Set(named.flatMap((s) => s.writable))],
     gates: Object.assign({}, ...named.map((s) => s.gates)),
   }
 }

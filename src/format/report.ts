@@ -4,6 +4,7 @@ import {
   type Chain,
   chainCells,
   chains,
+  laterNotes,
   localTime,
   opened,
   quotaLines,
@@ -66,7 +67,7 @@ export function reportUnitRows(
         result,
       ],
       summary: chain.head.summary ?? (top && clip(top.title, clipAt)),
-      notes: unitNotes(chain.head),
+      notes: [...unitNotes(chain.head), ...laterNotes(chain)],
     }
   })
 }

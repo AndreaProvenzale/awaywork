@@ -21,12 +21,14 @@ queue:
 | `skill`, `source`, `where` | What runs, on which items: [Matching items](./where.md) |
 | `provider`, `model` | Overrides routing for this rule; two models [retry](#retry-on-the-next-model) |
 | `skills`, `mcp`, `instructions`, `with` | Extra skills, [MCP servers](./mcp.md), instruction files, [parameters](../skills.md#write-your-own) |
+| `serve` | The repo's app, started for the agent: [Proving](../workflows/proving.md) |
 | `deliver` | `draft_pr` (default), `pr`, [`push`](./chains.md#push), `report`, `pending_review` or [`plan`](../workflows/plans.md); see [Delivery](../how-it-works.md#delivery) |
 | `branch`, `order`, `units` | [Branch template](./repos.md#branch-names), [item order](#order), units per run |
 | `then`, `quota` | [More steps](./chains.md#then), [quota checks](./chains.md#quota) |
 | `plan_tasks` | On a `deliver: plan` rule, the most tasks its [plan](../workflows/plans.md) holds; 8 by default |
 | `on_done` | [Comment and move](#on-done) your items |
 | `network` | Hosts [the agent's shell](./repos.md) may reach, on top of the top-level and repo ones |
+| `writable` | Paths [the agent's shell](./repos.md) may write besides the clone, on top of the top-level and repo ones |
 | `gates` | The rule's [own gates](../workflows/gates.md#gates-of-a-rule-s-own), on top of the top-level and repo ones |
 | `wait`, `post`, `thread` | Plan and report posts: [waiting](../workflows/posts.md#posts-that-wait), [lean or full](../workflows/store.md#files-that-come-back), [where they go](../workflows/posts.md#threads) |
 | `run` | `window` (default) or [`soon`](#run-soon) |

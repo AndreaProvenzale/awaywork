@@ -113,6 +113,7 @@ export function chainUnits(
       id,
       verify: settings.verify,
       network: [...new Set([...config.network, ...settings.network, ...(rule.network ?? [])])],
+      writable: [...new Set([...config.writable, ...settings.writable, ...(rule.writable ?? [])])],
       // Gates check what a model wrote, and a merge with no model has nothing of its; the top-level and repo ones need commits, so a plan or report takes its rule's own only.
       gates: decides
         ? gatesOf(rule.gates)
@@ -181,7 +182,7 @@ function quotaUnmet(quota: Condition | undefined, a: Allowance | undefined): str
   return holds(quota, quotaFacts(a)) ? undefined : "doesn't hold on the probe"
 }
 
-/** A step with the rule's provider, model, skills, MCP servers and instructions where it sets none. */
+/** A step with the rule's provider, model, skills, MCP servers, serve and instructions where it sets none. */
 function inherit(rule: Rule, step: ThenStep): Step {
   return {
     ...step,
@@ -189,6 +190,7 @@ function inherit(rule: Rule, step: ThenStep): Step {
     model: step.model ?? rule.model,
     skills: step.skills ?? rule.skills,
     mcp: step.mcp ?? rule.mcp,
+    serve: step.serve ?? rule.serve,
     instructions: step.instructions ?? rule.instructions,
   }
 }

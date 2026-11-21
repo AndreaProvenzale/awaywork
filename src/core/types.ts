@@ -214,6 +214,8 @@ export interface Job {
   plugin?: string
   /** The MCP servers the unit's rule names, by name; their secrets are in `env`. */
   mcp?: Record<string, McpServer>
+  /** Absolute paths, existing, the agent's shell may write besides the clone. */
+  writable?: string[]
 }
 
 /** A stdio (`command`) or HTTP (`url`) MCP server; its secrets reach it by name or as `${NAME}` in `headers`. */
@@ -383,6 +385,8 @@ export interface Step {
   skills: string[]
   /** MCP servers the worker gets, by name under the config's `mcp`. */
   mcp?: string[]
+  /** The repo's serve command runs for this step. */
+  serve?: boolean
   instructions: string[]
   /** Parameters listed in the prompt next to the skill. */
   with?: Record<string, Scalar>
@@ -423,6 +427,8 @@ export interface Rule extends Step {
   branch?: string
   /** Hosts added to the repo's and the top level's for the agent's shell. */
   network?: string[]
+  /** Paths added to the repo's and the top level's for the agent's shell. */
+  writable?: string[]
   source?: string
   where: Where
   order?: Order
@@ -469,6 +475,8 @@ export interface Unit {
   verify?: string
   /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on an untrusted author's PR. */
   network?: string[]
+  /** Paths the agent's shell may write besides the clone, from the top level, the repo and the rule; `~/` as written. */
+  writable?: string[]
   /** Checks run before publishing commits, the top-level ones merged with the repo's and the rule's own: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own alone, on what its step left. */
   gates?: Record<string, Gate>
   /** A plan's or report's post: it waits for your approve, or goes ahead unless one of its gates fires; unset, a report posts as a plain result. */

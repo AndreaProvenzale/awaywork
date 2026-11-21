@@ -283,8 +283,20 @@ const trust = (fallback: string[]) =>
     .array(trustEntry)
     .default(fallback)
     .describe(
-      "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers or network, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
+      "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
     )
+const writablePath = z
+  .string()
+  .regex(
+    /^(\/|~\/[^*?[\]{}])[^*?[\]{}]*$/,
+    'expected an absolute path or one under ~/, with no glob',
+  )
+const writable = z
+  .array(writablePath)
+  .default([])
+  .describe(
+    "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container",
+  )
 const stepSettings = {
   provider: oneOrMany
     .default([])
@@ -306,6 +318,10 @@ const stepSettings = {
     .min(1)
     .optional()
     .describe('MCP servers the worker gets, by their name under the top-level mcp'),
+  serve: z
+    .boolean()
+    .optional()
+    .describe("Start the repo's serve command for the worker, which gets the app's URL"),
   instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
   with: z
     .record(z.string().min(1), scalar)
@@ -391,6 +407,10 @@ const stepObject = z.strictObject({
     .describe(
       "MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none",
     ),
+  serve: z
+    .boolean()
+    .optional()
+    .describe("Start the repo's serve command for this step; default the rule's"),
   instructions: oneOrMany
     .optional()
     .describe("Instruction files added for this step; default the rule's, [] none"),
@@ -478,6 +498,7 @@ const rule: z.ZodType<Rule, unknown> = z
       ),
     ...stepSettings,
     network,
+    writable,
     deliver: z
       .enum(['draft_pr', 'pr', 'report', 'push', 'pending_review', 'plan'])
       .optional()
@@ -645,6 +666,25 @@ const repoSettings = z.strictObject({
     .array(z.string().min(1))
     .default([])
     .describe('Env vars setup needs; withheld from workers, listed in Actions'),
+  serve: z
+    .strictObject({
+      command: z
+        .string()
+        .min(1)
+        .describe(
+          'Starts the app for a step with serve: true, after setup, with its port in $AWAYWORK_PORT; it stops when the agent does',
+        ),
+      ready: z
+        .string()
+        .min(1)
+        .describe(
+          'URL awaywork polls, $AWAYWORK_PORT substituted, until it answers with less than a 500; the step runs without the app after 5 minutes',
+        ),
+    })
+    .optional()
+    .describe(
+      "The app a step with serve: true gets, under isolation: none; it can't see your secrets",
+    ),
   verify: z
     .string()
     .optional()
@@ -656,6 +696,7 @@ const repoSettings = z.strictObject({
   ),
   network,
   trust: trust([]),
+  writable,
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
   image: z
@@ -757,6 +798,7 @@ const configShape = z.strictObject({
     ),
   network,
   trust: trust(['collaborators']),
+  writable,
   mcp: z
     .record(z.string(), mcpServer)
     .default({})
@@ -850,7 +892,8 @@ export const configSchema = configShape
     ),
   }))
 
-export type Config = z.output<typeof configSchema>
+/** `baseDir` is where the config's `extends` base lives, set by `loadConfig`. */
+export type Config = z.output<typeof configSchema> & { baseDir?: string }
 
 const withScope = <S extends Record<string, unknown>>(sources: S, scope: object): S =>
   sources.github ? { ...sources, github: { ...sources.github, ...scope } } : sources

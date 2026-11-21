@@ -325,6 +325,15 @@ describe('cursor shell walled to the network hosts', () => {
     expect((await all.read('cli-config.json')).sandbox.networkAccess).toBe('allow_all')
   })
 
+  it("lists the job's writable paths in sandbox.json", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-cursor-wall-'))
+    await provider.prepare?.({ ...job(), dir, writable: ['/h/.npm'] })
+    const file = join(homeOf(dir), 'sandbox.json')
+    expect(JSON.parse(await readFile(file, 'utf8')).additionalReadwritePaths).toEqual(['/h/.npm'])
+    const none = await walled({})
+    expect(await none.read('sandbox.json')).not.toHaveProperty('additionalReadwritePaths')
+  })
+
   it("lists no host on an untrusted author's PR", async () => {
     const { read } = await walled({ network: ['pypi.org'], untrusted: true })
     expect((await read('sandbox.json')).networkPolicy.allow).toEqual(['localhost', '127.0.0.1'])
@@ -361,6 +370,12 @@ describe('cursor shell walled to the network hosts', () => {
     expect(JSON.parse(await readFile(file, 'utf8')).prompt).toMatch(
       /^fix it\n\nYour shell is sandboxed: .* reaches pypi\.org\./,
     )
+  })
+
+  it('names the writable paths in the sandbox note', async () => {
+    const file = join(tmp, 'walled-writable.json')
+    await run({ ...job({ FAKE_ENV: file }), writable: ['/a/b'] })
+    expect(JSON.parse(await readFile(file, 'utf8')).prompt).toContain('writes only here, /a/b and')
   })
 
   it('reads the refused hosts from the decision log, skipping its metadata line', () => {

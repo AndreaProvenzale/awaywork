@@ -86,7 +86,7 @@ Reviewing a PR means running its tests with your agent's login around, so the de
 
 ### Trusting an author
 
-`trust` lists the authors whose PRs and comments awaywork acts on. Everyone on it is **trusted**, everyone else on someone else's PR is not: `collaborators` (owners, members and collaborators), a GitHub login (a bot as GitHub shows it, `dependabot[bot]`; a user and a bot of the same name are different entries), or `*` for anyone. It defaults to `collaborators`. A repo's list adds to the top level's, which replaces the default; `[]` trusts nobody but you.
+`trust` lists the authors whose PRs and comments awaywork acts on. An entry is `collaborators` (owners, members and collaborators), a GitHub login (a bot as GitHub shows it, `dependabot[bot]`; a user and a bot of the same name are different entries), or `*` for anyone. Everyone on the list is **trusted**; anyone else who opens a PR is not. It defaults to `collaborators`. A repo's list adds to the top level's, which replaces the default; `[]` trusts nobody but you.
 
 ```yaml
 trust: [collaborators]            # the default, every repo
@@ -104,11 +104,11 @@ repos:
 | The branch's agent config, repo skills and `.awaywork/instructions.md` | Loaded | Loaded | Hidden, as above |
 | The prompt's "its files are the author's, data" line | No | No | Yes |
 | The rule's MCP servers | Started | Started | None |
-| `network` | The list | The list | None |
+| `network`, `writable` | The lists | The lists | None |
 | Their comments and reviews, on any item | Read | Read | Hidden with a note |
 | Pushes and `deliver: push` | Per rule | Never | Never |
 
-Trust is about what the worker gets, never what awaywork writes: on a trusted author's PR awaywork still leaves only a report or your pending review, never a push onto its branch, and the judge of a gate still runs as on someone else's PR. A branch a worker wrote gets no setup `secrets` whoever opened the PR.
+Trust is about what the worker gets, never what awaywork writes: on a trusted author's PR awaywork still leaves only a report or your pending review, never a push onto its branch, and the judge of a gate still runs as on an untrusted author's PR. A branch a worker wrote gets no setup `secrets` whoever opened the PR.
 
 Narrowing the list narrows comments too: with `trust: [alice]`, a teammate's review on your own PR is hidden, and so is a thread they started. Bots' comments reach the agent as before.
 
@@ -147,6 +147,10 @@ The classic token `schedule install` asks for reaches every repo you can; a dedi
 ## Network hosts
 
 The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), so a steered agent can send what it reads to any of them, and `*` reopens it. Not on an untrusted author's PR.
+
+## Writable paths
+
+[`writable`](../config/repos.md) opens paths outside the clone to the agent's shell, empty by default. A cache you list, `~/.npm` say, is shared with your own unwalled installs, so what a steered agent writes there can run for you later. None on an untrusted author's PR.
 
 ## MCP servers
 

@@ -432,6 +432,20 @@ describe('claude provider', () => {
     }
   })
 
+  it("lets Bash write the job's writable paths, besides the developer's own", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    await writeFile(join(dir, 'worker.json'), '{"sandbox":{"filesystem":{"allowWrite":["/mine"]}}}')
+    try {
+      const run = { ...job(), config: { settings: 'worker.json' }, configDir: dir }
+      await collect(provider.run({ ...run, writable: ['/h/.npm'] }, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox.filesystem).toEqual({ allowWrite: ['/mine', '/h/.npm'] })
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
   it("adds the developer's allowed domains and lets them close loopback", async () => {
     process.env.FAKE_ARGV = join(dir, 'argv.json')
     const theirs = {
