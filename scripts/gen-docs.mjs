@@ -114,12 +114,13 @@ function configDoc(schema) {
     seen.set(key, name)
     const required = new Set(s.required ?? [])
     const rows = Object.entries(s.properties).map(([name, p]) => {
-      const def = p.default === undefined ? '' : `\`${JSON.stringify(p.default)}\``
+      const def =
+        p.default === undefined ? '' : `<br>Default: \`${cell(JSON.stringify(p.default))}\``
       const req = required.has(name) && p.default === undefined ? ' (required)' : ''
-      return `| \`${name}\`${req} | ${typeOf(p)} | ${cell(def)} | ${cell(p.description ?? '')} |`
+      return `| \`${name}\`${req} | ${typeOf(p)} | ${cell(p.description ?? '')}${def} |`
     })
     const intro = s.description ? `${literalTags(s.description)}.\n\n` : ''
-    return `${title}\n\n${intro}| Key | Type | Default | Description |\n|---|---|---|---|\n${rows.join('\n')}`
+    return `${title}\n\n${intro}| Key | Type | Description |\n|---|---|---|\n${rows.join('\n')}`
   })
   // A union can reach one object twice at a path, e.g. a step alone or in a list.
   const unique = [...new Set(sections)]
