@@ -109,7 +109,7 @@ The classic token `schedule install` asks for reaches every repo you can; a dedi
 
 ## Network hosts
 
-Claude's Bash reaches only the hosts [`network`](../config/repos.md) lists, so a steered agent can send what it reads to any of them, and `*` reopens it. Not on someone else's PR.
+The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's so far, Codex and Cursor next), so a steered agent can send what it reads to any of them, and `*` reopens it. Not on someone else's PR.
 
 ## MCP servers
 
