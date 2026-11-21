@@ -222,40 +222,43 @@ const BWRAP_PROBE = [
   '/proc',
   '--dev',
   '/dev',
-  // Claude's apply-seccomp nests a user namespace, which AppArmor refuses inside bwrap on hosted runners.
-  'bwrap',
-  '--unshare-user',
-  '--ro-bind',
-  '/',
-  '/',
-  'socat',
-  '-V',
 ]
+// Claude's apply-seccomp nests a user namespace, which AppArmor refuses inside bwrap on hosted runners.
+const CLAUDE_INNER = ['bwrap', '--unshare-user', '--ro-bind', '/', '/', 'socat', '-V']
 const sandboxes = new Map<string, boolean>()
 
 /**
  * Whether Claude's sandbox can start `where`: bubblewrap with the namespaces it takes, on Linux; Seatbelt elsewhere needs nothing.
  * It runs outside `start`, so no exit kills the worker's processes, and once per process for each image or user.
  */
-export async function sandboxStarts(
+export const sandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
+  probeBwrap(where, CLAUDE_INNER, signal, run)
+
+/** Whether Codex's sandbox can start `where`: the same, without the nested namespace Claude's helper needs. */
+export const codexSandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
+  probeBwrap(where, ['true'], signal, run)
+
+async function probeBwrap(
   { image, user }: Where,
-  signal?: AbortSignal,
-  run: typeof execa = execa,
+  inner: string[],
+  signal: AbortSignal | undefined,
+  run: typeof execa,
 ): Promise<boolean> {
   if (!image && process.platform !== 'linux') return true
-  const key = image ?? user ?? ''
+  const bwrapArgs = [...BWRAP_PROBE, ...inner]
+  const key = `${inner[0]} ${image ?? user ?? ''}`
   const known = sandboxes.get(key)
   if (known !== undefined) return known
   const options = { reject: false, cancelSignal: signal } as const
   const ran = image
-    ? await run(bin('docker'), inImage(image, ['bwrap', ...BWRAP_PROBE]), options)
+    ? await run(bin('docker'), inImage(image, ['bwrap', ...bwrapArgs]), options)
     : user
-      ? await run(
-          bin('sudo'),
-          sudoArgs(user, 'bwrap', BWRAP_PROBE, { env: {}, extendEnv: false }),
-          { ...options, env: {}, extendEnv: false },
-        )
-      : await run(bin('bwrap'), BWRAP_PROBE, options)
+      ? await run(bin('sudo'), sudoArgs(user, 'bwrap', bwrapArgs, { env: {}, extendEnv: false }), {
+          ...options,
+          env: {},
+          extendEnv: false,
+        })
+      : await run(bin('bwrap'), bwrapArgs, options)
   // Docker's own failure (125) says nothing about bwrap, and may pass later.
   if (!signal?.aborted && ran.exitCode !== 125) sandboxes.set(key, !ran.failed)
   return !ran.failed

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '#core/types'
-import { codexProvider, mcpOverrides, toEvents, toQuota } from '#providers/codex'
+import { codexProvider, mcpOverrides, shellWall, toEvents, toQuota } from '#providers/codex'
 import { lock } from '#util/lock'
 import { providerContract } from './contracts/provider.contract'
 import { fakeItem } from './fakes/items'
@@ -14,7 +14,7 @@ import { fakeItem } from './fakes/items'
 const bin = fileURLToPath(new URL('./fakes/codex.mjs', import.meta.url))
 const tmp = await mkdtemp(join(tmpdir(), 'awaywork-codex-'))
 const lockFile = join(tmp, 'codex.lock')
-const provider = codexProvider(bin, lockFile)
+const provider = codexProvider(bin, lockFile, undefined, async () => true)
 const recorded = (name: string) =>
   readFileSync(new URL(`./fixtures/codex/${name}.jsonl`, import.meta.url), 'utf8')
     .trim()
@@ -124,7 +124,7 @@ describe('codex provider', () => {
     }
     try {
       expect((await argv('gpt-5-codex')).join(' ')).toContain('-m gpt-5-codex')
-      expect((await argv()).join(' ')).toContain('--sandbox danger-full-access')
+      expect((await argv()).join(' ')).toContain('default_permissions="awaywork"')
       expect(await argv()).not.toContain('-m')
     } finally {
       delete process.env.FAKE_ARGV
@@ -141,6 +141,74 @@ describe('codex provider', () => {
     } finally {
       delete process.env.FAKE_ARGV
     }
+  })
+
+  const wall = (run: Job) => shellWall(run).filter((f) => f !== '-c')
+
+  it("walls the shell to the clone and the unit's hosts, loopback open", () => {
+    const run = job()
+    run.unit.network = ['registry.npmjs.org', '*.prisma.sh']
+    expect(wall(run)).toEqual([
+      'default_permissions="awaywork"',
+      `permissions.awaywork.filesystem={":root"="read","${tmp}"="write","${tmp}/.git"="write"}`,
+      'features.network_proxy=true',
+      'permissions.awaywork.network.enabled=true',
+      'permissions.awaywork.network.domains={"registry.npmjs.org"="allow","*.prisma.sh"="allow"}',
+      'permissions.awaywork.network.allow_local_binding=true',
+    ])
+  })
+
+  it('is offline by default, and `*` passes through', () => {
+    expect(wall(job())).toContain('permissions.awaywork.network.domains={}')
+    const run = job()
+    run.unit.network = ['*']
+    expect(wall(run)).toContain('permissions.awaywork.network.domains={"*"="allow"}')
+  })
+
+  it("withholds the hosts from someone else's PR", () => {
+    for (const flag of ['foreign', 'untrusted'] as const) {
+      const run = job()
+      Object.assign(run.unit, { network: ['npmjs.org'], [flag]: true })
+      expect(wall(run)).toContain('permissions.awaywork.network.domains={}')
+    }
+  })
+
+  it('keeps the shell open where the sandbox cannot start, and says so', async () => {
+    process.env.FAKE_ARGV = join(tmp, 'argv.json')
+    try {
+      const open = codexProvider(bin, lockFile, undefined, async () => false)
+      const events = await collect(open.run(job(), new AbortController().signal))
+      const args = (JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]).join(
+        ' ',
+      )
+      expect(args).toContain('--sandbox danger-full-access')
+      expect(args).not.toContain('default_permissions')
+      expect(events[0]).toEqual({
+        type: 'log',
+        line: "Codex's sandbox can't start here: its shell runs unsandboxed",
+      })
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it('logs the hosts the proxy refused, once each', () => {
+    const blocked = (host: string) =>
+      `curl: (56) CONNECT tunnel failed, response 403\nNetwork access to "${host}" was blocked: domain is not on the allowlist for the current sandbox mode.`
+    const item = (output: string) => ({
+      type: 'item.completed',
+      item: {
+        type: 'command_execution',
+        command: 'curl x',
+        exit_code: -1,
+        aggregated_output: output,
+      },
+    })
+    expect(toEvents(item(`${blocked('httpbin.org')}\n${blocked('httpbin.org')}`))).toEqual([
+      { type: 'log', line: 'command: curl x (exit -1)' },
+      { type: 'log', line: 'network: refused httpbin.org (agent shell)' },
+    ])
+    expect(toEvents(item('fine'))).toEqual([{ type: 'log', line: 'command: curl x (exit -1)' }])
   })
 
   it('passes MCP servers as -c, their secrets forwarded by name and kept out of the shell', () => {
@@ -164,11 +232,13 @@ describe('codex provider', () => {
       'mcp_servers.db.env={"READ_ONLY"="1"}',
       'mcp_servers.db.env_vars=["DATABASE_URL"]',
       'mcp_servers.db.enabled_tools=["query"]',
+      'mcp_servers.db.default_tools_approval_mode="approve"',
       'mcp_servers.db.startup_timeout_sec=60',
       'mcp_servers.sentry.url="https://mcp.sentry.dev/mcp"',
       'mcp_servers.sentry.bearer_token_env_var="SENTRY_TOKEN"',
       'mcp_servers.sentry.http_headers={"X-Org"="acme"}',
       'mcp_servers.sentry.env_http_headers={"X-Key"="KEY"}',
+      'mcp_servers.sentry.default_tools_approval_mode="approve"',
       'mcp_servers.sentry.startup_timeout_sec=60',
       'shell_environment_policy.exclude=["DATABASE_URL","SENTRY_TOKEN","KEY"]',
     ])

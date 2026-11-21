@@ -5,16 +5,20 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { rootStateDir } from '#config/paths'
+import { codexSandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
-import type { McpServer, Provider, Quota, WorkerEvent } from '#core/types'
+import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
 import { lock } from '#util/lock'
 import { killGroupWhenDone } from '#util/process'
 
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
-/** workspace-write can't commit (.git is read-only). */
+/** Where the sandbox can't start: workspace-write can't commit (.git is read-only), so the shell is open. */
 const FULL_ACCESS = ['--sandbox', 'danger-full-access']
+const PROFILE = 'awaywork'
+/** The proxy's line in a command's output when it reached a host outside the profile's `domains`. */
+const BLOCKED = /Network access to "([^"]+)" was blocked/g
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
 const DAY_MINS = 24 * 60
 const HOSTED_RUNNER =
@@ -41,6 +45,7 @@ export function codexProvider(
   bin = 'codex',
   lockFile = join(rootStateDir, 'codex.lock'),
   authPath?: string,
+  startsSandbox = (job: Job, signal: AbortSignal) => codexSandboxStarts(whereRuns(job.dir), signal),
 ): Provider {
   // Held from a login lent to the worker until it's saved back, the run in between.
   let lent = false
@@ -175,10 +180,17 @@ export function codexProvider(
           `${k}=${JSON.stringify(v)}`,
         ])
         const mcp = mcpOverrides(job.mcp ?? {})
-        const args = [...EXEC, ...model, ...overrides, ...mcp, ...FULL_ACCESS, '-C', job.dir, '-']
+        const walled = await startsSandbox(job, signal)
+        if (!walled && !signal.aborted)
+          yield {
+            type: 'log',
+            line: "Codex's sandbox can't start here: its shell runs unsandboxed",
+          }
+        const shell = walled ? shellWall(job) : FULL_ACCESS
+        const args = [...EXEC, ...model, ...overrides, ...mcp, ...shell, '-C', job.dir, '-']
         const child = launch(bin, args, {
           cwd: job.dir,
-          env: job.env,
+          env: walled ? wallEnv(job) : job.env,
           extendEnv: false,
           input: job.prompt,
           cancelSignal: AbortSignal.any([signal, capped.signal]),
@@ -220,6 +232,30 @@ export function codexProvider(
 
 export const codex = codexProvider()
 
+/** Under `user`, a CODEX_HOME in /tmp is under the temp dir, where Codex won't make its sandbox helper and every command fails. */
+const wallEnv = (job: Job) =>
+  workerHome(job.dir) && process.platform === 'linux' ? { ...job.env, TMPDIR: '/var/tmp' } : job.env
+
+/** A profile whose shell writes the clone and reaches only the unit's `network` hosts, none by default. */
+export function shellWall(job: Job): string[] {
+  const { foreign, untrusted, network = [] } = job.unit
+  const hosts = foreign || untrusted ? [] : network
+  // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
+  const home = workerHome(job.dir)
+  const writable = [job.dir, join(job.dir, '.git'), ...(home ? [home] : [])]
+  const filesystem = { ':root': 'read', ...Object.fromEntries(writable.map((p) => [p, 'write'])) }
+  const set = (key: string, value: unknown) => ['-c', `${key}=${toml(value)}`]
+  const net = `permissions.${PROFILE}.network`
+  return [
+    ...set('default_permissions', PROFILE),
+    ...set(`permissions.${PROFILE}.filesystem`, filesystem),
+    ...set('features.network_proxy', true),
+    ...set(`${net}.enabled`, true),
+    ...set(`${net}.domains`, Object.fromEntries(hosts.map((h) => [h, 'allow']))),
+    ...set(`${net}.allow_local_binding`, true),
+  ]
+}
+
 /** The secret a header value names: `${NAME}`, or `Bearer ${NAME}` for Authorization; undefined for any other shape. */
 export function headerSecret(
   header: string,
@@ -252,6 +288,8 @@ export function mcpOverrides(servers: Record<string, McpServer>): string[] {
       http_headers: plain.length > 0 ? Object.fromEntries(plain) : undefined,
       env_http_headers: fromEnv.length > 0 ? Object.fromEntries(fromEnv) : undefined,
       enabled_tools: s.tools,
+      // Under a permissions profile, a tool that isn't read-only fails "requires approval" otherwise.
+      default_tools_approval_mode: 'approve',
       // The default 10 s drops a server silently, e.g. an `npx -y` download on a fresh runner.
       startup_timeout_sec: 60,
     }
@@ -279,8 +317,16 @@ export function toEvents(
   event: any,
 ): WorkerEvent[] {
   const item = event?.item
-  if (event?.type === 'item.completed' && item?.type === 'command_execution')
-    return [{ type: 'log', line: `command: ${item.command} (exit ${item.exit_code})` }]
+  if (event?.type === 'item.completed' && item?.type === 'command_execution') {
+    const refused = [...String(item.aggregated_output ?? '').matchAll(BLOCKED)].map((m) => m[1])
+    return [
+      { type: 'log', line: `command: ${item.command} (exit ${item.exit_code})` },
+      ...[...new Set(refused)].map((host) => ({
+        type: 'log' as const,
+        line: `network: refused ${host} (agent shell)`,
+      })),
+    ]
+  }
   if (event?.type === 'item.completed' && item?.type === 'file_change')
     return [
       { type: 'log', line: `edit: ${item.changes.map((c: { path: string }) => c.path).join(' ')}` },
