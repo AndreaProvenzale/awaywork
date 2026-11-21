@@ -15,7 +15,7 @@ Integrity rules never move, whatever the config says:
 - A review it leaves (`deliver: pending_review`) [stays your pending one](#reports-and-pending-reviews), which only you see until you submit it.
 - Every PR and pushed commit [says it came from awaywork](#the-trailer).
 
-Reach, how loud a PR is, is the rule's choice and quiet by default: a draft that pings nobody, unless a rule opts in to a ready PR or a push onto your PR. On someone else's PR there's only a report, or with `deliver: pending_review` your pending review, both seen by you alone. [Where results go](../results.md) lays out who sees what.
+Reach, how loud a PR is, is the rule's choice and quiet by default: a draft that pings nobody, unless a rule opts in to a ready PR or a push onto your PR. On someone else's PR there's only a report, or with `deliver: pending_review` your pending review, both seen by you alone, even when [`trust`](./index.md#trusting-an-author) lists its author: it never changes what awaywork writes. [Where results go](../results.md) lays out who sees what.
 
 ## New branches only
 
@@ -66,7 +66,7 @@ A `skill` gate's judge is a model and can be fooled, which only makes it fail to
 
 - Its git sees the commits as pushed. On a plan or report it reads a read-only copy of what the step left, and the post is what the step left either way.
 - If it leaves a commit, a moved HEAD, an uncommitted change or a changed `.away/out/` file, awaywork restores the clone and fires the gate; an error, stop or failure to run fires it too. Only a process that outlived the watchdog could change a file after that check.
-- It runs as on [someone else's PR](./index.md#other-people-s-prs-are-data), the clone being the agent's: its skill is yours or built in, never the repo's, though Codex still reads the `AGENTS.md` and skills the agent could edit ([Judges](../workflows/gates.md#judges)).
+- It runs as on [an untrusted author's PR](./index.md#other-people-s-prs-are-data), the clone being the agent's: its skill is yours or built in, never the repo's, though Codex still reads the `AGENTS.md` and skills the agent could edit ([Judges](../workflows/gates.md#judges)).
 
 ## Tracker writes
 

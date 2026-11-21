@@ -171,8 +171,8 @@ export function cursorProvider(
 
 export const cursor = cursorProvider()
 
-/** The hosts a unit's shell reaches: the `network` list, none on someone else's PR. */
-const shellHosts = ({ unit }: Job) => (unit.foreign || unit.untrusted ? [] : (unit.network ?? []))
+/** The hosts a unit's shell reaches: the `network` list, none on an untrusted author's PR. */
+const shellHosts = ({ unit }: Job) => (unit.untrusted ? [] : (unit.network ?? []))
 
 /** Cursor's own tools, and each server's tools, or all of them when the server names none; the shell too, open, unless `network` says to wall it. */
 export function cliConfig(servers: Record<string, McpServer>, network?: string[]) {

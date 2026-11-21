@@ -304,7 +304,7 @@ describe('claude provider', () => {
         ...job().unit,
         base: 'sessions',
         foreign: !mine,
-        untrusted: false,
+        untrusted: !mine,
         items: [fakeItem({ linkedPrs: [pr] })],
       }
       await collect(provider.run({ ...job(), unit }, new AbortController().signal))
@@ -402,17 +402,31 @@ describe('claude provider', () => {
     ])
   })
 
-  it("withholds the hosts from someone else's PR", async () => {
+  it("withholds the hosts from an untrusted author's PR", async () => {
     process.env.FAKE_ARGV = join(dir, 'argv.json')
     try {
-      for (const flag of ['foreign', 'untrusted'] as const) {
-        const run = job()
-        Object.assign(run.unit, { network: ['npmjs.org'], [flag]: true })
-        await collect(provider.run(run, new AbortController().signal))
-        const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
-        const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
-        expect(sandbox.network).toEqual({ allowLocalBinding: true, allowedDomains: [] })
-      }
+      const run = job()
+      Object.assign(run.unit, { network: ['npmjs.org'], untrusted: true })
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox.network).toEqual({ allowLocalBinding: true, allowedDomains: [] })
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("gives a trusted author's PR the hosts and the repo's config", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    try {
+      const run = job()
+      Object.assign(run.unit, { network: ['npmjs.org'], foreign: true, untrusted: false })
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox.network.allowedDomains).toEqual(['npmjs.org'])
+      expect(args[args.indexOf('--setting-sources') + 1]).toBe('project,local')
+      expect(args).not.toContain('--strict-mcp-config')
     } finally {
       delete process.env.FAKE_ARGV
     }
@@ -533,7 +547,7 @@ describe('claude provider', () => {
           secrets: ['SENTRY_TOKEN'],
         },
       }
-      const unit = { ...job().unit, foreign: true }
+      const unit = { ...job().unit, untrusted: true }
       await collect(provider.run({ ...job(), unit, mcp }, new AbortController().signal))
       const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
       const flag = (name: string) => args[args.indexOf(name) + 1]

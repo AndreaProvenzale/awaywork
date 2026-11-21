@@ -92,7 +92,7 @@ const registeredConfigs = () => {
   }
 }
 
-/** The unit's `writable` paths that exist, as real paths, `~/` as the developer's home; none on someone else's PR or in a container, a skipped or refused one logged. */
+/** The unit's `writable` paths that exist, as real paths, `~/` as the developer's home; none on an untrusted author's PR or in a container, a skipped or refused one logged. */
 export async function writablePaths(
   unit: Unit,
   dir: string,
@@ -105,8 +105,8 @@ export async function writablePaths(
     log('writable: not applied under isolation: container')
     return []
   }
-  if (unit.foreign || unit.untrusted) {
-    log("writable: not opened on someone else's PR")
+  if (unit.untrusted) {
+    log("writable: not opened on an untrusted author's PR")
     return []
   }
   const home = await real(homedir())
@@ -153,7 +153,7 @@ async function settle(
   const { pickedUp, dir } = cs
   const settings = settingsFor(input.config.repos, unit.repo)
   if (merge.kind === 'merged' && unit.verify && settings.setup && !unit.untrusted) {
-    const own = unit.foreign || pickedUp ? [] : settings.secrets
+    const own = pickedUp ? [] : settings.secrets
     const env = setupEnv(input.ctx.env, dir, secrets, own)
     const options = { secrets: own, signal: input.signal, until: input.until }
     const failed = await runSetup(settings.setup, dir, env, log, options)
@@ -397,8 +397,8 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (!reuse) await fetchContexts(unit.items, dir, { ...input, env: input.ctx.env, secrets, log })
     const settings = settingsFor(input.config.repos, unit.repo)
     if (!reuse && settings.setup && !unit.untrusted) {
-      // A PR someone else opened, or an awaywork PR's branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
-      const own = unit.foreign || pickedUp ? [] : settings.secrets
+      // An awaywork PR's branch a worker wrote runs install scripts you didn't write: they get none of the repo's secrets.
+      const own = pickedUp ? [] : settings.secrets
       const failed = await runSetup(
         settings.setup,
         dir,
@@ -459,13 +459,13 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (gated) event(starts)
     const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
     const named = unit.rule.mcp ?? []
-    if (named.length > 0 && unit.foreign)
-      log(`mcp: ${named.join(', ')} not started on someone else's PR`)
-    if (unit.network?.length && (unit.foreign || unit.untrusted))
-      log("network: not opened on someone else's PR")
+    if (named.length > 0 && unit.untrusted)
+      log(`mcp: ${named.join(', ')} not started on an untrusted author's PR`)
+    if (unit.network?.length && unit.untrusted)
+      log("network: not opened on an untrusted author's PR")
     const writable = await writablePaths(unit, dir, log, [input.configDir, input.config.baseDir])
     const mcp: Record<string, McpServer> = {}
-    for (const name of unit.foreign ? [] : named) {
+    for (const name of unit.untrusted ? [] : named) {
       const server = input.config.mcp[name] as McpServer
       const unset = server.secrets.filter((secret) => !input.ctx.env[secret])
       if (unset.length > 0) log(`mcp: ${name} not started, unset: ${unset.join(', ')}`)

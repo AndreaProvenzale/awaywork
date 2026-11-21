@@ -16,7 +16,7 @@ Who sees the result, and whose thing it lands on:
 | Visible, nobody asked to look | awaywork: `draft_pr` (default), `push` onto your PR's branch. Your hook: PR labels, a Notion page, a Slack message | awaywork: nothing, it stays private. Your hook: a Notion page, a Slack message |
 | Pings someone | awaywork: `pr`, a ready PR, which asks the code owners. Your hook: reviewers | awaywork: nothing; you submit the pending review. Your hook: a Slack @mention |
 
-The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule in [Queue rules](./config/queue-rules.md).
+The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule in [Queue rules](./config/queue-rules.md). [`trust`](./safety/index.md#trusting-an-author) gives a trusted author's PR your setup and MCP, never a wider reach: its column stays as it is.
 
 ## Each `deliver`
 

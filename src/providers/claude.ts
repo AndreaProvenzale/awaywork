@@ -27,7 +27,7 @@ const noMemory = { autoMemoryEnabled: false }
 const noConnectors = { ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }
 /** The repo's settings, hooks, MCP servers, CLAUDE.md and skills; nothing from ~/.claude. */
 const repoOnly = ['--setting-sources', 'project,local']
-/** Neither ~/.claude nor the clone's own config: on someone else's PR it is the author's. */
+/** Neither ~/.claude nor the clone's own config: on an untrusted author's PR it is theirs. */
 const isolated = ['--setting-sources', '', '--strict-mcp-config']
 
 const configSchema = z.strictObject({
@@ -89,7 +89,7 @@ export function claudeProvider(
       if (!sandboxed && !signal.aborted)
         yield { type: 'log', line: "Claude's sandbox can't start here: Bash runs unsandboxed" }
       args.push(
-        ...(job.unit.foreign ? isolated : repoOnly),
+        ...(job.unit.untrusted ? isolated : repoOnly),
         '--settings',
         await settings(job, sandboxed),
       )
@@ -137,11 +137,10 @@ function sandbox(job: Job, theirs?: Theirs) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
-  const { foreign, untrusted, network = [] } = job.unit
-  const hosts =
-    foreign || untrusted
-      ? []
-      : [...new Set([...(theirs?.network?.allowedDomains ?? []), ...network])]
+  const { untrusted, network = [] } = job.unit
+  const hosts = untrusted
+    ? []
+    : [...new Set([...(theirs?.network?.allowedDomains ?? []), ...network])]
   const allowWrite = [
     ...(theirs?.filesystem?.allowWrite ?? []),
     ...(home ? [home] : []),

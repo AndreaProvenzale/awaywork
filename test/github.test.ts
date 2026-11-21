@@ -16,6 +16,8 @@ import { fixture, githubRoutes, recorded } from './fakes/gh'
 import { fakeItem } from './fakes/items'
 import { expectPlanBack, roundTripComment } from './fakes/plan'
 
+const defaultTrust = { '*/*': ['collaborators'] }
+
 const log: string[] = []
 const ctx: Ctx = { env: {}, log: (line) => log.push(line) }
 const tmp = () => mkdtemp(join(tmpdir(), 'awaywork-'))
@@ -153,7 +155,7 @@ describe('source writes', () => {
 
 describe('github source', () => {
   const source = githubSource(recorded(githubRoutes()))
-  const items = () => source.items({ repos: ['acme/*'] }, ctx)
+  const items = () => source.items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
 
   it('reads my PRs, requested reviews and assigned issues in the configured repos', async () => {
     const found = await items()
@@ -164,7 +166,7 @@ describe('github source', () => {
       ['acme/api#5', 'issue'],
       ['acme/web#6', 'issue'],
     ])
-    const narrow = await source.items({ repos: ['acme/web'] }, ctx)
+    const narrow = await source.items({ repos: ['acme/web'], trust: defaultTrust }, ctx)
     expect(narrow.map((i) => i.key)).toEqual(['acme/web#3', 'acme/web#6'])
   })
 
@@ -247,7 +249,10 @@ describe('github source', () => {
       { ...by('ghost', 'User', 'OWNER'), author: null },
     ]
     const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
-    const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const [, , , issue5] = await githubSource(run).items(
+      { repos: ['acme/*'], trust: defaultTrust },
+      ctx,
+    )
     expect(issue5?.comments.map((c) => c.author)).toEqual([
       'me',
       'ci-bot',
@@ -257,8 +262,47 @@ describe('github source', () => {
     const dir = await tmp()
     await source.prefetch(issue5 as never, dir, ctx)
     expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(
-      "\n_Hidden: 4 comments from outside the repo's owners, members and collaborators._\n",
+      "\n_Hidden: 4 comments from authors the repo doesn't trust._\n",
     )
+  })
+
+  it("reads each repo's trust list instead of the association alone, and keeps bots and you", async () => {
+    const assigned = JSON.parse(fixture('search-assigned.json'))
+    const by = (login: string, type: string, association: string, viewerDidAuthor = false) => ({
+      author: { login, __typename: type },
+      authorAssociation: association,
+      viewerDidAuthor,
+      body: login,
+      createdAt: '2026-01-01T09:00:00Z',
+    })
+    assigned.data.search.nodes[0].comments.nodes = [
+      by('me', 'User', 'NONE', true),
+      by('ci-bot', 'Bot', 'NONE'),
+      by('maintainer', 'User', 'COLLABORATOR'),
+      by('Newcomer', 'User', 'FIRST_TIME_CONTRIBUTOR'),
+    ]
+    const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+    const authors = async (trust: Record<string, string[]>) => {
+      const found = await githubSource(run).items({ repos: ['acme/*'], trust }, ctx)
+      return found[3]?.comments.map((c) => c.author)
+    }
+    expect(await authors({ 'acme/*': ['collaborators'] })).toEqual(['me', 'ci-bot', 'maintainer'])
+    expect(await authors({ 'acme/*': ['newcomer'] })).toEqual(['me', 'ci-bot', 'Newcomer'])
+    expect(await authors({ 'acme/*': [] })).toEqual(['me', 'ci-bot'])
+    expect(await authors({ 'acme/*': ['*'] })).toEqual(['me', 'ci-bot', 'maintainer', 'Newcomer'])
+    expect(await authors({ 'acme/web': ['*'], 'acme/api': [] })).toEqual(['me', 'ci-bot'])
+  })
+
+  it('sets the trusted field from the list, yours always', async () => {
+    const trusted = async (trust: string[]) =>
+      Object.fromEntries(
+        (await source.items({ repos: ['acme/*'], trust: { 'acme/*': trust } }, ctx)).map((i) => [
+          i.key,
+          i.fields.trusted,
+        ]),
+      )
+    expect(await trusted([])).toMatchObject({ 'acme/api#1': true, 'acme/api#2': false })
+    expect(await trusted(['*'])).toMatchObject({ 'acme/api#1': true, 'acme/api#2': true })
   })
 
   it("counts only the unresolved threads a trusted author started, so a stranger's starts no fix", async () => {
@@ -273,8 +317,13 @@ describe('github source', () => {
     const starters = JSON.parse(fixture('threads.json'))
     starters.data.nodes[0].reviewThreads.nodes = [stranger(false), stranger(true)]
     const run = recorded([[/nodes\(ids:/, JSON.stringify(starters)], ...githubRoutes()])
-    const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const [pr1] = await githubSource(run).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
     expect(pr1?.fields).toMatchObject({ unresolved_threads: 0, my_unresolved_threads: 0 })
+    const [listed] = await githubSource(run).items(
+      { repos: ['acme/*'], trust: { 'acme/*': ['*'] } },
+      ctx,
+    )
+    expect(listed?.fields).toMatchObject({ unresolved_threads: 1 })
   })
 
   it('compares only your own open PRs in the repo with their base, and reads conflicts off mergeable', async () => {
@@ -302,7 +351,7 @@ describe('github source', () => {
       [/compare\(headRef:/, JSON.stringify({ data: { pr0: null, pr1: null } })],
       ...githubRoutes(),
     ])
-    const found = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const found = await githubSource(run).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
     const compares = run.calls.map((c) => c.join(' ')).filter((c) => c.includes('compare('))
     expect(compares).toHaveLength(1)
     expect(compares[0]).toContain('pr0: node(id: "PR_1")')
@@ -321,7 +370,7 @@ describe('github source', () => {
       if (args.join(' ').includes('compare(')) throw new Error('HTTP 502')
       return routes(cmd, args)
     }
-    const [pr1] = await githubSource(failing).items({ repos: ['acme/*'] }, ctx)
+    const [pr1] = await githubSource(failing).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
     expect(pr1?.fields).not.toHaveProperty('behind')
     expect(log).toContain("github: couldn't read how far your PRs are behind their base: HTTP 502")
   })
@@ -350,7 +399,7 @@ describe('github source', () => {
       [/name=api -F number=1 -f after=c\d/, more],
       ...githubRoutes(),
     ])
-    const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const [pr1] = await githubSource(run).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
     const calls = run.calls.filter((call) => call.join(' ').includes('after='))
     expect(calls).toHaveLength(4)
     expect(pr1?.fields.files).toHaveLength(500)
@@ -361,7 +410,7 @@ describe('github source', () => {
     authored.data.search.nodes[0].files.pageInfo.hasNextPage = true
     const run = recorded([[/author:@me/, JSON.stringify(authored)], ...githubRoutes()])
     log.length = 0
-    const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const [pr1] = await githubSource(run).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
     expect(pr1?.fields.files).toEqual(['src/auth/token.ts', 'README.md'])
     expect(log[0]).toMatch(/^github: couldn't read every file of acme\/api#1: /)
   })
@@ -372,7 +421,7 @@ describe('github source', () => {
       `"body": ${JSON.stringify(footer('r0', []))}`,
     )
     const [pr1] = await githubSource(recorded([[/author:@me/, authored], ...githubRoutes()])).items(
-      { repos: ['acme/*'] },
+      { repos: ['acme/*'], trust: defaultTrust },
       ctx,
     )
     expect(pr1?.fields.ours).toBe(true)
@@ -389,7 +438,10 @@ describe('github source', () => {
         body: `Half.\n\n${footer('r1', [{ source: 'github', key: 'acme/api#5' }], left)}`,
       })
       const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
-      const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+      const [, , , issue5] = await githubSource(run).items(
+        { repos: ['acme/*'], trust: defaultTrust },
+        ctx,
+      )
       return issue5?.linkedPrs[0]
     }
     const items = ['github:acme/api#5']
@@ -414,12 +466,30 @@ describe('github source', () => {
       intoHead: 'def5678',
       ours: false,
       mine: true,
+      author: 'dev',
       trusted: true,
     }
     expect(pr1?.linkedPrs).toEqual([link])
     expect(issue5?.linkedPrs).toEqual([link])
     expect(issue6?.linkedPrs).toEqual([])
     expect(pr2?.linkedPrs[0]).toMatchObject({ mine: false, trusted: false })
+  })
+
+  it("names a bot author as GitHub shows it, `login[bot]`, so it can't pass for a user of that name", async () => {
+    const authored = JSON.parse(fixture('search-authored.json'))
+    authored.data.search.nodes[0].author = { login: 'renovate', __typename: 'Bot' }
+    const [pr1] = await githubSource(
+      recorded([[/author:@me/, JSON.stringify(authored)], ...githubRoutes()]),
+    ).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
+    expect(pr1?.linkedPrs[0]?.author).toBe('renovate[bot]')
+    expect(pr1?.fields.author).toBe('renovate')
+  })
+
+  it("asks for the PR item's own author type, which a bot's login alone can't tell", async () => {
+    const run = recorded(githubRoutes())
+    await githubSource(run).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
+    const query = run.calls.flat().find((arg) => arg.includes('... on PullRequest {'))
+    expect(query).toMatch(/author \{ login __typename \} authorAssociation\s+assignees/)
   })
 
   it('runs each extra search ANDed with open and unarchived, without marking its items', async () => {
@@ -430,7 +500,7 @@ describe('github source', () => {
       ...githubRoutes(),
     ])
     const found = await githubSource(run).items(
-      { repos: ['acme/*'], search: ['mentions:@me'] },
+      { repos: ['acme/*'], trust: defaultTrust, search: ['mentions:@me'] },
       ctx,
     )
     expect(found.find((i) => i.id === 'I_new')?.fields.mine).toBe(false)
@@ -440,7 +510,7 @@ describe('github source', () => {
     const many = fixture('search-assigned.json').replace('"issueCount": 2', '"issueCount": 150')
     const run = recorded([[/assignee:@me/, many], ...githubRoutes()])
     log.length = 0
-    await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    await githubSource(run).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
     expect(log).toEqual([
       'github: "is:issue is:open archived:false assignee:@me" found 150, reading the first 100',
     ])
@@ -453,7 +523,7 @@ describe('github source', () => {
       return recorded(routes)(cmd, args)
     }
     log.length = 0
-    const found = await githubSource(failing).items({ repos: ['acme/*'] }, ctx)
+    const found = await githubSource(failing).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
     expect(found).toHaveLength(5)
     expect(found[0]?.fields).toMatchObject({ unresolved_threads: 3, my_unresolved_threads: 0 })
     expect(log).toEqual([
@@ -461,7 +531,7 @@ describe('github source', () => {
     ])
 
     const missing = recorded([[/nodes\(ids:/, '{ "data": { "nodes": [null] } }'], ...routes])
-    const [pr1] = await githubSource(missing).items({ repos: ['acme/*'] }, ctx)
+    const [pr1] = await githubSource(missing).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
     expect(pr1?.fields).toMatchObject({ unresolved_threads: 3, my_unresolved_threads: 0 })
   })
 
@@ -478,7 +548,7 @@ describe('github source', () => {
       [/nodes\(ids:/, '{ "data": { "nodes": [] } }'],
       ...githubRoutes(),
     ])
-    await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    await githubSource(run).items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
     const pages = run.calls.filter((call) => call.join(' ').includes('nodes(ids:'))
     expect(pages.map((call) => call.join(' ').match(/PR_\d+/g)?.length)).toEqual([100, 1])
   })
@@ -495,9 +565,7 @@ describe('github source', () => {
     expect(pr).toContain('### lead, CHANGES_REQUESTED')
     expect(pr).not.toContain('review-bot')
     expect(pr).not.toContain('GH_TOKEN')
-    expect(pr).toContain(
-      "\n_Hidden: 1 review from outside the repo's owners, members and collaborators._\n",
-    )
+    expect(pr).toContain("\n_Hidden: 1 review from authors the repo doesn't trust._\n")
     expect(await read('diff.patch')).toContain('+export const burst = 20')
 
     const threads = await read('threads.md')
@@ -513,11 +581,9 @@ describe('github source', () => {
     )
     expect(threads).not.toContain('Typo.')
     expect(threads).not.toContain('stranger')
-    expect(threads).toContain(
-      "\n_Hidden: 1 reply from outside the repo's owners, members and collaborators._\n",
-    )
+    expect(threads).toContain("\n_Hidden: 1 reply from authors the repo doesn't trust._\n")
     expect(threads).toMatch(
-      /\n_Hidden: 1 unresolved thread from outside the repo's owners, members and collaborators\._\n$/,
+      /\n_Hidden: 1 unresolved thread from authors the repo doesn't trust\._\n$/,
     )
 
     const checks = await read('checks.md')
@@ -532,6 +598,42 @@ describe('github source', () => {
     expect(checks).toMatch(
       /\n## Not failing\n\n- lint: SUCCESS https:\/\/github\.com\/acme\/api\/actions\/runs\/100\/job\/200\n- e2e: IN_PROGRESS https:\/\/github\.com\/acme\/api\/actions\/runs\/100\/job\/202\n- Vercel Preview: SUCCESS https:\/\/api-git-rate-limits\.vercel\.app\n- ci\/external: PENDING\n$/,
     )
+  })
+
+  it('hides a collaborator off a narrowed list from reviews, threads and replies', async () => {
+    const narrowed = { repos: ['acme/*'], trust: { 'acme/*': [] } }
+    const prefetch = async (edit: (threads: { comments: { nodes: object[] } }[]) => void) => {
+      const [pr1] = await githubSource(recorded(githubRoutes())).items(narrowed, ctx)
+      const details = JSON.parse(fixture('pr-1.json'))
+      edit(details.data.repository.pullRequest.reviewThreads.nodes)
+      const view: [RegExp, string] = [
+        /owner=acme -f name=api -F number=1 /,
+        JSON.stringify(details),
+      ]
+      const dir = await tmp()
+      await githubSource(recorded([view, ...githubRoutes()])).prefetch(pr1 as never, dir, ctx)
+      return (f: string) => readFile(join(dir, f), 'utf8')
+    }
+
+    const started = await prefetch(() => {})
+    expect(await started('item.md')).not.toContain('Needs a test for the burst case.')
+    expect(await started('item.md')).toContain('_Hidden: 2 reviews from authors')
+    expect(await started('threads.md')).not.toContain('Why 429 and not 503?')
+    expect(await started('threads.md')).toContain('_Hidden: 2 unresolved threads from authors')
+
+    const lead = { author: { login: 'lead', __typename: 'User' }, authorAssociation: 'MEMBER' }
+    const replied = await prefetch((threads) => {
+      const [first, reply] = threads[2]?.comments.nodes ?? []
+      Object.assign(
+        first ?? {},
+        { author: { login: 'dev', __typename: 'User' } },
+        { viewerDidAuthor: true, body: 'Is 429 on purpose?' },
+      )
+      Object.assign(reply ?? {}, { ...lead, viewerDidAuthor: false, body: 'Lead: yes, 429.' })
+    })
+    expect(await replied('threads.md')).toContain('Is 429 on purpose?')
+    expect(await replied('threads.md')).not.toContain('Lead: yes, 429.')
+    expect(await replied('threads.md')).toContain('_Hidden: 2 replies from authors')
   })
 
   it('hides ghost reviews and replies, and every thread when no one trusted started any', async () => {
@@ -558,15 +660,15 @@ describe('github source', () => {
       Object.assign(pr.reviewThreads.nodes[2]?.comments.nodes[1] ?? {}, ghost)
     })
     expect(await ghosts('item.md')).not.toContain('Needs a test for the burst case.')
-    expect(await ghosts('item.md')).toContain('_Hidden: 2 reviews from outside')
+    expect(await ghosts('item.md')).toContain('_Hidden: 2 reviews from authors')
     expect(await ghosts('threads.md')).not.toContain('429 is the standard')
-    expect(await ghosts('threads.md')).toContain('_Hidden: 2 replies from outside')
+    expect(await ghosts('threads.md')).toContain('_Hidden: 2 replies from authors')
 
     const strangers = await prefetch((pr) => {
       for (const t of pr.reviewThreads.nodes) Object.assign(t.comments.nodes[0] ?? {}, ghost)
     })
     expect(await strangers('threads.md')).toBe(
-      "No unresolved review threads.\n\n_Hidden: 4 unresolved threads from outside the repo's owners, members and collaborators._\n",
+      "No unresolved review threads.\n\n_Hidden: 4 unresolved threads from authors the repo doesn't trust._\n",
     )
   })
 
@@ -577,7 +679,7 @@ describe('github source', () => {
     expect(await readFile(join(dir, 'item.md'), 'utf8')).toBe(
       '# Rate limit the public API\n\nhttps://github.com/acme/api/issues/5\n\n' +
         'Clients can flood us.\n\n## Comments\n\n### dev, 2026-01-01T10:00:00Z\n\n' +
-        "Start with the public routes.\n\n_Hidden: 1 comment from outside the repo's owners, members and collaborators._\n",
+        "Start with the public routes.\n\n_Hidden: 1 comment from authors the repo doesn't trust._\n",
     )
   })
 
@@ -589,7 +691,7 @@ describe('github source', () => {
       ...githubRoutes(),
     ])
     const found = await githubSource(run).items(
-      { repos: ['acme/*'], search: ['mentions:@me'] },
+      { repos: ['acme/*'], trust: defaultTrust, search: ['mentions:@me'] },
       ctx,
     )
     expect(found.map((i) => [i.key, i.mine ?? false])).toEqual([
@@ -611,7 +713,10 @@ describe('github source', () => {
       { ...yours, body: `edited by lead\n\n${markComment('')}`, editor: { login: 'lead' } },
     ]
     const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
-    const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const [, , , issue5] = await githubSource(run).items(
+      { repos: ['acme/*'], trust: defaultTrust },
+      ctx,
+    )
     expect(issue5?.comments.map((c) => [c.body.split('\n')[0], c.mine])).toEqual([
       ['mine', true],
       ['edited by me', true],
@@ -629,7 +734,10 @@ describe('github source', () => {
       { ...yours, author: bot, authorAssociation: 'NONE', viewerDidAuthor: false, body: '91.2%' },
     ]
     const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
-    const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const [, , , issue5] = await githubSource(run).items(
+      { repos: ['acme/*'], trust: defaultTrust },
+      ctx,
+    )
     expect(issue5?.comments.map((c) => [c.author, c.bot])).toEqual([
       ['dev', undefined],
       ['codecov', true],
@@ -653,7 +761,10 @@ describe('github source', () => {
       ...githubRoutes(),
     ]
     const whole = recorded([[/-f before=c1 /, older(['oldest'])], ...routes])
-    const [, , , issue5] = await githubSource(whole).items({ repos: ['acme/*'] }, ctx)
+    const [, , , issue5] = await githubSource(whole).items(
+      { repos: ['acme/*'], trust: defaultTrust },
+      ctx,
+    )
     expect(issue5?.comments.map((c) => c.body.split('\n')[0])).toEqual([
       'oldest',
       'Two tasks: the **API** first, then the button.',
@@ -662,7 +773,10 @@ describe('github source', () => {
     ])
     expect(whole.calls.filter((c) => c.join(' ').includes(' before=')).length).toBe(2)
     log.length = 0
-    const [, , , cut] = await githubSource(recorded(routes)).items({ repos: ['acme/*'] }, ctx)
+    const [, , , cut] = await githubSource(recorded(routes)).items(
+      { repos: ['acme/*'], trust: defaultTrust },
+      ctx,
+    )
     expect(cut?.comments.map((c) => c.body.split('\n')[0])).toEqual([
       'Two tasks: the **API** first, then the button.',
       'middle',
@@ -714,12 +828,24 @@ describe('github source', () => {
     }
     const item = issue5
     const write = githubSource(run).write
-    expect(await write?.({ repos: ['acme/*'] }, item, { op: 'move', to: 'In QA' }, ctx)).toEqual({
+    expect(
+      await write?.(
+        { repos: ['acme/*'], trust: defaultTrust },
+        item,
+        { op: 'move', to: 'In QA' },
+        ctx,
+      ),
+    ).toEqual({
       before: '2026-02-02T08:00:00Z',
       after: '2026-02-02T08:00:00Z',
     })
     expect(
-      await write?.({ repos: ['acme/*'] }, item, { op: 'comment', body: 'Why `@here`?' }, ctx),
+      await write?.(
+        { repos: ['acme/*'], trust: defaultTrust },
+        item,
+        { op: 'comment', body: 'Why `@here`?' },
+        ctx,
+      ),
     ).toMatchObject({ url: 'https://git.acme.com/acme/api/issues/5#issuecomment-9' })
     const updated = ['api', 'graphql', '-f', 'owner=acme', '-f', 'name=api', '-F', 'number=5']
     expect(replay.calls.map((c) => (c[2] === 'graphql' ? c.slice(1, 9) : c.slice(1)))).toEqual([
@@ -739,7 +865,12 @@ describe('github source', () => {
       [/issues\/5\/comments -f /, 'https://github.com/acme/api/issues/5#issuecomment-9\n'],
     ])
     const write = { op: 'comment', body: roundTripComment } as const
-    await githubSource(replay).write?.({ repos: ['acme/*'] }, issue5, write, ctx)
+    await githubSource(replay).write?.(
+      { repos: ['acme/*'], trust: defaultTrust },
+      issue5,
+      write,
+      ctx,
+    )
     const sent = replay.calls.find((c) => c[1] === 'api' && c[2]?.endsWith('/comments'))
     const assigned = JSON.parse(fixture('search-assigned.json'))
     const yours = assigned.data.search.nodes[0].comments.nodes[1]
@@ -747,7 +878,10 @@ describe('github source', () => {
       { ...yours, body: sent?.[4]?.slice('body='.length) },
     ]
     const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
-    const [, , , issue] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const [, , , issue] = await githubSource(run).items(
+      { repos: ['acme/*'], trust: defaultTrust },
+      ctx,
+    )
     expectPlanBack(issue)
   })
 
@@ -759,7 +893,7 @@ describe('github source', () => {
         { op: 'comment', body: 'Q?' },
       ] as const)
         await expect(
-          githubSource(run).write?.({ repos: ['acme/*'] }, issue5, write, ctx),
+          githubSource(run).write?.({ repos: ['acme/*'], trust: defaultTrust }, issue5, write, ctx),
         ).rejects.toThrow('acme/api#5 is no longer yours: not assigned to you')
       expect(run.calls.filter((c) => c[2] !== 'graphql')).toEqual([])
     }
@@ -769,7 +903,12 @@ describe('github source', () => {
     ])
     const pr = { ...issue5, type: 'pr' as const }
     expect(
-      await githubSource(run).write?.({ repos: ['acme/*'] }, pr, { op: 'move', to: 'QA' }, ctx),
+      await githubSource(run).write?.(
+        { repos: ['acme/*'], trust: defaultTrust },
+        pr,
+        { op: 'move', to: 'QA' },
+        ctx,
+      ),
     ).toEqual({ before: '2026-02-02T08:00:00Z', after: '2026-02-02T08:00:00Z' })
   })
 })
@@ -807,7 +946,7 @@ describe('github source, finished items', () => {
     ])
   const searches = (calls: string[][]) =>
     calls.flatMap((c) => c.find((a) => a.startsWith('q='))?.slice(2) ?? [])
-  const cfg = { repos: ['acme/*'], search: ['label:awaywork'] }
+  const cfg = { repos: ['acme/*'], trust: defaultTrust, search: ['label:awaywork'] }
 
   it('searches for nothing finished unless asked', async () => {
     const exec = run()
@@ -848,7 +987,7 @@ describe('github source, finished items', () => {
       ...githubRoutes(),
     ])
     log.length = 0
-    await githubSource(exec).items({ repos: ['acme/*'] }, ctx, since)
+    await githubSource(exec).items({ repos: ['acme/*'], trust: defaultTrust }, ctx, since)
     expect(log).toEqual([
       'github: "is:issue is:closed archived:false assignee:@me closed:>=2026-10-11" found 1500, GitHub returns the first 1000',
     ])
@@ -882,12 +1021,12 @@ describe('github enterprise host', () => {
   it('reads the source through the host, and leaves gh alone without one', async () => {
     const run = hosted()
     await githubSource(run)
-      .items({ repos: ['acme/*'], host: 'git.acme.com' }, ctx)
+      .items({ repos: ['acme/*'], trust: defaultTrust, host: 'git.acme.com' }, ctx)
       .catch(() => {})
     expect(new Set(run.seen)).toEqual(new Set(['gh:git.acme.com']))
     const plain = hosted()
     await githubSource(plain)
-      .items({ repos: ['acme/*'] }, ctx)
+      .items({ repos: ['acme/*'], trust: defaultTrust }, ctx)
       .catch(() => {})
     expect(new Set(plain.seen)).toEqual(new Set(['gh:undefined']))
   })

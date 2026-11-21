@@ -1,11 +1,12 @@
 import { resolveSkill } from '#core/skills'
+import { trusts } from '#core/trust'
 import type { Condition, Gate, PrRef, Publishes, Rule, Step, ThenStep, Unit } from '#core/types'
 import { type Allowance, quotaFacts, route } from '#quota/budget'
 import { branchName, planLimits, stepReports } from '#tasks/fanout'
 import { holds } from './condition'
 import type { PlannedUnit, PlanRun } from './foreman'
 import type { Group } from './holds'
-import { settingsFor } from './repos'
+import { settingsFor, trustFor } from './repos'
 
 /** Where a chain lands: its repo and PR, the branch it publishes on and the base under it. */
 export type Landing = Pick<Unit, 'repo' | 'branch' | 'base' | 'foreign' | 'fork' | 'stackedOn'> & {
@@ -77,7 +78,7 @@ export function chainUnits(
   const at = {
     base,
     foreign: landed.foreign,
-    untrusted: pr ? !pr.trusted : false,
+    untrusted: pr ? !pr.mine && !trusts(trustFor(config, repo), pr.author, pr.trusted) : false,
     fork: landed.fork,
     ...(merging && { merge: pr?.into }),
     branch: draft ? base : landed.branch,

@@ -52,6 +52,8 @@ import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+const defaultTrust = { '*/*': ['collaborators'] }
+
 const op = JSON.parse(readFileSync(0, 'utf8'))
 if (op.op === 'put') {
   if (basename(op.path) === 'fail.bin') throw new Error('bucket full')
@@ -849,7 +851,10 @@ describe('PR footers', () => {
         editor: { login: editor },
       })
       const run = recorded([[/author:@me/, JSON.stringify(authored)], ...githubRoutes()])
-      const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, { env: {}, log: () => {} })
+      const [pr1] = await githubSource(run).items(
+        { repos: ['acme/*'], trust: { '*/*': ['collaborators'] } },
+        { env: {}, log: () => {} },
+      )
       const posts = readBackPosts(pr1 as Item, 'review', false)
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-footer-'))
       await readBack(storeOf(logged.config), process.env, posts, dir)

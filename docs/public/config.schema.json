@@ -846,16 +846,25 @@
               },
               "network": {
                 "default": [],
-                "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet",
+                "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet",
                 "type": "array",
                 "items": {
                   "type": "string",
                   "pattern": "^(\\*|(\\*\\.)?[\\w-]+(\\.[\\w-]+)*)$"
                 }
               },
+              "trust": {
+                "default": [],
+                "description": "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(\\*|[A-Za-z\\d](-?[A-Za-z\\d])*(\\[bot\\])?)$"
+                }
+              },
               "writable": {
                 "default": [],
-                "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+                "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container",
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -961,16 +970,27 @@
     },
     "network": {
       "default": [],
-      "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet",
+      "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet",
       "type": "array",
       "items": {
         "type": "string",
         "pattern": "^(\\*|(\\*\\.)?[\\w-]+(\\.[\\w-]+)*)$"
       }
     },
+    "trust": {
+      "default": [
+        "collaborators"
+      ],
+      "description": "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(\\*|[A-Za-z\\d](-?[A-Za-z\\d])*(\\[bot\\])?)$"
+      }
+    },
     "writable": {
       "default": [],
-      "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+      "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container",
       "type": "array",
       "items": {
         "type": "string",
@@ -1159,7 +1179,7 @@
           },
           "network": {
             "default": [],
-            "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet",
+            "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet",
             "type": "array",
             "items": {
               "type": "string",
@@ -1168,7 +1188,7 @@
           },
           "writable": {
             "default": [],
-            "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+            "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container",
             "type": "array",
             "items": {
               "type": "string",

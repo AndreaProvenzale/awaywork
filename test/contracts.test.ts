@@ -56,7 +56,7 @@ sourceContract(
   {},
   {},
   'qa',
-  { repos: ['acme/*'] },
+  { repos: ['acme/*'], trust: { '*/*': ['collaborators'] } },
 )
 sourceContract(
   asanaSource(

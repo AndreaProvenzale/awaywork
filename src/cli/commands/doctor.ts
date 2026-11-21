@@ -41,6 +41,7 @@ import { describeAllowance } from '#format/allowances'
 import { NO_QUEUE } from '#format/rules'
 import { type Status, statusMarker } from '#format/terminal'
 import { ruleThread } from '#plan/queue'
+import { trustFor } from '#plan/repos'
 import { codexLogin } from '#providers/codex'
 import { commandBinary, isCommandProvider } from '#providers/command'
 import { providerFor, providers } from '#providers/index'
@@ -215,6 +216,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     )
   }
 
+  for (const c of await trustChecks(config, onHost(exec, github?.host)))
+    report(c.status, c.what, c.detail)
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
     // Read as gh's active account, it would count someone else's items.
@@ -269,6 +272,30 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     const unset = server.secrets.filter((s) => !process.env[s])
     const facts = [server.command ?? server.url, ...server.secrets.map(secret)].join(', ')
     report(unset.length > 0 ? 'warn' : 'ok', `mcp ${name}`, facts)
+  }
+  return checks
+}
+
+/** Who each repo trusts, in words, and where that is risky or does nothing. */
+export async function trustChecks(config: Config, run: Exec): Promise<Check[]> {
+  if (config.forge.id === 'bitbucket')
+    return [{ status: 'ok', what: 'trust', detail: 'does nothing on Bitbucket' }]
+  const checks: Check[] = []
+  for (const repo of Object.keys(config.repos)) {
+    const trust = trustFor(config, repo)
+    const what = `trust ${repo}`
+    const words = trust.map((name) => (name === '*' ? 'anyone' : name))
+    checks.push({ status: 'ok', what, detail: words.join(', ') || 'nobody but you' })
+    if (!trust.includes('*')) continue
+    const isPrivate = repo.includes('*')
+      ? undefined
+      : await run('gh', ['api', `repos/${repo}`, '--jq', '.private']).catch(() => undefined)
+    if (isPrivate?.trim() !== 'true')
+      checks.push({
+        status: 'warn',
+        what,
+        detail: `* trusts anyone with a PR on ${repo.includes('*') ? 'any public repo it names' : 'a public repo'}: their code runs with your setup`,
+      })
   }
   return checks
 }

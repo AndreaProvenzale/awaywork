@@ -15,6 +15,8 @@ import { fakeForge } from './fakes/forge'
 import { fixture, recorded } from './fakes/gh'
 import { fakeItem } from './fakes/items'
 
+const defaultTrust = { '*/*': ['collaborators'] }
+
 vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
@@ -358,7 +360,7 @@ describe("GitHub's thread issues", () => {
       ],
       [/^gh api -X PATCH/, '{}'],
     ])
-    const threads = githubThreads(run)
+    const threads = githubThreads(run, undefined, () => ['collaborators'])
     expect(await threads.threads('acme/api')).toEqual([
       {
         item: 'jira:ENG-7',
@@ -398,7 +400,7 @@ describe("GitHub's thread issues", () => {
         JSON.stringify({ data: { search: { issueCount: 0, pageInfo: {}, nodes: [] } } }),
       ],
     ])
-    const items = await githubSource(run).items({ repos: ['acme/*'] }, ctx())
+    const items = await githubSource(run).items({ repos: ['acme/*'], trust: defaultTrust }, ctx())
     expect(items.length).toBeGreaterThan(0)
     expect(items.map((i) => i.key)).not.toContain('acme/api#57')
     expect(items.map((i) => i.key)).toContain('acme/api#59')

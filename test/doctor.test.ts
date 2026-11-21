@@ -53,8 +53,14 @@ vi.mock('#config/paths', async (importOriginal) => {
   return { ...original, configDir, runsDir, stateDir, bin, envFile: legacyEnvFile, legacyEnvFile }
 })
 
-const { bitbucketChecks, containerChecks, isolationChecks, runChecks, workflowSecretChecks } =
-  await import('#cli/commands/doctor')
+const {
+  bitbucketChecks,
+  containerChecks,
+  isolationChecks,
+  runChecks,
+  trustChecks,
+  workflowSecretChecks,
+} = await import('#cli/commands/doctor')
 const { configDir, runsDir } = await import('#config/paths')
 
 describe('doctor', () => {
@@ -375,6 +381,65 @@ sources: { tracker: { command: 'echo []', fields: [column] }, jira: { site: a.at
     expect(canMatch(sources, 'tracker', {})).toBe(true)
     expect(canMatch(sources, 'tracker', { any: [{ status: 'QA' }, { column: 'QA' }] })).toBe(true)
     expect(canMatch(sources, 'jira', { column: 'QA' })).toBe(false)
+  })
+})
+
+describe('doctor on trust', () => {
+  const checks = (yaml: string, isPrivate = 'false') => {
+    const config = parseConfig(`providers: [claude]\nsources: { github: {} }\n${yaml}`)
+    const run: Exec = async () => isPrivate
+    return trustChecks(config, run)
+  }
+
+  it('prints who each repo trusts, in words, the default included', async () => {
+    expect(await checks('repos: { acme/api: }')).toEqual([
+      { status: 'ok', what: 'trust acme/api', detail: 'collaborators' },
+    ])
+    expect(
+      await checks('repos: { acme/api: { trust: [alice, "dependabot[bot]"] }, acme/web: }'),
+    ).toEqual([
+      { status: 'ok', what: 'trust acme/api', detail: 'collaborators, alice, dependabot[bot]' },
+      { status: 'ok', what: 'trust acme/web', detail: 'collaborators' },
+    ])
+    expect(await checks('trust: []\nrepos: { acme/api: }')).toEqual([
+      { status: 'ok', what: 'trust acme/api', detail: 'nobody but you' },
+    ])
+  })
+
+  it('warns on * unless the repo is known private', async () => {
+    const yaml = 'repos: { acme/api: { trust: ["*"] } }'
+    const [ok, warn] = await checks(yaml, 'false')
+    expect(ok?.detail).toBe('collaborators, anyone')
+    expect(warn).toEqual({
+      status: 'warn',
+      what: 'trust acme/api',
+      detail: '* trusts anyone with a PR on a public repo: their code runs with your setup',
+    })
+    expect((await checks(yaml, 'true')).map((c) => c.status)).toEqual(['ok'])
+    const config = parseConfig(`providers: [claude]\nsources: { github: {} }\n${yaml}`)
+    const failing = await trustChecks(config, async () => {
+      throw new Error('no gh')
+    })
+    expect(failing.map((c) => c.status)).toEqual(['ok', 'warn'])
+  })
+
+  it('warns on * under a glob key, whatever the visibility', async () => {
+    const yaml = 'trust: ["*"]\nrepos: { acme/*: }'
+    expect((await checks(yaml, 'true')).at(-1)).toEqual({
+      status: 'warn',
+      what: 'trust acme/*',
+      detail:
+        '* trusts anyone with a PR on any public repo it names: their code runs with your setup',
+    })
+  })
+
+  it('says once that trust does nothing on Bitbucket', async () => {
+    const config = parseConfig(
+      "providers: [claude]\nforge: bitbucket\nsources: { tracker: { command: 'echo []' } }\nrepos: { acme/web: { trust: [alice] }, acme/api: }",
+    )
+    expect(await trustChecks(config, async () => '')).toEqual([
+      { status: 'ok', what: 'trust', detail: 'does nothing on Bitbucket' },
+    ])
   })
 })
 

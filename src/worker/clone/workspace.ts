@@ -70,8 +70,10 @@ export interface WorkspaceInput {
   loop?: LoopRound
   /** A replay: the clone starts at `commit` and its context is copied from a past run's `context/`, with no source asked. */
   replay?: { commit: string; context: string }
-  /** A gate's judge of what the steps left, copied to `out`, and of the chain's commits since `from`, if any: its unit is `foreign`, as the agent wrote the clone. */
+  /** A gate's judge of what the steps left, copied to `out`, and of the chain's commits since `from`, if any: its unit is `untrusted`, as the agent wrote the clone. */
   judge?: Judged
+  /** Whether the chain's setup was skipped, when this unit isn't the chain's: a judge, always `untrusted`. */
+  setupSkipped?: boolean
   /** For a task: the files its tasks in other repos ship, read from their PRs. */
   shipped?: Shipped[]
   /** By item key: the folder of the files awaywork's posts on it pin, read back from the store, a folder per post. */
@@ -96,12 +98,12 @@ export interface Previous {
 
 /**
  * Clones the unit's repo onto its new branch, installs its skills, prefetches context and writes the prompt.
- * On a PR someone else opened, the branch's `.awaywork/` and skills are the author's: they are ignored.
+ * On an untrusted author's PR, the branch's `.awaywork/` and skills are the author's: they are ignored.
  * A later step reuses the chain's clone and its context, and only swaps in its skills, `previous/` and prompt.
  */
 export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   const { unit, dir, provider } = w
-  const { foreign } = unit
+  const { untrusted } = unit
   const names = [...new Set([unit.skill, ...unit.skills])]
   if (w.reuse) {
     await refuseSymlinks(dir, [
@@ -136,15 +138,15 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     user: skillsDirIn(w.configDir),
     builtin: builtinSkillsDir,
   }
-  const roots = foreign ? [user, builtin] : [user, join(dir, '.awaywork', 'skills'), builtin]
+  const roots = untrusted ? [user, builtin] : [user, join(dir, '.awaywork', 'skills'), builtin]
   // The repo's own skill folders only add extra skills: they never shadow a name awaywork resolves.
-  const extraRoots = foreign ? roots : [...roots, ...repoSkillDirs.map((d) => join(dir, d))]
+  const extraRoots = untrusted ? roots : [...roots, ...repoSkillDirs.map((d) => join(dir, d))]
   const sources = new Map(
     names.map((name) => [name, findSkill(name, name === unit.skill ? roots : extraRoots)]),
   )
   if (provider.skillsDir) await copySkills(w, provider.skillsDir, sources)
   else await buildPlugin(w.plugin, dir, sources)
-  if (foreign && provider.repoConfig) await hideAuthorConfig(dir, provider.repoConfig)
+  if (untrusted && provider.repoConfig) await hideAuthorConfig(dir, provider.repoConfig)
 
   if (w.replay) await cp(w.replay.context, join(work, 'context'), { recursive: true })
   const items: string[] = []
@@ -194,12 +196,12 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     instructions: await Promise.all(w.config.instructions.map(read)),
     repo: {
       setup: repo.setup,
-      setupSkipped: unit.untrusted,
+      setupSkipped: w.setupSkipped ?? unit.untrusted,
       test: repo.test,
       serveRefused: unit.rule.serve ? serveRefusal(unit, repo.serve) : undefined,
       instructions: repo.instructions && (await read(repo.instructions)),
     },
-    inRepo: foreign ? '' : await readOutput(join(dir, '.awaywork', 'instructions.md')),
+    inRepo: untrusted ? '' : await readOutput(join(dir, '.awaywork', 'instructions.md')),
     rule: await Promise.all(unit.rule.instructions.map(read)),
   })
   await writeOutput(join(work, 'prompt.md'), prompt)
@@ -260,7 +262,7 @@ async function writeGitConfig(dir: string, env: NodeJS.ProcessEnv): Promise<void
 /** The skill copies awaywork made in each clone, which a chain's later steps replace rather than keep. Per process. */
 const copied = new Map<string, Set<string>>()
 
-/** Copies skills into the clone, keeping the repo's own unless someone else opened the PR or awaywork copied it. */
+/** Copies skills into the clone, keeping the repo's own unless an untrusted author opened the PR or awaywork copied it. */
 async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<string, string>) {
   const excluded: string[] = []
   const replaced: string[] = []
@@ -270,7 +272,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
   for (const [name, source] of sources) {
     const target = join(w.dir, skillsDir, name)
     const theirs = !mine.has(target) && existsSync(target)
-    if (theirs && !w.unit.foreign) {
+    if (theirs && !w.unit.untrusted) {
       w.ctx.log(`skill ${name}: kept the repo's own ${skillsDir}/${name}`)
       continue
     }
@@ -281,7 +283,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
       await rm(target, { recursive: true, force: true })
       await copySkill(w.dir, source, target)
       w.ctx.log(`skill ${name}: restored awaywork's copy of ${skillsDir}/${name}`)
-      if (w.unit.foreign) replaced.push(target)
+      if (w.unit.untrusted) replaced.push(target)
       continue
     }
     if (theirs) {
@@ -309,7 +311,7 @@ async function hideAuthorConfig(dir: string, paths: string[]) {
 
 /**
  * Puts back, as they are in `tree`, the repo's config and the skill folder a judge's workspace hid in a clone whose
- * chain isn't foreign, so its later steps see them, git included. awaywork's copy of the skill goes with its exclude.
+ * chain isn't untrusted, so its later steps see them, git included. awaywork's copy of the skill goes with its exclude.
  */
 export async function revealHidden(dir: string, provider: Provider, skill: string, tree: string) {
   const paths = [...(provider.repoConfig ?? [])]
