@@ -69,16 +69,16 @@ The image is yours to build, and all the units get:
 
 ## What each key does
 
-Four keys depend on the mode. Cells say what the key does to the agent's shell, setup, the checks (`verify`, `when`, `until` and gate scripts) and MCP servers; a mode that isn't named leaves the key off. On a GitHub-hosted runner and in awaywork's image the mode is `user`, whatever `isolation` says.
+Four keys depend on the mode. Cells say what the key does to the agent's shell, setup, the checks (`verify`, `when`, `until` and gate scripts) and MCP servers. On a GitHub-hosted runner and in awaywork's image the mode is `user`, whatever `isolation` says.
 
 | Key | `none` | `user` | `container` |
 | --- | --- | --- | --- |
 | [`network`](../config/repos.md) | Walls the shell to the hosts; setup, checks and MCP servers stay open | Same | Same, the shell's sandbox runs in the image |
 | [`writable`](../config/repos.md) | Opens the paths to the shell; the rest needs no grant | Same, and the worker user's file permissions still apply | No effect: host paths aren't there |
-| [`serve`](../config/repos.md) | Starts the app for a step with `serve: true`, as you; setup, checks and MCP servers don't get it | No effect: the step runs without the app | No effect: the step runs without the app |
+| [`serve`](../config/repos.md) | Starts the app for a step with `serve: true`, as you; the agent and its MCP servers reach it, setup and checks don't | No effect: the step runs without the app | No effect: the step runs without the app |
 | [`image`](../config/repos.md) | No effect | No effect | Setup, the shell, checks and stdio MCP servers run in it |
 
-`network` and `writable` need the agent's own sandbox: where it can't start, the shell runs open and `doctor` warns ([Claude](#claude-s-shell-is-offline), [Codex](#codex-s-shell-is-offline), [Cursor](#cursor-s-shell-is-offline)). None of the four applies on an untrusted author's PR, except `image`. For a key that does nothing in the mode, `doctor` prints `writable: no effect under isolation: container (top level, acme/api)`: an info line, once per key, naming where it's set.
+`network` and `writable` need the agent's own sandbox: where it can't start, the shell runs open and `doctor` warns ([Claude](#claude-s-shell-is-offline), [Codex](#codex-s-shell-is-offline), [Cursor](#cursor-s-shell-is-offline)). A command provider has no sandbox: `network` and `writable` do nothing for it. On an untrusted author's PR the shell gets no hosts and no `writable` paths and `serve` isn't started; `image` still applies. For a key that does nothing in the mode, `doctor` prints `writable: no effect under isolation: container (top level, acme/api)`: an info line, once per key, naming where it's set.
 
 ## Not a sandbox
 

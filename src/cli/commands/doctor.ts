@@ -278,10 +278,6 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   return checks
 }
 
-/** Where `key` is set: the top level, the repos that set it and the rules that do, as `at` lists them. */
-const setAt = (top: boolean, repos: string[], rules: number[]) =>
-  [...(top ? ['top level'] : []), ...repos, ...rules.map((i) => `rule #${i + 1}`)].join(', ')
-
 /** The keys set in the config that do nothing under the isolation `mode` units run in, once each, with where they're set. */
 export function inertKeys(config: Config, queue: Rule[], mode: Config['isolation']): Check[] {
   const checks: Check[] = []
@@ -291,29 +287,20 @@ export function inertKeys(config: Config, queue: Rule[], mode: Config['isolation
   const named = (has: (repo: Config['repos'][string]) => unknown) =>
     repos.filter(([, repo]) => has(repo)).map(([name]) => name)
   if (mode === 'container') {
-    const rules = queue.flatMap((r, i) => (r.writable?.length ? [i] : []))
-    const where = setAt(
-      config.writable.length > 0,
-      named((r) => r.writable.length),
-      rules,
-    )
+    const where = [
+      ...(config.writable.length > 0 ? ['top level'] : []),
+      ...named((r) => r.writable.length),
+      ...queue.flatMap((r, i) => (r.writable?.length ? [`rule #${i + 1}`] : [])),
+    ].join(', ')
     if (where) note('writable', where)
   }
   if (mode !== 'container') {
-    const where = setAt(
-      false,
-      named((r) => r.image),
-      [],
-    )
+    const where = named((r) => r.image).join(', ')
     if (where) note('image', where)
   }
   // A rule that asks for the app gets its own warning.
   if (mode !== 'none' && !queue.some(asksServe)) {
-    const where = setAt(
-      false,
-      named((r) => r.serve),
-      [],
-    )
+    const where = named((r) => r.serve).join(', ')
     if (where) note('serve', where)
   }
   return checks

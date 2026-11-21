@@ -486,6 +486,26 @@ describe('doctor notes on keys that do nothing', () => {
   })
 })
 
+describe('doctor notes under a hosted runner', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('treats isolation: container as user', async () => {
+    const path = join(await mkdtemp(join(tmpdir(), 'awaywork-doctor-')), 'config.yml')
+    await writeFile(
+      path,
+      'providers: [codex]\nisolation: container\nwritable: [/a]\nrepos: { a/b: { image: node:22 } }\nsources: { github: {} }\n',
+    )
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    const checks = await runChecks(path, () => {})
+    expect(checks).toContainEqual({
+      status: 'ok',
+      what: 'image',
+      detail: 'no effect under isolation: user (a/b)',
+    })
+    expect(checks.map((c) => c.what)).not.toContain('writable')
+  })
+})
+
 describe('doctor on Bitbucket', () => {
   const twgFixture = (name: string) =>
     readFile(join(import.meta.dirname, 'fixtures', 'twg', name), 'utf8')
