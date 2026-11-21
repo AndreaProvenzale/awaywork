@@ -51,6 +51,8 @@ export function cursorProvider(bin = 'agent'): Provider {
       if ((await lstat(join(job.dir, '.away')).catch(() => undefined))?.isSymbolicLink())
         throw new Error('.away in the clone is a symlink')
       const dir = join(homeOf(job), '.cursor')
+      // Go's module cache is read-only, which rm can't empty.
+      await execa('chmod', ['-R', 'u+rwX', homeOf(job)], { reject: false })
       await rm(homeOf(job), { recursive: true, force: true })
       await mkdir(dir, { recursive: true, mode: 0o700 })
       const servers = job.mcp ?? {}

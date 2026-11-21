@@ -1,5 +1,14 @@
 import { readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -211,6 +220,16 @@ describe('cursor provider', () => {
     await expect(readFile(join(home, 'hooks.json'))).rejects.toThrow()
     expect(cliConfig({}).permissions.allow).toEqual(['Shell(*)', 'Read(**)', 'Write(**)'])
     expect(mcpConfig({}, {})).toEqual({ mcpServers: {} })
+  })
+
+  it('empties an agent home holding a read-only folder', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-cursor-ro-'))
+    const cache = join(dir, '.away/agent-home/go/pkg')
+    await mkdir(cache, { recursive: true })
+    await writeFile(join(cache, 'mod.go'), 'x')
+    await chmod(cache, 0o555)
+    await provider.prepare?.({ ...job(), dir })
+    expect(await readdir(join(dir, '.away/agent-home'))).toEqual(['.cursor'])
   })
 
   it('refuses a linked .away', async () => {
