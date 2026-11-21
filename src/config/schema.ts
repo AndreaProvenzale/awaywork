@@ -270,7 +270,7 @@ const network = z
   .array(host)
   .default([])
   .describe(
-    "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR unless lent. Setup, verify, until, when and gate scripts aren't limited yet",
+    "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet",
   )
 const trustEntry = z
   .string()
@@ -278,12 +278,13 @@ const trustEntry = z
     /^(\*|[A-Za-z\d](-?[A-Za-z\d])*(\[bot\])?)$/,
     "expected collaborators, *, or a login like alice; a team (org/slug) isn't supported yet",
   )
-const trust = z
-  .array(trustEntry)
-  .default([])
-  .describe(
-    "Whose PRs get what your own PRs get: setup secrets, the branch's agent config and skills, MCP servers and network; collaborators (write access or org membership), a login, or * for anyone. The top level and repos add up. awaywork still writes nothing there",
-  )
+const trust = (fallback: string[]) =>
+  z
+    .array(trustEntry)
+    .default(fallback)
+    .describe(
+      "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers or network, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
+    )
 const stepSettings = {
   provider: oneOrMany
     .default([])
@@ -654,7 +655,7 @@ const repoSettings = z.strictObject({
     "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill",
   ),
   network,
-  trust,
+  trust: trust([]),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
   image: z
@@ -755,7 +756,7 @@ const configShape = z.strictObject({
       "Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
     ),
   network,
-  trust,
+  trust: trust(['collaborators']),
   mcp: z
     .record(z.string(), mcpServer)
     .default({})
@@ -834,8 +835,14 @@ export const configSchema = configShape
   .superRefine(validateConfig)
   .transform(({ providers: entries, ...cfg }) => ({
     ...cfg,
-    // The github source reads the listed repos, on the forge's host.
-    sources: withScope(cfg.sources, { repos: Object.keys(cfg.repos), host: cfg.forge.host }),
+    // The github source reads the listed repos and who each trusts, on the forge's host.
+    sources: withScope(cfg.sources, {
+      repos: Object.keys(cfg.repos),
+      trust: Object.fromEntries(
+        Object.entries(cfg.repos).map(([repo, { trust }]) => [repo, [...cfg.trust, ...trust]]),
+      ),
+      host: cfg.forge.host,
+    }),
     providers: entries.flatMap((entry) =>
       Object.entries(entry as Record<string, ProviderConfig>).map(
         ([id, { model, config_dir, ...config }]) => ({ id, config, model, config_dir }),

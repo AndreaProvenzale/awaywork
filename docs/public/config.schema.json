@@ -825,7 +825,7 @@
               },
               "network": {
                 "default": [],
-                "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR unless lent. Setup, verify, until, when and gate scripts aren't limited yet",
+                "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet",
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -834,7 +834,7 @@
               },
               "trust": {
                 "default": [],
-                "description": "Whose PRs get what your own PRs get: setup secrets, the branch's agent config and skills, MCP servers and network; collaborators (write access or org membership), a login, or * for anyone. The top level and repos add up. awaywork still writes nothing there",
+                "description": "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers or network, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
                 "type": "array",
                 "items": {
                   "type": "string",
@@ -940,7 +940,7 @@
     },
     "network": {
       "default": [],
-      "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR unless lent. Setup, verify, until, when and gate scripts aren't limited yet",
+      "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet",
       "type": "array",
       "items": {
         "type": "string",
@@ -948,8 +948,10 @@
       }
     },
     "trust": {
-      "default": [],
-      "description": "Whose PRs get what your own PRs get: setup secrets, the branch's agent config and skills, MCP servers and network; collaborators (write access or org membership), a login, or * for anyone. The top level and repos add up. awaywork still writes nothing there",
+      "default": [
+        "collaborators"
+      ],
+      "description": "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers or network, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
       "type": "array",
       "items": {
         "type": "string",
@@ -1134,7 +1136,7 @@
           },
           "network": {
             "default": [],
-            "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR unless lent. Setup, verify, until, when and gate scripts aren't limited yet",
+            "description": "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet",
             "type": "array",
             "items": {
               "type": "string",

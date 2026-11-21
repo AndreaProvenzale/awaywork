@@ -260,7 +260,7 @@ export interface Provider {
   instructionsFile: string
   /** The binary's name, when it isn't the id. */
   bin?: string
-  /** Files in the clone that make the binary run commands or allow it more, like hooks: on someone else's PR they're the author's, so it doesn't see them unless lent. */
+  /** Files in the clone that make the binary run commands or allow it more, like hooks: on someone else's PR they're the author's, so it doesn't see them unless its author is trusted. */
   repoConfig?: string[]
 }
 
@@ -459,17 +459,15 @@ export interface Unit {
   repo: string
   /** The linked PR's branch, or '' for the repo's default branch. */
   base: string
-  /** `base` is a PR someone else opened: its in-repo config is the author's, not the developer's. */
+  /** `base` is a PR someone else opened: awaywork writes nothing onto it. */
   foreign: boolean
-  /** `base` is someone else's PR whose author is on the `trust` list: it gets what your own PRs get, and awaywork still writes nothing there. */
-  lent?: true
-  /** `base` is a PR by an author without write access or org membership, and not lent: setup doesn't run on it. */
+  /** `base` is someone else's PR whose author isn't on the `trust` list: none of its code, config or your grants are used. */
   untrusted: boolean
   /** `base` is PR `number`'s branch on a fork, read at `head`: only a report delivers there. */
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on someone else's PR unless it's lent. */
+  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on an untrusted author's PR. */
   network?: string[]
   /** Checks run before publishing commits, the top-level ones merged with the repo's and the rule's own: one that fires drafts a `deliver: pr` PR and goes on top of its body; a plan's or report's, its rule's own alone, on what its step left. */
   gates?: Record<string, Gate>

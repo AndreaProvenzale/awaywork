@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { guest } from '#core/guest'
 import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
@@ -28,7 +27,7 @@ const noMemory = { autoMemoryEnabled: false }
 const noConnectors = { ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }
 /** The repo's settings, hooks, MCP servers, CLAUDE.md and skills; nothing from ~/.claude. */
 const repoOnly = ['--setting-sources', 'project,local']
-/** Neither ~/.claude nor the clone's own config: on someone else's PR it is the author's unless lent. */
+/** Neither ~/.claude nor the clone's own config: on an untrusted author's PR it is theirs. */
 const isolated = ['--setting-sources', '', '--strict-mcp-config']
 
 const configSchema = z.strictObject({
@@ -90,7 +89,7 @@ export function claudeProvider(
       if (!sandboxed && !signal.aborted)
         yield { type: 'log', line: "Claude's sandbox can't start here: Bash runs unsandboxed" }
       args.push(
-        ...(guest(job.unit) ? isolated : repoOnly),
+        ...(job.unit.untrusted ? isolated : repoOnly),
         '--settings',
         await settings(job, sandboxed),
       )
@@ -139,10 +138,9 @@ function sandbox(job: Job, theirs?: Theirs) {
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
   const { untrusted, network = [] } = job.unit
-  const hosts =
-    guest(job.unit) || untrusted
-      ? []
-      : [...new Set([...(theirs?.network?.allowedDomains ?? []), ...network])]
+  const hosts = untrusted
+    ? []
+    : [...new Set([...(theirs?.network?.allowedDomains ?? []), ...network])]
   return {
     enabled: true,
     failIfUnavailable: false,

@@ -1,11 +1,12 @@
 import { resolveSkill } from '#core/skills'
+import { trusts } from '#core/trust'
 import type { Condition, Gate, PrRef, Publishes, Rule, Step, ThenStep, Unit } from '#core/types'
 import { type Allowance, quotaFacts, route } from '#quota/budget'
 import { branchName, planLimits, stepReports } from '#tasks/fanout'
 import { holds } from './condition'
 import type { PlannedUnit, PlanRun } from './foreman'
 import type { Group } from './holds'
-import { settingsFor } from './repos'
+import { settingsFor, trustFor } from './repos'
 
 /** Where a chain lands: its repo and PR, the branch it publishes on and the base under it. */
 export type Landing = Pick<Unit, 'repo' | 'branch' | 'base' | 'foreign' | 'fork' | 'stackedOn'> & {
@@ -46,16 +47,6 @@ export function landing(
   }
 }
 
-/** Whether the `trust` list names the author of someone else's PR. */
-const lends = (trust: string[], pr: PrRef): boolean => {
-  const names = trust.map((t) => t.toLowerCase())
-  return (
-    names.includes('*') ||
-    (pr.trusted && names.includes('collaborators')) ||
-    names.includes(pr.author?.toLowerCase() ?? '')
-  )
-}
-
 /** The units of a rule's chain on the group, its first step first, each routed to a provider; `counts` when the first one runs. */
 export function chainUnits(
   run: PlanRun,
@@ -85,12 +76,10 @@ export function chainUnits(
     !lead.task &&
     (rule.post ?? (config.store ? 'summary' : 'full')) === 'summary'
   const settings = settingsFor(config.repos, repo)
-  const lent = landed.foreign && !!pr && lends([...config.trust, ...settings.trust], pr)
   const at = {
     base,
     foreign: landed.foreign,
-    ...(lent && { lent: true as const }),
-    untrusted: pr ? !pr.trusted && !lent : false,
+    untrusted: pr ? !pr.mine && !trusts(trustFor(config, repo), pr.author, pr.trusted) : false,
     fork: landed.fork,
     ...(merging && { merge: pr?.into }),
     branch: draft ? base : landed.branch,

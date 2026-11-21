@@ -58,7 +58,7 @@ Details:
 - The rule's `deliver` decides where commits go; steps have no `deliver` or `branch`. A committing skill that should only report is a [skill of your own](../skills.md#write-your-own).
 - `model: { claude: [sonnet, opus] }` [retries a failed step](./queue-rules.md#retry-on-the-next-model) on the second, and the chain goes on.
 - A chain counts once against [caps](./providers.md#windows-limits-and-budget) and its rule's `units`, once its first step has a provider; over a cap it's skipped whole.
-- On someone else's PR or a fork's, [lent](../safety/index.md#trusting-an-author) or not, a chain that could commit is skipped with the reason; `deliver: report` makes it a review chain, and `pending_review` leaves its last report as your pending review.
+- On someone else's PR or a fork's, [trusted](../safety/index.md#trusting-an-author) author or not, a chain that could commit is skipped with the reason; `deliver: report` makes it a review chain, and `pending_review` leaves its last report as your pending review.
 - A skill runs at most once outside loops, and once across loops: a loop may repeat the rule's skill, as in `fix` then `loop: [review, fix]`.
 - Steps are named `<unit>-<skill>`, in a loop `<unit>-<skill>-<round>`, each with a numbered folder under the run's `units/<unit>/`, next to `out/` with what the chain published:
 
@@ -155,7 +155,7 @@ After a push the PR waits for your review: no rule takes it while its head is aw
 
 Details:
 
-- Only onto an open PR you authored, awaywork's included (opened with your login). On someone else's PR, even a lent one, a fork's, or an item without your PR, a chain that could commit is skipped with the reason.
+- Only onto an open PR you authored, awaywork's included (opened with your login). On someone else's PR, even a trusted author's, a fork's, or an item without your PR, a chain that could commit is skipped with the reason.
 - Fast-forward only, on top of where the clone started; a branch that moved since is refused. New commits including a merge aren't pushed, but for `sync`'s.
 - Right before the push awaywork rereads the PR and refuses if it's no longer yours or open, has auto-merge on (it would merge unreviewed commits), or its branch is on a fork, the default branch, protected, or another person's open PR's branch too.
 - Commits get the `Awaywork:` trailer, which drops signatures.

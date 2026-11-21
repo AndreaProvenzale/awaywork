@@ -1,7 +1,6 @@
 import { createWriteStream } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { guest } from '#core/guest'
 import { contain, contained, lostToWorker } from '#core/isolation'
 import type { Unit } from '#core/types'
 import { modelFor, modelsFor, slug } from '#plan/foreman'
@@ -47,7 +46,7 @@ export const judge =
       skills: [],
       deliver: 'report',
       foreign: true,
-      lent: undefined,
+      untrusted: true,
       stackedOn: undefined,
       lean: undefined,
       network: undefined,
@@ -60,8 +59,8 @@ export const judge =
       },
     }
     let why: string | undefined
-    // The judge's workspace hides the repo's config and skill from it; a clone that isn't a guest's gets them back after.
-    const hides = !guest(unit) && (provider.skillsDir || provider.repoConfig?.length)
+    // The judge's workspace hides the repo's config and skill from it; a clone that isn't untrusted gets them back after.
+    const hides = !unit.untrusted && (provider.skillsDir || provider.repoConfig?.length)
     const found = hides ? await snapshot(dir) : undefined
     try {
       if (contained() && image) contain(dir, { image, plugin, secrets })

@@ -15,7 +15,7 @@ Integrity rules never move, whatever the config says:
 - A review it leaves (`deliver: pending_review`) [stays your pending one](#reports-and-pending-reviews), which only you see until you submit it.
 - Every PR and pushed commit [says it came from awaywork](#the-trailer).
 
-Reach, how loud a PR is, is the rule's choice and quiet by default: a draft that pings nobody, unless a rule opts in to a ready PR or a push onto your PR. On someone else's PR there's only a report, or with `deliver: pending_review` your pending review, both seen by you alone, even when [`trust`](./index.md#trusting-an-author) lends it your setup and MCP: it never changes what awaywork writes. [Where results go](../results.md) lays out who sees what.
+Reach, how loud a PR is, is the rule's choice and quiet by default: a draft that pings nobody, unless a rule opts in to a ready PR or a push onto your PR. On someone else's PR there's only a report, or with `deliver: pending_review` your pending review, both seen by you alone, even when [`trust`](./index.md#trusting-an-author) lists its author: it never changes what awaywork writes. [Where results go](../results.md) lays out who sees what.
 
 ## New branches only
 

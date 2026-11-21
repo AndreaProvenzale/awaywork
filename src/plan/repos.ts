@@ -9,6 +9,11 @@ const isGlob = (key: string) => key.includes('*')
 export const repoListed = (repos: Record<string, unknown>, repo: string): boolean =>
   Object.keys(repos).some((key) => globToRegExp(key).test(repo))
 
+/** The authors the top level and every `repos` key naming the repo trust. */
+export const trustFor = (config: Pick<Config, 'trust' | 'repos'>, repo: string): string[] => [
+  ...new Set([...config.trust, ...settingsFor(config.repos, repo).trust]),
+]
+
 /** A repo's settings: those of every `repos` key naming it, globs in the order written and its own key last, a later one winning per setting; secrets, network hosts and trusted authors add up and gates merge by name. */
 export function settingsFor(repos: Record<string, Settings>, repo: string): Settings {
   const keys = Object.keys(repos).filter((key) => globToRegExp(key).test(repo))

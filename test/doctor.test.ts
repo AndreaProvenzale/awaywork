@@ -388,54 +388,41 @@ describe('doctor on trust', () => {
   const checks = (yaml: string, isPrivate = 'false') => {
     const config = parseConfig(`providers: [claude]\nsources: { github: {} }\n${yaml}`)
     const run: Exec = async () => isPrivate
-    return trustChecks(config, config.queue ?? [], run)
+    return trustChecks(config, run)
   }
 
-  it("prints each repo's trust list, and nothing without one", async () => {
-    expect(await checks('repos: { acme/api: }')).toEqual([])
+  it('prints who each repo trusts, in words, the default included', async () => {
+    expect(await checks('repos: { acme/api: }')).toEqual([
+      { status: 'ok', what: 'trust acme/api', detail: 'collaborators' },
+    ])
     expect(
-      await checks('trust: [collaborators]\nrepos: { acme/api: { trust: [alice] }, acme/web: }'),
+      await checks('repos: { acme/api: { trust: [alice, "dependabot[bot]"] }, acme/web: }'),
     ).toEqual([
-      { status: 'ok', what: 'trust acme/api', detail: 'collaborators, alice' },
+      { status: 'ok', what: 'trust acme/api', detail: 'collaborators, alice, dependabot[bot]' },
       { status: 'ok', what: 'trust acme/web', detail: 'collaborators' },
+    ])
+    expect(await checks('trust: []\nrepos: { acme/api: }')).toEqual([
+      { status: 'ok', what: 'trust acme/api', detail: 'nobody but you' },
     ])
   })
 
   it('warns on * for a public repo only', async () => {
     const yaml = 'repos: { acme/api: { trust: ["*"] } }'
-    expect(await checks(yaml, 'false')).toContainEqual({
+    const [ok, warn] = await checks(yaml, 'false')
+    expect(ok?.detail).toBe('collaborators, anyone')
+    expect(warn).toEqual({
       status: 'warn',
       what: 'trust acme/api',
-      detail: '* lends your setup to anyone with a PR on a public repo',
+      detail: '* trusts anyone with a PR on a public repo: their code runs with your setup',
     })
     expect((await checks(yaml, 'true')).map((c) => c.status)).toEqual(['ok'])
-  })
-
-  it('warns on a trust list under isolation: none when its rules give MCP or network', async () => {
-    vi.stubEnv('RUNNER_ENVIRONMENT', '')
-    vi.stubEnv('AWAYWORK_IMAGE', '')
-    const mcp = 'mcp: { db: { command: db-mcp } }\nqueue: [{ skill: review, mcp: [db] }]'
-    const warned = (yaml: string) =>
-      checks(`repos: { acme/api: { trust: [alice] } }\n${yaml}`, 'true').then((c) =>
-        c.filter((x) => x.status === 'warn'),
-      )
-    expect(await warned(mcp)).toHaveLength(1)
-    expect(await warned('network: [npmjs.org]')).toHaveLength(1)
-    expect(await warned(`isolation: user\n${mcp}`)).toEqual([])
-    expect(await warned('queue: [{ skill: review }]')).toEqual([])
-    vi.stubEnv('AWAYWORK_IMAGE', '1')
-    expect(await warned(mcp)).toEqual([])
-    vi.stubEnv('AWAYWORK_IMAGE', '')
-    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
-    expect(await warned(mcp)).toEqual([])
-    vi.unstubAllEnvs()
   })
 
   it('says trust does nothing on Bitbucket', async () => {
     const config = parseConfig(
       "providers: [claude]\nforge: bitbucket\nsources: { tracker: { command: 'echo []' } }\nrepos: { acme/web: { trust: [alice] } }",
     )
-    expect(await trustChecks(config, [], async () => '')).toContainEqual({
+    expect(await trustChecks(config, async () => '')).toContainEqual({
       status: 'warn',
       what: 'trust acme/web',
       detail: 'does nothing on Bitbucket',

@@ -63,9 +63,8 @@ repos:
   acme/*: { trust: [Bob, "*"] }`),
     )
     expect(settingsFor(repos, 'acme/api').trust).toEqual(['Bob', '*', 'alice', 'collaborators'])
-    expect(parseConfig(config('repos: { acme/api: }\ntrust: [collaborators]')).trust).toEqual([
-      'collaborators',
-    ])
+    expect(parseConfig(config('repos: { acme/api: }')).trust).toEqual(['collaborators'])
+    expect(parseConfig(config('trust: []\nrepos: { acme/api: }')).trust).toEqual([])
     for (const bad of ['acme/platform', '@alice', '-alice', 'a b'])
       expect(problems(config(`repos: { acme/api: }\ntrust: ["${bad}"]`))).toHaveLength(1)
     expect(problems(config('repos: { acme/api: }\ntrust: [acme/platform]'))[0]).toContain(
@@ -331,10 +330,21 @@ describe('the allowlist', () => {
 
 describe('the github source', () => {
   it('reads the repos the config lists, on the forge’s host', async () => {
-    const scoped = (top: string) => parseConfig(config(top)).sources.github as { repos: string[] }
+    const scoped = (top: string) =>
+      parseConfig(config(top)).sources.github as {
+        repos: string[]
+        trust: Record<string, string[]>
+      }
     expect(scoped('forge: { github: { host: github.acme.com } }\nrepos: { acme/web: }')).toEqual({
       repos: ['acme/web'],
+      trust: { 'acme/web': ['collaborators'] },
       host: 'github.acme.com',
+    })
+    expect(
+      scoped('trust: [bob]\nrepos: { acme/web: { trust: [alice] }, acme/api: }').trust,
+    ).toEqual({
+      'acme/web': ['bob', 'alice'],
+      'acme/api': ['bob'],
     })
     const items = (top: string) =>
       githubSource(recorded(githubRoutes())).items(scoped(top), { env: {}, log: () => {} })

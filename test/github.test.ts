@@ -257,8 +257,47 @@ describe('github source', () => {
     const dir = await tmp()
     await source.prefetch(issue5 as never, dir, ctx)
     expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(
-      "\n_Hidden: 4 comments from outside the repo's owners, members and collaborators._\n",
+      "\n_Hidden: 4 comments from authors the repo doesn't trust._\n",
     )
+  })
+
+  it("reads each repo's trust list instead of the association alone, and keeps bots and you", async () => {
+    const assigned = JSON.parse(fixture('search-assigned.json'))
+    const by = (login: string, type: string, association: string, viewerDidAuthor = false) => ({
+      author: { login, __typename: type },
+      authorAssociation: association,
+      viewerDidAuthor,
+      body: login,
+      createdAt: '2026-01-01T09:00:00Z',
+    })
+    assigned.data.search.nodes[0].comments.nodes = [
+      by('me', 'User', 'NONE', true),
+      by('ci-bot', 'Bot', 'NONE'),
+      by('maintainer', 'User', 'COLLABORATOR'),
+      by('Newcomer', 'User', 'FIRST_TIME_CONTRIBUTOR'),
+    ]
+    const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+    const authors = async (trust: Record<string, string[]>) => {
+      const found = await githubSource(run).items({ repos: ['acme/*'], trust }, ctx)
+      return found[3]?.comments.map((c) => c.author)
+    }
+    expect(await authors({ 'acme/*': ['collaborators'] })).toEqual(['me', 'ci-bot', 'maintainer'])
+    expect(await authors({ 'acme/*': ['newcomer'] })).toEqual(['me', 'ci-bot', 'Newcomer'])
+    expect(await authors({ 'acme/*': [] })).toEqual(['me', 'ci-bot'])
+    expect(await authors({ 'acme/*': ['*'] })).toEqual(['me', 'ci-bot', 'maintainer', 'Newcomer'])
+    expect(await authors({ 'acme/web': ['*'], 'acme/api': [] })).toEqual(['me', 'ci-bot'])
+  })
+
+  it('sets the trusted field from the list, yours always', async () => {
+    const trusted = async (trust: string[]) =>
+      Object.fromEntries(
+        (await source.items({ repos: ['acme/*'], trust: { 'acme/*': trust } }, ctx)).map((i) => [
+          i.key,
+          i.fields.trusted,
+        ]),
+      )
+    expect(await trusted([])).toMatchObject({ 'acme/api#1': true, 'acme/api#2': false })
+    expect(await trusted(['*'])).toMatchObject({ 'acme/api#1': true, 'acme/api#2': true })
   })
 
   it("counts only the unresolved threads a trusted author started, so a stranger's starts no fix", async () => {
@@ -275,6 +314,11 @@ describe('github source', () => {
     const run = recorded([[/nodes\(ids:/, JSON.stringify(starters)], ...githubRoutes()])
     const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
     expect(pr1?.fields).toMatchObject({ unresolved_threads: 0, my_unresolved_threads: 0 })
+    const [listed] = await githubSource(run).items(
+      { repos: ['acme/*'], trust: { 'acme/*': ['*'] } },
+      ctx,
+    )
+    expect(listed?.fields).toMatchObject({ unresolved_threads: 1 })
   })
 
   it('compares only your own open PRs in the repo with their base, and reads conflicts off mergeable', async () => {
@@ -513,9 +557,7 @@ describe('github source', () => {
     expect(pr).toContain('### lead, CHANGES_REQUESTED')
     expect(pr).not.toContain('review-bot')
     expect(pr).not.toContain('GH_TOKEN')
-    expect(pr).toContain(
-      "\n_Hidden: 1 review from outside the repo's owners, members and collaborators._\n",
-    )
+    expect(pr).toContain("\n_Hidden: 1 review from authors the repo doesn't trust._\n")
     expect(await read('diff.patch')).toContain('+export const burst = 20')
 
     const threads = await read('threads.md')
@@ -531,11 +573,9 @@ describe('github source', () => {
     )
     expect(threads).not.toContain('Typo.')
     expect(threads).not.toContain('stranger')
-    expect(threads).toContain(
-      "\n_Hidden: 1 reply from outside the repo's owners, members and collaborators._\n",
-    )
+    expect(threads).toContain("\n_Hidden: 1 reply from authors the repo doesn't trust._\n")
     expect(threads).toMatch(
-      /\n_Hidden: 1 unresolved thread from outside the repo's owners, members and collaborators\._\n$/,
+      /\n_Hidden: 1 unresolved thread from authors the repo doesn't trust\._\n$/,
     )
 
     const checks = await read('checks.md')
@@ -576,15 +616,15 @@ describe('github source', () => {
       Object.assign(pr.reviewThreads.nodes[2]?.comments.nodes[1] ?? {}, ghost)
     })
     expect(await ghosts('item.md')).not.toContain('Needs a test for the burst case.')
-    expect(await ghosts('item.md')).toContain('_Hidden: 2 reviews from outside')
+    expect(await ghosts('item.md')).toContain('_Hidden: 2 reviews from authors')
     expect(await ghosts('threads.md')).not.toContain('429 is the standard')
-    expect(await ghosts('threads.md')).toContain('_Hidden: 2 replies from outside')
+    expect(await ghosts('threads.md')).toContain('_Hidden: 2 replies from authors')
 
     const strangers = await prefetch((pr) => {
       for (const t of pr.reviewThreads.nodes) Object.assign(t.comments.nodes[0] ?? {}, ghost)
     })
     expect(await strangers('threads.md')).toBe(
-      "No unresolved review threads.\n\n_Hidden: 4 unresolved threads from outside the repo's owners, members and collaborators._\n",
+      "No unresolved review threads.\n\n_Hidden: 4 unresolved threads from authors the repo doesn't trust._\n",
     )
   })
 
@@ -595,7 +635,7 @@ describe('github source', () => {
     expect(await readFile(join(dir, 'item.md'), 'utf8')).toBe(
       '# Rate limit the public API\n\nhttps://github.com/acme/api/issues/5\n\n' +
         'Clients can flood us.\n\n## Comments\n\n### dev, 2026-01-01T10:00:00Z\n\n' +
-        "Start with the public routes.\n\n_Hidden: 1 comment from outside the repo's owners, members and collaborators._\n",
+        "Start with the public routes.\n\n_Hidden: 1 comment from authors the repo doesn't trust._\n",
     )
   })
 

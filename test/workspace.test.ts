@@ -363,7 +363,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           repo: 'acme/api',
           base: '',
           foreign,
-          untrusted: false,
+          untrusted: foreign,
           branch: 'away/acme-api-1',
           rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
           skill: 'fix',
@@ -459,7 +459,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       agentsSkills?: string,
       authorCopy = true,
       away?: { at: string; to: string },
-      lent = false,
+      trusted = false,
     ) => {
       const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
       const dir = join(root, 'clone')
@@ -512,8 +512,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           repo: 'acme/api',
           base: 'sessions',
           foreign: !mine,
-          ...(lent && { lent: true as const }),
-          untrusted: false,
+          untrusted: !mine && !trusted,
           branch: 'away/acme-api-2',
           rule: { skill: 'review', provider: [], skills: [], instructions: [] },
           skill: 'review',
@@ -637,7 +636,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       expect(await readFile(victim, 'utf8')).toBe('KEEP')
     })
 
-    it("keeps them on a lent PR, as on the developer's own, with no author's-files line", async () => {
+    it("keeps them on a trusted author's PR, as on the developer's own, with no author's-files line", async () => {
       const { dir, plugin, prompt } = await review(false, claude, undefined, true, undefined, true)
       expect(prompt).toContain('AUTHOR NOTE')
       expect(prompt).toContain('AUTHOR SKILL')

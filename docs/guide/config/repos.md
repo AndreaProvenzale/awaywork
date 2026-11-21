@@ -16,7 +16,7 @@ repos:
     secrets: [NPM_TOKEN]                 # only setup sees these
     verify: pnpm lint && pnpm test
     network: [registry.npmjs.org]        # hosts the agent's shell may reach
-    trust: [alice]                       # her PRs get what yours get
+    trust: [alice]                       # and alice, on top of the top level's
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
 ```
@@ -27,11 +27,11 @@ repos:
 
 - **`setup`** runs once per unit in the fresh clone, before any agent, outside the model; the agent is told it ran.
 - **`verify`** runs once the chain ends, before publishing. A failure still publishes, its tail in the PR body or push summary, and a `deliver: pr` PR opens as a draft; the tail also lands in `verify.log` in the unit's `out/` in the run dir.
-- **`network`** lists the hosts the agent's shell may reach, [offline](../safety/isolation.md#claude-s-shell-is-offline) otherwise (Codex's: [below](../safety/isolation.md#codex-s-shell-is-offline), Cursor's: [below](../safety/isolation.md#cursor-s-shell-is-offline)). A top-level `network`, the repo keys that name the repo and the rule's own `network` add up. An entry is `host.tld`, `*.host.tld` (its subdomains, not `host.tld` itself: list both for both) or `*`, which opens every host to clients that use the proxy (`HTTPS_PROXY`). `setup`, `verify`, `until`, `when` and gate scripts aren't limited yet, and the judge gate's Claude gets none, nor does a unit on someone else's PR that isn't lent: its code would get the hosts, as with MCP servers. On Cursor `*.host.tld` also opens `host.tld`.
-- **`trust`** names the authors whose PRs get what your own PRs get: `collaborators` (owners, members and collaborators), a GitHub login (any case; a bot as GitHub shows it, `dependabot[bot]`, never the human of the same name), or `*` for anyone, a public repo's too (`doctor` warns). A top-level `trust` and the repo keys that name the repo add up. A PR by one of them is _lent_ your setup `secrets`, checks, MCP servers, `network` and the branch's agent config, skills and `.awaywork/instructions.md`, and `plan` says "lent". awaywork still writes nothing onto it: no push, only a report or your pending review. Teams aren't supported yet. It does nothing on Bitbucket. What it implies is in [Safety](../safety/index.md#trusting-an-author).
+- **`network`** lists the hosts the agent's shell may reach, [offline](../safety/isolation.md#claude-s-shell-is-offline) otherwise (Codex's: [below](../safety/isolation.md#codex-s-shell-is-offline), Cursor's: [below](../safety/isolation.md#cursor-s-shell-is-offline)). A top-level `network`, the repo keys that name the repo and the rule's own `network` add up. An entry is `host.tld`, `*.host.tld` (its subdomains, not `host.tld` itself: list both for both) or `*`, which opens every host to clients that use the proxy (`HTTPS_PROXY`). `setup`, `verify`, `until`, `when` and gate scripts aren't limited yet, and the judge gate's Claude gets none, nor does a unit on an untrusted author's PR: its code would get the hosts, as with MCP servers. On Cursor `*.host.tld` also opens `host.tld`.
+- **`trust`** names the authors awaywork acts on: `collaborators` (owners, members and collaborators; the default), a GitHub login (any case; a bot as GitHub shows it, `dependabot[bot]`, never the human of the same name), or `*` for anyone, a public repo's too (`doctor` warns). A top-level `trust` replaces the default, the repo keys that name the repo add to it, and `[]` trusts nobody but you. On a PR by someone off the list nothing of theirs runs: no setup, checks, agent config, MCP servers or `network`, and their comments are hidden, on your own PRs too. awaywork writes nothing onto someone else's PR either way: no push, only a report or your pending review. Teams aren't supported yet. It does nothing on Bitbucket. What trusting implies is in [Safety](../safety/index.md#trusting-an-author).
 - **`test`** is a line in the agent's prompt.
 - **`image`** is what the repo's units run in under [`isolation: container`](../safety/isolation.md#in-a-container).
-- **`instructions`** (top level, per repo, per rule) are file paths relative to the config they're in. A repo can also carry `.awaywork/instructions.md`, read unless the unit is on someone else's PR whose author you don't [trust](#repos-and-instructions).
+- **`instructions`** (top level, per repo, per rule) are file paths relative to the config they're in. A repo can also carry `.awaywork/instructions.md`, read unless the unit is on the PR of an author you don't [trust](../safety/index.md#trusting-an-author).
 
 Top-level `skills` adds [skills](../skills.md#where-skills-come-from) to every unit. PR titles, bodies and commit messages have no config: the agent follows the repo's template, its commit style and your instructions.
 
@@ -40,7 +40,7 @@ Details on `setup` and its `secrets`:
 - Later chain steps share the clone and don't rerun it, so a `when` or `until` command needing a step's new dependencies installs them itself (`pnpm i --frozen-lockfile && pnpm test`). Whatever setup leaves running is stopped.
 - Its `secrets` reach setup only, masked in its output, passed from repository secrets in Actions. Read them from the repo's config (`${NPM_TOKEN}` in `.npmrc`), not your home, which the agent shares.
 - It gets `GH_TOKEN` and `GH_ENTERPRISE_TOKEN` as `none`, so `gh` and git over https through gh's helper fail with a 401, even on a public repo. List `GH_TOKEN` in `secrets` to give it yours.
-- On someone else's PR it runs the author's install scripts, so it gets no secrets, and runs only for an author with write access or org membership or on your `trust` list; a lent PR gets the secrets too. No secrets either on an awaywork PR's branch a rule took up, which a worker wrote.
+- On someone else's PR it runs the author's install scripts, so it runs only for an author on your [`trust`](../safety/index.md#trusting-an-author) list, with the secrets. No secrets on an awaywork PR's branch a rule took up, which a worker wrote.
 - A plan's task may name any repo `repos` lists, and runs with that repo's settings ([Across repos](../workflows/tasks.md#across-repos)).
 
 ### What runs in the clone
@@ -49,7 +49,7 @@ Every config command that touches a clone. All run in a shell outside the model,
 
 | Command | When | Secrets | A failure |
 | --- | --- | --- | --- |
-| `repos.<repo>.setup` | Once per unit, before the first agent; not for later steps, nor on an untrusted author's PR | Its repo's `secrets`; none on someone else's PR (a lent one gets them) or an awaywork branch a rule took up | Non-zero, over 15 minutes or the window's end skips the unit, the tail in the report |
+| `repos.<repo>.setup` | Once per unit, before the first agent; not for later steps, nor on an untrusted author's PR | Its repo's `secrets`; none on an awaywork branch a rule took up | Non-zero, over 15 minutes or the window's end skips the unit, the tail in the report |
 | `sources.<id>.context.command` | Per item, before setup; not on a dry run | Its own `secrets` | Logged; the unit runs without `extra/`. Over two minutes, the window's end, over 1 MB, or a symlink or non-file in its output count as failures |
 | `repos.<repo>.test` | Never by awaywork: the agent runs it if it wants | The agent's: its provider's and its rule's MCP servers' | Up to the agent |
 | `repos.<repo>.verify` | Once per chain that ends with commits, before publishing; not for `report` | None | Its tail in the PR body or push summary; a `pr` PR opens as a draft; still published |

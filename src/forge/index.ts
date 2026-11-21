@@ -1,5 +1,6 @@
 import type { Config } from '#config/schema'
 import type { Forge } from '#core/types'
+import { trustFor } from '#plan/repos'
 import { githubThreads } from '#sources/github'
 import { bitbucketForge, bitbucketWorkspaces } from './bitbucket'
 import { githubForge, githubHost } from './github'
@@ -10,7 +11,9 @@ export const forgeFor = (config: Config): Forge =>
     ? bitbucketForge(bitbucketWorkspaces(config))
     : {
         ...githubForge(undefined, githubHost(config)),
-        threads: githubThreads(undefined, githubHost(config), config.repos),
+        threads: githubThreads(undefined, githubHost(config), config.repos, (repo) =>
+          trustFor(config, repo),
+        ),
       }
 
 /** The repo's web page on the configured forge. */

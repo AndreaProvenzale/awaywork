@@ -325,15 +325,13 @@ describe('cursor shell walled to the network hosts', () => {
     expect((await all.read('cli-config.json')).sandbox.networkAccess).toBe('allow_all')
   })
 
-  it("lists no host on someone else's PR", async () => {
-    for (const unit of [{ foreign: true }, { untrusted: true }]) {
-      const { read } = await walled({ network: ['pypi.org'], ...unit })
-      expect((await read('sandbox.json')).networkPolicy.allow).toEqual(['localhost', '127.0.0.1'])
-    }
+  it("lists no host on an untrusted author's PR", async () => {
+    const { read } = await walled({ network: ['pypi.org'], untrusted: true })
+    expect((await read('sandbox.json')).networkPolicy.allow).toEqual(['localhost', '127.0.0.1'])
   })
 
-  it('lists the hosts on a lent PR', async () => {
-    const { read } = await walled({ network: ['pypi.org'], foreign: true, lent: true })
+  it("lists the hosts on a trusted author's PR", async () => {
+    const { read } = await walled({ network: ['pypi.org'], foreign: true })
     expect((await read('sandbox.json')).networkPolicy.allow).toContain('pypi.org')
   })
 

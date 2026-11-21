@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { trusts } from '#core/trust'
 import type { Item, Thread as ItemThread, PrRef, Source, ThreadHost } from '#core/types'
 import { type Check, checkContexts, checkResult } from '#forge/checks'
 import { type Exec, exec, graphql, onHost } from '#forge/gh'
@@ -22,8 +23,12 @@ const config = z
   .describe(
     'My PRs, PRs awaiting my review and issues assigned to me, in the repos the top-level repos lists, plus any extra searches',
   )
-/** With the config's `repos` keys and the forge's host, which the loaded config adds. */
-type Config = z.infer<typeof config> & { repos: string[]; host?: string }
+/** With the config's `repos` keys, the authors each trusts and the forge's host, which the loaded config adds. */
+type Config = z.infer<typeof config> & {
+  repos: string[]
+  trust?: Record<string, string[]>
+  host?: string
+}
 
 const PAGE = 100
 /** Finished PRs come in pages this small: a page of 100 with their files timed out on GitHub. */
@@ -33,7 +38,7 @@ const SEARCH_CAP = 1000
 const LOG_TAIL = 200
 /** Paths read per PR: a rule routes on where a change lands, and a huge one is huge wherever it lands. */
 const MAX_FILES = 500
-/** Author associations with write access or org membership; the rest can be anyone. */
+/** Author associations with write access or org membership, which `collaborators` names. */
 const TRUSTED = ['OWNER', 'MEMBER', 'COLLABORATOR']
 const BY = 'author { login __typename } authorAssociation viewerDidAuthor'
 const COMMENTS = `pageInfo { hasPreviousPage startCursor } nodes { ${BY} body createdAt editor { login } }`
@@ -175,6 +180,8 @@ interface Node extends PrLink {
   labels: Nodes<{ name: string }>
   comments: Comments
   closedByPullRequestsReferences?: Nodes<PrLink>
+  /** The authors its repo trusts, set when it becomes an item. */
+  trust?: string[]
   additions?: number
   deletions?: number
   mergeable?: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
@@ -240,6 +247,12 @@ export function githubSource(base: Exec = exec): Source<Config> {
     async items(cfg, ctx, since) {
       const run = onHost(base, cfg.host)
       const inScope = (repo: string) => cfg.repos.some((glob) => globToRegExp(glob).test(repo))
+      const trustOf = (repo: string) =>
+        cfg.trust
+          ? Object.entries(cfg.trust).flatMap(([glob, list]) =>
+              globToRegExp(glob).test(repo) ? list : [],
+            )
+          : ['collaborators']
       const byId = new Map<string, Item>()
       const extra = (cfg.search ?? []).map((q) => ({
         q: `is:open archived:false ${q}`,
@@ -263,7 +276,7 @@ export function githubSource(base: Exec = exec): Source<Config> {
           if (!inScope(node.repository.nameWithOwner)) continue
           // Your thread for another item isn't an item: a plan rule would take it too.
           if (node.__typename === 'Issue' && node.viewerDidAuthor && threadOf(node.body)) continue
-          const item = byId.get(node.id) ?? toItem(node)
+          const item = byId.get(node.id) ?? toItem(node, trustOf(node.repository.nameWithOwner))
           Object.assign(item.fields, fields)
           if (item.fields.mine) item.mine = true
           byId.set(node.id, item)
@@ -292,9 +305,12 @@ export function githubSource(base: Exec = exec): Source<Config> {
       const diff = await run('gh', ['pr', 'diff', String(number), '-R', repo])
       const checks = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? []
       await Promise.all([
-        writeFile(join(dir, 'item.md'), itemMarkdown(item) + reviewsMarkdown(pr)),
+        writeFile(join(dir, 'item.md'), itemMarkdown(item) + reviewsMarkdown(pr, itemTrust(item))),
         writeFile(join(dir, 'diff.patch'), diff),
-        writeFile(join(dir, 'threads.md'), threadsMarkdown(pr.reviewThreads.nodes)),
+        writeFile(
+          join(dir, 'threads.md'),
+          threadsMarkdown(pr.reviewThreads.nodes, itemTrust(item)),
+        ),
         writeFile(join(dir, 'checks.md'), await checksMarkdown(run, repo, checks)),
       ])
     },
@@ -348,6 +364,7 @@ export function githubThreads(
   base: Exec = exec,
   host?: string,
   repos?: Record<string, unknown>,
+  trustOf: (repo: string) => string[] = () => ['collaborators'],
 ): ThreadHost {
   const run = onHost(base, host)
   // No write lands in a repo `repos` doesn't list.
@@ -389,7 +406,7 @@ export function githubThreads(
           repository: { issues: { pageInfo: Search['search']['pageInfo']; nodes: Node[] } }
         }>(run, openedQuery, { ...vars, ...(after && { after }) })
         for (const node of repository.issues.nodes)
-          if (threadOf(node.body)) byId.set(node.id, toItem(node))
+          if (threadOf(node.body)) byId.set(node.id, toItem(node, trustOf(repo)))
         const page = repository.issues.pageInfo
         after = page.hasNextPage ? page.endCursor : undefined
       } while (after)
@@ -505,7 +522,10 @@ async function countThreads(
     for (const node of page?.nodes ?? []) {
       const item = node && byId.get(node.id)
       if (!item) continue
-      const visible = node.reviewThreads.nodes.filter((t) => !t.isResolved && startedByTrusted(t))
+      const trust = itemTrust(item)
+      const visible = node.reviewThreads.nodes.filter(
+        (t) => !t.isResolved && startedByTrusted(t, trust),
+      )
       item.fields.unresolved_threads = visible.length
       item.fields.my_unresolved_threads = visible.filter(
         (t) => t.comments.nodes[0]?.viewerDidAuthor,
@@ -592,11 +612,12 @@ async function readComments(
     } catch (e) {
       log(`github: couldn't read every comment of ${item.key}: ${(e as Error).message}`)
     }
-    item.comments = comments.nodes.filter(isTrusted).map(toComment)
+    item.comments = comments.nodes.filter((c) => isTrusted(c, itemTrust(item))).map(toComment)
   }
 }
 
-function toItem(node: Node): Item {
+function toItem(node: Node, trust: string[]): Item {
+  node.trust = trust
   const repo = node.repository.nameWithOwner
   const isPr = node.__typename === 'PullRequest'
   const labels = node.labels.nodes.map((l) => l.name)
@@ -604,7 +625,13 @@ function toItem(node: Node): Item {
     repo,
     label: labels,
     author: node.author?.login,
-    trusted: TRUSTED.includes(node.authorAssociation),
+    trusted:
+      node.viewerDidAuthor ||
+      trusts(
+        trust,
+        node.author ? shownAs(node.author) : undefined,
+        TRUSTED.includes(node.authorAssociation),
+      ),
     mine: false,
     created: node.createdAt,
     updated: node.updatedAt,
@@ -645,7 +672,7 @@ function toItem(node: Node): Item {
       return who ? [who] : []
     }),
     labels,
-    comments: node.comments.nodes.filter(isTrusted).map(toComment),
+    comments: node.comments.nodes.filter((c) => isTrusted(c, trust)).map(toComment),
     linkedPrs: links.map(toPrRef),
     ...(isPr && !notYours(node) && { bodyMine: true as const }),
     fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)),
@@ -664,21 +691,27 @@ const toPrRef = (pr: PrLink): PrRef => ({
   ours: isOurs(pr.body),
   ...leftIn(pr.body, pr.isDraft, notYours(pr)),
   mine: pr.viewerDidAuthor,
-  ...(pr.author && {
-    author: pr.author.__typename === 'Bot' ? `${pr.author.login}[bot]` : pr.author.login,
-  }),
+  ...(pr.author && { author: shownAs(pr.author) }),
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),
   fork: pr.isCrossRepository,
 })
 
-/** You, an app installed on the repo, or someone with write access or org membership. */
-const isTrusted = (c: By) =>
-  c.author !== null &&
-  (c.viewerDidAuthor || c.author.__typename === 'Bot' || TRUSTED.includes(c.authorAssociation))
+const itemTrust = (item: Item) => (item.raw as Node).trust ?? []
 
-const startedByTrusted = (t: { comments: Nodes<By> }) => {
+/** The login as GitHub shows it: `name[bot]` for a bot. */
+const shownAs = (author: { login: string; __typename?: string }) =>
+  author.__typename === 'Bot' ? `${author.login}[bot]` : author.login
+
+/** You, an app installed on the repo, or an author the repo's `trust` list names. */
+const isTrusted = (c: By, trust: string[]) =>
+  c.author !== null &&
+  (c.viewerDidAuthor ||
+    c.author.__typename === 'Bot' ||
+    trusts(trust, shownAs(c.author), TRUSTED.includes(c.authorAssociation)))
+
+const startedByTrusted = (t: { comments: Nodes<By> }, trust: string[]) => {
   const first = t.comments.nodes[0]
-  return first !== undefined && isTrusted(first)
+  return first !== undefined && isTrusted(first, trust)
 }
 
 /** The title of the issue a rule's thread opens for `item`. */
@@ -687,7 +720,7 @@ export const threadTitle = (item: Pick<Item, 'key' | 'title'>) => `${item.key}: 
 /** Where text from someone else was left out, so the agent and you know. */
 export const hiddenNote = (count: number, one: string, many: string) =>
   count
-    ? `\n_Hidden: ${count} ${count > 1 ? many : one} from outside the repo's owners, members and collaborators._\n`
+    ? `\n_Hidden: ${count} ${count > 1 ? many : one} from authors the repo doesn't trust._\n`
     : ''
 
 const toComment = (c: Comment) => ({
@@ -716,10 +749,10 @@ function itemMarkdown(item: Item): string {
   ].join('')
 }
 
-function reviewsMarkdown(pr: PrDetails): string {
+function reviewsMarkdown(pr: PrDetails, trust: string[]): string {
   const written = pr.reviews.nodes.filter((r) => r.body.trim())
   if (!written.length) return ''
-  const reviews = written.filter(isTrusted)
+  const reviews = written.filter((r) => isTrusted(r, trust))
   const shown = reviews.map(
     (r) => `\n### ${r.author?.login}, ${r.state}, ${r.submittedAt}\n\n${r.body}\n`,
   )
@@ -727,9 +760,9 @@ function reviewsMarkdown(pr: PrDetails): string {
 }
 
 /** Unresolved threads grouped by title (a comment's first line), since bot findings repeat per run. */
-function threadsMarkdown(threads: Thread[]): string {
+function threadsMarkdown(threads: Thread[], trust: string[]): string {
   const unresolved = threads.filter((t) => !t.isResolved)
-  const visible = unresolved.filter(startedByTrusted)
+  const visible = unresolved.filter((t) => startedByTrusted(t, trust))
   const note = hiddenNote(
     unresolved.length - visible.length,
     'unresolved thread',
@@ -745,7 +778,7 @@ function threadsMarkdown(threads: Thread[]): string {
     const where = copies.map((t) => `- ${t.path}:${t.line ?? '?'} ${t.comments.nodes[0]?.url}`)
     const comments = (copies[0] as Thread).comments.nodes
     const discussion = comments
-      .filter(isTrusted)
+      .filter((c) => isTrusted(c, trust))
       .map((c) => `**${c.author?.login}**, ${c.createdAt}:\n\n${c.body}\n`)
     const replies = hiddenNote(comments.length - discussion.length, 'reply', 'replies')
     return `## ${title}\n\n${copies.length} unresolved ${copies.length > 1 ? 'copies' : 'copy'}:\n${where.join('\n')}\n\n${discussion.join('\n')}${replies}`

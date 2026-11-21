@@ -1,7 +1,6 @@
 import { createWriteStream } from 'node:fs'
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { guest } from '#core/guest'
 import { AGENT_HOME, CONTAINER_HOME, contain, contained, lostToWorker } from '#core/isolation'
 import type { McpServer, Unit } from '#core/types'
 import { describeCondition, holds } from '#plan/condition'
@@ -76,7 +75,7 @@ async function settle(
   const { pickedUp, dir } = cs
   const settings = settingsFor(input.config.repos, unit.repo)
   if (merge.kind === 'merged' && unit.verify && settings.setup && !unit.untrusted) {
-    const own = guest(unit) || pickedUp ? [] : settings.secrets
+    const own = pickedUp ? [] : settings.secrets
     const env = setupEnv(input.ctx.env, dir, secrets, own)
     const options = { secrets: own, signal: input.signal, until: input.until }
     const failed = await runSetup(settings.setup, dir, env, log, options)
@@ -320,8 +319,8 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (!reuse) await fetchContexts(unit.items, dir, { ...input, env: input.ctx.env, secrets, log })
     const settings = settingsFor(input.config.repos, unit.repo)
     if (!reuse && settings.setup && !unit.untrusted) {
-      // A PR someone else opened (unless lent), or an awaywork PR's branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
-      const own = guest(unit) || pickedUp ? [] : settings.secrets
+      // An awaywork PR's branch a worker wrote runs install scripts you didn't write: they get none of the repo's secrets.
+      const own = pickedUp ? [] : settings.secrets
       const failed = await runSetup(
         settings.setup,
         dir,
@@ -382,12 +381,11 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (gated) event(starts)
     const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
     const named = unit.rule.mcp ?? []
-    if (named.length > 0 && guest(unit))
+    if (named.length > 0 && unit.untrusted)
       log(`mcp: ${named.join(', ')} not started on someone else's PR`)
-    if (unit.network?.length && (guest(unit) || unit.untrusted))
-      log("network: not opened on someone else's PR")
+    if (unit.network?.length && unit.untrusted) log("network: not opened on someone else's PR")
     const mcp: Record<string, McpServer> = {}
-    for (const name of guest(unit) ? [] : named) {
+    for (const name of unit.untrusted ? [] : named) {
       const server = input.config.mcp[name] as McpServer
       const unset = server.secrets.filter((secret) => !input.ctx.env[secret])
       if (unset.length > 0) log(`mcp: ${name} not started, unset: ${unset.join(', ')}`)

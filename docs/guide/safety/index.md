@@ -56,7 +56,7 @@ Sources prefetch context into files before the agent starts, and awaywork makes 
 
 ### Setup, context and checks outside the agent
 
-- **Setup** runs before the agent, without the agent's secret and with only its repo's `secrets` added, and none of those on someone else's PR (unless [`trust`](#trusting-an-author) lends it) or a branch a worker wrote: earlier in the run, an awaywork PR a rule took up, or the task PR a plan's task stacks on. On a PR by someone without write access or org membership, setup doesn't run at all. What it leaves running is stopped before the agent starts.
+- **Setup** runs before the agent, without the agent's secret and with only its repo's `secrets` added, and none of those on a branch a worker wrote: earlier in the run, an awaywork PR a rule took up, or the task PR a plan's task stacks on. On a PR by an author [`trust`](#trusting-an-author) doesn't list, setup doesn't run at all. What it leaves running is stopped before the agent starts.
 - **Context:** a `context` command runs with its own `secrets`, in the config's folder, not the clone, so nothing the branch commits runs with them. Only the regular files it writes reach the agent: write no secret there.
 - **Checks:** `until` and `when` run the worker's code like setup on a worker's branch: no repo `secrets`, outside the agent's sandbox, as the [worker user](./isolation.md#a-worker-user-on-your-linux-machine) under `isolation: user` and on hosted runners, in a [container](./isolation.md#a-container-on-your-machine) of their own under `container`. So they don't run on an untrusted author's PR.
 
@@ -75,46 +75,51 @@ Each unit gets a fresh clone on a new branch, with no credential helper. `.away/
 
 ### Other people's PRs are data
 
-On a PR you didn't open, unless you trust its author, the branch's `.awaywork/` is ignored, Codex's copy of the skills is awaywork's, and the prompt says its `CLAUDE.md`, `AGENTS.md` and skills are the author's.
+On a PR by an author you don't [trust](#trusting-an-author), the branch's `.awaywork/` is ignored, Codex's copy of the skills is awaywork's, and the prompt says its `CLAUDE.md`, `AGENTS.md` and skills are the author's.
 
 - **Claude Code** loads none of the clone's config (settings, hooks, MCP servers, `CLAUDE.md`, skills), only awaywork's plugin and your `settings` file.
 - **Codex** still loads `AGENTS.md` and its skills.
 - **Cursor** doesn't see `.cursor/hooks.json`, `.cursor/cli.json`, `.claude/settings.json` and `.claude/settings.local.json` (it runs Claude Code's hooks and permissions too), which awaywork removes, git keeping the committed version. It starts no `.cursor/mcp.json` server (no `--approve-mcps`) but loads `AGENTS.md`, `CLAUDE.md`, `.cursor/rules` and the clone's skills.
 - **A [command provider](../config/providers.md#bring-your-own-cli)** gets awaywork's skills in its `skills_dir`, but its CLI loads whatever else it loads. The prompt names `CLAUDE.md`, `AGENTS.md`, skills and "other instruction files" as the author's.
 
-Reviewing a PR means running its tests with your agent's login around, so the default `review` rule takes `trusted: true` only: authors who are owners, members or collaborators. A rule without it reviews anyone's PR.
+Reviewing a PR means running its tests with your agent's login around, so the default `review` rule takes `trusted: true` only: authors on your `trust` list. A rule without it reviews anyone's PR.
 
 ### Trusting an author
 
-`trust` lists whose PRs get what your own PRs get: `collaborators` (owners, members and collaborators), a GitHub login (a bot as GitHub shows it, `dependabot[bot]`; a user and a bot of the same name are different entries), or `*` for anyone. A PR by someone on it is **lent**, and `plan` says so:
+`trust` lists the authors whose PRs and comments awaywork acts on. Everyone on it is **trusted**, everyone else on someone else's PR is not: `collaborators` (owners, members and collaborators), a GitHub login (a bot as GitHub shows it, `dependabot[bot]`; a user and a bot of the same name are different entries), or `*` for anyone. It defaults to `collaborators`. A repo's list adds to the top level's, which replaces the default; `[]` trusts nobody but you.
 
 ```yaml
-trust: [collaborators]            # every repo
+trust: [collaborators]            # the default, every repo
 repos:
+  acme/api:
+    trust: [alice]                # and alice, in this repo
   acme/sandbox:
     trust: ["*"]                  # anyone's PR in this repo
 ```
 
-| On a PR | Yours | Lent | Someone else's |
+| On a PR by | You | A trusted author | Anyone else |
 | --- | --- | --- | --- |
-| Setup | Runs, with its repo's `secrets` | Runs, with its repo's `secrets` | Runs without them; not at all for a stranger |
-| `verify`, `when`, `until` and gate scripts | Run | Run | Refused for a stranger |
+| Setup | Runs, with its repo's `secrets` | Runs, with its repo's `secrets` | Doesn't run |
+| `verify`, `when`, `until` and gate scripts | Run | Run | Refused |
 | The branch's agent config, repo skills and `.awaywork/instructions.md` | Loaded | Loaded | Hidden, as above |
 | The prompt's "its files are the author's, data" line | No | No | Yes |
 | The rule's MCP servers | Started | Started | None |
 | `network` | The list | The list | None |
+| Their comments and reviews, on any item | Read | Read | Hidden with a note |
 | Pushes and `deliver: push` | Per rule | Never | Never |
 
-Trust lends what the worker gets, never what awaywork writes: a lent PR still gets only a report or your pending review, never a push onto its branch, and the judge of a gate still runs as on someone else's PR.
+Trust is about what the worker gets, never what awaywork writes: on a trusted author's PR awaywork still leaves only a report or your pending review, never a push onto its branch, and the judge of a gate still runs as on someone else's PR. A branch a worker wrote gets no setup `secrets` whoever opened the PR.
 
-What lending means:
+Narrowing the list narrows comments too: with `trust: [alice]`, a teammate's review on your own PR is hidden, and so is a thread they started. Bots' comments reach the agent as before.
+
+What trusting implies:
 
 - The branch's `.mcp.json` stdio servers start unapproved, outside Claude's sandbox and with its whole env, and its hooks run.
 - Its `CLAUDE.md` steers the agent.
 - Its setup and tests run with the repo's `secrets`.
 - With `network`, all of that can leave.
 
-So trusting someone means trusting their branch and everything it pulls in (dependencies, install scripts), not just them. Under `isolation: none` that code also gets your home folder and your MCP servers' data: `doctor` warns when a repo's `trust` list meets rules that give MCP servers or `network` there. `trust` does nothing on Bitbucket, where awaywork reads only your own PRs.
+So trusting someone means trusting their branch and everything it pulls in (dependencies, install scripts), not just them. In a company org `collaborators` is every member: name logins instead when that is too many. Under `isolation: none` that code also gets your home folder and your MCP servers' data; set `isolation: user` or `container` to keep it away. `doctor` prints who each repo trusts and warns on `*` for a public repo. `trust` does nothing on Bitbucket, where awaywork reads only your own PRs.
 
 ### Not your agent config
 
@@ -124,24 +129,24 @@ The repo's own config applies. What workers should have goes in awaywork's confi
 
 ## Public repos
 
-Anyone can comment on a public repo's issues and PRs, and it would all reach the agent. So the GitHub source keeps only text by you, the repo's owners, members and collaborators, and apps installed on it (the review bots `fix` works on). The rest is dropped before the agent starts:
+Anyone can comment on a public repo's issues and PRs, and it would all reach the agent. So the GitHub source keeps only text by you, the authors [`trust`](#trusting-an-author) lists for the repo, and apps installed on it (the review bots `fix` works on). The rest is dropped before the agent starts:
 
 <!-- Generated by `pnpm docs:gen` from scripts/screens.ts. Do not edit. -->
 
 ```text safety-hidden-note
-_Hidden: 2 comments from outside the repo's owners, members and collaborators._
+_Hidden: 2 comments from authors the repo doesn't trust._
 ```
 
-- A stranger's thread is hidden whole and doesn't count toward `unresolved_threads`, so it starts no `fix`. If GitHub won't say who started a PR's threads, all count, and the run sees only trusted ones. In a trusted thread, only strangers' replies go. Always on.
-- Membership comes from GitHub: without `read:org`, a teammate with private membership looks like an outsider. `gh auth login` and `schedule install` ask for it.
+- A thread an untrusted author started is hidden whole and doesn't count toward `unresolved_threads`, so it starts no `fix`. If GitHub won't say who started a PR's threads, all count, and the run sees only trusted ones. In a trusted thread, only untrusted replies go. Always on.
+- `collaborators` comes from GitHub: without `read:org`, a teammate with private membership looks like an outsider. `gh auth login` and `schedule install` ask for it.
 
-It can't hide the item's own title and body (the default `review` rule skips strangers' PRs with `trusted: true`), an untrusted author's diff when a rule reviews it anyway, CI logs and check names and links in `checks.md` or a task's `item.md`, or what a trusted person or bot quotes. So the agent can still be steered, and without a worker user it can read your `GH_TOKEN` ([Not a sandbox](./isolation.md#not-a-sandbox)).
+It can't hide the item's own title and body (the default `review` rule skips untrusted authors' PRs with `trusted: true`), an untrusted author's diff when a rule reviews it anyway, CI logs and check names and links in `checks.md` or a task's `item.md`, or what a trusted person or bot quotes. So the agent can still be steered, and without a worker user it can read your `GH_TOKEN` ([Not a sandbox](./isolation.md#not-a-sandbox)).
 
 The classic token `schedule install` asks for reaches every repo you can; a dedicated account is your call. A fine-grained token reaches less but [can't call the Checks API](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations), which `checks` and `checks.md` read, so those likely break. Untried.
 
 ## Network hosts
 
-The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), so a steered agent can send what it reads to any of them, and `*` reopens it. Not on someone else's PR, unless you [trust](#trusting-an-author) its author.
+The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), so a steered agent can send what it reads to any of them, and `*` reopens it. Not on an untrusted author's PR.
 
 ## MCP servers
 
@@ -149,7 +154,7 @@ A rule's `mcp` gives its units your servers, and more reach:
 
 - **A server's secret is one the agent can read.** They run as the same user, in one process tree. Claude Code starts stdio servers with its whole env, but where [Claude's sandbox](./isolation.md#claude-s-shell-is-offline) starts, its Bash runs in it and gets them unset; elsewhere, awaywork's Docker image included, it gets them. Codex and Cursor keep them out of their shell (`shell_environment_policy`; Cursor gets them as literals in the run's `mcp.json`, mode 600, which its shell can still read, and which goes when the step ends unless the clone is lost), and a process can read another's env (`ps eww`). Cursor's shell keeps `CURSOR_API_KEY`. So a unit has its agent's secret plus its rule's servers', nothing else.
 - **Injected text can call the tools.** Use read-only tokens where offered, and `tools` to allow only what the skill needs; the agent refuses the rest. For read-only context, a source's prefetch keeps the token from the model entirely.
-- **Not on someone else's PR,** whatever their access, nor an issue it closes, since that code would get the secrets in its env, as with setup's `secrets`, unless [`trust`](#trusting-an-author) lends it. A server with an unset secret doesn't start either; the unit's log says which didn't and why.
+- **Not on an untrusted author's PR,** nor an issue it closes, since that code would get the secrets in its env, as with setup's `secrets`. A server with an unset secret doesn't start either; the unit's log says which didn't and why.
 
 ## Resources
 

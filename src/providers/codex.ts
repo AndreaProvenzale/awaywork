@@ -15,7 +15,6 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { rootStateDir } from '#config/paths'
-import { guest } from '#core/guest'
 import { codexSandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
@@ -287,7 +286,7 @@ const ignoreMasks = (dir: string | undefined) =>
 /** A profile whose shell writes the clone and reaches only the unit's `network` hosts, none by default. */
 export function shellWall(job: Job): string[] {
   const { untrusted, network = [] } = job.unit
-  const hosts = guest(job.unit) || untrusted ? [] : network
+  const hosts = untrusted ? [] : network
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
   const writable = [job.dir, join(job.dir, '.git'), ...(home ? [home] : [])]
