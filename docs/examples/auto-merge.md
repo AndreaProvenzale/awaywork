@@ -14,11 +14,11 @@ queue:
     where: { type: issue, label: low-risk, repo: acme/api }
     deliver: pr
     gates:
-      outside-docs: { command: '! git diff --name-only --no-renames "$AWAYWORK_FROM" HEAD | grep -v "^docs/"' }
+      outside-docs: { command: 'git diff --exit-code --name-only --no-renames "$AWAYWORK_FROM" HEAD -- ":!docs/"' }
       risk: { skill: judge }
 ```
 
-`deliver: pr` opens the PR ready for review. A [gate](../guide/workflows/gates.md) that fires keeps it a draft with the decision card on top, so a change outside `docs/`, or one the judge doubts, waits for you. The command is an allowlist: it fires, printing the paths, on anything the chain touched outside `docs/`, `.github/` and tests included. It diffs from `$AWAYWORK_FROM`, the chain's start. A step that asked questions, a failed `verify` or a loop that ended early draft it too ([results](../guide/results.md#each-deliver)).
+`deliver: pr` opens the PR ready for review. A [gate](../guide/workflows/gates.md) that fires keeps it a draft with the decision card on top, so a change outside `docs/`, or one the judge doubts, waits for you. The command is an allowlist: it fires, printing the paths, on anything the chain touched outside `docs/`, `.github/` and tests included. It diffs from `$AWAYWORK_FROM`, the chain's start, and a diff that can't run fires it too. A step that asked questions, a failed `verify` or a loop that ended early draft it too ([results](../guide/results.md#each-deliver)).
 
 The workflow, in `.github/workflows/auto-merge.yml`:
 
