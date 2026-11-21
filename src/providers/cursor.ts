@@ -2,6 +2,7 @@ import { lstat, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
+import { bin as resolveBin } from '#config/paths'
 import { AGENT_HOME } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, WorkerEvent } from '#core/types'
@@ -51,6 +52,9 @@ export function cursorProvider(bin = 'agent'): Provider {
       if ((await lstat(join(job.dir, '.away')).catch(() => undefined))?.isSymbolicLink())
         throw new Error('.away in the clone is a symlink')
       const dir = join(homeOf(job), '.cursor')
+      // Go's module cache is read-only, which rm can't empty; chmod -R follows a link it's named, rm unlinks it.
+      if (!(await lstat(homeOf(job)).catch(() => undefined))?.isSymbolicLink())
+        await execa(resolveBin('chmod'), ['-R', 'u+rwX', homeOf(job)], { reject: false })
       await rm(homeOf(job), { recursive: true, force: true })
       await mkdir(dir, { recursive: true, mode: 0o700 })
       const servers = job.mcp ?? {}
