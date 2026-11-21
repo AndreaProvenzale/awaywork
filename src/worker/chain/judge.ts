@@ -57,6 +57,7 @@ export const judge =
         instructions,
         with: undefined,
         when: undefined,
+        serve: undefined,
       },
     }
     let why: string | undefined

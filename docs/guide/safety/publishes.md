@@ -66,7 +66,7 @@ A `skill` gate's judge is a model and can be fooled, which only makes it fail to
 
 - Its git sees the commits as pushed. On a plan or report it reads a read-only copy of what the step left, and the post is what the step left either way.
 - If it leaves a commit, a moved HEAD, an uncommitted change or a changed `.away/out/` file, awaywork restores the clone and fires the gate; an error, stop or failure to run fires it too. Only a process that outlived the watchdog could change a file after that check.
-- It runs as on [someone else's PR](./index.md#other-people-s-prs-are-data), the clone being the agent's: its skill is yours or built in, never the repo's, though Codex still reads the `AGENTS.md` and skills the agent could edit ([Judges](../workflows/gates.md#judges)).
+- It runs as on [an untrusted author's PR](./index.md#other-people-s-prs-are-data), the clone being the agent's: its skill is yours or built in, never the repo's, though Codex still reads the `AGENTS.md` and skills the agent could edit ([Judges](../workflows/gates.md#judges)).
 
 ## Tracker writes
 

@@ -105,7 +105,7 @@ A model can also have its own weekly limit beside the one every model counts, li
 Each unit runs in a fresh clone, on a new branch cut from its base. `setup` runs once, before any agent; then every step works in that clone and branch. The worker gets:
 
 - the item, prefetched into `.away/context/`: the PR's diff, unresolved threads and checks (a failed one with its log), or the issue or task with its comments;
-- a prompt: the fixed [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md), the skill, then your instructions (global, per repo, in-repo `.awaywork/instructions.md` unless someone else opened the PR, per rule);
+- a prompt: the fixed [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md), the skill, then your instructions (global, per repo, in-repo `.awaywork/instructions.md` unless the PR is by an author you don't trust, per rule);
 - the skills, where its agent looks: `.agents/skills/` for Codex, a plugin for Claude Code and Cursor.
 
 It gets no forge token, and no source's or other provider's secret ([Safety](./safety/index.md#what-the-agent-can-reach)). It stops at a turn cap (200, or `fallback.turns` without a quota reading), at `limits.unit_minutes` when set, and when the [watchdog](./safety/index.md#resources) finds the machine short of memory or disk.

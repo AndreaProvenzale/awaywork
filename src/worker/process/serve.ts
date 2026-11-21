@@ -47,7 +47,7 @@ export const serveRefusal = (unit: Unit, serve?: { command: string }): string | 
         ? "isolation: user and container don't support it yet"
         : undefined
 
-/** The serve request of a step that asks, with the env setup gets on a PR someone else opened. */
+/** The serve request of a step that asks, with setup's env, without secrets. */
 export function serveRequest(
   unit: Unit,
   serve: { command: string; ready: string } | undefined,

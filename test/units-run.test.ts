@@ -819,7 +819,7 @@ queue:
     ],
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
   })
-  const judged: Record<string, { foreign: boolean; untrusted: boolean }> = {}
+  const judged: Record<string, { foreign: boolean; untrusted: boolean; prompt: string }> = {}
   const seen: Record<
     string,
     { setup: string; mcp: string[]; foreign: boolean; untrusted: boolean }
@@ -837,8 +837,10 @@ queue:
         async *run(job) {
           const setup = await readFile(join(job.dir, 'setup.txt'), 'utf8').catch(() => 'not run')
           const { foreign, untrusted } = job.unit
-          if (job.unit.skill === 'judge') judged[job.unit.id] = { foreign, untrusted }
-          else seen[job.unit.id] = { setup, mcp: Object.keys(job.mcp ?? {}), foreign, untrusted }
+          if (job.unit.skill === 'judge') {
+            const prompt = await readFile(join(job.dir, '.away/prompt.md'), 'utf8')
+            judged[job.unit.id] = { foreign, untrusted, prompt }
+          } else seen[job.unit.id] = { setup, mcp: Object.keys(job.mcp ?? {}), foreign, untrusted }
           await writeFile(join(job.dir, '.away/out/report.md'), 'Done.')
           yield { type: 'done', ok: true, turns: 1 }
         },
@@ -858,7 +860,8 @@ queue:
     'acme-api-3': { setup: 'not run', mcp: [], foreign: true, untrusted: true },
     'acme-api-4': { setup: 'not run', mcp: [], foreign: true, untrusted: true },
   })
-  expect(judged['acme-api-2']).toEqual({ foreign: true, untrusted: true })
+  expect(judged['acme-api-2']).toMatchObject({ foreign: true, untrusted: true })
+  expect(judged['acme-api-3']?.prompt).toContain('Setup, not run')
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-1', 'done'],
     ['acme-api-1-fix', 'done'],
