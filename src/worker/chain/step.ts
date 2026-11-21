@@ -1,7 +1,15 @@
 import { createWriteStream } from 'node:fs'
-import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { AGENT_HOME, CONTAINER_HOME, contain, contained, lostToWorker } from '#core/isolation'
+import {
+  AGENT_HOME,
+  CONTAINER_HOME,
+  contain,
+  contained,
+  lostToWorker,
+  whereRuns,
+} from '#core/isolation'
 import type { McpServer, Unit } from '#core/types'
 import { describeCondition, holds } from '#plan/condition'
 import { modelFor, modelsFor, type PlannedUnit, slug } from '#plan/foreman'
@@ -57,6 +65,23 @@ const copyStep = (dir: string, unitDir: string) =>
         join(dir, AGENT_HOME),
       ].includes(src) && (await notSymlink(src)),
   }).catch(() => {})
+
+/** The unit's `writable` paths that exist, `~/` as the developer's home; none on someone else's PR or in a container, a skipped one logged. */
+async function writablePaths(unit: Unit, dir: string, log: (line: string) => void) {
+  const written = unit.writable ?? []
+  if (written.length === 0 || 'image' in whereRuns(dir)) return []
+  if (unit.foreign || unit.untrusted) {
+    log("writable: not opened on someone else's PR")
+    return []
+  }
+  const found: string[] = []
+  for (const path of written) {
+    const full = path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
+    if (await stat(full).catch(() => undefined)) found.push(full)
+    else log(`writable: ${path} doesn't exist, skipped`)
+  }
+  return found
+}
 
 /**
  * What follows awaywork's own merge when no worker resolves it: setup only when there's a `verify` to need it,
@@ -385,6 +410,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
       log(`mcp: ${named.join(', ')} not started on someone else's PR`)
     if (unit.network?.length && (unit.foreign || unit.untrusted))
       log("network: not opened on someone else's PR")
+    const writable = await writablePaths(unit, dir, log)
     const mcp: Record<string, McpServer> = {}
     for (const name of unit.foreign ? [] : named) {
       const server = input.config.mcp[name] as McpServer
@@ -407,6 +433,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
       configDir: input.configDir,
       plugin,
       mcp,
+      writable,
     }
     if (a.kind === 'quota') result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
     start = await head(dir)

@@ -832,6 +832,15 @@
                   "pattern": "^(\\*|(\\*\\.)?[\\w-]+(\\.[\\w-]+)*)$"
                 }
               },
+              "writable": {
+                "default": [],
+                "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(\\/|~\\/)[^*?[\\]{}]*$"
+                }
+              },
               "test": {
                 "description": "Targeted test command, given to the worker in its prompt",
                 "type": "string"
@@ -936,6 +945,15 @@
       "items": {
         "type": "string",
         "pattern": "^(\\*|(\\*\\.)?[\\w-]+(\\.[\\w-]+)*)$"
+      }
+    },
+    "writable": {
+      "default": [],
+      "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(\\/|~\\/)[^*?[\\]{}]*$"
       }
     },
     "mcp": {
@@ -1121,6 +1139,15 @@
             "items": {
               "type": "string",
               "pattern": "^(\\*|(\\*\\.)?[\\w-]+(\\.[\\w-]+)*)$"
+            }
+          },
+          "writable": {
+            "default": [],
+            "description": "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(\\/|~\\/)[^*?[\\]{}]*$"
             }
           },
           "deliver": {

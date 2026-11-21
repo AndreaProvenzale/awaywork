@@ -683,6 +683,7 @@ providers: [claude: {}]
 budget: { fallback: { units: 8, turns: 60 } }
 repos: { acme/*: {} }
 network: [a.example]
+writable: [/tmp, /no/such/dir]
 sources: { github: {} }
 mcp:
   db: { command: db-mcp, secrets: [DB_URL] }
@@ -763,6 +764,12 @@ queue:
   expect(await log('acme-api-2')).not.toContain(notOpened)
   expect(await log('acme-api-3')).toContain(notOpened)
   expect(await log('acme-api-4')).toContain(notOpened)
+  const notWritable = "writable: not opened on someone else's PR"
+  expect(await log('acme-api-2')).toContain("writable: /no/such/dir doesn't exist, skipped")
+  expect(await log('acme-api-2')).not.toContain('/tmp')
+  expect(await log('acme-api-2')).not.toContain(notWritable)
+  expect(await log('acme-api-3')).toContain(notWritable)
+  expect(await log('acme-api-4')).toContain(notWritable)
 })
 
 it('stops a unit at unit_minutes', async () => {

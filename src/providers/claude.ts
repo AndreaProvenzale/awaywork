@@ -132,7 +132,7 @@ type Theirs = {
   network?: { allowedDomains?: string[]; allowLocalBinding?: boolean }
 }
 
-/** Bash reaching only loopback and the unit's `network` hosts, without the login or the MCP secrets. */
+/** Bash reaching only loopback and the unit's `network` hosts, writing the clone and its `writable` paths, without the login or the MCP secrets. */
 function sandbox(job: Job, theirs?: Theirs) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
@@ -142,17 +142,17 @@ function sandbox(job: Job, theirs?: Theirs) {
     foreign || untrusted
       ? []
       : [...new Set([...(theirs?.network?.allowedDomains ?? []), ...network])]
+  const allowWrite = [
+    ...(theirs?.filesystem?.allowWrite ?? []),
+    ...(home ? [home] : []),
+    ...(job.writable ?? []),
+  ]
   return {
     enabled: true,
     failIfUnavailable: false,
     allowUnsandboxedCommands: false,
     network: { allowLocalBinding: true, ...theirs?.network, allowedDomains: hosts },
-    ...(home && {
-      filesystem: {
-        ...theirs?.filesystem,
-        allowWrite: [...(theirs?.filesystem?.allowWrite ?? []), home],
-      },
-    }),
+    ...(allowWrite.length > 0 && { filesystem: { ...theirs?.filesystem, allowWrite } }),
     credentials: { envVars: [TOKEN, ...secrets].map((name) => ({ name, mode: 'deny' })) },
   }
 }

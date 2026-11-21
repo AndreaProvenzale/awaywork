@@ -87,7 +87,9 @@ export function cursorProvider(
       await rm(join(job.dir, NETWORK_LOG), { force: true })
       await writeFile(
         join(dir, 'sandbox.json'),
-        JSON.stringify(sandboxConfig(shellHosts(job), join(job.dir, NETWORK_LOG))),
+        JSON.stringify(
+          sandboxConfig(shellHosts(job), join(job.dir, NETWORK_LOG), job.writable ?? []),
+        ),
       )
     },
 
@@ -189,8 +191,9 @@ export function cliConfig(servers: Record<string, McpServer>, network?: string[]
 /** On macOS the sandbox refuses even loopback unless listed; test suites bind there. */
 const LOOPBACK = ['localhost', '127.0.0.1']
 
-/** The shell reaching only loopback and `hosts`, every refusal in `log`. */
-export const sandboxConfig = (hosts: string[], log: string) => ({
+/** The shell reaching only loopback and `hosts`, writing `writable` besides the clone, every refusal in `log`. */
+export const sandboxConfig = (hosts: string[], log: string, writable: string[] = []) => ({
+  ...(writable.length > 0 && { additionalReadwritePaths: writable }),
   networkPolicy: {
     default: 'deny',
     allow: [...LOOPBACK, ...hosts],

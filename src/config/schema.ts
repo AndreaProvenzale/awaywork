@@ -272,6 +272,15 @@ const network = z
   .describe(
     "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet",
   )
+const writablePath = z
+  .string()
+  .regex(/^(\/|~\/)[^*?[\]{}]*$/, 'expected an absolute path or one under ~/, with no glob')
+const writable = z
+  .array(writablePath)
+  .default([])
+  .describe(
+    "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home; a path that doesn't exist at the run's start is skipped, none by default, and none on someone else's PR. Not applied under isolation: container",
+  )
 const stepSettings = {
   provider: oneOrMany
     .default([])
@@ -465,6 +474,7 @@ const rule: z.ZodType<Rule, unknown> = z
       ),
     ...stepSettings,
     network,
+    writable,
     deliver: z
       .enum(['draft_pr', 'pr', 'report', 'push', 'pending_review', 'plan'])
       .optional()
@@ -642,6 +652,7 @@ const repoSettings = z.strictObject({
     "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill",
   ),
   network,
+  writable,
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
   image: z
@@ -742,6 +753,7 @@ const configShape = z.strictObject({
       "Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
     ),
   network,
+  writable,
   mcp: z
     .record(z.string(), mcpServer)
     .default({})

@@ -283,13 +283,18 @@ const ignoreMasks = (dir: string | undefined) =>
       }).flatMap(([name, value]) => ['-c', `shell_environment_policy.set.${name}=${toml(value)}`])
     : []
 
-/** A profile whose shell writes the clone and reaches only the unit's `network` hosts, none by default. */
+/** A profile whose shell writes the clone and the unit's `writable` paths and reaches only the unit's `network` hosts, none by default. */
 export function shellWall(job: Job): string[] {
   const { foreign, untrusted, network = [] } = job.unit
   const hosts = foreign || untrusted ? [] : network
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
-  const writable = [job.dir, join(job.dir, '.git'), ...(home ? [home] : [])]
+  const writable = [
+    job.dir,
+    join(job.dir, '.git'),
+    ...(home ? [home] : []),
+    ...(job.writable ?? []),
+  ]
   // Codex keeps `.codex` and `.agents` read-only itself; a later Claude round would load these two.
   const hooked = HOOKED.map((p) => join(job.dir, p))
   const filesystem = {
