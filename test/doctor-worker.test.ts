@@ -2,11 +2,14 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 afterEach(() => {
   vi.doUnmock('#config/paths')
+  vi.unstubAllEnvs()
   vi.restoreAllMocks()
   vi.resetModules()
 })
 
 async function doctorOf(name: string) {
+  vi.stubEnv('RUNNER_ENVIRONMENT', '')
+  vi.stubEnv('AWAYWORK_IMAGE', '')
   vi.resetModules()
   vi.doMock('#config/paths', async (original) => ({
     ...(await original<typeof import('#config/paths')>()),
