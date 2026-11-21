@@ -22,6 +22,8 @@ export interface WorkerResult {
   /** The last reading the worker saw. */
   quota?: Quota
   reason?: string
+  /** What the provider set aside or changed in the clone for the run. */
+  notes?: string[]
 }
 
 export interface WorkerOptions {
@@ -70,6 +72,9 @@ export async function runWorker(
   const { login } = provider
   try {
     await provider.prepare?.(job)
+    const notes = (await provider.setAside?.(job)) ?? []
+    for (const note of notes) log(note)
+    if (notes.length) result.notes = notes
     await asWorker(
       job.dir,
       async () => {

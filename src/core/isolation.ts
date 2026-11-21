@@ -226,35 +226,59 @@ const sandboxes = new Map<string, boolean>()
  * It runs outside `start`, so no exit kills the worker's processes, and once per process for each image or user.
  */
 export const sandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
-  probeBwrap(where, [...PROC, ...DEV, ...CLAUDE_INNER], 'claude', signal, run)
+  bwrapStarts('claude', where, [...PROC, ...DEV, ...CLAUDE_INNER], signal, run)
 
 /** Whether Codex's sandbox can start `where`: the same, without the nested namespace or fresh `/proc` mount, which Docker's masked `/proc` refuses and Codex doesn't need. */
 export const codexSandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
-  probeBwrap(where, [...DEV, 'true'], 'codex', signal, run)
+  bwrapStarts('codex', where, [...DEV, 'true'], signal, run)
 
-async function probeBwrap(
-  { image, user }: Where,
+const bwrapStarts = (
+  tool: string,
+  where: Where,
   inner: string[],
-  cacheKey: string,
+  signal: AbortSignal | undefined,
+  run: typeof execa,
+) =>
+  !where.image && process.platform !== 'linux'
+    ? Promise.resolve(true)
+    : probeStarts(tool, where, 'bwrap', [...BWRAP_PROBE, ...inner], signal, run)
+
+/** Cursor's own startup check, as its bundle runs it: the helper beside `agent` (`$0`), no model call; exit 0 when its sandbox starts. */
+const CURSOR_PROBE = [
+  '-c',
+  `D=$(dirname "$(readlink -f "$(command -v "$0")")") && echo '{"sandbox":{"type":"workspace_readwrite","cwd":"/tmp"}}' | "$D/cursorsandbox" --policy /dev/stdin --preflight-only -- /bin/true`,
+]
+
+/** Whether Cursor's sandbox can start `where`, for the binary `agent`; once per process for each image or user. */
+export const cursorSandboxStarts = (
+  agent: string,
+  where: Where,
+  signal?: AbortSignal,
+  run: typeof execa = execa,
+) => probeStarts(`cursor ${agent}`, where, 'sh', [...CURSOR_PROBE, agent], signal, run)
+
+async function probeStarts(
+  tool: string,
+  { image, user }: Where,
+  file: string,
+  args: string[],
   signal: AbortSignal | undefined,
   run: typeof execa,
 ): Promise<boolean> {
-  if (!image && process.platform !== 'linux') return true
-  const bwrapArgs = [...BWRAP_PROBE, ...inner]
-  const key = `${cacheKey} ${image ?? user ?? ''}`
+  const key = `${tool} ${image ?? user ?? ''}`
   const known = sandboxes.get(key)
   if (known !== undefined) return known
   const options = { reject: false, cancelSignal: signal } as const
   const ran = image
-    ? await run(bin('docker'), inImage(image, ['bwrap', ...bwrapArgs]), options)
+    ? await run(bin('docker'), inImage(image, [file, ...args]), options)
     : user
-      ? await run(bin('sudo'), sudoArgs(user, 'bwrap', bwrapArgs, { env: {}, extendEnv: false }), {
+      ? await run(bin('sudo'), sudoArgs(user, file, args, { env: {}, extendEnv: false }), {
           ...options,
           env: {},
           extendEnv: false,
         })
-      : await run(bin('bwrap'), bwrapArgs, options)
-  // Docker's own failure (125) says nothing about bwrap, and may pass later.
+      : await run(bin(file), args, options)
+  // Docker's own failure (125) says nothing about the sandbox, and may pass later.
   if (!signal?.aborted && ran.exitCode !== 125) sandboxes.set(key, !ran.failed)
   return !ran.failed
 }

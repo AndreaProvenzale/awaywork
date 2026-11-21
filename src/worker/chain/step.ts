@@ -421,6 +421,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
       watch: input.watch,
     })
     await restoreGit(dir)
+    for (const line of (await provider.finish?.(dir)) ?? []) log(line)
     Object.assign(result, worker)
     if (worker.reason) result.reason = maskSecrets(worker.reason, secrets, input.ctx.env)
     if (loop && p.loop) loop.rounds = p.loop.round
@@ -542,6 +543,13 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (start && !lost)
       try {
         await restoreGit(dir)
+        // Only matters after a throw; the run's own call already ran otherwise.
+        const lines = (await provider.finish?.(dir)) ?? []
+        const stamp = new Date().toISOString()
+        await appendFile(
+          join(unitDir, 'worker.log'),
+          lines.map((line) => `${stamp} ${line}\n`).join(''),
+        )
         await handOff(dir, start, unitDir)
         if (!cs.retrying) cs.previous = { skill: unit.skill, out: join(unitDir, 'out') }
       } catch (e) {

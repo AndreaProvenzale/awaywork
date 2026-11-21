@@ -128,9 +128,11 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
     await keep(dir, gitConfig, unit.branch, log).catch((restore: Error) =>
       log(`its .git is as the worker left it: ${restore.message}`),
     )
+    await provider.finish?.(dir).catch(() => {})
     throw e
   }
   await keep(dir, gitConfig, unit.branch, log)
+  for (const line of (await provider.finish?.(dir)) ?? []) log(line)
   const out = join(root, 'out')
   await copyOut(join(dir, WORK_DIR, 'out'), out)
   await rm(plugin, { recursive: true, force: true })
