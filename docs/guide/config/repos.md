@@ -33,7 +33,7 @@ repos:
 - **`image`** is what the repo's units run in under [`isolation: container`](../safety/isolation.md#in-a-container).
 - **`instructions`** (top level, per repo, per rule) are file paths relative to the config they're in. A repo can also carry `.awaywork/instructions.md`, read unless the unit is on someone else's PR.
 
-Top-level `skills` adds [skills](../skills.md#where-skills-come-from) to every unit. PR titles, bodies and commit messages have no config: the agent follows the repo's template, its commit style and your instructions.
+Top-level `skills` adds [skills](../skills.md#where-skills-come-from) to every unit. PR titles, bodies and commit messages have no config: the agent follows the repo's template and your instructions.
 
 Details on `setup` and its `secrets`:
 
@@ -51,6 +51,7 @@ Every config command that touches a clone. All run in a shell outside the model,
 | --- | --- | --- | --- |
 | `repos.<repo>.setup` | Once per unit, before the first agent; not for later steps, nor on an untrusted author's PR | Its repo's `secrets`; none on someone else's PR or an awaywork branch a rule took up | Non-zero, over 15 minutes or the window's end skips the unit, the tail in the report |
 | `sources.<id>.context.command` | Per item, before setup; not on a dry run | Its own `secrets` | Logged; the unit runs without `extra/`. Over two minutes, the window's end, over 1 MB, or a symlink or non-file in its output count as failures |
+| `repos.<repo>.serve` | Inside the agent's run of a step with `serve: true`, after setup and `when`; under `isolation: none` only; not on an untrusted author's PR | None: the app boots on what the repo commits | The step runs without the app, even if serve exited 0 before it answered: the prompt says why with the log's tail, and the report too, for any step. It stops when the agent does ([Proving](../workflows/proving.md)) |
 | `repos.<repo>.test` | Never by awaywork: the agent runs it if it wants | The agent's: its provider's and its rule's MCP servers' | Up to the agent |
 | `repos.<repo>.verify` | Once per chain that ends with commits, before publishing; not for `report` | None | Its tail in the PR body or push summary; a `pr` PR opens as a draft; still published |
 | `when.command` | Before a step's agent; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain, which publishes |

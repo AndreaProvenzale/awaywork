@@ -27,7 +27,7 @@ with:
 | `windows` | object[] | `[{"start":"01:00","end":"07:00"}]` | Local hours a scheduled run may start units in; each opening is one run; [] for none |
 | `watch` | object | `{}` | awaywork watch, the daemon schedule install keeps running |
 | `limits` | object | `{}` | Unit counts and time per run, for every provider |
-| `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image |
+| `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, a worker user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image |
 | `budget` | object | `{}` | Quota shares, for every provider |
 | `providers` (required) | ("claude" \| "codex" \| "cursor" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `forge` | "github" \| "bitbucket" \| object | `"github"` | Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } } |
@@ -287,6 +287,7 @@ A custom source: any command that prints your open items as JSON.
 | `branch` | string |  | Branch name template for this repo |
 | `setup` | string |  | Setup command, run in the clone before the worker; a failure skips the unit |
 | `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
+| `serve` | object |  | The app a step with serve: true gets, under isolation: none; it can't see your secrets |
 | `verify` | string |  | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
 | `gates` | map | `{}` | Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill |
 | `network` | string[] | `[]` | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet |
@@ -294,6 +295,15 @@ A custom source: any command that prints your open items as JSON.
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
 | `image` | string |  | Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain |
+
+## `repos.<key>.serve`
+
+The app a step with serve: true gets, under isolation: none; it can't see your secrets.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `command` (required) | string |  | Starts the app for a step with serve: true, after setup, with its port in $AWAYWORK_PORT; it stops when the agent does |
+| `ready` (required) | string |  | URL awaywork polls, $AWAYWORK_PORT substituted, until it answers with less than a 500; the step runs without the app after 5 minutes |
 
 ## `repos.<key>.gates.<key>`
 
@@ -333,6 +343,7 @@ First matching rule wins; top = highest priority.
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet } or { claude: [sonnet, opus] }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills |
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
+| `serve` | boolean |  | Start the repo's serve command for the worker, which gets the app's URL |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `network` | string[] | `[]` | Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on someone else's PR. Setup, verify, until, when and gate scripts aren't limited yet |
@@ -417,6 +428,7 @@ Run this rule's unit only when the quota holds; otherwise skip it.
 | `model` | map |  | Model per provider for this step; default the rule's |
 | `skills` | string[] |  | Extra skills available to the worker; default the rule's, [] none |
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none |
+| `serve` | boolean |  | Start the repo's serve command for this step; default the rule's |
 | `instructions` | string \| string[] |  | Instruction files added for this step; default the rule's, [] none |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `when` | object |  | Run this step only when every key holds; otherwise skip it |

@@ -13,6 +13,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
@@ -29,7 +30,10 @@ import { type Attempts, recordAttempts } from '#plan/attempts'
 import { planRun } from '#plan/foreman'
 import { footer } from '#posts/footer'
 import {
+  type Chain,
+  chains,
   formatReport,
+  laterNotes,
   type RunReport,
   runHeadline,
   runLine,
@@ -207,6 +211,7 @@ async function run(
     shortage?: () => Promise<string | undefined>
     pendingReview?: Forge['pendingReview']
     openPr?: () => Promise<string>
+    env?: NodeJS.ProcessEnv
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
@@ -237,7 +242,7 @@ async function run(
     providers: { claude: provider },
     sources: { github: fakeSource() as Source },
     forge: env.forge,
-    ctx: { env: {}, log: (line) => logged.push(line) },
+    ctx: { env: opts.env ?? {}, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
     shortage: opts.shortage ?? (async () => undefined),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
@@ -405,7 +410,7 @@ it("leaves a deliver: pending_review chain's last report and its comments on the
   ])
   expect(reviewed.opened).toEqual([])
   expect(prompts['acme-api-1']).toContain(
-    "Deliver: a review of `feature-1`. Write `.away/out/report.md`, the review's body, and any line comments in `.away/out/review.json`, and commit nothing",
+    "Deliver: a review of `feature-1`. Write `.away/out/report.md`, the review's body, and any line comments in `.away/out/review.json`",
   )
   expect(runHeadline(reviewed.report)).toBe(
     'Run r1: 0 draft PRs, 0 reports, 1 pending review, 1 unit',
@@ -644,6 +649,65 @@ it("logs what a provider set aside and what it refused, and shows the set-aside 
   expect(unitNotes(report.results[0] as UnitResult)).toEqual([
     'network: set aside .cursor/sandbox.json (adds pypi.org)',
   ])
+})
+
+it("shows a later step's notes in the chain's", async () => {
+  const provider: Provider = {
+    ...worker({}),
+    setAside: async (job) => (job.unit.id.endsWith('-fix') ? ['serve not run: boom'] : []),
+  }
+  const { report } = await run(
+    'queue: [{ skill: implement, deliver: pr, then: [fix] }]\n',
+    [issue(1)],
+    provider,
+  )
+  const [chain] = chains(report)
+  expect(laterNotes(chain as Chain)).toEqual(['acme-api-1-fix: serve not run: boom'])
+})
+
+it("shows a later step's note once, as its own", async () => {
+  const provider: Provider = { ...worker({}), setAside: async () => ['network: set aside x'] }
+  const { report } = await run(
+    'queue: [{ skill: implement, deliver: pr, then: [fix, review] }]\n',
+    [issue(1)],
+    provider,
+  )
+  const [chain] = chains(report)
+  expect(unitNotes(chain?.head as UnitResult)).toEqual(['network: set aside x'])
+  expect(laterNotes(chain as Chain)).toEqual([])
+})
+
+it("shows each later round's serve failure, even when an earlier round failed alike", async () => {
+  const provider: Provider = {
+    ...worker({}),
+    setAside: async (job) => (/-(fix|review)$/.test(job.unit.id) ? ['serve down'] : []),
+  }
+  const { report } = await run(
+    'queue: [{ skill: implement, deliver: pr, then: [fix, review] }]\n',
+    [issue(1)],
+    provider,
+  )
+  const [chain] = chains(report)
+  expect(laterNotes(chain as Chain)).toEqual([
+    'acme-api-1-fix: serve down',
+    'acme-api-1-review: serve down',
+  ])
+})
+
+it("doesn't give serve the agent's login, only the step's own env", async () => {
+  const server = fileURLToPath(new URL('./fakes/serve.mjs', import.meta.url))
+  const { runDir } = await run(
+    `repos: { acme/api: { serve: { command: "node ${server}", ready: "http://localhost:$AWAYWORK_PORT/" } } }
+queue: [{ skill: implement, deliver: pr, serve: true }]
+`,
+    [issue(1)],
+    worker({}),
+    { env: { ...process.env, FAKE_AGENT_TOKEN: 'agent-secret-xyz' } },
+  )
+  const log = await readFile(join(runDir, 'units/acme-api-1/1-implement/serve.log'), 'utf8')
+  expect(log).toContain('booting in ready mode')
+  expect(log).toContain('token=undefined')
+  expect(log).not.toContain('agent-secret-xyz')
 })
 
 it('calls finish after a run that throws, once', async () => {

@@ -11,7 +11,7 @@ isolation: user # default: none; or container
 ```
 
 - **`none`:** as you. [Safety](./index.md)'s measures keep credentials out of the agent's way, not its reach ([Not a sandbox](#not-a-sandbox)).
-- **`user`:** as `awaywork`, a user with nothing of yours, which you make once on Linux.
+- **`user`:** as `awaywork`, a user with nothing of yours, which you make once on Linux; `awaywork-<profile>` on your machine for a [profile](../config/index.md) other than `default` (`awaywork` on a hosted runner and in the image, below).
 - **`container`:** a fresh container of the repo's image per command: [In a container](#in-a-container).
 
 `doctor` says how to make the user, here for a user `runner` (uid and gid 1001):
@@ -83,6 +83,7 @@ Also open:
 - **Prompt injection.** Strangers' GitHub comments are [hidden](./index.md#public-repos), but issue bodies, CI logs, check names and links, other sources' text and trusted people's quotes may be anyone's. The harness calls them data; a model can still be talked into things, with the reach above.
 - **Hooks and MCP servers across a loop's rounds:** on your repo, Claude Code loads the clone's `.claude/settings.json` and `.mcp.json`, and starts their servers unapproved, outside its sandbox and with its whole env [V, tested on macOS, Claude Code 2.1.327]. Claude's and Codex's sandboxed shells can't write them, nor can a walled Cursor write `.claude/settings.json`; but a walled Cursor can write `.mcp.json`, and setup and any agent whose sandbox doesn't start can write both, so a round can leave hooks or servers the next runs. A `.mcp.json` committed to your own repo starts its server the same way; awaywork doesn't change that.
 - **MCP secrets in Claude's Bash where its sandbox doesn't start**, on your items ([MCP servers](./index.md#mcp-servers); [#155](https://github.com/AndreaProvenzale/awaywork/issues/155)). Cursor's shell can read them from its `mcp.json`.
+- **The app `serve` starts** runs as you, with your env less every secret awaywork names, so it reaches what you reach. A process it detaches and leaves behind after exiting before it was ready can outlive the step. Only under `none`: `user` and `container` don't support it yet.
 - **Codex and Cursor read a PR author's `AGENTS.md`**, Cursor also `CLAUDE.md`, `.cursor/rules` and skills.
 - **A command provider's repo config** on someone else's PR, e.g. MCP servers or hooks in its config dir.
 
@@ -117,7 +118,7 @@ It needs Seatbelt on macOS and unprivileged user namespaces on Linux. Before a C
 
 ### A worker user on your Linux machine
 
-With [`isolation: user`](./isolation.md), setup, the agent and the checks run as `awaywork`, a user you make once. As on a [hosted runner](#a-worker-user-on-github-hosted-runners), the clone is the worker's only while repo code runs, awaywork kills all the worker's processes after each phase, and its own git runs only on a clone that's yours again. Without the user or the sudoers lines, `run` refuses rather than run as you. It closes:
+With [`isolation: user`](./isolation.md), setup, the agent and the checks run as `awaywork`, a user you make once (`awaywork-work` under a profile `work`, and so on for each: a profile name of 23 characters or fewer, as Linux limits user names to 32). As on a [hosted runner](#a-worker-user-on-github-hosted-runners), the clone is the worker's only while repo code runs, awaywork kills all the worker's processes after each phase, and its own git runs only on a clone that's yours again. Without the user or the sudoers lines, `run` refuses rather than run as you. It closes:
 
 - **Your files:** the env file, gh's `hosts.yml`, `~/.ssh`, `~/.gitconfig` and the rest of a home closed to others (`chmod o-rwx ~`; `doctor` warns until then).
 - **Logins in other processes:** `/proc/<pid>/environ` is owner-only, your ssh agent's socket sits in a folder only you can enter, and gh's keyring answers over your session bus in `/run/user/<uid>`, closed to other users [C, not exercised: the test container has no keyring].
@@ -162,9 +163,9 @@ Still open:
 
 - **The network,** except Claude's, Codex's and Cursor's shells (limited to [`network`](#claude-s-shell-is-offline) where their sandboxes start: not in Docker, and Claude's not on a stock GitHub-hosted runner).
 - **The worker's own login,** in its env as it must be: `CLAUDE_CODE_OAUTH_TOKEN`, `CURSOR_API_KEY`, or a copy of your Codex `auth.json` in its `HOME` ([the lent Codex login](#the-lent-codex-login)).
-- **`/tmp`:** every unit is the same user, so a file left in `/tmp` or `/var/tmp` outside its folders is there for a later unit. Nothing runs it unless something looks.
+- **`/tmp`:** every unit of a profile is the same user, so a file left in `/tmp` or `/var/tmp` outside its folders is there for a later unit. Nothing runs it unless something looks.
 - **The machine:** localhost services answer it, and anything world-writable is a place to plant a binary you run later. Hosted runners clear that bit; on your machine `find / -xdev -perm -o+w ! -type l ! -perm -1000` lists them.
-- **Other developers:** the `chown` line reaches any awaywork clone, so one developer per worker user. Profiles of one developer share it: a unit holds `~/.local/state/awaywork/worker.lock` from its first phase to its last, so units of two profiles take turns, as ending a phase kills every process of the worker user.
+- **Other developers:** the `chown` line reaches any awaywork clone, so one developer per worker user. Each profile of one developer has a worker user of its own, so ending a phase kills only that profile's processes. A unit holds its worker user's lock (`workers/<user>.lock` in the root state dir) from its first phase to its last, so units of one worker user take turns, and profiles sharing `awaywork` do too.
 
 #### The lent Codex login
 

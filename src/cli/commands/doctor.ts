@@ -28,6 +28,7 @@ import {
   dockerVersion,
   inAwayworkImage,
   inImage,
+  MAX_USER,
   sandboxStarts,
   sudoersLines,
   WORKER,
@@ -50,6 +51,7 @@ import { isCommand } from '#sources/command'
 import { sourceFor } from '#sources/index'
 import { gatesNeverRun } from '#tasks/fanout'
 import { counted, errorText } from '#util/text'
+import { asksServe } from '#worker/process/serve'
 import { staleSchedules } from './schedule'
 
 export interface Check {
@@ -227,7 +229,17 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   }
   const { queue, catalog } = await readSetup(config, skillsDirOf(path))
   if (!queue.length) report('warn', 'queue', NO_QUEUE)
+  const walled =
+    config.isolation !== 'none' ||
+    process.env.RUNNER_ENVIRONMENT === 'github-hosted' ||
+    inAwayworkImage(process.env)
   queue.forEach((rule, i) => {
+    if (walled && asksServe(rule))
+      report(
+        'warn',
+        `rule #${i + 1} serve`,
+        'not supported under isolation: user or container yet: the step runs without the app',
+      )
     const ungated = gatesNeverRun(rule, catalog)
     if (ungated) report('warn', `rule #${i + 1} gates`, `its items are all skipped: ${ungated}`)
   })
@@ -444,7 +456,8 @@ export async function isolationChecks(
     const local =
       env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
       !inAwayworkImage(env) &&
-      process.platform === 'linux'
+      process.platform === 'linux' &&
+      WORKER.length <= MAX_USER
     return [workerFailure(worker.message, local)]
   }
   const checks: Check[] = [

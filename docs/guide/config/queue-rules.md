@@ -21,6 +21,7 @@ queue:
 | `skill`, `source`, `where` | What runs, on which items: [Matching items](./where.md) |
 | `provider`, `model` | Overrides routing for this rule; two models [retry](#retry-on-the-next-model) |
 | `skills`, `mcp`, `instructions`, `with` | Extra skills, [MCP servers](./mcp.md), instruction files, [parameters](../skills.md#write-your-own) |
+| `serve` | The repo's app, started for the agent: [Proving](../workflows/proving.md) |
 | `deliver` | `draft_pr` (default), `pr`, [`push`](./chains.md#push), `report`, `pending_review` or [`plan`](../workflows/plans.md); see [Delivery](../how-it-works.md#delivery) |
 | `branch`, `order`, `units` | [Branch template](./repos.md#branch-names), [item order](#order), units per run |
 | `then`, `quota` | [More steps](./chains.md#then), [quota checks](./chains.md#quota) |

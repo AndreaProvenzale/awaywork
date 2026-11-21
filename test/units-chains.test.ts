@@ -29,10 +29,12 @@ it('tells a step to write the PR body until one wrote it, and to keep it after',
   )
 
   const first = prompts['acme-api-1-implement-1']
-  expect(first).toContain('Commit on this branch and write `.away/out/pr.md`, the PR body.')
+  expect(first).toContain(
+    "Commit on this branch and write `.away/out/pr.md` right after your first commit and keep it current (with nothing to commit, it still says what you found and why). `.away/out/pr.md`'s first line",
+  )
   expect(first).toContain('The step before, `plan`, left its output in `.away/context/previous/`')
   expect(prompts['acme-api-1-implement-2']).toContain(
-    'Commit on this branch and keep `.away/out/pr.md` current: it holds what the chain did so far, the PR body.',
+    "Commit on this branch and keep `.away/out/pr.md` current (it holds what the chain did so far). `.away/out/pr.md`'s first line",
   )
 })
 

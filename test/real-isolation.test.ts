@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { switchTo } from '#config/profiles'
 import {
   asWorker,
   isolate,
@@ -32,11 +33,13 @@ const env = {
   CANARY,
   AWAYWORK_PARENT: `${process.pid}`,
 }
-const leftover = async () => (await execa('pgrep', ['-u', WORKER], { reject: false })).stdout
+const running = async (user: string) =>
+  (await execa('pgrep', ['-u', user], { reject: false })).stdout
+const leftover = () => running(WORKER)
 const owner = async (path: string) => (await stat(path)).uid
 const allowance: Allowance = { kind: 'fallback', units: 1, turns: MAX_TURNS, reason: 'test' }
 
-/** Linux with the worker user and the sudo `awaywork doctor` asks for (or a hosted runner after `action.yml`); run with AWAYWORK_WORKER_TEST=1. */
+/** Linux with the worker user, a second user `awaywork-proof` and the sudo `awaywork doctor` asks for (or a hosted runner after `action.yml`); run with AWAYWORK_WORKER_TEST=1. */
 describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () => {
   let dir: string
   beforeAll(async () => {
@@ -298,6 +301,103 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     } finally {
       delete process.env.GH_TOKEN
       await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', '/tmp/awaywork-hooked'])
+    }
+  })
+
+  it('runs a serve: true step without the app, the prompt saying why', async () => {
+    const { serveRequest } = await import('#worker/process/serve')
+    const clone = await workerRoot(0o700)
+    await execa('git', ['init', '-q', clone])
+    await mkdir(join(clone, '.away'))
+    await writeFile(join(clone, '.away', 'prompt.md'), 'prove it\n')
+    await writeFile(join(clone, 'agent.sh'), 'id -un > seen; cat "$AWAYWORK_PROMPT" >> seen\n')
+    const agent = commandProvider('mine', {
+      command: 'sh agent.sh',
+      secrets: [],
+      skills_dir: '.agents/skills',
+    })
+    const unit = { repo: 'acme/api', rule: { serve: true } }
+    const job = { dir: clone, prompt: 'prove it', maxTurns: 1, env, unit } as unknown as Job
+    const serve = serveRequest(
+      unit as never,
+      { command: 'touch served', ready: 'http://localhost:$AWAYWORK_PORT/' },
+      join(clone, '..', 'serve.log'),
+      env,
+    )
+    const result = await runWorker(agent, job, allowance, {
+      log: () => {},
+      serve,
+      watch: () => ({ stop: async () => {} }),
+    })
+    expect(result).toMatchObject({
+      status: 'done',
+      notes: ["serve not run: isolation: user and container don't support it yet"],
+    })
+    expect(await readFile(join(clone, 'seen'), 'utf8')).toBe(`${WORKER}\nprove it\n`)
+    expect(existsSync(join(clone, 'served'))).toBe(false)
+  })
+
+  it("holds two profiles' worker locks at once, and a kill reaches only its own worker user", async () => {
+    const home = await mkdtemp(join(tmpdir(), 'awaywork-profiles-'))
+    const config = join(home, '.config', 'awaywork')
+    await mkdir(config, { recursive: true })
+    await writeFile(join(home, 'config.yml'), '')
+    await switchTo(join(config, 'profiles.yml'), 'proof', join(home, 'config.yml'))
+    const unitOf = async (profile: string) => {
+      vi.stubEnv('HOME', home)
+      vi.stubEnv('AWAYWORK_PROFILE', profile)
+      vi.stubEnv('RUNNER_ENVIRONMENT', '')
+      vi.resetModules()
+      const [isolation, command] = await Promise.all([
+        import('#core/isolation'),
+        import('#worker/process/command'),
+      ])
+      isolation.isolate(isolation.WORKER)
+      return { ...isolation, runCommand: command.runCommand, clone: await isolation.workerRoot() }
+    }
+    const asOther = (...command: string[]) =>
+      execa('sudo', ['-n', '-u', 'awaywork-proof', ...command], { reject: false })
+    const waits: string[] = []
+    const wait = (line: string) => waits.push(line)
+    try {
+      const mine = await unitOf('default')
+      const proof = await unitOf('proof')
+      expect(mine.WORKER).toBe('awaywork')
+      expect(proof.WORKER).toBe('awaywork-proof')
+      expect(proof.WORKER_LOCK).not.toBe(mine.WORKER_LOCK)
+      let phase: Promise<unknown> = Promise.resolve()
+      const held = await proof.holdingWorker(
+        async () => {
+          phase = proof.runCommand('sleep 300', proof.clone, env, {
+            secrets: [],
+            timeoutMs: 60_000,
+          })
+          await vi.waitFor(async () => expect(await running('awaywork-proof')).not.toBe(''))
+          await mine.holdingWorker(
+            async () => {
+              expect(existsSync(proof.WORKER_LOCK)).toBe(true)
+              expect(existsSync(mine.WORKER_LOCK)).toBe(true)
+              await mine.runCommand('sleep 300 >/dev/null 2>&1 &', mine.clone, env, { secrets: [] })
+              expect(await leftover()).toBe('')
+            },
+            wait,
+            { signal: AbortSignal.timeout(5_000) },
+          )
+          expect(await running('awaywork-proof')).not.toBe('')
+          await asOther('kill', '-9', '--', '-1')
+          await phase
+          return true
+        },
+        wait,
+        { signal: AbortSignal.timeout(5_000) },
+      )
+      expect(held).toBe(true)
+      expect(waits).toEqual([])
+    } finally {
+      await asOther('kill', '-9', '--', '-1')
+      vi.unstubAllEnvs()
+      vi.resetModules()
+      await rm(home, { recursive: true, force: true })
     }
   })
 })

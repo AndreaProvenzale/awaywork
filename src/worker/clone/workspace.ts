@@ -20,6 +20,7 @@ import { type LoopRound, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
 import { taskMarkdown } from '#tasks/fanout'
 import type { Judged } from '#worker/deliver/gates'
+import { serveRefusal } from '#worker/process/serve'
 import { gitConfigFile, gitEntries, writeConfigFile } from './env'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './files'
 import { assemblePrompt, unitSection } from './prompt'
@@ -195,6 +196,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
       setup: repo.setup,
       setupSkipped: unit.untrusted,
       test: repo.test,
+      serveRefused: unit.rule.serve ? serveRefusal(unit, repo.serve) : undefined,
       instructions: repo.instructions && (await read(repo.instructions)),
     },
     inRepo: foreign ? '' : await readOutput(join(dir, '.awaywork', 'instructions.md')),

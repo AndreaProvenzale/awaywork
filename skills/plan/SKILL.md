@@ -9,8 +9,8 @@ metadata:
 
 The unit is a task with no pull request yet. The developer reads your plan in the morning; write no code.
 
-- Read the code the task touches. Ground every step in files and functions that exist; reuse what is there.
-- When the task is ambiguous, pick the most likely reading, say so, and list the question. Only when no reading is likely enough to plan on, write the questions that block you to `.away/out/questions.md` and `ask` to `.away/out/status` instead of a plan. When the item's comments hold awaywork's questions and the replies to them, go by the replies.
+- Read the code the task touches; ground every step in what exists.
+- When the task is ambiguous, list the question in the report. Only when no reading is likely enough to plan on, `ask` instead of a plan.
 
 The report:
 

@@ -151,9 +151,31 @@ Other shapes:
         shown: { skill: judge, instructions: [judges/evidence.md] }
   ```
 
+- **No preview, serve:** awaywork starts the app itself, for the steps that ask, under `isolation: none`. The repo says how, and the step gets the URL:
+
+  ```yaml
+  repos:
+    acme/web:
+      setup: pnpm i --frozen-lockfile
+      serve:
+        command: pnpm dev --port $AWAYWORK_PORT # awaywork picks a free port
+        ready: http://localhost:$AWAYWORK_PORT/healthz # polled until it answers with less than a 500
+  queue:
+    - skill: prove
+      where: { planned: true }
+      deliver: report
+      serve: true # a rule or step key, inherited like mcp
+  ```
+
+  After setup and `when`, awaywork starts `command` on a free port (`$AWAYWORK_PORT`), polls `ready` for up to 5 minutes, then runs the agent with ``The app runs at http://localhost:52113, started by awaywork from `pnpm dev --port $AWAYWORK_PORT`; it stops with you. Don't start it again.`` in its prompt and `AWAYWORK_SERVE_URL` in its env. The agent still starts nothing. Output goes to `serve.log` in the step's run dir.
+
+  The app stops with the agent, before `until`, `verify` and the gates, so a gate judges the files the step left, not the app. A step that wants the app again, say each round of a loop, asks again and gets a fresh one on the tree the step before left. Without secrets, the app boots on what the repo commits: `.env.example`, SQLite or mocks.
+
+  If it never answers, or exits first, the step runs without the app: the prompt says `Serve didn't come up` with `serve.log`'s tail, and the report shows it. The proof gate fires on its own, so a change that broke the boot is what the next step reads. Not started on an untrusted author's PR, as setup isn't. Under `isolation: user` or `container` it isn't supported yet: the step runs without it, and `awaywork doctor` warns.
+
 Details:
 
-- The [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md) lets a worker run no dev server, build, `docker` or background command, and gives it no forge access: the skill proves against something deployed, or with a command that needs nothing started. A script that boots the app is still a dev server: a repo whose proof needs the app running and has no preview can't be proven by a worker.
+- The [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md) lets a worker run no dev server, build, `docker` or background command, and gives it no forge access: the skill proves against something deployed, or with a command that needs nothing started. A script that boots the app is still a dev server: a repo whose proof needs the app running and has no preview needs `serve`, or can't be proven by a worker.
 - A plan's task gets the card, not the PR, so no `checks.md`: its `item.md` plan names the check it waits on with its link, while that PR is open. A check that links elsewhere, as Vercel's links its dashboard, leaves the skill to build the address from the branch its own was cut from, as in `https://<branch>.preview.acme.dev`, each `/` a `-`. Without a stable one per branch, use the PR rule.
 - A check's name and link are whatever reported them, on a public repo anyone: the skill names the host it opens.
 - The gate fires until the script is on the default branch where the clone started: as cloned, or, on an awaywork PR or a task stacked on one, where that PR left it. In neither that commit nor the clone, the command runs and fails: `- proof: Command failed with exit code 127: 'sh scripts/evidence-gate.sh'`. Added or edited on the PR's own branch, it isn't run: ``- proof: `scripts/evidence-gate.sh` changed, not run``.
