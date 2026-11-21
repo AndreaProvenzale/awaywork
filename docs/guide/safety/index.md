@@ -78,7 +78,7 @@ Each unit gets a fresh clone on a new branch, with no credential helper. `.away/
 On a PR by an author you don't [trust](#trusting-an-author), the branch's `.awaywork/` is ignored, Codex's copy of the skills is awaywork's, and the prompt says its `CLAUDE.md`, `AGENTS.md` and skills are the author's.
 
 - **Claude Code** loads none of the clone's config (settings, hooks, MCP servers, `CLAUDE.md`, skills), only awaywork's plugin and your `settings` file.
-- **Codex** still loads `AGENTS.md` and its skills.
+- **Codex** still loads `AGENTS.md` and its skills, and obeys the branch's `AGENTS.md` despite the prompt calling it data [V, tested].
 - **Cursor** doesn't see `.cursor/hooks.json`, `.cursor/cli.json`, `.claude/settings.json` and `.claude/settings.local.json` (it runs Claude Code's hooks and permissions too), which awaywork removes, git keeping the committed version. It starts no `.cursor/mcp.json` server (no `--approve-mcps`) but loads `AGENTS.md`, `CLAUDE.md`, `.cursor/rules` and the clone's skills.
 - **A [command provider](../config/providers.md#bring-your-own-cli)** gets awaywork's skills in its `skills_dir`, but its CLI loads whatever else it loads. The prompt names `CLAUDE.md`, `AGENTS.md`, skills and "other instruction files" as the author's.
 
@@ -101,7 +101,7 @@ repos:
 | --- | --- | --- | --- |
 | Setup | Runs, with its repo's `secrets` | Runs, with its repo's `secrets` | Doesn't run |
 | `verify`, `when`, `until` and gate scripts | Run | Run | Refused |
-| The branch's agent config, repo skills and `.awaywork/instructions.md` | Loaded | Loaded | Hidden, as above |
+| The branch's agent config, repo skills and `.awaywork/instructions.md` (Codex's `.codex/config.toml` never) | Loaded | Loaded | Hidden, as above (Codex still loads `AGENTS.md`) |
 | The prompt's "its files are the author's, data" line | No | No | Yes |
 | The rule's MCP servers | Started | Started | None |
 | `network`, `writable` | The lists | The lists | None |
@@ -123,9 +123,9 @@ So trusting someone means trusting their branch and everything it pulls in (depe
 
 ### Not your agent config
 
-Workers skip Claude Code's `~/.claude` settings, hooks, MCP servers, `CLAUDE.md`, skills, auto-memory and claude.ai connectors; Codex's `config.toml`; and Cursor's whole `HOME`: it runs in a fresh `.away/agent-home`, without your `~/.cursor` skills, MCP servers, hooks, rules, permissions or login, nor `~/.claude` and `~/.agents` skills.
+Workers skip Claude Code's `~/.claude` settings, hooks, MCP servers, skills, auto-memory and claude.ai connectors; Codex's `config.toml`, the account's ChatGPT apps and its web search (both run on OpenAI's side, outside the shell's [`network`](#network-hosts) hosts, and a Codex `config` can't turn them back on); and Cursor's whole `HOME`: it runs in a fresh `.away/agent-home`, without your `~/.cursor` skills, MCP servers, hooks, rules, permissions or login, nor `~/.claude` and `~/.agents` skills.
 
-The repo's own config applies. What workers should have goes in awaywork's config: a Claude `settings` file, Codex `config`, top-level `skills` ([Configuration](../config/providers.md#providers)) and [MCP servers](../config/mcp.md), which apply on someone else's PR too, except MCP servers, which carry your secrets, and the settings file's `sandbox` allowed domains, unless you [trust](#trusting-an-author) its author.
+The repo's own config applies, a trusted author's `.codex/config.toml` excepted: Codex never loads it. Claude under `isolation: none` also loads your `~/.claude/CLAUDE.md` and `~/.claude/rules/*.md` on your own items and trusted authors' PRs, as it does a parent folder's: `~` is above the clone. Not on an untrusted author's PR, nor under `user`, whose clone is under `/tmp` with the worker's `HOME`. What workers should have goes in awaywork's config: a Claude `settings` file, Codex `config`, top-level `skills` ([Configuration](../config/providers.md#providers)) and [MCP servers](../config/mcp.md), which apply on someone else's PR too, except MCP servers, which carry your secrets, and the settings file's `sandbox` allowed domains, unless you [trust](#trusting-an-author) its author.
 
 ## Public repos
 
