@@ -677,6 +677,23 @@ it("shows a later step's note once, as its own", async () => {
   expect(laterNotes(chain as Chain)).toEqual([])
 })
 
+it("shows each later round's serve failure, even when an earlier round failed alike", async () => {
+  const provider: Provider = {
+    ...worker({}),
+    setAside: async (job) => (/-(fix|review)$/.test(job.unit.id) ? ['serve down'] : []),
+  }
+  const { report } = await run(
+    'queue: [{ skill: implement, deliver: pr, then: [fix, review] }]\n',
+    [issue(1)],
+    provider,
+  )
+  const [chain] = chains(report)
+  expect(laterNotes(chain as Chain)).toEqual([
+    'acme-api-1-fix: serve down',
+    'acme-api-1-review: serve down',
+  ])
+})
+
 it("doesn't give serve the agent's login, only the step's own env", async () => {
   const server = fileURLToPath(new URL('./fakes/serve.mjs', import.meta.url))
   const { runDir } = await run(

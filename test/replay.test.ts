@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
@@ -26,7 +27,7 @@ const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
 /** A past run of one `fix` unit on acme/api, with `extra` config, for a replay to rebuild. */
-async function pastRun(extra = '') {
+async function pastRun(extra = '', env: NodeJS.ProcessEnv = {}) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-replay-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
@@ -54,7 +55,7 @@ async function pastRun(extra = '') {
 providers: [claude]
 sources: { github: {} }
 queue:
-  - { skill: fix, where: { checks: failing } }
+  - { skill: fix, where: { checks: failing }, serve: true }
 ${withRepos(extra)}`)
   const quota = {
     windows: [
@@ -71,7 +72,7 @@ ${withRepos(extra)}`)
   const runDir = join(root, 'run')
   const skillDirs = { user: join(root, 'none'), builtin: builtinSkillsDir }
   const providers = { claude: worker }
-  const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
+  const ctx = { env: { PATH: process.env.PATH, ...env }, log: () => {} }
   const watch = () => ({ stop: async () => {} })
   const shared = { config, configDir: root, runDir, providers, forge, ctx, watch, skillDirs }
   const report = await runUnits({
@@ -301,6 +302,20 @@ queue: [{ skill: review }]
   expect(result.status).toBe('done')
   expect((await git(result.dir, 'rev-parse', 'HEAD')).stdout).toBe(head)
   expect(prompts[1]).toContain('cut from #3 (from a fork).')
+})
+
+it("doesn't give a replay's serve the agent's login, only the step's own env", async () => {
+  const server = fileURLToPath(new URL('./fakes/serve.mjs', import.meta.url))
+  const { root, replay } = await pastRun(
+    `repos: { acme/api: { serve: { command: "node ${server}", ready: "http://localhost:$AWAYWORK_PORT/" } } }`,
+    { FAKE_AGENT_TOKEN: 'agent-secret-xyz' },
+  )
+  const result = await replayUnit(replay)
+  const log = await readFile(join(result.out, '../serve.log'), 'utf8')
+  expect(log).toContain('booting in ready mode')
+  expect(log).toContain('token=undefined')
+  expect(log).not.toContain('agent-secret-xyz')
+  await rm(root, { recursive: true, force: true })
 })
 
 it('says a unit from before replay existed cannot be replayed', async () => {

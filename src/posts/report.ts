@@ -127,15 +127,13 @@ export function describeResult(c: Commented): string {
     : `result posted on ${c.url}${describePost(c.post)}`
 }
 
-/** The notes of the chain's steps after the first, each tagged with its step's id; a note an earlier step already left is dropped. */
+/** The notes of the chain's steps after the first, each tagged with its step's id; a note the first step left too is dropped. */
 export const laterNotes = ({ head, steps }: Chain): string[] => {
   const seen = new Set(head.notes)
   return steps
     .filter((s) => s !== head)
     .flatMap((s) =>
-      (s.notes ?? [])
-        .filter((n) => !seen.has(n) && seen.add(n))
-        .map((n) => `${s.planned.unit.id}: ${n}`),
+      (s.notes ?? []).filter((n) => !seen.has(n)).map((n) => `${s.planned.unit.id}: ${n}`),
     )
 }
 
