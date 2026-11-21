@@ -285,8 +285,8 @@ const ignoreMasks = (dir: string | undefined) =>
 
 /** A profile whose shell writes the clone and the unit's `writable` paths and reaches only the unit's `network` hosts, none by default. */
 export function shellWall(job: Job): string[] {
-  const { foreign, untrusted, network = [] } = job.unit
-  const hosts = foreign || untrusted ? [] : network
+  const { untrusted, network = [] } = job.unit
+  const hosts = untrusted ? [] : network
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
   const writable = [

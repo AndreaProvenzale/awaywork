@@ -578,6 +578,30 @@ queue:
     ])
   })
 
+  it("trusts an author on the list, still foreign, and nobody else's PR but yours", () => {
+    const yaml = (trust: string, repoTrust = '') =>
+      `providers: [claude]\n${trust && `trust: ${trust}\n`}repos: { acme/api: { ${repoTrust} } }\nsources: { github: {} }\nqueue: [{ skill: review, deliver: report }]`
+    const flags = (config: string, fields: Item['fields']) => {
+      const unit = plan(config, [githubPr(2, { mine: false, ...fields })], {}).units[0]?.unit
+      return { foreign: unit?.foreign, untrusted: unit?.untrusted }
+    }
+    const stranger = { trusted: false, author: 'Bob' }
+    const trusted = { foreign: true, untrusted: false }
+    const untrusted = { foreign: true, untrusted: true }
+    expect(flags(yaml(''), { author: 'carol' })).toEqual(trusted)
+    expect(flags(yaml(''), stranger)).toEqual(untrusted)
+    expect(flags(yaml('[]'), { author: 'carol' })).toEqual(untrusted)
+    expect(flags(yaml('[bob]'), stranger)).toEqual(trusted)
+    expect(flags(yaml('[]', 'trust: [BOB]'), stranger)).toEqual(trusted)
+    expect(flags(yaml('[Collaborators]'), { author: 'carol' })).toEqual(trusted)
+    expect(flags(yaml('[Collaborators]'), stranger)).toEqual(untrusted)
+    expect(flags(yaml('["*"]'), stranger)).toEqual(trusted)
+    expect(flags(yaml('["bob[bot]"]'), { ...stranger, author: 'bob[bot]' })).toEqual(trusted)
+    expect(flags(yaml('["bob[bot]"]'), stranger)).toEqual(untrusted)
+    expect(flags(yaml('[bob]'), { ...stranger, author: 'bob[bot]' })).toEqual(untrusted)
+    expect(flags(yaml('[]'), { mine: true })).toEqual({ foreign: false, untrusted: false })
+  })
+
   it("refuses a chain that could commit onto someone else's PR or a fork, and reports there", () => {
     const yaml = `
 providers: [claude]

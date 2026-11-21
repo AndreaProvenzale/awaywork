@@ -24,7 +24,13 @@ const problems = (text: string): string[] => {
 describe('repos', () => {
   it('takes a bare key as a listed repo with no settings', () => {
     const { repos } = parseConfig(config('repos:\n  acme/api:\n  acme/*: { setup: yarn }'))
-    expect(repos['acme/api']).toEqual({ secrets: [], network: [], writable: [], gates: {} })
+    expect(repos['acme/api']).toEqual({
+      secrets: [],
+      network: [],
+      trust: [],
+      writable: [],
+      gates: {},
+    })
     expect(repoListed(repos, 'acme/api')).toBe(true)
     expect(repoListed(repos, 'Acme/Web')).toBe(true)
     expect(repoListed(repos, 'other/api')).toBe(false)
@@ -44,6 +50,7 @@ describe('repos', () => {
       verify: 'yarn lint',
       secrets: ['NPM_TOKEN', 'SENTRY_DSN'],
       network: [],
+      trust: [],
       writable: [],
       gates: { deps: { changed: ['package.json'] }, routes: { command: './routes.sh' } },
     })
@@ -55,9 +62,27 @@ describe('repos', () => {
     expect(settingsFor({}, 'acme/api')).toEqual({
       secrets: [],
       network: [],
+      trust: [],
       writable: [],
       gates: {},
     })
+  })
+
+  it('adds up the trust of every key naming a repo with the top level, and checks its entries', () => {
+    const { repos } = parseConfig(
+      config(`trust: [collaborators]
+repos:
+  acme/api: { trust: [alice, collaborators] }
+  acme/*: { trust: [Bob, "*"] }`),
+    )
+    expect(settingsFor(repos, 'acme/api').trust).toEqual(['Bob', '*', 'alice', 'collaborators'])
+    expect(parseConfig(config('repos: { acme/api: }')).trust).toEqual(['collaborators'])
+    expect(parseConfig(config('trust: []\nrepos: { acme/api: }')).trust).toEqual([])
+    for (const bad of ['acme/platform', '@alice', '-alice', 'a b'])
+      expect(problems(config(`repos: { acme/api: }\ntrust: ["${bad}"]`))).toHaveLength(1)
+    expect(problems(config('repos: { acme/api: }\ntrust: [acme/platform]'))[0]).toContain(
+      "a team (org/slug) isn't supported yet",
+    )
   })
 
   it('adds up the network hosts of every key naming a repo, and checks them', () => {
@@ -298,7 +323,7 @@ describe('the allowlist', () => {
 
   it('opens, comments on and closes a thread issue only in a repo a key names', async () => {
     const run = recorded([])
-    const threads = githubThreads(run, undefined, { 'acme/*': {} })
+    const threads = githubThreads(run, undefined, () => [], { 'acme/*': {} })
     const refused = "other/unlisted isn't in repos: awaywork writes only in the repos listed there"
     const thread = { host: 'github', key: 'other/unlisted#7', url: 'https://github.com/x' }
     await expect(threads.openThread('other/unlisted', fakeItem())).rejects.toThrow(refused)
@@ -366,10 +391,21 @@ describe('the allowlist', () => {
 
 describe('the github source', () => {
   it('reads the repos the config lists, on the forge’s host', async () => {
-    const scoped = (top: string) => parseConfig(config(top)).sources.github as { repos: string[] }
+    const scoped = (top: string) =>
+      parseConfig(config(top)).sources.github as {
+        repos: string[]
+        trust: Record<string, string[]>
+      }
     expect(scoped('forge: { github: { host: github.acme.com } }\nrepos: { acme/web: }')).toEqual({
       repos: ['acme/web'],
+      trust: { 'acme/web': ['collaborators'] },
       host: 'github.acme.com',
+    })
+    expect(
+      scoped('trust: [bob]\nrepos: { acme/web: { trust: [alice] }, acme/api: }').trust,
+    ).toEqual({
+      'acme/web': ['bob', 'alice'],
+      'acme/api': ['bob'],
     })
     const items = (top: string) =>
       githubSource(recorded(githubRoutes())).items(scoped(top), { env: {}, log: () => {} })

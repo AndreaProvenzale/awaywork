@@ -46,6 +46,7 @@ export const judge =
       skills: [],
       deliver: 'report',
       foreign: true,
+      untrusted: true,
       stackedOn: undefined,
       lean: undefined,
       network: undefined,
@@ -59,8 +60,8 @@ export const judge =
       },
     }
     let why: string | undefined
-    // The judge's workspace hides the repo's config and skill from it; a clone that isn't foreign gets them back after.
-    const hides = !unit.foreign && (provider.skillsDir || provider.repoConfig?.length)
+    // The judge's workspace hides the repo's config and skill from it; a clone that isn't untrusted gets them back after.
+    const hides = !unit.untrusted && (provider.skillsDir || provider.repoConfig?.length)
     const found = hides ? await snapshot(dir) : undefined
     try {
       if (contained() && image) contain(dir, { image, plugin, secrets })
@@ -73,6 +74,7 @@ export const judge =
         ctx: { ...input.ctx, log },
         reuse: true,
         judge: on,
+        setupSkipped: unit.untrusted,
       })
       const withheld = secrets.filter((name) => !provider.secrets.includes(name))
       const job = {

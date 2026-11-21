@@ -70,7 +70,7 @@ GitHub's own:
 | --- | --- | --- |
 | `label` | PRs, issues | Its labels |
 | `author` | PRs, issues | The author's login |
-| `trusted` | PRs, issues | The author is an owner, member or collaborator |
+| `trusted` | PRs, issues | The author is on the repo's [`trust`](../safety/index.md#trusting-an-author) list, by default an owner, member or collaborator, or you |
 | `mine` | PRs, issues | A PR you authored, an issue assigned to you |
 | `ours` | PRs | awaywork opened it |
 | `draft` | PRs | It's a draft |

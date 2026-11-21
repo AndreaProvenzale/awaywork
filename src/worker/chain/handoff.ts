@@ -99,7 +99,7 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
     await cp(join(dir, '.git', 'index'), index)
     await addTo(dir, index, ['-A'], ['.'])
     const paths = [`${WORK_DIR}/out`, ...(await configIn(dir))]
-    // `--sparse` passes over a config file a foreign chain's workspace hid, as `-A` does, instead of failing.
+    // `--sparse` passes over a config file an untrusted chain's workspace hid, as `-A` does, instead of failing.
     await addTo(dir, index, ['-f', '--sparse'], paths)
     return { staged, tree: await run('write-tree') }
   } finally {

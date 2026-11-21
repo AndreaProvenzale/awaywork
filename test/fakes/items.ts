@@ -37,6 +37,7 @@ export function githubPr(n: number, fields: Item['fields'] = {}): Item {
         branch,
         ours: false,
         mine: fields.mine !== false,
+        ...(typeof fields.author === 'string' && { author: fields.author }),
         trusted: fields.trusted !== false,
         fork: false,
       },

@@ -334,11 +334,14 @@ describe('cursor shell walled to the network hosts', () => {
     expect(await none.read('sandbox.json')).not.toHaveProperty('additionalReadwritePaths')
   })
 
-  it("lists no host on someone else's PR", async () => {
-    for (const unit of [{ foreign: true }, { untrusted: true }]) {
-      const { read } = await walled({ network: ['pypi.org'], ...unit })
-      expect((await read('sandbox.json')).networkPolicy.allow).toEqual(['localhost', '127.0.0.1'])
-    }
+  it("lists no host on an untrusted author's PR", async () => {
+    const { read } = await walled({ network: ['pypi.org'], untrusted: true })
+    expect((await read('sandbox.json')).networkPolicy.allow).toEqual(['localhost', '127.0.0.1'])
+  })
+
+  it("lists the hosts on a trusted author's PR", async () => {
+    const { read } = await walled({ network: ['pypi.org'], foreign: true })
+    expect((await read('sandbox.json')).networkPolicy.allow).toContain('pypi.org')
   })
 
   it("keeps the shell open where the sandbox can't start, and says so", async () => {

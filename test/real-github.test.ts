@@ -10,6 +10,8 @@ import { isAwayworkComment } from '#posts/comments'
 import { github } from '#sources/github'
 import { itemFields, sourceField, writeItem } from '#sources/index'
 
+const defaultTrust = { '*/*': ['collaborators'] }
+
 let repo = process.env.AWAYWORK_GITHUB_SANDBOX ?? ''
 const reviewerToken = process.env.AWAYWORK_GITHUB_REVIEWER_TOKEN ?? ''
 const ctx = { env: process.env, log: console.log }
@@ -35,7 +37,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** Search indexes new items a few seconds late, so read until `pick` finds them settled. */
 async function settled<T>(pick: (items: Item[]) => T | undefined, wait = 90_000): Promise<T> {
   for (let deadline = Date.now() + wait; ; await sleep(5_000)) {
-    const items = await github.items({ repos: [repo] }, ctx)
+    const items = await github.items({ repos: [repo], trust: defaultTrust }, ctx)
     const found = pick(items)
     if (found) return found
     if (Date.now() > deadline)

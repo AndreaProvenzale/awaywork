@@ -589,7 +589,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
   )
 })
 
-it('runs context and setup before the worker, setup with only its own secrets, none on a foreign PR, not at all on an untrusted one, and skips a unit whose setup fails', async () => {
+it("runs context and setup before the worker, setup with only its own secrets, not at all on an untrusted author's PR, and skips a unit whose setup fails", async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-setup-'))
   const forge = {
     ...fakeForge(),
@@ -660,7 +660,7 @@ repos:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  expect(setups).toEqual(['npm,,/agent.sock\n', ',,/agent.sock\n', 'not run'])
+  expect(setups).toEqual(['npm,,/agent.sock\n', 'npm,,/agent.sock\n', 'not run'])
   expect(events.filter((l) => l.startsWith('acme-api-2:'))).toEqual([
     'acme-api-2: review on claude',
     expect.stringMatching(/^acme-api-2: skipped, setup failed: .*code 3/),
@@ -680,7 +680,7 @@ repos:
   expect(untrusted).toContain("Setup, not run because this PR's author isn't trusted")
 })
 
-it("gives a worker its step's MCP servers, else its rule's, whose secrets are set, and none on someone else's PR", async () => {
+it("gives a worker its step's MCP servers, else its rule's, whose secrets are set, and none on an untrusted author's PR", async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-mcp-'))
   const forge = {
     ...fakeForge(),
@@ -764,22 +764,124 @@ queue:
     { unit: 'acme-api-1-review', mcp: [], env: ['PATH', ...fixed] },
     { unit: 'acme-api-2', ...sentry },
     { unit: 'acme-api-3', mcp: [], env: ['PATH', ...fixed] },
-    { unit: 'acme-api-4', mcp: [], env: ['PATH', ...fixed] },
+    { unit: 'acme-api-4', ...sentry },
   ])
   const log = (unit: string) =>
     readFile(join(root, `run/units/${unit}/1-review/worker.log`), 'utf8')
   expect(await log('acme-api-2')).toContain('mcp: jira not started, unset: JIRA_TOKEN')
-  expect(await log('acme-api-3')).toContain("mcp: sentry, jira not started on someone else's PR")
-  expect(await log('acme-api-4')).toContain("mcp: sentry, jira not started on someone else's PR")
-  const notOpened = "network: not opened on someone else's PR"
+  expect(await log('acme-api-3')).toContain(
+    "mcp: sentry, jira not started on an untrusted author's PR",
+  )
+  expect(await log('acme-api-4')).toContain('mcp: jira not started, unset: JIRA_TOKEN')
+  const notOpened = "network: not opened on an untrusted author's PR"
   expect(await log('acme-api-2')).not.toContain(notOpened)
   expect(await log('acme-api-3')).toContain(notOpened)
-  expect(await log('acme-api-4')).toContain(notOpened)
-  const notWritable = "writable: not opened on someone else's PR"
+  expect(await log('acme-api-4')).not.toContain(notOpened)
+  const notWritable = "writable: not opened on an untrusted author's PR"
   expect(await log('acme-api-2')).toContain("writable: /no/such/dir doesn't exist, skipped")
   expect(await log('acme-api-2')).not.toContain(notWritable)
   expect(await log('acme-api-3')).toContain(notWritable)
-  expect(await log('acme-api-4')).toContain(notWritable)
+  expect(await log('acme-api-4')).toContain("writable: /no/such/dir doesn't exist, skipped")
+  expect(await log('acme-api-4')).not.toContain(notWritable)
+})
+
+it("gives a trusted author's PR the setup secrets, checks, MCP and network, and still keeps it foreign", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-trust-'))
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, _branch: string, dir: string) => {
+      await execa(bin('git'), ['init', '-q', dir])
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    },
+  }
+  const config = parseConfig(`
+providers: [claude: {}]
+budget: { fallback: { units: 8, turns: 60 } }
+repos:
+  acme/api:
+    setup: 'echo "$NPM_TOKEN" > setup.txt'
+    secrets: [NPM_TOKEN]
+trust: [Alice]
+network: [a.example]
+sources: { github: {} }
+mcp:
+  db: { command: db-mcp, secrets: [DB_URL] }
+queue:
+  - { skill: review, mcp: [db], deliver: report, gates: { risk: { skill: judge } }, then: { skill: fix, when: { command: "true" } } }
+`)
+  const plan = planRun({
+    setup: setupOf(config, { builtin: builtinSkills }),
+    items: [
+      githubPr(1),
+      githubPr(2, { mine: false, trusted: false, author: 'alice' }),
+      githubPr(3, { mine: false, trusted: false, author: 'bob' }),
+      githubPr(4, { mine: false, author: 'carol' }),
+    ],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+  })
+  const judged: Record<string, { foreign: boolean; untrusted: boolean }> = {}
+  const seen: Record<
+    string,
+    { setup: string; mcp: string[]; foreign: boolean; untrusted: boolean }
+  > = {}
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: {
+      claude: {
+        ...worker,
+        async *run(job) {
+          const setup = await readFile(join(job.dir, 'setup.txt'), 'utf8').catch(() => 'not run')
+          const { foreign, untrusted } = job.unit
+          if (job.unit.skill === 'judge') judged[job.unit.id] = { foreign, untrusted }
+          else seen[job.unit.id] = { setup, mcp: Object.keys(job.mcp ?? {}), foreign, untrusted }
+          await writeFile(join(job.dir, '.away/out/report.md'), 'Done.')
+          yield { type: 'done', ok: true, turns: 1 }
+        },
+      },
+    },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: '/bin', DB_URL: 'db', NPM_TOKEN: 'npm' }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(seen).toMatchObject({
+    'acme-api-1': { setup: 'npm\n', mcp: ['db'], foreign: false, untrusted: false },
+    'acme-api-2': { setup: 'npm\n', mcp: ['db'], foreign: true, untrusted: false },
+    'acme-api-3': { setup: 'not run', mcp: [], foreign: true, untrusted: true },
+    'acme-api-4': { setup: 'not run', mcp: [], foreign: true, untrusted: true },
+  })
+  expect(judged['acme-api-2']).toEqual({ foreign: true, untrusted: true })
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-fix', 'done'],
+    ['acme-api-2', 'done'],
+    ['acme-api-2-fix', 'done'],
+    ['acme-api-3', 'done'],
+    ['acme-api-3-fix', 'skipped'],
+    ['acme-api-4', 'done'],
+    ['acme-api-4-fix', 'skipped'],
+  ])
+  const log = (unit: string) =>
+    readFile(join(root, `run/units/${unit}/1-review/worker.log`), 'utf8')
+  const notOpened = "network: not opened on an untrusted author's PR"
+  expect(await log('acme-api-2')).not.toContain(notOpened)
+  expect(await log('acme-api-2')).not.toContain('not started on someone else')
+  for (const id of ['acme-api-3', 'acme-api-4']) {
+    expect(await log(id)).toContain(notOpened)
+    expect(await log(id)).toContain("mcp: db not started on an untrusted author's PR")
+  }
+  const prompt = (unit: string) =>
+    readFile(join(root, `run/units/${unit}/1-review/prompt.md`), 'utf8')
+  expect(await prompt('acme-api-2')).not.toContain('someone else opened')
+  expect(await prompt('acme-api-3')).toContain('someone else opened')
 })
 
 it('stops a unit at unit_minutes', async () => {
@@ -832,7 +934,7 @@ it('stops a unit at unit_minutes', async () => {
   }
 })
 
-it("hands the agent's shell the real, existing writable paths, none of awaywork's or the home's, and none on someone else's PR or in a container", async () => {
+it("hands the agent's shell the real, existing writable paths, none of awaywork's or the home's, and none on an untrusted author's PR or in a container", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'awaywork-writable-')))
   const target = join(root, 'target')
   await mkdir(target)
@@ -897,10 +999,15 @@ queue: [{ skill: review }]
   const log = (name: string, unit: string) =>
     readFile(join(root, `${name}/units/${unit}/1-review/worker.log`), 'utf8')
   try {
-    const items = [githubPr(1), githubPr(2, { mine: false, trusted: false })]
+    const items = [
+      githubPr(1),
+      githubPr(2, { mine: false, trusted: false }),
+      githubPr(3, { mine: false }),
+    ]
     expect(await run('host', items)).toEqual({
       'acme-api-1': [target, underHome],
       'acme-api-2': [],
+      'acme-api-3': [target, underHome],
     })
     const own = await log('host', 'acme-api-1')
     expect(own).toContain(`writable: ${join(root, 'link')} is ${target}`)
@@ -910,7 +1017,9 @@ queue: [{ skill: review }]
     expect(own).toContain(
       `writable: ${loaded} overlaps awaywork's own ${await realpath(loaded)}, refused`,
     )
-    expect(await log('host', 'acme-api-2')).toContain("writable: not opened on someone else's PR")
+    expect(await log('host', 'acme-api-2')).toContain(
+      "writable: not opened on an untrusted author's PR",
+    )
   } finally {
     await rm(underHome, { recursive: true, force: true })
   }

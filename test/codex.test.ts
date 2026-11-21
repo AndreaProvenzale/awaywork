@@ -171,12 +171,16 @@ describe('codex provider', () => {
     expect(wall(run)).toContain('permissions.awaywork.network.domains={"*"="allow"}')
   })
 
-  it("withholds the hosts from someone else's PR", () => {
-    for (const flag of ['foreign', 'untrusted'] as const) {
-      const run = job()
-      Object.assign(run.unit, { network: ['npmjs.org'], [flag]: true })
-      expect(wall(run)).toContain('permissions.awaywork.network.domains={}')
-    }
+  it("withholds the hosts from an untrusted author's PR", () => {
+    const run = job()
+    Object.assign(run.unit, { network: ['npmjs.org'], untrusted: true })
+    expect(wall(run)).toContain('permissions.awaywork.network.domains={}')
+  })
+
+  it("gives a trusted author's PR the hosts", () => {
+    const run = job()
+    Object.assign(run.unit, { network: ['npmjs.org'], foreign: true, untrusted: false })
+    expect(wall(run)).toContain('permissions.awaywork.network.domains={"npmjs.org"="allow"}')
   })
 
   it('keeps the shell open where the sandbox cannot start, and says so', async () => {

@@ -150,6 +150,6 @@ The plugin watches the config's folder, so the chat's writes show at once. A dra
 - writes your repo's [proving skill](./workflows/proving.md) with you: `/away show me it works before I review`;
 - proposes lines to cut from your `AGENTS.md` and instructions files, each with its evidence: `/away prune my AGENTS.md` ([Prune](./suggest.md#prune)).
 
-It never sees a token, starts a run or installs a schedule (it gives you the commands), or skips, unskips and approves without asking. Nothing reaches your config without your yes, and a widening you didn't ask for (`deliver: push`, `deliver: pr`, `on_done`, dropping `trusted`) gets its own question.
+It never sees a token, starts a run or installs a schedule (it gives you the commands), or skips, unskips and approves without asking. Nothing reaches your config without your yes, and a widening you didn't ask for (`deliver: push`, `deliver: pr`, `on_done`, dropping `trusted`, `network`, `trust`, `isolation`) gets its own question.
 
 Not sure what to hand over? `/away what could you take off my plate?` reads your recent sessions and PRs, with your say-so each time, and proposes rules, routines and `AGENTS.md` lines for work you do by reflex: [Suggested rules](./suggest.md).

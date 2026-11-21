@@ -40,7 +40,7 @@ interface Provider {
   skillsDir?: string                        // where skills go in the clone; unset: job.plugin
   instructionsFile: string                  // CLAUDE.md, AGENTS.md, …
   bin?: string                              // the binary's name, when it isn't the id
-  repoConfig?: string[]                     // clone files hidden on someone else's PR
+  repoConfig?: string[]                     // clone files hidden on an untrusted author's PR
 }
 ```
 
@@ -49,7 +49,7 @@ interface Provider {
   - The binary reaches only `job.env`, the clone and `job.plugin`: on a GitHub-hosted runner it's another user with its own `HOME`, without the runner's home; under `isolation: container` a container of the repo's image mounting only the clone and `job.plugin`, with only the unit's secrets and the env names in `AWAYWORK_ENV`, so put a variable your provider sets on that list.
   - `job.config` is the provider's config entry, paths relative to `job.configDir`. Without a `skillsDir`, skills come as a plugin folder in `job.plugin`.
 - `prepare` runs before each `run`, while the clone is still yours under every isolation (under `user` and `container` it's the worker's once `run` starts), so write files the binary reads here, like Cursor's `HOME` in `.away/agent-home`. `launch`'s `home` option then gives the binary that `HOME` whatever the isolation.
-- `repoConfig` names clone files that make the binary run commands or allow it more, like `.cursor/hooks.json`: awaywork removes them on someone else's PR, git keeping the committed version, and for a gate's judge, since an agent wrote its clone, restoring them after the judge on your own PR.
+- `repoConfig` names clone files that make the binary run commands or allow it more, like `.cursor/hooks.json`: awaywork removes them on an untrusted author's PR, git keeping the committed version, and for a gate's judge, since an agent wrote its clone, restoring them after the judge unless the PR's author is untrusted.
 - `probe` reads windows as shares from 0 to 1, `short` for the ~5 h session, `long` for the week or month; `null` when unreadable, and awaywork applies `fallback`.
 - A turn cap the CLI lacks is enforced by counting tool calls and aborting, as `codex.ts` does.
 - `install` is how the action puts the binary on a GitHub-hosted runner: an npm package joins its one `npm install -g`; a bash `script` runs as the runner's user, with sudo, before the worker user exists, as Cursor's does. Install outside the runner's home and nowhere the worker can write. Without `install`, a provider is `unavailable` there.

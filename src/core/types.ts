@@ -22,6 +22,8 @@ export interface PrRef {
   ours: boolean
   /** Opened by the developer, by hand or through awaywork. */
   mine: boolean
+  /** Its author's login. */
+  author?: string
   /** Its author has write access or org membership; always, when it's mine. */
   trusted: boolean
   /** Its branch lives on a fork, not in `repo`. */
@@ -260,7 +262,7 @@ export interface Provider {
   instructionsFile: string
   /** The binary's name, when it isn't the id. */
   bin?: string
-  /** Files in the clone that make the binary run commands or allow it more, like hooks: on someone else's PR they're the author's, so it doesn't see them. */
+  /** Files in the clone that make the binary run commands or allow it more, like hooks: on someone else's PR they're the author's, so it doesn't see them unless its author is trusted. */
   repoConfig?: string[]
 }
 
@@ -463,15 +465,15 @@ export interface Unit {
   repo: string
   /** The linked PR's branch, or '' for the repo's default branch. */
   base: string
-  /** `base` is a PR someone else opened: its in-repo config is the author's, not the developer's. */
+  /** `base` is a PR someone else opened: awaywork writes nothing onto it. */
   foreign: boolean
-  /** `base` is a PR by an author without write access or org membership: setup doesn't run on it. */
+  /** `base` is someone else's PR whose author isn't on the `trust` list: none of its code, config or your grants are used. */
   untrusted: boolean
   /** `base` is PR `number`'s branch on a fork, read at `head`: only a report delivers there. */
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on someone else's PR. */
+  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on an untrusted author's PR. */
   network?: string[]
   /** Paths the agent's shell may write besides the clone, from the top level, the repo and the rule; `~/` as written. */
   writable?: string[]
