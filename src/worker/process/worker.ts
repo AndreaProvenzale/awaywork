@@ -4,6 +4,7 @@ import { AGENT_HOME, asWorker, lostToWorker } from '#core/isolation'
 import type { Job, Provider, Quota } from '#core/types'
 import { type Allowance, pct, scopedOver } from '#quota/budget'
 import { refuseSymlinks } from '#worker/clone/files'
+import { type Served, type ServeRequest, startServe } from './serve'
 import { startWatchdog, type Watchdog } from './watchdog'
 
 export type WorkerStatus =
@@ -22,7 +23,7 @@ export interface WorkerResult {
   /** The last reading the worker saw. */
   quota?: Quota
   reason?: string
-  /** What the provider set aside or changed in the clone for the run. */
+  /** What the provider set aside or changed in the clone for the run, and what came of serve. */
   notes?: string[]
 }
 
@@ -34,14 +35,16 @@ export interface WorkerOptions {
   /** Stop the worker after this many minutes. */
   maxMinutes?: number
   watch?: (dir: string, onLimit: (reason: string) => void) => Watchdog
+  /** The app to start for the agent, inside its phase; it stops once the agent's run is over. */
+  serve?: ServeRequest
 }
 
-/** Runs one job; stops it at this run's ceiling, at its session limit, at `until`, after `maxMinutes`, or when the watchdog trips. The provider enforces the turn cap. */
+/** Runs one job, with its app up if `serve` is set; stops it at this run's ceiling, at its session limit, at `until`, after `maxMinutes`, or when the watchdog trips. The provider enforces the turn cap. */
 export async function runWorker(
   provider: Provider,
   job: Job,
   allowance: Allowance,
-  { log, signal, until, maxMinutes, watch = startWatchdog }: WorkerOptions,
+  { log, signal, until, maxMinutes, watch = startWatchdog, serve }: WorkerOptions,
 ): Promise<WorkerResult> {
   const abort = new AbortController()
   let stopped: { status: WorkerStatus; reason: string } | undefined
@@ -70,6 +73,7 @@ export async function runWorker(
 
   const result: WorkerResult = { status: 'failed', turns: 0 }
   const { login } = provider
+  let served: Served | undefined
   try {
     await provider.prepare?.(job)
     const notes = (await provider.setAside?.(job)) ?? []
@@ -78,7 +82,13 @@ export async function runWorker(
     await asWorker(
       job.dir,
       async () => {
-        for await (const event of provider.run(job, abort.signal)) {
+        served = serve && (await startServe(serve, job, abort.signal))
+        if (served) {
+          log(served.note)
+          result.notes = [...(result.notes ?? []), served.note]
+        }
+        if (abort.signal.aborted) return
+        for await (const event of provider.run(served?.job ?? job, abort.signal)) {
           if (event.type === 'log') log(event.line)
           if (event.type === 'quota') {
             result.quota = event.quota
@@ -98,7 +108,9 @@ export async function runWorker(
     signal?.removeEventListener('abort', onAbort)
     clearTimeout(windowEnd)
     clearTimeout(timeUp)
+    // The watchdog first: serve's process is still up for its last look at what it started.
     await watchdog.stop()
+    await served?.stop()
     await removeAgentHome(job.dir, log)
   }
   return stopped ? { ...result, ...stopped } : result

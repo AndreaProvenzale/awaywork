@@ -90,6 +90,15 @@ export function startWatchdog(
   }
 }
 
+/** Kills `pid` and every process under it, including those that left its process group. */
+export async function killTree(pid: number): Promise<void> {
+  for (const [alive] of under([pid], await processes())) {
+    try {
+      process.kill(alive, 'SIGKILL')
+    } catch {}
+  }
+}
+
 type Table = Map<number, { ppid: number; started: string }>
 
 async function processes(): Promise<Table> {

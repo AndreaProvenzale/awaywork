@@ -381,6 +381,8 @@ export interface Step {
   skills: string[]
   /** MCP servers the worker gets, by name under the config's `mcp`. */
   mcp?: string[]
+  /** The repo's serve command runs for this step. */
+  serve?: boolean
   instructions: string[]
   /** Parameters listed in the prompt next to the skill. */
   with?: Record<string, Scalar>

@@ -293,6 +293,10 @@ const stepSettings = {
     .min(1)
     .optional()
     .describe('MCP servers the worker gets, by their name under the top-level mcp'),
+  serve: z
+    .boolean()
+    .optional()
+    .describe("Start the repo's serve command for the worker, which gets the app's URL"),
   instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
   with: z
     .record(z.string().min(1), scalar)
@@ -378,6 +382,10 @@ const stepObject = z.strictObject({
     .describe(
       "MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none",
     ),
+  serve: z
+    .boolean()
+    .optional()
+    .describe("Start the repo's serve command for this step; default the rule's"),
   instructions: oneOrMany
     .optional()
     .describe("Instruction files added for this step; default the rule's, [] none"),
@@ -632,6 +640,25 @@ const repoSettings = z.strictObject({
     .array(z.string().min(1))
     .default([])
     .describe('Env vars setup needs; withheld from workers, listed in Actions'),
+  serve: z
+    .strictObject({
+      command: z
+        .string()
+        .min(1)
+        .describe(
+          'Starts the app for a step with serve: true, after setup, with its port in $AWAYWORK_PORT; it stops when the agent does',
+        ),
+      ready: z
+        .string()
+        .min(1)
+        .describe(
+          'URL awaywork polls, $AWAYWORK_PORT substituted, until it answers with less than a 500; the step runs without the app after 5 minutes',
+        ),
+    })
+    .optional()
+    .describe(
+      "The app a step with serve: true gets, under isolation: none; it can't see your secrets",
+    ),
   verify: z
     .string()
     .optional()

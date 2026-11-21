@@ -766,6 +766,27 @@
                   "minLength": 1
                 }
               },
+              "serve": {
+                "description": "The app a step with serve: true gets, under isolation: none; it can't see your secrets",
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Starts the app for a step with serve: true, after setup, with its port in $AWAYWORK_PORT; it stops when the agent does"
+                  },
+                  "ready": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "URL awaywork polls, $AWAYWORK_PORT substituted, until it answers with less than a 500; the step runs without the app after 5 minutes"
+                  }
+                },
+                "required": [
+                  "command",
+                  "ready"
+                ],
+                "additionalProperties": false
+              },
               "verify": {
                 "description": "Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published",
                 "type": "string"
@@ -1085,6 +1106,10 @@
               "type": "string"
             }
           },
+          "serve": {
+            "description": "Start the repo's serve command for the worker, which gets the app's URL",
+            "type": "boolean"
+          },
           "instructions": {
             "description": "Instruction files added for this rule",
             "anyOf": [
@@ -1319,6 +1344,10 @@
                           "type": "string"
                         }
                       },
+                      "serve": {
+                        "description": "Start the repo's serve command for this step; default the rule's",
+                        "type": "boolean"
+                      },
                       "instructions": {
                         "description": "Instruction files added for this step; default the rule's, [] none",
                         "anyOf": [
@@ -1505,6 +1534,10 @@
                                   "type": "string"
                                 }
                               },
+                              "serve": {
+                                "description": "Start the repo's serve command for this step; default the rule's",
+                                "type": "boolean"
+                              },
                               "instructions": {
                                 "description": "Instruction files added for this step; default the rule's, [] none",
                                 "anyOf": [
@@ -1687,6 +1720,10 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "serve": {
+                                  "description": "Start the repo's serve command for this step; default the rule's",
+                                  "type": "boolean"
                                 },
                                 "instructions": {
                                   "description": "Instruction files added for this step; default the rule's, [] none",
@@ -1950,6 +1987,10 @@
                                 "type": "string"
                               }
                             },
+                            "serve": {
+                              "description": "Start the repo's serve command for this step; default the rule's",
+                              "type": "boolean"
+                            },
                             "instructions": {
                               "description": "Instruction files added for this step; default the rule's, [] none",
                               "anyOf": [
@@ -2136,6 +2177,10 @@
                                         "type": "string"
                                       }
                                     },
+                                    "serve": {
+                                      "description": "Start the repo's serve command for this step; default the rule's",
+                                      "type": "boolean"
+                                    },
                                     "instructions": {
                                       "description": "Instruction files added for this step; default the rule's, [] none",
                                       "anyOf": [
@@ -2318,6 +2363,10 @@
                                         "items": {
                                           "type": "string"
                                         }
+                                      },
+                                      "serve": {
+                                        "description": "Start the repo's serve command for this step; default the rule's",
+                                        "type": "boolean"
                                       },
                                       "instructions": {
                                         "description": "Instruction files added for this step; default the rule's, [] none",
