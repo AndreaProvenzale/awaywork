@@ -408,7 +408,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     }
     if (a.kind === 'quota') result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
     start = await head(dir)
-    const retryable = attempt === 0 && modelFor(unit.rule.model, id, 1) !== undefined
+    const retryable = attempt === 0 && Array.isArray(unit.rule.model?.[id])
     const saved = retryable ? await snapshot(dir) : undefined
     cs.ran = true
     const worker = await runWorker(provider, job, a, {
