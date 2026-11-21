@@ -27,7 +27,7 @@ with:
 | `windows` | object[] | `[{"start":"01:00","end":"07:00"}]` | Local hours a scheduled run may start units in; each opening is one run; [] for none |
 | `watch` | object | `{}` | awaywork watch, the daemon schedule install keeps running |
 | `limits` | object | `{}` | Unit counts and time per run, for every provider |
-| `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image |
+| `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, a worker user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image |
 | `budget` | object | `{}` | Quota shares, for every provider |
 | `providers` (required) | ("claude" \| "codex" \| "cursor" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `forge` | "github" \| "bitbucket" \| object | `"github"` | Where the repos live: github or bitbucket, or github as a map of its settings, e.g. { github: { host: github.acme.com } } |

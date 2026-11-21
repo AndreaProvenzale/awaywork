@@ -114,7 +114,7 @@ awaywork switch
 
 - **Config:** `--config` and `AWAYWORK_CONFIG` still win over the profile's.
 - **Secrets:** only the profile's `.env` loads, next to its config. Keep it out of git: `.env` in the config repo's `.gitignore`; `secret` warns when it isn't.
-- **State:** runs, attempts, skips and the daemon's lock and log live in `~/.local/state/awaywork/profiles/<name>/`; `default` keeps `~/.local/state/awaywork/`. The Codex login lock stays shared, as `~/.codex` is, and so does the worker user's under `isolation: user`: units of two profiles take turns.
+- **State:** runs, attempts, skips and the daemon's lock and log live in `~/.local/state/awaywork/profiles/<name>/`; `default` keeps `~/.local/state/awaywork/`. The Codex login lock stays shared, as `~/.codex` is. Under `isolation: user` each profile has its own worker user and lock, so units of two profiles run at once.
 - **Per shell:** `AWAYWORK_PROFILE=work awaywork plan` ignores the current profile for that call, and `awaywork switch` says when it's set. What `watch` starts stays on its profile even if you switch meanwhile.
 
 `switch` runs on this machine, never on an `AWAYWORK_REMOTE` box. For one daemon per profile, see [two profiles on one machine](../scheduling/machine.md#two-profiles-on-one-machine).

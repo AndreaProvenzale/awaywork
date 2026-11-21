@@ -26,9 +26,9 @@ import {
   cursorSandboxStarts,
   DOCKER_TIMEOUT_MS,
   dockerVersion,
-  forcesWorker,
   inAwayworkImage,
   inImage,
+  MAX_USER,
   sandboxStarts,
   sudoersLines,
   WORKER,
@@ -153,7 +153,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const image = root && (await staleDocker(root))
   if (image) report('warn', 'schedule', image)
   for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
-  const boxed = config.isolation === 'container' && !forcesWorker(process.env)
+  const boxed =
+    config.isolation === 'container' &&
+    process.env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
+    !inAwayworkImage(process.env)
   const isolation = boxed
     ? await containerChecks(config, process.env)
     : await isolationChecks(config.isolation, process.env)
@@ -472,7 +475,8 @@ export async function isolationChecks(
     const local =
       env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
       !inAwayworkImage(env) &&
-      process.platform === 'linux'
+      process.platform === 'linux' &&
+      WORKER.length <= MAX_USER
     return [workerFailure(worker.message, local)]
   }
   const checks: Check[] = [

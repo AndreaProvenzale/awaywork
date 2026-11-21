@@ -33,7 +33,7 @@ repos:
 - **`image`** is what the repo's units run in under [`isolation: container`](../safety/isolation.md#in-a-container).
 - **`instructions`** (top level, per repo, per rule) are file paths relative to the config they're in. A repo can also carry `.awaywork/instructions.md`, read unless the unit is on the PR of an author you don't [trust](../safety/index.md#trusting-an-author).
 
-Top-level `skills` adds [skills](../skills.md#where-skills-come-from) to every unit. PR titles, bodies and commit messages have no config: the agent follows the repo's template, its commit style and your instructions.
+Top-level `skills` adds [skills](../skills.md#where-skills-come-from) to every unit. PR titles, bodies and commit messages have no config: the agent follows the repo's template and your instructions.
 
 Details on `setup` and its `secrets`:
 
