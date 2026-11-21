@@ -180,7 +180,7 @@ function quotaUnmet(quota: Condition | undefined, a: Allowance | undefined): str
   return holds(quota, quotaFacts(a)) ? undefined : "doesn't hold on the probe"
 }
 
-/** A step with the rule's provider, model, skills, MCP servers and instructions where it sets none. */
+/** A step with the rule's provider, model, skills, MCP servers, serve and instructions where it sets none. */
 function inherit(rule: Rule, step: ThenStep): Step {
   return {
     ...step,
@@ -188,6 +188,7 @@ function inherit(rule: Rule, step: ThenStep): Step {
     model: step.model ?? rule.model,
     skills: step.skills ?? rule.skills,
     mcp: step.mcp ?? rule.mcp,
+    serve: step.serve ?? rule.serve,
     instructions: step.instructions ?? rule.instructions,
   }
 }

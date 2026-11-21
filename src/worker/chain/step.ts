@@ -26,6 +26,7 @@ import { prepareWorkspace } from '#worker/clone/workspace'
 import { freeBranch, prependSection } from '#worker/deliver/slice'
 import { untilHolds } from '#worker/process/checks'
 import { maskSecrets, runSetup } from '#worker/process/command'
+import { serveRequest } from '#worker/process/serve'
 import { shortage } from '#worker/process/watchdog'
 import { runWorker } from '#worker/process/worker'
 import { lastReport } from '#worker/units/ready'
@@ -419,6 +420,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
       until: input.until,
       maxMinutes: input.config.limits.unit_minutes,
       watch: input.watch,
+      serve: serveRequest(unit, settings.serve, join(unitDir, 'serve.log')),
     })
     await restoreGit(dir)
     for (const line of (await provider.finish?.(dir)) ?? []) log(line)
