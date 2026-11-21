@@ -6,7 +6,9 @@ description: A rule for low-risk work whose PRs open ready unless a gate fires, 
 
 A rule and a workflow to adapt.
 
-Docs edits need nobody once the checks pass. awaywork never merges, so the merging is yours: a workflow in the repo, under your token, that acts on the PRs awaywork leaves ready. awaywork's part is making "ready" mean "no gate fired".
+awaywork never merges, so the merging is yours: a workflow in the repo, under your token, that acts on the PRs awaywork leaves ready.
+
+awaywork's part is what "ready" means: no gate fired.
 
 ```yaml
 queue:
