@@ -14,11 +14,11 @@ queue:
     where: { type: issue, label: low-risk, repo: acme/api }
     deliver: pr
     gates:
-      code: { changed: ["src/**", "**/migrations/**", package.json, pnpm-lock.yaml] }
+      outside-docs: { command: '! git diff --name-only --no-renames "$AWAYWORK_FROM" HEAD | grep -v "^docs/"' }
       risk: { skill: judge }
 ```
 
-`deliver: pr` opens the PR ready for review. A [gate](../guide/workflows/gates.md) that fires keeps it a draft with the decision card on top, so a change outside docs, or one the judge doubts, waits for you. A step that asked questions, a failed `verify` or a loop that ended early draft it too ([results](../guide/results.md#each-deliver)).
+`deliver: pr` opens the PR ready for review. A [gate](../guide/workflows/gates.md) that fires keeps it a draft with the decision card on top, so a change outside `docs/`, or one the judge doubts, waits for you. The command is an allowlist: it fires, printing the paths, on anything the chain touched outside `docs/`, `.github/` and tests included. It diffs from `$AWAYWORK_FROM`, the chain's start. A step that asked questions, a failed `verify` or a loop that ended early draft it too ([results](../guide/results.md#each-deliver)).
 
 The workflow, in `.github/workflows/auto-merge.yml`:
 
@@ -33,7 +33,8 @@ jobs:
     if: >-
       startsWith(github.head_ref, 'away/')
       && !github.event.pull_request.draft
-      && github.event.pull_request.user.login == 'AndreaProvenzale'
+      && github.event.pull_request.user.login == 'your-login'
+      && github.actor == 'your-login'
       && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
@@ -44,7 +45,7 @@ jobs:
 ```
 
 - **`pull_request_target` runs the default branch's copy of the workflow**, so a PR can't rewrite it. The job checks out nothing.
-- **The author check** is your login: awaywork opens PRs as you. It and the same-repo check keep teammates' and forks' `away/` branches out.
+- **Put your login in both checks:** awaywork opens PRs as you. They and the same-repo check keep teammates' and forks' `away/` branches out, and anyone else's ready click.
 - **`away/` is the default [branch](../guide/config/repos.md#branch-names) prefix**, and awaywork pushes only branches that didn't exist. If you set `branch`, change the prefix here to match.
 - **Ready, not draft** is the signal. A draft a gate held turns ready when you mark it, and the workflow then enables auto-merge: your decision, same path.
 - **`AUTO_MERGE_TOKEN`** is a token of yours or a GitHub App's, pull requests and contents write. Not `GITHUB_TOKEN`: its merge starts no workflow on `main`.
