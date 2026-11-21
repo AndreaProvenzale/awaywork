@@ -89,6 +89,7 @@ const sidebar: DefaultTheme.SidebarItem[] = [
       { text: "Acting on a skill's output", link: '/examples/skill-output' },
       { text: 'Chores', link: '/examples/chores' },
       { text: 'Sentry errors', link: '/examples/sentry' },
+      { text: 'Auto-merge low-risk PRs', link: '/examples/auto-merge' },
       { text: 'Markdown files as threads', link: '/examples/markdown-threads' },
     ],
   },
