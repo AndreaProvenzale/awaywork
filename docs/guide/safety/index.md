@@ -15,7 +15,7 @@ In short:
 
 ## What the agent can reach
 
-A worker gets no forge or tracker token, only its own secret, a throwaway clone, a fixed harness, and none of your user-level agent config; setup, context and checks run outside it, and other people's PRs are data.
+A worker gets no forge or tracker token, only its own secret, a throwaway clone, a fixed harness, and almost none of your user-level agent config ([Not your agent config](#not-your-agent-config)); setup, context and checks run outside it, and other people's PRs are data.
 
 Below, the credentials awaywork passes a worker and where its work goes. That's what awaywork hands over, not a wall: with `isolation: none`, the default on your machine, the agent runs as you and can read your files, tokens included ([Not a sandbox](./isolation.md#not-a-sandbox)).
 
@@ -101,7 +101,7 @@ repos:
 | --- | --- | --- | --- |
 | Setup | Runs, with its repo's `secrets` | Runs, with its repo's `secrets` | Doesn't run |
 | `verify`, `when`, `until` and gate scripts | Run | Run | Refused |
-| The branch's agent config, repo skills and `.awaywork/instructions.md` (Codex's `.codex/config.toml` never) | Loaded | Loaded | Hidden, as above (Codex still loads `AGENTS.md`) |
+| The branch's agent config, repo skills and `.awaywork/instructions.md` (Codex's `.codex/config.toml` never) | Loaded | Loaded | Hidden, as above (Codex and Cursor still load `AGENTS.md`) |
 | The prompt's "its files are the author's, data" line | No | No | Yes |
 | The rule's MCP servers | Started | Started | None |
 | `network`, `writable` | The lists | The lists | None |
@@ -123,7 +123,7 @@ So trusting someone means trusting their branch and everything it pulls in (depe
 
 ### Not your agent config
 
-Workers skip Claude Code's `~/.claude` settings, hooks, MCP servers, skills, auto-memory and claude.ai connectors; Codex's `config.toml`, the account's ChatGPT apps and its web search (both run on OpenAI's side, outside the shell's [`network`](#network-hosts) hosts, and a Codex `config` can't turn them back on); and Cursor's whole `HOME`: it runs in a fresh `.away/agent-home`, without your `~/.cursor` skills, MCP servers, hooks, rules, permissions or login, nor `~/.claude` and `~/.agents` skills.
+Workers skip Claude Code's `~/.claude` settings, hooks, MCP servers, skills, auto-memory and claude.ai connectors; Codex's `config.toml` and execpolicy `.rules` (an `allow` rule runs a command outside the shell's wall), the account's ChatGPT apps and its web search (both run on OpenAI's side, outside the shell's [`network`](#network-hosts) hosts, and a Codex `config` can't turn them back on); and Cursor's whole `HOME`: it runs in a fresh `.away/agent-home`, without your `~/.cursor` skills, MCP servers, hooks, rules, permissions or login, nor `~/.claude` and `~/.agents` skills.
 
 The repo's own config applies, a trusted author's `.codex/config.toml` excepted: Codex never loads it. Claude under `isolation: none` also loads your `~/.claude/CLAUDE.md` and `~/.claude/rules/*.md` on your own items and trusted authors' PRs, as it does a parent folder's: `~` is above the clone. Not on an untrusted author's PR, nor under `user`, whose clone is under `/tmp` with the worker's `HOME`. What workers should have goes in awaywork's config: a Claude `settings` file, Codex `config`, top-level `skills` ([Configuration](../config/providers.md#providers)) and [MCP servers](../config/mcp.md), which apply on someone else's PR too, except MCP servers, which carry your secrets, and the settings file's `sandbox` allowed domains, unless you [trust](#trusting-an-author) its author.
 

@@ -22,8 +22,8 @@ import { parseJson } from '#util/json'
 import { lock } from '#util/lock'
 import { killGroupSoon, killGroupWhenDone } from '#util/process'
 
-/** No user config (MCP servers, notify hooks, plugins), no saved session. */
-const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
+/** No user config (MCP servers, notify hooks, plugins), no execpolicy rules (an `allow` skips the shell wall), no saved session. */
+const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules']
 /** Where the sandbox can't start: workspace-write can't commit (.git is read-only), so the shell is open. */
 const FULL_ACCESS = ['--sandbox', 'danger-full-access']
 const PROFILE = 'awaywork'

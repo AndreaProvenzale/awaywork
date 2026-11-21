@@ -143,7 +143,7 @@ describe('codex provider', () => {
     }
   })
 
-  it('turns off account apps and web search, whatever the trust or the config', async () => {
+  it('turns off account apps, web search and rules, whatever the trust or the config', async () => {
     process.env.FAKE_ARGV = join(tmp, 'argv.json')
     try {
       for (const untrusted of [false, true]) {
@@ -155,6 +155,7 @@ describe('codex provider', () => {
           ' ',
         )
         const last = (key: string) => args.lastIndexOf(`-c ${key}=`)
+        expect(args).toContain('--ignore-user-config --ignore-rules')
         expect(args).toContain('-c features.apps=false -c web_search="disabled"')
         expect(last('features.apps')).toBeGreaterThan(args.indexOf('-c features.apps=true'))
         expect(last('web_search')).toBeGreaterThan(args.indexOf('-c web_search="live"'))
