@@ -412,6 +412,8 @@ describe('doctor on trust', () => {
   })
 
   it('warns on a trust list under isolation: none when its rules give MCP or network', async () => {
+    vi.stubEnv('RUNNER_ENVIRONMENT', '')
+    vi.stubEnv('AWAYWORK_IMAGE', '')
     const mcp = 'mcp: { db: { command: db-mcp } }\nqueue: [{ skill: review, mcp: [db] }]'
     const warned = (yaml: string) =>
       checks(`repos: { acme/api: { trust: [alice] } }\n${yaml}`, 'true').then((c) =>
@@ -422,6 +424,9 @@ describe('doctor on trust', () => {
     expect(await warned(`isolation: user\n${mcp}`)).toEqual([])
     expect(await warned('queue: [{ skill: review }]')).toEqual([])
     vi.stubEnv('AWAYWORK_IMAGE', '1')
+    expect(await warned(mcp)).toEqual([])
+    vi.stubEnv('AWAYWORK_IMAGE', '')
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
     expect(await warned(mcp)).toEqual([])
     vi.unstubAllEnvs()
   })
