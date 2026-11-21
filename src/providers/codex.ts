@@ -17,6 +17,7 @@ const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
 /** Where the sandbox can't start: workspace-write can't commit (.git is read-only), so the shell is open. */
 const FULL_ACCESS = ['--sandbox', 'danger-full-access']
 const PROFILE = 'awaywork'
+const HOOKED = ['.claude', '.mcp.json']
 /** The proxy's line in a command's output when it reached a host outside the profile's `domains`. */
 const BLOCKED = /Network access to \\*"([^"\\]+)\\*" was blocked/g
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
@@ -172,6 +173,8 @@ export function codexProvider(
       const capped = new AbortController()
       let turns = 0
       let done: WorkerEvent | undefined
+      const logged = new Set<string>()
+      let restoreExclude = async () => {}
       try {
         const model = job.model ? ['-m', job.model] : []
         const { config = {} } = configSchema.parse(job.config ?? {})
@@ -187,6 +190,7 @@ export function codexProvider(
             line: "Codex's sandbox can't start here: its shell runs unsandboxed",
           }
         const shell = walled ? shellWall(job) : FULL_ACCESS
+        if (walled) restoreExclude = await ignoreMasks(job.dir)
         const args = [...EXEC, ...model, ...overrides, ...mcp, ...shell, '-C', job.dir, '-']
         const child = launch(bin, args, {
           cwd: job.dir,
@@ -210,11 +214,13 @@ export function codexProvider(
           for (const e of toEvents(event)) {
             if (e.type === 'done') done = e
             else yield e
+            if (e.type === 'log') logged.add(e.line)
           }
         }
         const { exitCode, stderr } = await child
         // Codex rejects some blocked commands at spawn, with no item in the stream.
-        if (walled && !signal.aborted) yield* refusals(String(stderr ?? ''))
+        if (walled && !signal.aborted)
+          for (const e of refusals(String(stderr ?? ''))) if (!logged.has(e.line)) yield e
         // The stream carries no quota; reading it mid-run would start a second process on auth.json.
         if (!signal.aborted) {
           const quota = await probe(process.env).catch(() => null)
@@ -223,6 +229,7 @@ export function codexProvider(
         const ok = done?.type === 'done' && done.ok && exitCode === 0
         yield { type: 'done', ok: ok && !signal.aborted && !capped.signal.aborted, turns }
       } finally {
+        await restoreExclude()
         await release()
       }
     },
@@ -238,6 +245,19 @@ export const codex = codexProvider()
 const wallEnv = (job: Job) =>
   workerHome(job.dir) && process.platform === 'linux' ? { ...job.env, TMPDIR: '/var/tmp' } : job.env
 
+/** On Linux, Codex masks an absent read-only path with an empty file; git ignores `HOOKED` for the run so a commit leaves them out. */
+async function ignoreMasks(dir: string): Promise<() => Promise<void>> {
+  const file = join(dir, '.git', 'info', 'exclude')
+  const before = await readFile(file, 'utf8').catch(() => undefined)
+  const ignored = HOOKED.map((p) => `/${p}\n`).join('')
+  const wrote = await writeFile(file, `${before ?? ''}${ignored}`).then(
+    () => true,
+    () => false,
+  )
+  if (!wrote) return async () => {}
+  return () => (before === undefined ? rm(file, { force: true }) : writeFile(file, before))
+}
+
 /** A profile whose shell writes the clone and reaches only the unit's `network` hosts, none by default. */
 export function shellWall(job: Job): string[] {
   const { foreign, untrusted, network = [] } = job.unit
@@ -246,7 +266,7 @@ export function shellWall(job: Job): string[] {
   const home = workerHome(job.dir)
   const writable = [job.dir, join(job.dir, '.git'), ...(home ? [home] : [])]
   // Codex keeps `.codex` and `.agents` read-only itself; a later Claude round would load these two.
-  const hooked = ['.claude', '.mcp.json'].map((p) => join(job.dir, p))
+  const hooked = HOOKED.map((p) => join(job.dir, p))
   const filesystem = {
     ':root': 'read',
     ':tmpdir': 'write',
@@ -321,7 +341,7 @@ function toml(value: unknown): string {
 }
 
 /** The hosts the proxy refused in `text`, as log lines. */
-const refusals = (text: string): WorkerEvent[] =>
+const refusals = (text: string): Extract<WorkerEvent, { type: 'log' }>[] =>
   [...new Set([...text.matchAll(BLOCKED)].map((m) => m[1]))].map((host) => ({
     type: 'log',
     line: `network: refused ${host} (agent shell)`,

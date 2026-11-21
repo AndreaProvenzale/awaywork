@@ -316,6 +316,8 @@ export function sudoArgs(
     '/usr/bin/env',
     ...developerFolders.flatMap((name) => ['-u', name]),
     ...(home ? [`HOME=${home}`] : []),
+    // sudo's glibc drops TMPDIR from its env: awaywork's own goes on env's argv, never yours.
+    ...(env?.TMPDIR && env.TMPDIR !== process.env.TMPDIR ? [`TMPDIR=${env.TMPDIR}`] : []),
   ]
   // sudo looks a bare name up on its own secure_path, not the env's PATH.
   const command = options.shell

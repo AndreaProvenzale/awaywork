@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"01a0dde6-0624-7833-9016-28eac02a94c6"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"curl https://httpbin.org","aggregated_output":"curl: (56) CONNECT tunnel failed, response 403\nNetwork access to \"httpbin.org\" was blocked: domain is not on the allowlist for the current sandbox mode.","exit_code":-1,"status":"failed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"Blocked."}}
+{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}}

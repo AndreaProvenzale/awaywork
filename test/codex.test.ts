@@ -206,6 +206,40 @@ describe('codex provider', () => {
     }
   })
 
+  it('logs a host once across the stream and stderr', async () => {
+    process.env.FAKE_CODEX_RUN = 'refused'
+    process.env.FAKE_CODEX_STDERR =
+      'Network access to "httpbin.org" was blocked\nNetwork access to "pypi.org" was blocked\n'
+    try {
+      const events = await collect(provider.run(job(), new AbortController().signal))
+      const refused = events.flatMap((e) =>
+        e.type === 'log' && e.line.startsWith('network:') ? [e.line] : [],
+      )
+      expect(refused).toEqual([
+        'network: refused httpbin.org (agent shell)',
+        'network: refused pypi.org (agent shell)',
+      ])
+    } finally {
+      delete process.env.FAKE_CODEX_RUN
+      delete process.env.FAKE_CODEX_STDERR
+    }
+  })
+
+  it('has git ignore the masked .claude and .mcp.json for the run only', async () => {
+    const dir = await mkdtemp(join(tmp, 'clone-'))
+    await mkdir(join(dir, '.git', 'info'), { recursive: true })
+    const exclude = join(dir, '.git', 'info', 'exclude')
+    await writeFile(exclude, '/.away/\n')
+    process.env.FAKE_EXCLUDE = join(dir, 'seen')
+    try {
+      await collect(provider.run({ ...job(), dir }, new AbortController().signal))
+      expect(await readFile(join(dir, 'seen'), 'utf8')).toBe('/.away/\n/.claude\n/.mcp.json\n')
+      expect(await readFile(exclude, 'utf8')).toBe('/.away/\n')
+    } finally {
+      delete process.env.FAKE_EXCLUDE
+    }
+  })
+
   it('logs the hosts the proxy refused, once each', () => {
     const blocked = (host: string) =>
       `curl: (56) CONNECT tunnel failed, response 403\nNetwork access to "${host}" was blocked: domain is not on the allowlist for the current sandbox mode.`
