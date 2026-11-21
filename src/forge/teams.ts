@@ -16,15 +16,17 @@ export const teamMembers = (run: Exec, team: string): Promise<string[] | { why: 
     '.[].login',
   ]).then(
     (out) => out.split('\n').flatMap((login) => (login ? [login.toLowerCase()] : [])),
-    (e: Error) => ({ why: whyUnreadable(team, e.message) }),
+    (e: Error & { stderr?: unknown }) => ({ why: whyUnreadable(team, e) }),
   )
 }
 
 /** A 404 is a hidden, missing or mistyped team alike; anything else says what failed. */
-const whyUnreadable = (team: string, message: string) =>
-  /HTTP 404/.test(message)
-    ? `can't read ${team}, or it doesn't exist`
-    : `couldn't read ${team}: ${maskSecrets(message.split('\n')[0] ?? '', ['GH_TOKEN', 'GITHUB_TOKEN'], process.env)}`
+const whyUnreadable = (team: string, e: Error & { stderr?: unknown }) => {
+  if (/HTTP 404/.test(e.message)) return `can't read ${team}, or it doesn't exist`
+  const stderr = typeof e.stderr === 'string' ? e.stderr : ''
+  const line = stderr.split('\n').findLast((l) => l.trim()) ?? e.message.split('\n')[0] ?? ''
+  return `couldn't read ${team}: ${maskSecrets(line.trim(), ['GH_TOKEN', 'GITHUB_TOKEN'], process.env)}`
+}
 
 /** The teams the top level and the repo keys name. */
 export const teamsIn = (config: Pick<Config, 'trust' | 'repos'>) => [

@@ -91,7 +91,12 @@ describe('trusting a team', () => {
   it('names the error, token masked, when a team fails for another reason than a 404', async () => {
     const log: string[] = []
     const run: Exec = async () => {
-      throw new Error('gh: Bad credentials s3cret (HTTP 401)\nmore')
+      throw Object.assign(
+        new Error(
+          'Command failed with exit code 1: gh api x\n\ngh: Bad credentials s3cret (HTTP 401)',
+        ),
+        { stderr: 'gh: Bad credentials s3cret (HTTP 401)' },
+      )
     }
     vi.stubEnv('GH_TOKEN', 's3cret')
     const config = await resolveTeams(
