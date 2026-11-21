@@ -838,7 +838,7 @@ it("hands the agent's shell the real, existing writable paths, none of awaywork'
   await mkdir(target)
   await symlink(target, join(root, 'link'))
   const underHome = await mkdtemp(join(homedir(), '.awaywork-writable-'))
-  await mkdir(rootStateDir, { recursive: true })
+  await mkdir(join(rootStateDir, 'runs'), { recursive: true })
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
