@@ -173,6 +173,13 @@ describe('the launcher', () => {
     const home = '/tmp/awaywork-abc123/.away/agent-home'
     const own = sudoArgs('awaywork', '/usr/local/bin/agent', ['-p'], { env, home })
     expect(own.slice(-3)).toEqual([`HOME=${home}`, '/usr/local/bin/agent', '-p'])
+    // glibc drops TMPDIR from sudo's env, so a launch's goes on argv; the developer's never does.
+    const tmp = sudoArgs('awaywork', '/usr/local/bin/agent', [], { env, tmpdir: '/var/tmp' })
+    expect(tmp.slice(-2)).toEqual(['TMPDIR=/var/tmp', '/usr/local/bin/agent'])
+    const yours = sudoArgs('awaywork', '/usr/local/bin/agent', [], {
+      env: { ...env, TMPDIR: '/var/tmp' },
+    })
+    expect(yours.join(' ')).not.toContain('TMPDIR=')
   })
 
   it('runs in a container with the clone and the plugin only, and the env’s names on docker’s argv, never its values', () => {

@@ -22,6 +22,7 @@ import type { Config } from '#config/schema'
 import { hasSkills, readSetup, unknownSkillsWarning } from '#config/skills'
 import { canMatch } from '#config/validate/where'
 import {
+  codexSandboxStarts,
   DOCKER_TIMEOUT_MS,
   dockerVersion,
   inAwayworkImage,
@@ -186,9 +187,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
         id,
         facts.filter(Boolean).join(', '),
       )
-    if (id === 'claude' && !isolation.some((c) => c.status === 'FAIL')) {
-      const sandbox = await claudeSandbox(config, boxed, asWorker)
-      report(sandbox ? 'warn' : 'ok', 'claude sandbox', sandbox ?? 'Bash runs offline')
+    const starts = { claude: sandboxStarts, codex: codexSandboxStarts }[id]
+    if (starts && !isolation.some((c) => c.status === 'FAIL')) {
+      const sandbox = await shellSandbox(id, starts, config, boxed, asWorker)
+      report(sandbox ? 'warn' : 'ok', `${id} sandbox`, sandbox ?? 'shell runs offline')
     }
     if (!keyless && asWorker && !provider.login && unset.length > 0)
       report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
@@ -261,8 +263,10 @@ export const configFailure = (error: Error, path: string): Check => ({
   detail: error.message.split('\n').slice(1).join('; ').trim(),
 })
 
-/** Why Claude's Bash sandbox can't start where units run (in each repo's image under a container), if it can't. */
-async function claudeSandbox(
+/** Why the agent's shell sandbox can't start where units run (in each repo's image under a container), if it can't. */
+async function shellSandbox(
+  agent: string,
+  starts: typeof sandboxStarts,
   config: Config,
   boxed: boolean,
   asWorker: boolean,
@@ -270,11 +274,11 @@ async function claudeSandbox(
   const images = boxed ? [...new Set(Object.values(config.repos).map((r) => r.image))] : [undefined]
   for (const image of images) {
     if (boxed && !image) continue
-    if (await sandboxStarts({ image, user: asWorker ? WORKER : undefined })) continue
+    if (await starts({ image, user: asWorker ? WORKER : undefined })) continue
     const needs = inAwayworkImage(process.env)
       ? ''
-      : ' (needs bubblewrap, socat and user namespaces)'
-    return `bwrap can't start${image ? ` in ${image}` : ' here'}${needs}: Claude's Bash runs unsandboxed, with network access`
+      : ` (needs bubblewrap${agent === 'claude' ? ', socat' : ''} and user namespaces)`
+    return `bwrap can't start${image ? ` in ${image}` : ' here'}${needs}: ${agent[0]?.toUpperCase()}${agent.slice(1)}'s shell runs unsandboxed, with network access`
   }
 }
 
