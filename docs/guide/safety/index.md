@@ -112,7 +112,7 @@ Trust is about what the worker gets, never what awaywork writes: on a trusted au
 
 Narrowing the list narrows comments too: with `trust: [alice]`, a teammate's review on your own PR is hidden, and so is a thread they started. Bots' comments reach the agent as before.
 
-A team's members are read once per run with `gh api orgs/<org>/teams/<slug>/members`, which needs a token with `read:org`. A team that can't be read, or doesn't exist (GitHub answers both with a 404), trusts nobody: the run log and `doctor` say "can't read `org/slug`, or it doesn't exist". Actions' `GITHUB_TOKEN` can never read teams, so a hosted run needs a PAT or app token with `read:org` in `GH_TOKEN`.
+A team's members are read each time it plans with `gh api orgs/<org>/teams/<slug>/members`, which needs a token with `read:org`. A team that can't be read, or doesn't exist (GitHub answers both with a 404), trusts nobody: the run log and `doctor` say "can't read `org/slug`, or it doesn't exist". Actions' `GITHUB_TOKEN` can never read teams, so a hosted run needs a PAT or app token with `read:org` in `GH_TOKEN`.
 
 What trusting implies:
 

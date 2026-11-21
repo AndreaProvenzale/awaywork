@@ -37,7 +37,7 @@ import {
 import type { Ctx, Provider } from '#core/types'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '#forge/bitbucket'
 import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
-import { teamMembers, teamsIn, unreadable } from '#forge/teams'
+import { teamMembers, teamsIn } from '#forge/teams'
 import { describeAllowance } from '#format/allowances'
 import { NO_QUEUE } from '#format/rules'
 import { type Status, statusMarker } from '#format/terminal'
@@ -289,7 +289,7 @@ export async function trustChecks(
   for (const team of teamsIn(config)) {
     const members = await teamMembers(run, team)
     const what = `trust ${team}`
-    if (members) {
+    if (Array.isArray(members)) {
       checks.push({ status: 'ok', what, detail: counted(members.length, 'member') })
       continue
     }
@@ -300,7 +300,7 @@ export async function trustChecks(
     checks.push({
       status: 'warn',
       what,
-      detail: `${unreadable(team)}, so it trusts nobody${token}`,
+      detail: `${members.why}, so it trusts nobody${token}`,
     })
   }
   for (const repo of Object.keys(config.repos)) {

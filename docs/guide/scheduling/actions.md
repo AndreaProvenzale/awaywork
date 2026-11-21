@@ -24,7 +24,7 @@ It writes a workflow with a cron at each window's start (none with `windows: []`
 
 Then commit, add the secrets it lists as unset (`GH_TOKEN`, provider tokens, and any `secrets` of sources, repos, MCP servers and `notify`), and run it once from the Actions tab. `schedule remove` deletes the workflow.
 
-`GH_TOKEN` is your classic personal access token: `repo` reads your PRs, issues, checks and logs and pushes branches and drafts; `workflow` lets it push branches that touch workflow files; `read:org` shows teammates with private org membership, whose text would otherwise be [hidden](../safety/index.md#public-repos).
+`GH_TOKEN` is your classic personal access token: `repo` reads your PRs, issues, checks and logs and pushes branches and drafts; `workflow` lets it push branches that touch workflow files; `read:org` shows teammates with private org membership, whose text would otherwise be [hidden](../safety/index.md#public-repos), and reads the teams in `trust`.
 
 Details:
 

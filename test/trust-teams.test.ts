@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { trusts } from '#core/trust'
 import type { Ctx } from '#core/types'
@@ -38,7 +38,9 @@ describe('trusting a team', () => {
       '--jq',
       '.[].login',
     ])
-    expect(await teamMembers(run, 'acme/gone')).toBeUndefined()
+    expect(await teamMembers(run, 'acme/gone')).toEqual({
+      why: "can't read acme/gone, or it doesn't exist",
+    })
   })
 
   it('trusts a member of a team at the top level and on a repo key, any case, and not others', async () => {
@@ -84,6 +86,35 @@ describe('trusting a team', () => {
     )
     expect(trustFor(config, 'acme/api')).toEqual(['alice'])
     expect(log).toEqual(["github: can't read acme/gone, or it doesn't exist; it trusts nobody"])
+  })
+
+  it('names the error, token masked, when a team fails for another reason than a 404', async () => {
+    const log: string[] = []
+    const run: Exec = async () => {
+      throw new Error('gh: Bad credentials s3cret (HTTP 401)\nmore')
+    }
+    vi.stubEnv('GH_TOKEN', 's3cret')
+    const config = await resolveTeams(
+      yaml('trust: [acme/platform, alice]'),
+      (l) => log.push(l),
+      run,
+    )
+    vi.unstubAllEnvs()
+    expect(trustFor(config, 'acme/api')).toEqual(['alice'])
+    expect(log).toEqual([
+      "github: couldn't read acme/platform: gh: Bad credentials *** (HTTP 401); it trusts nobody",
+    ])
+  })
+
+  it('looks a team up once however its case is written', async () => {
+    const run = teams({ 'acme/platform': ['alice'] })
+    const config = await resolveTeams(
+      yaml('trust: [Acme/Platform]', 'repos: { acme/api: { trust: [acme/platform] } }'),
+      () => {},
+      run,
+    )
+    expect(run.calls).toHaveLength(1)
+    expect(trustFor(config, 'acme/api')).toEqual(['alice'])
   })
 
   it('leaves a config without teams, and a Bitbucket one, alone and calls nothing', async () => {
