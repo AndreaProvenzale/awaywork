@@ -10,11 +10,11 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
-import { bin, builtinSkillsDir, rootStateDir } from '#config/paths'
+import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
 import { containerize } from '#core/isolation'
 import { builtinSkills } from '#core/skills'
@@ -838,7 +838,8 @@ it("hands the agent's shell the real, existing writable paths, none of awaywork'
   await mkdir(target)
   await symlink(target, join(root, 'link'))
   const underHome = await mkdtemp(join(homedir(), '.awaywork-writable-'))
-  await mkdir(join(rootStateDir, 'runs'), { recursive: true })
+  const loaded = join(root, 'loaded')
+  await mkdir(loaded)
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
@@ -852,8 +853,7 @@ it("hands the agent's shell the real, existing writable paths, none of awaywork'
     join(root, 'gone'),
     '/',
     homedir(),
-    dirname(rootStateDir),
-    join(rootStateDir, 'runs'),
+    loaded,
   ]
   const config = parseConfig(`
 providers: [claude: {}]
@@ -866,7 +866,7 @@ queue: [{ skill: review }]
     const jobs: Record<string, string[] | undefined> = {}
     await runUnits({
       config,
-      configDir: root,
+      configDir: loaded,
       plan: planRun({
         setup: setupOf(config, { builtin: builtinSkills }),
         items,
@@ -907,8 +907,7 @@ queue: [{ skill: review }]
     expect(own).toContain(`writable: ${join(root, 'gone')} doesn't exist, skipped`)
     expect(own).toContain('writable: / holds your home, refused')
     expect(own).toContain(`writable: ${homedir()} holds your home, refused`)
-    expect(own).toContain(`${dirname(rootStateDir)} overlaps awaywork's own files, refused`)
-    expect(own).toContain(`${join(rootStateDir, 'runs')} overlaps awaywork's own files, refused`)
+    expect(own).toContain(`writable: ${loaded} overlaps awaywork's own files, refused`)
     expect(await log('host', 'acme-api-2')).toContain("writable: not opened on someone else's PR")
   } finally {
     await rm(underHome, { recursive: true, force: true })
@@ -926,4 +925,35 @@ it('applies no writable path in a container, and says so', async () => {
     containerize(false)
   }
   expect(lines).toEqual(['writable: not applied under isolation: container'])
+})
+
+it('refuses the folders of a config loaded from elsewhere and of its extends base, even under a symlinked home', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'awaywork-writable-')))
+  try {
+    await mkdir(join(root, 'real/.config'), { recursive: true })
+    await mkdir(join(root, 'cfg/sub'), { recursive: true })
+    await mkdir(join(root, 'base'))
+    await mkdir(join(root, 'cache'))
+    await symlink(join(root, 'real'), join(root, 'link'))
+    const lines: string[] = []
+    const unit = {
+      writable: [
+        join(root, 'cfg'),
+        join(root, 'base'),
+        join(root, 'link/.config'),
+        `${join(root, 'cache')}/`,
+        join(root, 'cache'),
+      ],
+    } as Unit
+    const got = await writablePaths(unit, '/clone', (l) => lines.push(l), [
+      join(root, 'cfg/sub'),
+      join(root, 'base'),
+      join(root, 'link/.config/awaywork'),
+    ])
+    expect(got).toEqual([join(root, 'cache')])
+    expect(lines.filter((l) => l.includes('refused'))).toHaveLength(3)
+    expect(lines.some((l) => l.includes(' is '))).toBe(false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })

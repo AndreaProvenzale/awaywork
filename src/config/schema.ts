@@ -844,7 +844,8 @@ export const configSchema = configShape
     ),
   }))
 
-export type Config = z.output<typeof configSchema>
+/** `baseDir` is where the config's `extends` base lives, set by `loadConfig`. */
+export type Config = z.output<typeof configSchema> & { baseDir?: string }
 
 const withScope = <S extends Record<string, unknown>>(sources: S, scope: object): S =>
   sources.github ? { ...sources, github: { ...sources.github, ...scope } } : sources
