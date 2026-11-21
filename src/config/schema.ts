@@ -734,7 +734,7 @@ const configShape = z.strictObject({
     .enum(['none', 'user', 'container'])
     .default('none')
     .describe(
-      "Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image",
+      "Who setup, the agent and the checks run as: none, you; user, a worker user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner and in awaywork's image",
     ),
   budget: budget.prefault({}),
   providers: z

@@ -28,6 +28,7 @@ import {
   dockerVersion,
   inAwayworkImage,
   inImage,
+  MAX_USER,
   sandboxStarts,
   sudoersLines,
   WORKER,
@@ -455,7 +456,8 @@ export async function isolationChecks(
     const local =
       env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
       !inAwayworkImage(env) &&
-      process.platform === 'linux'
+      process.platform === 'linux' &&
+      WORKER.length <= MAX_USER
     return [workerFailure(worker.message, local)]
   }
   const checks: Check[] = [
