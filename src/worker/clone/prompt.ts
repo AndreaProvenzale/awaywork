@@ -62,16 +62,17 @@ export function unitSection(unit: Unit, items: string[], dir: string, w: Workspa
   const card = unit.items[0] as Item
   // Later steps of the chain find the body an earlier one wrote in the clone.
   const keep = !reportsOnly(unit.deliver) && existsSync(join(dir, output))
-  const commit = `Commit on this branch and ${keep ? 'keep' : 'write'} \`${output}\`${keep ? ' current: it holds what the chain did so far' : ''}`
+  const commit = `Commit on this branch and ${keep ? `keep \`${output}\` current: it holds what the chain did so far` : `write \`${output}\` right after your first commit and keep it current`}`
+  const early = 'early and refine it as you go, so a run cut short still leaves one'
   const deliver = {
-    draft_pr: `commits for a draft PR. ${commit}, the PR body.`,
-    pr: `commits for a PR ready for review. ${commit}, the PR body.`,
-    report: `a report. Write \`${output}\` and commit nothing.`,
+    draft_pr: `commits for a draft PR. ${commit}, the PR's title on its first line and the body after it, following the repo's PR template when there is one. A branch without it is not published.`,
+    pr: `commits for a PR ready for review. ${commit}, the PR's title on its first line and the body after it, following the repo's PR template when there is one. A branch without it is not published.`,
+    report: `a report. Write \`${output}\` ${early}, and commit nothing.`,
     push: unit.merge
       ? `the merge of \`${unit.merge}\` into ${base}, the developer's own pull request, which awaywork started in this clone and commits and pushes itself from your working tree. Commit nothing, stage nothing, and run no git command that changes the repo's state. Write \`${output}\`, a summary for the developer.`
-      : `commits pushed onto ${base}, the developer's own pull request. ${commit}, a summary for the developer.`,
-    pending_review: `a review of ${base}. Write \`${output}\`, the review's body, and any line comments in \`${WORK_DIR}/out/review.json\`, and commit nothing: awaywork leaves them on the pull request as the developer's pending review, which only they see until they submit it.`,
-    plan: `a plan. Write \`${output}\` and \`${WORK_DIR}/out/plan.yml\`, and commit nothing. ${planContract(
+      : `commits pushed onto ${base}, the developer's own pull request. ${commit}, a summary for the developer: without it nothing is pushed.`,
+    pending_review: `a review of ${base}. Write \`${output}\` ${early}, the review's body, and any line comments in \`${WORK_DIR}/out/review.json\`, \`[{ "path": "src/a.ts", "line": 42, "body": "..." }]\`, \`line\` on the PR's new side, one the diff adds or shows as context. Commit nothing: awaywork leaves them on the pull request as the developer's pending review, which only they see until they submit it.`,
+    plan: `a plan. Write \`${output}\` ${early}, and \`${WORK_DIR}/out/plan.yml\`, and commit nothing. ${planContract(
       unit.planLimits ?? { maxTasks: PLAN_TASKS },
       taskPrUrls(card, (pr) => pr.state !== 'closed'),
     )}`,
