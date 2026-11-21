@@ -78,6 +78,18 @@ describe('worker', () => {
     expect(order).toEqual(['prepare', 'run'])
   })
 
+  it("logs what the provider set aside, and keeps it in the worker's result", async () => {
+    const lines: string[] = []
+    const provider = { ...fakeProvider(), setAside: async () => ['network: set aside x'] }
+    const result = await runWorker(provider, job, allowance(budget, quota, now, windows), {
+      log: (l) => lines.push(l),
+      watch: () => idle,
+    })
+    expect(lines[0]).toBe('network: set aside x')
+    expect(result.notes).toEqual(['network: set aside x'])
+    expect((await run(allowance(budget, quota, now, windows))).notes).toBeUndefined()
+  })
+
   it("removes the run's agent home once the worker is back", async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
     const home = join(dir, '.away/agent-home/.cursor')

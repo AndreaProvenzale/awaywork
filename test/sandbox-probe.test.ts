@@ -3,6 +3,7 @@ import {
   codexSandboxStarts,
   contain,
   containerize,
+  cursorSandboxStarts,
   isolate,
   sandboxStarts,
   whereRuns,
@@ -118,5 +119,41 @@ describe('sandboxStarts', () => {
     containerize(false)
     isolate('awaywork')
     expect(whereRuns('/clone')).toEqual({ user: 'awaywork' })
+  })
+})
+
+describe('cursorSandboxStarts', () => {
+  const calls: { file: string; args: string[] }[] = []
+  const fake = (failed: boolean) =>
+    (async (file: string, args: string[]) => {
+      calls.push({ file, args })
+      return { failed }
+    }) as unknown as Run
+
+  it("runs Cursor's own helper check beside the binary, as the developer, the worker or in the image, on any host", async () => {
+    calls.length = 0
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    expect(await cursorSandboxStarts('agent', {}, undefined, fake(false))).toBe(true)
+    expect(await cursorSandboxStarts('agent', { user: 'cursor-w' }, undefined, fake(false))).toBe(
+      true,
+    )
+    expect(await cursorSandboxStarts('agent', { image: 'cursor/img' }, undefined, fake(true))).toBe(
+      false,
+    )
+    expect(calls.map((c) => c.file.split('/').at(-1))).toEqual(['sh', 'sudo', 'docker'])
+    for (const { args } of calls) {
+      expect(args.at(-1)).toBe('agent')
+      expect(args.join(' ')).toContain('cursorsandbox" --policy /dev/stdin --preflight-only')
+    }
+    vi.restoreAllMocks()
+  })
+
+  it("probes once for each binary and where, apart from Claude's probe", async () => {
+    calls.length = 0
+    const run = fake(false)
+    await cursorSandboxStarts('agent', { user: 'cursor-once' }, undefined, run)
+    await cursorSandboxStarts('agent', { user: 'cursor-once' }, undefined, run)
+    await cursorSandboxStarts('agent2', { user: 'cursor-once' }, undefined, run)
+    expect(calls).toHaveLength(2)
   })
 })

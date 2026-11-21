@@ -1,17 +1,29 @@
-import { lstat, mkdir, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { bin as resolveBin } from '#config/paths'
-import { AGENT_HOME } from '#core/isolation'
+import { AGENT_HOME, cursorSandboxStarts, whereRuns } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
 import { killGroupSoon, killGroupWhenDone } from '#util/process'
+import { inClone } from '#worker/clone/workspace'
 
 /** Never `--force` or `--approve-mcps`: the allowlist in `cli-config.json` decides, and the clone's `.cursor/mcp.json` stays off. */
 const PRINT = ['-p', '--output-format', 'stream-json', '--trust']
-const TOOLS = ['Shell(*)', 'Read(**)', 'Write(**)']
+const TOOLS = ['Read(**)', 'Write(**)']
+/** A command matching an allow rule runs outside the sandbox, so with it on there is none. */
+const SHELL = 'Shell(*)'
+/** The clone's own one adds hosts to the list and is re-read for each command. */
+const CLONE_SANDBOX = '.cursor/sandbox.json'
+/** The decision log: outside the agent home, which goes with the worker. */
+const NETWORK_LOG = '.away/cursor-network.jsonl'
+const clonesAside = new Set<string>()
+/** What `prepare` found, for `setAside` and `run` of the same job. */
+const sandboxedClones = new Map<string, boolean>()
+/** A host as the schema spells it: a log line is the shell's to write. */
+const HOST = /^[\w-]+(\.[\w-]+)*$/
 /** As the runner's user, not root, outside its home, which the worker user can't enter (docs/providers.md). */
 const INSTALL = [
   'sudo install -d -o "$USER" /opt/cursor',
@@ -26,7 +38,11 @@ const OWN_SECRETS = ['CURSOR_API_KEY']
 const homeOf = (job: Job) => join(job.dir, AGENT_HOME)
 
 /** Cursor's `agent` binary on `CURSOR_API_KEY`: a fresh `HOME` hides the Keychain login. */
-export function cursorProvider(bin = 'agent'): Provider {
+export function cursorProvider(
+  bin = 'agent',
+  startsSandbox = (job: Job, signal?: AbortSignal) =>
+    cursorSandboxStarts(bin, whereRuns(job.dir), signal),
+): Provider {
   return {
     id: 'cursor',
     bin,
@@ -58,15 +74,40 @@ export function cursorProvider(bin = 'agent'): Provider {
       await rm(homeOf(job), { recursive: true, force: true })
       await mkdir(dir, { recursive: true, mode: 0o700 })
       const servers = job.mcp ?? {}
-      await writeFile(join(dir, 'cli-config.json'), JSON.stringify(cliConfig(servers)))
+      const sandboxed = await startsSandbox(job)
+      sandboxedClones.set(job.dir, sandboxed)
+      await writeFile(
+        join(dir, 'cli-config.json'),
+        JSON.stringify(cliConfig(servers, sandboxed ? shellHosts(job) : undefined)),
+      )
       await writeFile(join(dir, 'mcp.json'), JSON.stringify(mcpConfig(servers, job.env)), {
         mode: 0o600,
       })
+      if (!sandboxed) return
+      await rm(join(job.dir, NETWORK_LOG), { force: true })
+      await writeFile(
+        join(dir, 'sandbox.json'),
+        JSON.stringify(sandboxConfig(shellHosts(job), join(job.dir, NETWORK_LOG))),
+      )
+    },
+
+    async setAside(job) {
+      return sandboxedClones.get(job.dir) ? moveOut(job.dir) : []
+    },
+
+    async finish(dir) {
+      sandboxedClones.delete(dir)
+      const lines = await refusals(dir)
+      if (clonesAside.delete(dir)) await putBack(dir)
+      return lines
     },
 
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
       const capped = new AbortController()
+      const sandboxed = sandboxedClones.get(job.dir)
+      if (!sandboxed && !signal.aborted)
+        yield { type: 'log', line: "Cursor's sandbox can't start here: its shell runs unsandboxed" }
       const model = job.model ? ['--model', job.model] : []
       const plugin = job.plugin ? ['--plugin-dir', job.plugin] : []
       // Either would point Cursor at your own config.
@@ -80,7 +121,7 @@ export function cursorProvider(bin = 'agent'): Provider {
         env: { ...env, AGENT_CLI_CREDENTIAL_STORE: 'memory' },
         extendEnv: false,
         home: homeOf(job),
-        input: job.prompt,
+        input: sandboxed ? `${job.prompt}\n\n${stayInSandbox(shellHosts(job))}` : job.prompt,
         cancelSignal: AbortSignal.any([signal, capped.signal]),
         killDescendants: true,
         reject: false,
@@ -115,6 +156,7 @@ export function cursorProvider(bin = 'agent'): Provider {
     instructionsFile: 'AGENTS.md',
     // Cursor also runs Claude Code's project hooks, and takes permissions from its settings.
     repoConfig: [
+      CLONE_SANDBOX,
       '.cursor/hooks.json',
       '.cursor/cli.json',
       '.claude/settings.json',
@@ -125,12 +167,82 @@ export function cursorProvider(bin = 'agent'): Provider {
 
 export const cursor = cursorProvider()
 
-/** Cursor's own tools, and each server's tools, or all of them when the server names none. */
-export function cliConfig(servers: Record<string, McpServer>) {
+/** The hosts a unit's shell reaches: the `network` list, none on someone else's PR. */
+const shellHosts = ({ unit }: Job) => (unit.foreign || unit.untrusted ? [] : (unit.network ?? []))
+
+/** Cursor's own tools, and each server's tools, or all of them when the server names none; the shell too, open, unless `network` says to wall it. */
+export function cliConfig(servers: Record<string, McpServer>, network?: string[]) {
   const mcp = Object.entries(servers).flatMap(([name, s]) =>
     (s.tools ?? ['*']).map((tool) => `Mcp(${name}:${tool})`),
   )
-  return { version: 1, permissions: { allow: [...TOOLS, ...mcp], deny: [] } }
+  const allow = [...TOOLS, ...mcp]
+  if (!network) return { version: 1, permissions: { allow: [SHELL, ...allow], deny: [] } }
+  const networkAccess = network.includes('*') ? 'allow_all' : 'user_config_only'
+  return {
+    version: 1,
+    sandbox: { mode: 'enabled', networkAccess },
+    // The edit tool runs outside the sandbox: `.cursor/sandbox.json` could widen the list, and `.claude/settings.json` holds hooks and permissions the next round loads unsandboxed.
+    permissions: { allow, deny: ['Write(**/.cursor/**)', 'Write(**/.claude/**)'] },
+  }
+}
+
+/** On macOS the sandbox refuses even loopback unless listed; test suites bind there. */
+const LOOPBACK = ['localhost', '127.0.0.1']
+
+/** The shell reaching only loopback and `hosts`, every refusal in `log`. */
+export const sandboxConfig = (hosts: string[], log: string) => ({
+  networkPolicy: {
+    default: 'deny',
+    allow: [...LOOPBACK, ...hosts],
+    logging: { decisionLogPath: log, logFormat: 'jsonl' },
+  },
+})
+
+const stayInSandbox = (hosts: string[]) =>
+  `Your shell is sandboxed: it writes only here and reaches ${hosts.length ? hosts.join(', ') : 'no host'}. Asking to run outside the sandbox or for the network is always refused.`
+
+/** The refused hosts in a decision log, one `worker.log` line each; its first line is metadata. */
+export function refusedLines(jsonl: string): string[] {
+  const hosts = jsonl.split('\n').flatMap((line) => {
+    const row = parseJson(line)
+    return row?.decision === 'deny' && typeof row.host === 'string' && HOST.test(row.host)
+      ? [row.host]
+      : []
+  })
+  return [...new Set(hosts)].map((host) => `network: refused ${host} (agent shell)`)
+}
+
+async function refusals(dir: string): Promise<string[]> {
+  const file = join(dir, NETWORK_LOG)
+  if (!(await lstat(file).catch(() => undefined))?.isFile()) return []
+  const lines = refusedLines(await readFile(file, 'utf8'))
+  await rm(file)
+  return lines
+}
+
+const inGit = (dir: string, ...args: string[]) =>
+  execa(resolveBin('git'), [...inClone(dir), ...args])
+
+/** Moves the clone's committed `.cursor/sandbox.json` out for the run, kept out of its commits, and says so. */
+async function moveOut(dir: string): Promise<string[]> {
+  const file = join(dir, CLONE_SANDBOX)
+  const text = await readFile(file, 'utf8').catch(() => undefined)
+  if (text === undefined) return []
+  if ((await realpath(file)) !== join(await realpath(dir), CLONE_SANDBOX))
+    throw new Error(`${CLONE_SANDBOX} in the clone links outside it`)
+  await inGit(dir, 'update-index', '--skip-worktree', '--', CLONE_SANDBOX)
+  await rm(file)
+  clonesAside.add(dir)
+  const hosts: unknown = parseJson(text)?.networkPolicy?.allow
+  const adds = Array.isArray(hosts) && hosts.length ? ` (adds ${hosts.join(', ')})` : ''
+  return [`network: set aside ${CLONE_SANDBOX}${adds}`]
+}
+
+async function putBack(dir: string): Promise<void> {
+  const indexed = await inGit(dir, 'ls-files', '--', CLONE_SANDBOX)
+  if (!indexed.stdout) return
+  await inGit(dir, 'update-index', '--no-skip-worktree', '--', CLONE_SANDBOX)
+  await inGit(dir, 'checkout', '--', CLONE_SANDBOX)
 }
 
 /** The servers as `mcp.json`, secrets as literals from `env`: a `${env:NAME}` would keep them in Cursor's env, and so its shell's. */

@@ -33,6 +33,8 @@ export interface UnitResult {
   retried?: true
   /** The step's folder under its chain's `units/<id>/`, e.g. `2-review`, once it started. */
   step?: string
+  /** What its provider set aside or changed in the clone for the run, a line each. */
+  notes?: string[]
   /** What the step left for the chain, e.g. `2 commits and a report`. */
   made?: string
   /** The step left a report. */
@@ -127,6 +129,7 @@ export function describeResult(c: Commented): string {
 
 /** What a chain's first step wrote to its items, in order: its questions or its plan, then its result and on_done's moves. */
 export const unitNotes = (u: UnitResult): string[] => [
+  ...(u.notes ?? []),
   ...(u.questions ? [describeQuestions(u.questions)] : []),
   ...(u.byHand ? [u.byHand] : []),
   ...(u.plan ? [describePlan(u.plan)] : []),

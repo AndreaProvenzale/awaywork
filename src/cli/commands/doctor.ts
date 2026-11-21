@@ -23,6 +23,7 @@ import { hasSkills, readSetup, unknownSkillsWarning } from '#config/skills'
 import { canMatch } from '#config/validate/where'
 import {
   codexSandboxStarts,
+  cursorSandboxStarts,
   DOCKER_TIMEOUT_MS,
   dockerVersion,
   inAwayworkImage,
@@ -192,6 +193,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       const sandbox = await shellSandbox(id, starts, config, boxed, asWorker)
       report(sandbox ? 'warn' : 'ok', `${id} sandbox`, sandbox ?? 'shell runs offline')
     }
+    if (id === 'cursor' && !keyless && !isolation.some((c) => c.status === 'FAIL')) {
+      const sandbox = await cursorSandbox(config, boxed, asWorker, provider.bin)
+      report(sandbox ? 'warn' : 'ok', 'cursor sandbox', sandbox ?? 'its shell runs offline')
+    }
     if (!keyless && asWorker && !provider.login && unset.length > 0)
       report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
     const pin = pins.find((p) => p.what === id)
@@ -263,23 +268,47 @@ export const configFailure = (error: Error, path: string): Check => ({
   detail: error.message.split('\n').slice(1).join('; ').trim(),
 })
 
-/** Why the agent's shell sandbox can't start where units run (in each repo's image under a container), if it can't. */
+/** Where an agent's sandbox can't start (in each repo's image under a container), as ` in <image>` or ` here`, if anywhere. */
+async function noSandbox(
+  config: Config,
+  boxed: boolean,
+  asWorker: boolean,
+  starts: (where: { image?: string; user?: string }) => Promise<boolean>,
+): Promise<string | undefined> {
+  const images = boxed ? [...new Set(Object.values(config.repos).map((r) => r.image))] : [undefined]
+  for (const image of images) {
+    if (boxed && !image) continue
+    if (!(await starts({ image, user: asWorker ? WORKER : undefined })))
+      return image ? ` in ${image}` : ' here'
+  }
+}
+
+/** Why Claude's or Codex's shell sandbox can't start where units run, if it can't. */
 async function shellSandbox(
   agent: string,
   starts: typeof sandboxStarts,
   config: Config,
   boxed: boolean,
   asWorker: boolean,
-): Promise<string | undefined> {
-  const images = boxed ? [...new Set(Object.values(config.repos).map((r) => r.image))] : [undefined]
-  for (const image of images) {
-    if (boxed && !image) continue
-    if (await starts({ image, user: asWorker ? WORKER : undefined })) continue
-    const needs = inAwayworkImage(process.env)
-      ? ''
-      : ` (needs bubblewrap${agent === 'claude' ? ', socat' : ''} and user namespaces)`
-    return `bwrap can't start${image ? ` in ${image}` : ' here'}${needs}: ${agent[0]?.toUpperCase()}${agent.slice(1)}'s shell runs unsandboxed, with network access`
-  }
+) {
+  const where = await noSandbox(config, boxed, asWorker, (w) => starts(w))
+  const needs = inAwayworkImage(process.env)
+    ? ''
+    : ` (needs bubblewrap${agent === 'claude' ? ', socat' : ''} and user namespaces)`
+  return (
+    where &&
+    `bwrap can't start${where}${needs}: ${agent[0]?.toUpperCase()}${agent.slice(1)}'s shell runs unsandboxed, with network access`
+  )
+}
+
+/** Why Cursor's shell sandbox can't start where units run, if it can't. */
+async function cursorSandbox(config: Config, boxed: boolean, asWorker: boolean, bin = 'agent') {
+  const where = await noSandbox(config, boxed, asWorker, (w) => cursorSandboxStarts(bin, w))
+  const needs = ' (needs user namespaces)'
+  return (
+    where &&
+    `its sandbox can't start${where}${needs}: Cursor's shell runs unsandboxed, with network access`
+  )
 }
 
 const GH_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
