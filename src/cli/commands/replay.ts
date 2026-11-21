@@ -47,7 +47,7 @@ export function replayCommand(program: Command): void {
         )
         if (!result) throw new Error('interrupted while waiting for the worker user')
         console.log(
-          `${unit}: ${result.status}, ${counted(result.commits, 'commit')} on the local branch in ${result.dir}; output in ${result.out}`,
+          `${unit}: ${result.status}, ${counted(result.turns, 'turn')}, ${counted(result.commits, 'commit')} on the local branch in ${result.dir}; output in ${result.out}`,
         )
       } catch (e) {
         reportConfigError(e)
