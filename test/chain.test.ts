@@ -405,7 +405,7 @@ it("leaves a deliver: pending_review chain's last report and its comments on the
   ])
   expect(reviewed.opened).toEqual([])
   expect(prompts['acme-api-1']).toContain(
-    "Deliver: a review of `feature-1`. Write `.away/out/report.md`, the review's body, and any line comments in `.away/out/review.json`, and commit nothing",
+    "Deliver: a review of `feature-1`. Write `.away/out/report.md`, the review's body, and any line comments in `.away/out/review.json`",
   )
   expect(runHeadline(reviewed.report)).toBe(
     'Run r1: 0 draft PRs, 0 reports, 1 pending review, 1 unit',
