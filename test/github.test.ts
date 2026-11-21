@@ -437,7 +437,7 @@ describe('github source', () => {
     const run = recorded(githubRoutes())
     await githubSource(run).items({ repos: ['acme/*'] }, ctx)
     const query = run.calls.flat().find((arg) => arg.includes('... on PullRequest {'))
-    expect(query).toMatch(/\.\.\. on PullRequest \{[^]*?author \{ login __typename \}/)
+    expect(query).toMatch(/author \{ login __typename \} authorAssociation\s+assignees/)
   })
 
   it('runs each extra search ANDed with open and unarchived, without marking its items', async () => {
