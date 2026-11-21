@@ -1,5 +1,15 @@
 import { readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -222,6 +232,32 @@ describe('cursor provider', () => {
     expect(cliConfig({}).permissions.allow).toEqual(['Shell(*)', 'Read(**)', 'Write(**)'])
     expect(cliConfig({}, ['*']).sandbox).toEqual({ mode: 'enabled', networkAccess: 'allow_all' })
     expect(mcpConfig({}, {})).toEqual({ mcpServers: {} })
+  })
+
+  it('empties an agent home holding a read-only folder', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-cursor-ro-'))
+    const cache = join(dir, '.away/agent-home/go/pkg')
+    await mkdir(cache, { recursive: true })
+    await writeFile(join(cache, 'mod.go'), 'x')
+    await chmod(cache, 0o555)
+    await provider.prepare?.({ ...job(), dir })
+    expect(await readdir(join(dir, '.away/agent-home'))).toEqual(['.cursor'])
+  })
+
+  it('unlinks a linked agent home without touching its target', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-cursor-home-link-'))
+    const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+    const sub = join(outside, 'sub')
+    await mkdir(sub)
+    await writeFile(join(sub, 'f'), 'x')
+    await chmod(join(sub, 'f'), 0o444)
+    await chmod(sub, 0o555)
+    await mkdir(join(dir, '.away'))
+    await symlink(outside, join(dir, '.away/agent-home'))
+    await provider.prepare?.({ ...job(), dir })
+    expect((await stat(sub)).mode & 0o777).toBe(0o555)
+    expect((await stat(join(sub, 'f'))).mode & 0o777).toBe(0o444)
+    expect((await lstat(join(dir, '.away/agent-home'))).isSymbolicLink()).toBe(false)
   })
 
   it('refuses a linked .away', async () => {
