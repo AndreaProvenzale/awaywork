@@ -40,7 +40,7 @@ const homeOf = (job: Job) => join(job.dir, AGENT_HOME)
 /** Cursor's `agent` binary on `CURSOR_API_KEY`: a fresh `HOME` hides the Keychain login. */
 export function cursorProvider(
   bin = 'agent',
-  startsSandbox = (job: Job, signal?: AbortSignal) =>
+  startsSandbox = (job: Pick<Job, 'dir'>, signal?: AbortSignal) =>
     cursorSandboxStarts(bin, whereRuns(job.dir), signal),
 ): Provider {
   return {
@@ -52,6 +52,8 @@ export function cursorProvider(
     unattended: 'allowed',
     install: { script: INSTALL },
     secrets: OWN_SECRETS,
+    hosts: ['*.cursor.sh', '*.cursorapi.com', '*.cursor-cdn.com'],
+    startsSandbox,
 
     async detect() {
       const version = (await execa(bin, ['--version']).catch(() => undefined))?.stdout.trim()

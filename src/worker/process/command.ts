@@ -1,3 +1,4 @@
+import type { Phase } from '#core/egress'
 import { asWorker } from '#core/isolation'
 import { type Launch, launch } from '#core/launch'
 import { killGroupWhenDone } from '#util/process'
@@ -15,6 +16,8 @@ interface SetupOptions {
   timeoutMs?: number
   /** How the command starts: through the launcher, unless it is awaywork's own and not the repo's. */
   start?: Launch
+  /** The hosts it reaches under a worker user, where the network wall holds. */
+  egress?: Phase
 }
 
 /**
@@ -40,7 +43,7 @@ export async function runCommand(
   command: string,
   dir: string,
   env: NodeJS.ProcessEnv,
-  { secrets, signal, until, timeoutMs = TIMEOUT_MS, start = launch }: SetupOptions,
+  { secrets, signal, until, timeoutMs = TIMEOUT_MS, start = launch, egress }: SetupOptions,
 ): Promise<{ output: string; stdout: string; failed?: string; stopped?: true; timedOut?: true }> {
   const windowEnds = until !== undefined && until.getTime() < Date.now() + timeoutMs
   const deadline = AbortSignal.timeout(
@@ -65,7 +68,7 @@ export async function runCommand(
     return result
   }
   // Only repo code runs as the worker, in a clone it owns while it runs.
-  const result = await (start === launch ? asWorker(dir, run) : run())
+  const result = await (start === launch ? asWorker(dir, run, undefined, egress) : run())
 
   const output = maskSecrets(result.all.trim(), secrets, env)
   const stdout = maskSecrets(result.stdout.trim(), secrets, env)

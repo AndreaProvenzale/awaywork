@@ -34,3 +34,48 @@ it('offers no setup for a profile whose worker user is over 32 characters', asyn
   expect(check?.detail).toContain('is over 32 characters')
   expect(check?.detail).not.toContain('useradd')
 })
+
+it("prints a named profile's wall rules where the wall is missing, as a failure", async () => {
+  const { wallCheck } = await doctorOf('work')
+  const check = await wallCheck('awaywork-work', {}, async () => false)
+  expect(check.status).toBe('FAIL')
+  expect(check.what).toBe('network wall')
+  expect(check.detail).toContain(
+    'sudo iptables -I OUTPUT -m owner --uid-owner awaywork-work -o lo -p tcp --dport 53 -j REJECT',
+  )
+  expect(check.detail).toContain(
+    'sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork-work -j REJECT',
+  )
+})
+
+it('tells a hosted runner to use the action, and warns in the image', async () => {
+  const { wallCheck } = await doctorOf('default')
+  const env = { RUNNER_ENVIRONMENT: 'github-hosted' }
+  const hosted = await wallCheck('awaywork', env, async () => false)
+  expect(hosted.status).toBe('FAIL')
+  expect(hosted.detail).toContain('through its action')
+  expect(hosted.detail).not.toContain('iptables')
+  const image = await wallCheck('awaywork', { AWAYWORK_IMAGE: '1' }, async () => false)
+  expect(image.status).toBe('warn')
+})
+
+it('is ok where the wall holds', async () => {
+  const { wallCheck } = await doctorOf('default')
+  expect((await wallCheck('awaywork', {}, async () => true)).status).toBe('ok')
+})
+
+it('fails a sandbox that can’t start where its units are refused, warns where they run behind the wall or open', async () => {
+  const { sandboxCheck } = await doctorOf('default')
+  const down = "bwrap can't start here (needs bubblewrap and user namespaces)"
+  expect(sandboxCheck('codex', undefined, 'refused')).toEqual([
+    'ok',
+    'codex sandbox',
+    'shell runs offline',
+  ])
+  const [refused, , detail] = sandboxCheck('codex', down, 'refused')
+  expect(refused).toBe('FAIL')
+  expect(detail).toContain("Codex's units are skipped")
+  expect(sandboxCheck('codex', down, 'wall')[0]).toBe('warn')
+  expect(sandboxCheck('codex', down, 'wall')[2]).toContain("through awaywork's wall")
+  expect(sandboxCheck('codex', down, 'open')[2]).toContain('unsandboxed, with network access')
+})

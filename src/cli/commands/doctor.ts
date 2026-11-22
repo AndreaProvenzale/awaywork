@@ -29,9 +29,12 @@ import {
   inAwayworkImage,
   inImage,
   MAX_USER,
+  sandboxNeeds,
   sandboxStarts,
   sudoersLines,
   WORKER,
+  wallHolds,
+  wallLines,
   workerFor,
 } from '#core/isolation'
 import type { Ctx, Provider, Rule } from '#core/types'
@@ -193,13 +196,15 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
         facts.filter(Boolean).join(', '),
       )
     const starts = { claude: sandboxStarts, codex: codexSandboxStarts }[id]
+    const exempt = boxed || inAwayworkImage(process.env)
+    const wall = asWorker && !exempt && (await wallHolds(WORKER))
     if (starts && !isolation.some((c) => c.status === 'FAIL')) {
       const sandbox = await shellSandbox(id, starts, config, boxed, asWorker)
-      report(sandbox ? 'warn' : 'ok', `${id} sandbox`, sandbox ?? 'shell runs offline')
+      report(...sandboxCheck(id, sandbox, exempt ? 'open' : wall ? 'wall' : 'refused'))
     }
     if (id === 'cursor' && !keyless && !isolation.some((c) => c.status === 'FAIL')) {
       const sandbox = await cursorSandbox(config, boxed, asWorker, provider.bin)
-      report(sandbox ? 'warn' : 'ok', 'cursor sandbox', sandbox ?? 'its shell runs offline')
+      report(...sandboxCheck(id, sandbox, exempt ? 'open' : wall ? 'wall' : 'refused'))
     }
     if (!keyless && asWorker && !provider.login && unset.length > 0)
       report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
@@ -383,23 +388,41 @@ async function shellSandbox(
   asWorker: boolean,
 ) {
   const where = await noSandbox(config, boxed, asWorker, (w) => starts(w))
-  const needs = inAwayworkImage(process.env)
-    ? ''
-    : ` (needs bubblewrap${agent === 'claude' ? ', socat' : ''} and user namespaces)`
-  return (
-    where &&
-    `bwrap can't start${where}${needs}: ${agent[0]?.toUpperCase()}${agent.slice(1)}'s shell runs unsandboxed, with network access`
-  )
+  const needs = inAwayworkImage(process.env) ? '' : ` (needs ${sandboxNeeds(agent)})`
+  return where && `bwrap can't start${where}${needs}`
 }
 
 /** Why Cursor's shell sandbox can't start where units run, if it can't. */
 async function cursorSandbox(config: Config, boxed: boolean, asWorker: boolean, bin = 'agent') {
   const where = await noSandbox(config, boxed, asWorker, (w) => cursorSandboxStarts(bin, w))
-  const needs = ' (needs user namespaces)'
-  return (
-    where &&
-    `its sandbox can't start${where}${needs}: Cursor's shell runs unsandboxed, with network access`
-  )
+  return where && `its sandbox can't start${where} (needs ${sandboxNeeds('cursor')})`
+}
+
+/**
+ * An agent's shell sandbox as a check. Where it can't start, its units are refused (`refused`, a failure), or run with the
+ * shell behind awaywork's wall (`wall`), or open, in the image and a container, whose walls are yet to come (`open`).
+ */
+export function sandboxCheck(
+  agent: string,
+  down: string | undefined,
+  mode: 'refused' | 'wall' | 'open',
+): [Status, string, string] {
+  const what = `${agent} sandbox`
+  if (!down) return ['ok', what, `${agent === 'cursor' ? 'its ' : ''}shell runs offline`]
+  const name = `${agent[0]?.toUpperCase()}${agent.slice(1)}`
+  if (mode === 'open')
+    return ['warn', what, `${down}: ${name}'s shell runs unsandboxed, with network access`]
+  if (mode === 'wall')
+    return [
+      'warn',
+      what,
+      `${down}: ${name}'s shell reaches the CLI's hosts and \`network\` through awaywork's wall`,
+    ]
+  return [
+    'FAIL',
+    what,
+    `${down}: ${name}'s units are skipped; install what it needs, or use isolation: user with its network wall`,
+  ]
 }
 
 const GH_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
@@ -545,6 +568,7 @@ export async function isolationChecks(
       what: 'isolation',
       detail: `user: setup, the agent and the checks run as ${worker}`,
     },
+    await wallCheck(worker, env),
   ]
   const home = homedir()
   const mode = statSync(home).mode & 0o777
@@ -577,6 +601,36 @@ export async function isolationChecks(
       detail: `${worker} can't enter ${unreachable.join(', ').replaceAll(home, '~')} on your PATH: tools there won't run as it`,
     })
   return checks
+}
+
+/** Whether the kernel leaves the worker only loopback, where the proxy is; awaywork's image has no such wall yet. */
+export async function wallCheck(
+  worker: string,
+  env: NodeJS.ProcessEnv,
+  holds = wallHolds,
+): Promise<Check> {
+  const what = 'network wall'
+  if (await holds(worker))
+    return {
+      status: 'ok',
+      what,
+      detail: `${worker} reaches only loopback: setup, the checks and the agent go through awaywork's proxy, to the hosts of their phase`,
+    }
+  if (inAwayworkImage(env))
+    return {
+      status: 'warn',
+      what,
+      detail: 'none in this image yet: setup, the checks and MCP servers reach any host',
+    }
+  const how =
+    env.RUNNER_ENVIRONMENT === 'github-hosted'
+      ? 'run awaywork through its action, which sets it up'
+      : `run these once as root, and keep them past a reboot (iptables-persistent saves them):\n    ${wallLines(worker).join('\n    ')}`
+  return {
+    status: 'FAIL',
+    what,
+    detail: `${worker} isn't walled from the network, so setup, the checks and MCP servers reach any host; ${how}`,
+  }
 }
 
 /** `isolation: user` without a worker to run as, and where making it is yours (`local`), how. */

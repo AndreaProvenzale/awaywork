@@ -1,5 +1,6 @@
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { agentPhase } from '#core/egress'
 import { AGENT_HOME, asWorker, lostToWorker } from '#core/isolation'
 import type { Job, Provider, Quota } from '#core/types'
 import { type Allowance, pct, scopedOver } from '#quota/budget'
@@ -103,6 +104,7 @@ export async function runWorker(
         }
       },
       login && ((home) => login(home, log)),
+      agentPhase(provider, job, log),
     )
   } finally {
     signal?.removeEventListener('abort', onAbort)

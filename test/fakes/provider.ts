@@ -17,6 +17,7 @@ export function fakeProvider(id = 'fake'): Provider {
     unattended: 'allowed',
     install: { npm: 'fake-agent' },
     secrets: ['FAKE_AGENT_TOKEN'],
+    hosts: [],
     detect: async () => ({ installed: true, version: '1.0.0' }),
     probe: async () => quota,
     async *run(job, signal): AsyncIterable<WorkerEvent> {

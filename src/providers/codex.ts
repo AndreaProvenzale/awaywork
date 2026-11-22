@@ -58,7 +58,8 @@ export function codexProvider(
   bin = 'codex',
   lockFile = join(rootStateDir, 'codex.lock'),
   authPath?: string,
-  startsSandbox = (job: Job, signal: AbortSignal) => codexSandboxStarts(whereRuns(job.dir), signal),
+  startsSandbox = (job: Pick<Job, 'dir'>, signal?: AbortSignal) =>
+    codexSandboxStarts(whereRuns(job.dir), signal),
 ): Provider {
   // Held from a login lent to the worker until it's saved back, the run in between.
   let lent = false
@@ -101,6 +102,8 @@ export function codexProvider(
     unattended: 'grey',
     install: { npm: '@openai/codex' },
     secrets: [],
+    hosts: ['chatgpt.com', 'auth.openai.com', 'api.openai.com'],
+    startsSandbox,
     loginDir: { env: 'CODEX_HOME', default: '~/.codex', command: 'codex login' },
 
     /** `codex login status`'s line, e.g. `Logged in using ChatGPT`. */

@@ -24,3 +24,13 @@ for fs in / $(findmnt -rn -t ext2,ext3,ext4,xfs,btrfs -o TARGET | grep -vx /); d
   sudo find "$fs" -xdev -type d -print0 | sudo xargs -0 -r getfacl -s -p |
     sed 's/^\(default:other::.\)w/\1-/' | sudo setfacl --restore=-
 done
+
+# Nothing the worker sends leaves but over loopback, where awaywork's proxy lets a phase's hosts through (docs/guide/safety/isolation.md). A test keeps these equal to `wallLines`.
+sudo iptables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT

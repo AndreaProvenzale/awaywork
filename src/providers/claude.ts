@@ -41,7 +41,8 @@ const configSchema = z.strictObject({
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
 export function claudeProvider(
   bin = 'claude',
-  startsSandbox = (job: Job, signal: AbortSignal) => sandboxStarts(whereRuns(job.dir), signal),
+  startsSandbox = (job: Pick<Job, 'dir'>, signal?: AbortSignal) =>
+    sandboxStarts(whereRuns(job.dir), signal),
 ): Provider {
   return {
     id: 'claude',
@@ -51,6 +52,8 @@ export function claudeProvider(
     unattended: 'allowed',
     install: { npm: '@anthropic-ai/claude-code' },
     secrets: [TOKEN],
+    hosts: ['api.anthropic.com', 'platform.claude.com', 'claude.ai'],
+    startsSandbox,
     loginDir: { env: 'CLAUDE_CONFIG_DIR', default: '~/.claude', command: 'claude /login' },
 
     async account(env) {

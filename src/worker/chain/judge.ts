@@ -1,7 +1,7 @@
 import { createWriteStream } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { contain, contained, lostToWorker } from '#core/isolation'
+import { contain, contained, lostToWorker, shellRefusal } from '#core/isolation'
 import type { Unit } from '#core/types'
 import { modelFor, modelsFor, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
@@ -29,6 +29,8 @@ export const judge =
     const provider = id && input.providers[id]
     const a = id && allowances[id]
     if (!id || !provider || !a) return `no provider left: ${passed.join('; ') || 'none configured'}`
+    const refused = await shellRefusal(provider, { dir }, input.signal)
+    if (refused) return refused
     if (!ranSlice.has(id)) routed[id] = (routed[id] ?? 0) + 1
     const image = settingsFor(input.config.repos, unit.repo).image
     const entry = input.config.providers.find((c) => c.id === id)
