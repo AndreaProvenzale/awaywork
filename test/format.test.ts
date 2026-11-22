@@ -717,8 +717,8 @@ describe('report views', () => {
     run.plan.skipped = [wait(8), wait(9, '2026-10-14T22:00:00Z'), wait(10, '2026-10-10T22:00:00Z')]
     const lines = formatReport(run).split('\n')
     expect(lines.filter((l) => l.startsWith('- [api#'))).toEqual([
-      '- [api#10 PR 10](https://github.com/acme/api/pull/10): r (5d)',
-      '- [api#9 PR 9](https://github.com/acme/api/pull/9): r (1d)',
+      '- [api#10 PR 10](https://github.com/acme/api/pull/10): r (8d)',
+      '- [api#9 PR 9](https://github.com/acme/api/pull/9): r (4d)',
       '- [api#8 PR 8](https://github.com/acme/api/pull/8): r',
     ])
   })
