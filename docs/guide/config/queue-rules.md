@@ -24,6 +24,7 @@ queue:
 | `serve` | The repo's app, started for the agent: [Proving](../workflows/proving.md) |
 | `deliver` | `draft_pr` (default), `pr`, [`push`](./chains.md#push), `report`, `pending_review` or [`plan`](../workflows/plans.md); see [Delivery](../how-it-works.md#delivery) |
 | `branch`, `order`, `units` | [Branch template](./repos.md#branch-names), [item order](#order), units per run |
+| `units_max_open` | At most this many of the rule's units [open at once](#open-units) |
 | `then`, `quota` | [More steps](./chains.md#then), [quota checks](./chains.md#quota) |
 | `plan_tasks` | On a `deliver: plan` rule, the most tasks its [plan](../workflows/plans.md) holds; 8 by default |
 | `on_done` | [Comment and move](#on-done) your items |
@@ -130,6 +131,23 @@ Details:
 ## `order`
 
 Units run in the source's order, newest first for GitHub, so with little quota the oldest can wait. `order: oldest`, `newest` or `updated` sorts them; items without the time go last. A card's [tasks](../workflows/tasks.md#the-feature-block) run back to back where the first ranks, in dependency order.
+
+## Open units
+
+`units` caps what a run starts; `units_max_open` caps what the rule has open at once, so a week of not reviewing isn't a week of new drafts. [`limits.units_max_open`](./providers.md#windows-limits-and-budget) does the same for all rules together, and wins over a rule's own:
+
+```yaml
+queue:
+  - { skill: fix, source: sentry, units_max_open: 6 }
+  - { skill: implement, units: 2, units_max_open: 2 }
+  - { skill: plan, deliver: plan, units_max_open: 1 }   # plans waiting for your approval
+```
+
+- Open is what awaywork left that's still on you: its open PRs, drafts that say `continue`, your PR it pushed onto until you review it, its questions, and plans and results that wait. Each counts once, by the URL you'd open, so a chain and its loops are one. A rule owns what its items match; an awaywork PR no rule takes counts for the total only.
+- A new unit over the cap is skipped as `over the cap: rule #3 units_max_open is 2`, in queue order. Going on with a draft, a rule taking up awaywork's PR and the rerun after you answer its questions or comment on a waiting post are never held: they land on something already open. `run --unit` goes past it.
+- A card counts once while any of its tasks has an open PR. A `planned` rule's cap holds a new card's tasks, never the rest of a block under way: the plan's approval agreed to them, and `plan_tasks` bounds how many.
+- Not counted: a `deliver: report` post that doesn't wait, rows that ask you for a fix (gave up, invalid branch, refused delivery) and pending reviews.
+- It stops new work, it isn't a ceiling: questions can't be foreseen. The head awaywork pushed onto your PR is kept in the state dir, so on a GitHub-hosted runner those pushes don't count.
 
 ## Retry on the next model
 

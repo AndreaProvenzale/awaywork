@@ -443,6 +443,7 @@ export interface Rule extends Step {
   where: Where
   order?: Order
   units?: number
+  units_max_open?: number
   /** A `deliver: plan` rule's: at most this many tasks in its plan; unset, 8. */
   plan_tasks?: number
   /** Steps run in turn after the rule's unit, in its clone; the chain publishes once, when it ends. */

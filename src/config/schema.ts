@@ -546,6 +546,11 @@ const rule: z.ZodType<Rule, unknown> = z
     units: units
       .optional()
       .describe('At most this many units per run from this rule; a chain counts once'),
+    units_max_open: units
+      .optional()
+      .describe(
+        "At most this many of this rule's units open at once: its open PRs, and its questions, plans and results that wait",
+      ),
     // biome-ignore lint/suspicious/noThenProperty: the key users write; never a function
     then: z
       .union([step, loop, z.array(z.union([step, loop])).min(1)])
@@ -762,6 +767,9 @@ const configShape = z.strictObject({
     .strictObject({
       units: units.optional().describe('At most this many units per run'),
       units_per_repo: units.optional().describe('At most this many units per run in one repo'),
+      units_max_open: units
+        .optional()
+        .describe('At most this many units open at once, for all rules together'),
       unit_minutes: z.int().positive().optional().describe('Stop a worker after this many minutes'),
     })
     .prefault({})

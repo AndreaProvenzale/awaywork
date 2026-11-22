@@ -1,6 +1,6 @@
 import { isValidRef } from '#core/branch'
 import type { Item, PrRef, Rule, TaskPr } from '#core/types'
-import { questionsAsked } from '#posts/comments'
+import { commentKind, questionsAsked } from '#posts/comments'
 import type { DraftLeft } from '#posts/footer'
 import { reportPost, taskPost } from '#posts/posts'
 import { gatesNeverRun } from '#tasks/fanout'
@@ -14,7 +14,7 @@ import {
   unchangedSince,
 } from './attempts'
 import type { Landing } from './chain'
-import type { ChainStep, PlannedUnit, PlanRun, SkipReason } from './foreman'
+import type { ChainStep, PlannedUnit, PlanRun, SkipKind, SkipReason } from './foreman'
 import { repoListed, settingsFor } from './repos'
 import { describeSkip, type Skip } from './skips'
 
@@ -189,6 +189,33 @@ export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[
     })
   return out
 }
+
+const waits: SkipKind[] = ['waiting_for_review', 'waiting_for_answer', 'waiting_for_approval']
+
+/** The URL of what awaywork left open on the group, the one you'd open: a wait, a draft that goes on, or the PR a rule took up. */
+export function openUrl(group: Group, held: Hold[]): string | undefined {
+  const { draft, pickup, ours } = group
+  return held.find((h) => waits.includes(h.kind))?.url ?? (draft || pickup ? ours?.url : undefined)
+}
+
+/** Whether you answered the item's questions and no result of awaywork's came since. */
+const answered = ({ comments }: Item) => {
+  const asked = comments.findLastIndex((c) => commentKind(c) === 'questions')
+  const since = comments.slice(asked + 1)
+  return (
+    asked >= 0 &&
+    since.some((c) => !c.bot && !commentKind(c)) &&
+    !since.some((c) => commentKind(c) === 'result')
+  )
+}
+
+/** Whether the group lands on something already open, which a cap on open units never holds: going on with a draft, a rule taking up awaywork's PR, the rerun after your answer or feedback. */
+export const landsOnOpen = ({ draft, pickup, card, posted, items }: Group): boolean =>
+  !!draft ||
+  pickup ||
+  card?.state === 'feedback' ||
+  posted?.answer === 'feedback' ||
+  items.some(answered)
 
 /** Why the chain can't deliver where it lands, the first the plan checks. */
 export function refusal(run: PlanRun, group: Group, at: Landing): Hold | undefined {

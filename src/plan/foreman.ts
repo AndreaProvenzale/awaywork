@@ -9,7 +9,16 @@ import { latestResult, planState } from '#tasks/plan-file'
 import { globToRegExp } from '#util/glob'
 import type { Attempts } from './attempts'
 import { chainUnits, landing } from './chain'
-import { type Group, holdsOn, openedElsewhere, postsOn, refusal, stackTarget } from './holds'
+import {
+  type Group,
+  holdsOn,
+  landsOnOpen,
+  openedElsewhere,
+  openUrl,
+  postsOn,
+  refusal,
+  stackTarget,
+} from './holds'
 import {
   closestRule,
   dedupe,
@@ -215,7 +224,6 @@ export function planRun(input: {
       .map((item) => ({ item, ...noRuleReason(item, queue) })),
   ]
   const units: PlannedUnit[] = []
-  const caps: Caps = { routed: {}, perRepo: {}, perRule: {}, counted: 0 }
   const run: PlanRun = {
     ...setup,
     allowances,
@@ -228,7 +236,21 @@ export function planRun(input: {
   // A post that waits holds its card for its rule only: the card's linked items rank on their own.
   const waiting = (e: Ranked) => waitsOn(rules[e.rule] as Rule, e.item)
   const takenHere = [...ranked, ...picked.map((item) => ({ item, rule: queue.length }))]
-  for (const found of inBlocks(dedupe(takenHere, waiting), candidates)) {
+  const blocks = inBlocks(dedupe(takenHere, waiting), candidates)
+  const caps: Caps = {
+    routed: {},
+    perRepo: {},
+    perRule: {},
+    counted: 0,
+    open: { total: new Set(), perRule: {} },
+  }
+  for (const item of unmatched.filter(isAwayworkPr)) caps.open.total.add(item.url)
+  for (const found of blocks) {
+    const group = readGroup(run, rules, found, [], waiting)
+    const url = openUrl(group, holdsOn(run, group, []))
+    if (url) markOpen(caps, group.ruleIndex, openKey(group, url))
+  }
+  for (const found of blocks) {
     const group = readGroup(run, rules, found, units, waiting)
     const { items, lead, rule, ruleIndex, id, ours, draft, prs } = group
     if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
@@ -269,14 +291,15 @@ export function planRun(input: {
       skip(refused)
       continue
     }
-    const capped = overCap(caps, run, group, repo)
+    const key = openKey(group, openUrl(group, held))
+    const capped = overCap(caps, run, group, repo, key)
     if (capped && !named) {
       skip({ kind: 'over_cap', reason: capped })
       continue
     }
     const chain = chainUnits(run, group, at, caps.routed)
     units.push(...chain.units)
-    if (chain.counts && !capped && !lifted) take(caps, repo, ruleIndex)
+    if (chain.counts && !capped && !lifted) take(caps, repo, ruleIndex, key)
   }
   return { queue, units, skipped, allowances }
 }
@@ -381,10 +404,27 @@ interface Caps {
   perRepo: Record<string, number>
   perRule: Record<number, number>
   counted: number
+  /** What's open, once each by the URL you'd open or, for tasks, by card: standing, then taken this run. */
+  open: { total: Set<string>; perRule: Record<number, Set<string>> }
+}
+
+/** A unit counts once toward `units_max_open`: a card for all its tasks, else the URL left open, else the unit itself. */
+const openKey = (group: Group, url = group.id) =>
+  group.lead.task ? `${group.lead.task.parent.source}:${group.lead.task.parent.key}` : url
+
+function markOpen(caps: Caps, ruleIndex: number, key: string) {
+  caps.open.total.add(key)
+  caps.open.perRule[ruleIndex] = (caps.open.perRule[ruleIndex] ?? new Set()).add(key)
 }
 
 /** The first cap a chain of the rule in the repo would go over, as why it's skipped. */
-function overCap(caps: Caps, run: PlanRun, group: Group, repo: string): string | undefined {
+function overCap(
+  caps: Caps,
+  run: PlanRun,
+  group: Group,
+  repo: string,
+  key: string,
+): string | undefined {
   const { config } = run
   const { rule, ruleIndex } = group
   const cap = [
@@ -395,11 +435,32 @@ function overCap(caps: Caps, run: PlanRun, group: Group, repo: string): string |
       count: caps.perRepo[repo] ?? 0,
     },
     { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: caps.perRule[ruleIndex] ?? 0 },
+    ...(landsOnOpen(group)
+      ? []
+      : openCaps(caps, config.limits.units_max_open, rule, ruleIndex, key)),
   ].find((c) => c.max !== undefined && c.count >= c.max)
   return cap && `over the cap: ${cap.name} is ${cap.max}`
 }
 
-function take(caps: Caps, repo: string, ruleIndex: number) {
+/** The open caps a unit with this key would add to: not one whose count already holds the key, as a card's later tasks. */
+function openCaps(
+  caps: Caps,
+  total: number | undefined,
+  rule: Rule,
+  ruleIndex: number,
+  key: string,
+) {
+  const own = caps.open.perRule[ruleIndex] ?? new Set()
+  return [
+    { name: 'limits.units_max_open', max: total, set: caps.open.total },
+    { name: `rule #${ruleIndex + 1} units_max_open`, max: rule.units_max_open, set: own },
+  ]
+    .filter((c) => !c.set.has(key))
+    .map(({ name, max, set }) => ({ name, max, count: set.size }))
+}
+
+function take(caps: Caps, repo: string, ruleIndex: number, key: string) {
+  markOpen(caps, ruleIndex, key)
   caps.counted++
   caps.perRepo[repo] = (caps.perRepo[repo] ?? 0) + 1
   caps.perRule[ruleIndex] = (caps.perRule[ruleIndex] ?? 0) + 1
