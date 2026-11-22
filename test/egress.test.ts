@@ -302,6 +302,12 @@ describe('the wall', () => {
     ).toBeUndefined()
   })
 
+  it('is missing when the worker can write nscd’s socket', async () => {
+    const worker = 'connect 1\nresolve 2\nsocket 1\ndbus 127'
+    expect(await wallProblem('w', probes(reached, `${worker}\nnscd 0`), address)).toContain('nscd')
+    expect(await wallProblem('w', probes(reached, `${worker}\nnscd 1`), address)).toBeUndefined()
+  })
+
   describe('IPv6', () => {
     const v6 = (control: string, worker: string) =>
       (async (file: string, args: string[]) => {

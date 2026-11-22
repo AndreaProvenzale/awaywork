@@ -48,6 +48,7 @@ const PROBE = [
   'timeout 5 getent -s dns hosts "$2" > /dev/null; echo "resolve $?"',
   '[ -d /run/systemd/resolve ] && [ -x /run/systemd/resolve ]; echo "socket $?"',
   'timeout 5 busctl call org.freedesktop.resolve1 /org/freedesktop/resolve1 org.freedesktop.resolve1.Manager ResolveHostname isit 0 "$2" 0 0 > /dev/null 2>&1; echo "dbus $?"',
+  '[ -w /var/run/nscd/socket ] || [ -w /run/nscd/socket ]; echo "nscd $?"',
 ].join('; ')
 const probeOptions = { env: {}, extendEnv: false, reject: false } as const
 
@@ -75,7 +76,7 @@ async function connectProblem(run: typeof execa, user: string, ip: string, label
 /**
  * What keeps the wall from holding, if anything. Awaywork's own uid first connects to an outside address and resolves a
  * public name, which proves the probe can tell; the worker must then be refused at once (not time out) and resolve nothing,
- * by any road: getent, resolved's socket, D-Bus. The same for IPv6 where awaywork's own uid has a route out; with none, there's no way out over it.
+ * by any road: getent, resolved's socket, D-Bus, nscd. The same for IPv6 where awaywork's own uid has a route out; with none, there's no way out over it.
  */
 export async function wallProblem(
   user: string,
@@ -91,6 +92,7 @@ export async function wallProblem(
   if (worker.resolve === '0') return `${user} resolves names`
   if (worker.socket === '0') return `${user} can open systemd-resolved's socket`
   if (worker.dbus === '0') return `${user} resolves names through systemd-resolved's D-Bus`
+  if (worker.nscd === '0') return `nscd resolves names for ${user}: stop nscd or deny its socket`
   const v6 = await probe(run, CONTROL_V6)
   if (v6?.connect !== '0') return
   const over = await connectProblem(run, user, CONTROL_V6, `${CONTROL_V6} over IPv6`)
