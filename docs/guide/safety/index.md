@@ -10,7 +10,7 @@ In short:
 
 - **Workers hold no forge token.** Of the secrets awaywork knows about, they get only their own agent's and those of the MCP servers their rule names: [What the agent can reach](#what-the-agent-can-reach).
 - **awaywork does every write, where the config says**, and the model never picks where its work goes: [What awaywork publishes](./publishes.md).
-- **Not a sandbox by default.** With `isolation: none` the agent can read what you can; a worker user or a container closes most of that: [Not a sandbox](./isolation.md#not-a-sandbox).
+- **Not a sandbox by default.** With `isolation: none` the agent can read what you can; a worker user or a container closes most of that: [Not a sandbox](./isolation.md#not-a-sandbox). What `network`, `writable`, `serve` and `image` do in each mode: [What each key does](./isolation.md#what-each-key-does).
 - **A watchdog** stops a unit that runs the machine low, and kills what it left running: [Resources](#resources).
 
 ## What the agent can reach

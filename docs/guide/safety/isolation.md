@@ -67,6 +67,19 @@ The image is yours to build, and all the units get:
 - **Removal:** each container is gone before awaywork reads the clone, `docker rm -f` on a timeout, the window's end or Ctrl-C. No answer from docker within a minute, and the clone is lost. `awaywork replay` runs in one too.
 - **Cost:** an image per repo to keep current, a few hundred ms per command on Colima, slow file sharing on macOS, and Linux only: no Xcode.
 
+## What each key does
+
+Four keys depend on the mode. Cells say what the key does to the agent's shell, setup, the checks (`verify`, `when`, `until` and gate scripts) and MCP servers. On a GitHub-hosted runner and in awaywork's image the mode is `user`, whatever `isolation` says.
+
+| Key | `none` | `user` | `container` |
+| --- | --- | --- | --- |
+| [`network`](../config/repos.md) | Walls the shell to the hosts; setup, checks and MCP servers stay open | Same | Same, the shell's sandbox runs in the image |
+| [`writable`](../config/repos.md) | Opens the paths to the shell; the rest needs no grant | Same, and the worker user's file permissions still apply | No effect: host paths aren't there |
+| [`serve`](../config/repos.md) | Starts the app for a step with `serve: true`, as you; the agent's MCP servers and its Codex and Cursor shells reach it, Claude's shell on Linux [doesn't](#claude-s-shell-is-offline), setup and checks don't | No effect: the step runs without the app | No effect: the step runs without the app |
+| [`image`](../config/repos.md) | No effect | No effect | Setup, the shell, checks and stdio MCP servers run in it |
+
+`network` and `writable` need the agent's own sandbox: where it can't start, the shell runs open and `doctor` warns ([Claude](#claude-s-shell-is-offline), [Codex](#codex-s-shell-is-offline), [Cursor](#cursor-s-shell-is-offline)). A command provider has no sandbox: `network` and `writable` do nothing for it. On an untrusted author's PR the shell gets no hosts and no `writable` paths and `serve` isn't started; `image` still applies. For a key that does nothing in the mode, `doctor` prints `writable: no effect under isolation: container (top level, acme/api)`: an info line, once per key, naming where it's set.
+
 ## Not a sandbox
 
 With `isolation: none`, the default on your machine and a self-hosted runner, all of the above keeps credentials out of the agent's way, not its reach. It runs as you, and its tools aren't sandboxed, except the agent's shell in Claude, Codex and Cursor ([below](#claude-s-shell-is-offline)): Claude Code has file tools pre-approved, Codex and Cursor run their shell open where their sandbox doesn't start (Cursor: no `--force`), a command provider whatever your command does. So what it reads can leave [I, from the code]:
@@ -83,7 +96,7 @@ Also open:
 - **Prompt injection.** Untrusted authors' GitHub comments are [hidden](./index.md#public-repos), but issue bodies, CI logs, check names and links, other sources' text and trusted people's quotes may be anyone's. The harness calls them data; a model can still be talked into things, with the reach above.
 - **Hooks and MCP servers across a loop's rounds:** on your repo, Claude Code loads the clone's `.claude/settings.json` and `.mcp.json`, and starts their servers unapproved, outside its sandbox and with its whole env [V, tested on macOS, Claude Code 2.1.327]. Claude's and Codex's sandboxed shells can't write them, nor can a walled Cursor write `.claude/settings.json`; but a walled Cursor can write `.mcp.json`, and setup and any agent whose sandbox doesn't start can write both, so a round can leave hooks or servers the next runs. A `.mcp.json` committed to your own repo starts its server the same way; awaywork doesn't change that.
 - **MCP secrets in Claude's Bash where its sandbox doesn't start**, on your items ([MCP servers](./index.md#mcp-servers); [#155](https://github.com/AndreaProvenzale/awaywork/issues/155)). Cursor's shell can read them from its `mcp.json`.
-- **The app `serve` starts** runs as you, with your env less every secret awaywork names, so it reaches what you reach. A process it detaches and leaves behind after exiting before it was ready can outlive the step. Only under `none`: `user` and `container` don't support it yet.
+- **The app `serve` starts** runs as you, with your env less every secret awaywork names, so it reaches what you reach. A process it detaches and leaves behind after exiting before it was ready can outlive the step. Only under `none`: not under `user`, `container`, a GitHub-hosted runner or awaywork's image, which don't support it yet.
 - **Codex and Cursor read a PR author's `AGENTS.md`**, Cursor also `CLAUDE.md`, `.cursor/rules` and skills.
 - **A command provider's repo config** on an untrusted author's PR, e.g. MCP servers or hooks in its config dir.
 
