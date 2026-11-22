@@ -52,7 +52,7 @@ const configSchema = z.strictObject({
 export const codexLogin = (env: NodeJS.ProcessEnv) =>
   join(env.CODEX_HOME || join(homedir(), '.codex'), 'auth.json')
 
-/** Whether Codex's sandbox can start `where`: the same, without the nested namespace or fresh `/proc` mount, which Docker's masked `/proc` refuses and Codex doesn't need. */
+/** Whether Codex's sandbox can start `where`: as Claude's, without the nested namespace or fresh `/proc` mount, which Docker's masked `/proc` refuses and Codex doesn't need. */
 export const codexSandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
   bwrapStarts('codex', where, [...DEV, 'true'], signal, run)
 

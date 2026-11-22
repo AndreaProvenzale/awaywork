@@ -44,7 +44,6 @@ describe('sandboxStarts', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     useMode(none)
-    useMode(none)
   })
 
   it('runs bwrap itself as the developer', async () => {
@@ -114,7 +113,6 @@ describe('sandboxStarts', () => {
     useMode(containerMode())
     contain('/clone', { image: 'probe/image:four', secrets: [] })
     expect(whereRuns('/clone')).toEqual({ image: 'probe/image:four' })
-    useMode(none)
     useMode(userMode('awaywork'))
     expect(whereRuns('/clone')).toEqual({ user: 'awaywork' })
   })

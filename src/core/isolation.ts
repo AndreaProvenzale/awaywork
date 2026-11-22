@@ -99,8 +99,8 @@ export async function isolateFor(
   // A failed pick still leaves the container behind, as it always did.
   if (contained()) useMode(none)
   const user = await workerFor(isolation, env)
-  if (user) return useMode(userMode(user))
-  if (isolation !== 'container') return useMode(none)
+  useMode(user ? userMode(user) : none)
+  if (user || isolation !== 'container') return
   await dockerVersion().catch((e: Error) => {
     throw new Error(`isolation: container, but ${e.message}`)
   })

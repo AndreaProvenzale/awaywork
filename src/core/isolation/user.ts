@@ -114,6 +114,7 @@ export function userMode(user: string): Mode {
     },
     where: () => ({ user }),
     async raiseWall(env, holds) {
+      // a refused wall throws, and must leave no proxy behind
       egress = undefined
       egress = await raiseUserWall(user, env, holds)
     },
