@@ -8,7 +8,7 @@ import { bin, profile, rootStateDir } from '#config/paths'
 import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Config } from '#config/schema'
 import { lock } from '#util/lock'
-import { type Egress, type Phase, proxyEnv } from './egress'
+import { type Egress, type Phase, proxyEnv, startEgress } from './egress'
 import type { Login } from './types'
 
 /** Linux's longest user name. */
@@ -68,15 +68,12 @@ export const AGENT_HOME = '.away/agent-home'
 let worker: string | undefined
 /** The proxy every launch of the worker user goes through, where the kernel wall holds. */
 let egress: Egress | undefined
-/** Sends every launch of the worker user through `proxy`, or lets them go as they are. */
-export function useEgress(proxy?: Egress): void {
-  egress = proxy
+export async function useEgress(on: boolean): Promise<void> {
+  egress = on ? (egress ?? (await startEgress())) : undefined
 }
 export const workerUser = () => worker
 /** The worker's `HOME` in the phase that runs now. */
 let phaseHome: string | undefined
-/** The hosts of the phase that runs now, through the proxy; none outside a phase. */
-let phase: Phase | undefined
 let killing: Promise<unknown> = Promise.resolve()
 let boxed = false
 /** Each clone's container under `isolation: container`. */
@@ -110,8 +107,7 @@ export function start<O extends LaunchOptions>(file: string, args: readonly stri
   const { home, tmpdir: _, ...rest } = options
   if (!worker)
     return execa(file, args, (home ? { ...rest, env: { ...rest.env, HOME: home } } : rest) as O)
-  const walled =
-    egress && phase ? { ...rest, env: { ...rest.env, ...proxyEnv(egress.port) } } : rest
+  const walled = egress ? { ...rest, env: { ...rest.env, ...proxyEnv(egress.port) } } : rest
   const subprocess = execa(bin('sudo'), sudoArgs(worker, file, args, { ...options, ...walled }), {
     ...walled,
     shell: false,
@@ -460,13 +456,13 @@ export function sudoersLines(user = userInfo().username, owner = developer()): s
  * Runs a phase that launches repo code in the clone `dir`. Under `user`, the worker owns the clone and
  * a `HOME` of its own while it runs, and once it ends none of the worker's processes is left and both
  * are the developer's again: the very folders handed over, closed to everyone else.
- * Where the network wall holds, its launches reach only the `hosts` of the phase, through awaywork's proxy.
+ * Where the network wall holds, its launches reach only the hosts of its `phase`, through awaywork's proxy.
  */
 export async function asWorker<T>(
   dir: string,
   run: () => Promise<T>,
   login?: Login,
-  hosts?: Phase,
+  phase?: Phase,
 ): Promise<T> {
   unrestored.add(dir)
   if (boxed) return inContainers(dir, run, login)
@@ -480,13 +476,11 @@ export async function asWorker<T>(
   try {
     const handed = await handOver([dir, home], `${user}:`)
     phaseHome = home
-    phase = hosts
-    egress?.use(hosts)
+    egress?.use(phase)
     try {
       return await run()
     } finally {
       phaseHome = undefined
-      phase = undefined
       egress?.use()
       await killWorker()
       await takeBack(handed)

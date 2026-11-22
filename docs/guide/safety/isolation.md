@@ -35,7 +35,7 @@ No home, no login shell: each clone gets a fresh `HOME`. The first sudoers line 
 - **Linux only:** `isolation: user runs on Linux only, not darwin`.
 - **Always on** a GitHub-hosted runner and in awaywork's image, whatever the config says; the action or the [Dockerfile](../scheduling/container.md) makes the user.
 - **One developer per worker user:** the `chown` line reaches anyone's awaywork clones.
-- **A network wall:** the kernel leaves the worker only loopback, and awaywork's proxy lets each phase reach its own hosts: [the network under `user`](#the-network-under-user). `doctor` prints the `iptables` lines root runs once, and `run` refuses until they're in.
+- **A network wall:** the kernel leaves the worker only loopback, and awaywork's proxy lets each phase reach its own hosts: [the network under `user`](#the-network-under-user). `doctor` prints the lines root runs once (`iptables` rules, and a denial of the resolver's sockets), and `run` refuses until they're in.
 
 ## In a container
 
@@ -132,48 +132,53 @@ It needs Seatbelt on macOS and unprivileged user namespaces on Linux. Before a C
 
 ### The network under `user`
 
-Under `user` the kernel leaves the worker user loopback and nothing else, and awaywork runs a small proxy there that connects only to the hosts of the phase that runs. Every launch gets `HTTPS_PROXY` and `HTTP_PROXY` (and their lowercase forms) pointing at it and `NO_PROXY=localhost,127.0.0.1,::1`, replacing any proxy variables of your own: the proxy connects straight out and doesn't chain to a corporate one. A client that ignores the proxy is refused, and names don't resolve for it. Hosts match as in [`network`](../config/repos.md): a name exactly, `*.x` its subdomains, `*` everything.
+Under `user` the kernel leaves the worker user loopback and nothing else, and awaywork runs a small proxy there that connects only to the hosts of the phase that runs. Every launch gets `HTTPS_PROXY` and `HTTP_PROXY` (and their lowercase forms) pointing at it and `NO_PROXY=localhost,127.0.0.1,::1`, `NODE_USE_ENV_PROXY=1`, so Node's `fetch` takes the proxy too, replacing any proxy variables of your own: the proxy connects straight out and doesn't chain to a corporate one, and `doctor` warns when yours are set. A client that ignores the proxy is refused. Names don't resolve for the worker: DNS is refused on port 53, and the lines below deny it systemd-resolved's varlink socket and its D-Bus name, which `iptables` can't see. Hosts match as in [`network`](../config/repos.md): a name exactly, `*.x` its subdomains, `*` everything.
 
 | Phase | Hosts |
 | --- | --- |
-| Setup | the package registries (`registry.npmjs.org`, `registry.yarnpkg.com`, `pypi.org`, `files.pythonhosted.org`, `proxy.golang.org`, `sum.golang.org`, `crates.io`, `static.crates.io`, `index.crates.io`, `rubygems.org`) and GitHub for git dependencies (`github.com`, `codeload.github.com`, `objects.githubusercontent.com`), plus `network` |
+| Setup | the package registries (`registry.npmjs.org`, `registry.yarnpkg.com`, `pypi.org`, `files.pythonhosted.org`, `proxy.golang.org`, `sum.golang.org`, `crates.io`, `static.crates.io`, `index.crates.io`, `rubygems.org`) and GitHub for git dependencies (`github.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`), plus `network` |
 | The agent CLI | its vendor's (Claude: `api.anthropic.com`, `platform.claude.com`, `claude.ai`; Codex: `chatgpt.com`, `auth.openai.com`, `api.openai.com`; Cursor: `*.cursor.sh`, `*.cursorapi.com`, `*.cursor-cdn.com`), the host of each HTTP MCP server's `url`, `network`, and each stdio server's [`network`](../config/mcp.md) |
 | `verify`, `until`, `when`, gate scripts | `network` |
 | A gate's judge | its vendor's |
 
-The built-in setup list is on and not configurable. On an untrusted author's PR setup doesn't run, and the agent gets its vendor's hosts alone. A refused connection fails the client's request (a 403 for the proxy's clients) and leaves `network: refused <host>:<port> (<phase>)` in the unit's `worker.log`, once per host and phase. A `verify` has no log of its own: its refusal shows in `verify.log` as the command's own failure. A CLI's optional calls are refused too and logged: Codex's `ab.chatgpt.com` and `*.oaiusercontent.com` [V, tested, Codex 0.171.0], which it runs without. Claude's telemetry would be, and awaywork turns it off behind the wall (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`).
+The built-in setup list is on and not configurable. An allowed host takes any port, and a destination that is link-local after resolution (`169.254.0.0/16`, where clouds keep their metadata service, and `fe80::/10`) is refused, under `*` too. On an untrusted author's PR setup doesn't run, and the agent gets its vendor's hosts alone. A refused connection fails the client's request (a 403 for the proxy's clients) and leaves `network: refused <host>:<port> (<phase>)` in the unit's `worker.log`, once per host and phase. A `verify` has no log of its own: its refusal shows in `verify.log` as the command's own failure. A CLI's optional calls are refused too and logged: Codex's `ab.chatgpt.com` and `*.oaiusercontent.com` [V, tested, Codex 0.171.0], which it runs without. Claude's telemetry would be, and awaywork turns it off behind the wall (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`).
 
-The rules are the part you run. For a worker user `awaywork` they are the lines below, for IPv4 and IPv6: loopback is open, so the proxy and a test suite's own servers stay reachable, except port 53, where a resolver such as systemd-resolved would answer for the worker; everything else the worker sends is rejected. `doctor` prints them for your worker user until the worker can reach neither an outside address nor the resolver, probed as the worker (a TCP connection to `1.1.1.1:443` and to `127.0.0.53:53`), once per process; `run` refuses the same way, before any phase.
+The rules are the part you run. For a worker user `awaywork` they are the lines below, for IPv4 and IPv6: loopback is open, so the proxy and a test suite's own servers stay reachable, except port 53, where a resolver such as systemd-resolved would answer for the worker; everything else the worker sends is rejected. Two more lines deny the worker systemd-resolved's varlink socket (a file ACL on `/run/systemd/resolve`) and its D-Bus name (a policy file). `doctor` prints them for your worker user until the probe passes; `run` refuses the same way, before any phase, and the daemon probes again at each run. The probe first has awaywork itself connect to `api.github.com` and resolve it, so it can tell; then, as the worker, the connection must be refused at once (not time out) and the name must not resolve. A box where awaywork can't reach `api.github.com` proves nothing, and counts as no wall.
 
 <!-- Generated by `pnpm docs:gen` from scripts/screens/configuration.ts. Do not edit. -->
 
 <!-- Generated by `pnpm docs:gen` from scripts/screens.ts. Do not edit. -->
 
 ```text config-doctor-network-wall
-✖  network wall: awaywork isn't walled from the network, so setup, the checks and MCP servers reach any host; run these once as root, and keep them past a reboot (iptables-persistent saves them):
-    sudo iptables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
-    sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
-    sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
-    sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
-    sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
-    sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
-    sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
-    sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+✖  network wall: awaywork isn't walled from the network (awaywork reaches api.github.com), so setup, the checks and MCP servers reach any host; run these once as root, and keep them past a reboot (iptables-persistent saves them):
+    sudo iptables -C OUTPUT -m owner --uid-owner awaywork -j REJECT 2> /dev/null || sudo iptables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+    sudo iptables -C OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT 2> /dev/null || sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+    sudo iptables -C OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT 2> /dev/null || sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+    sudo iptables -C OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT 2> /dev/null || sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+    sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -j REJECT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+    sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+    sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+    sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+    [ ! -d /run/systemd/resolve ] || sudo setfacl -m u:awaywork:--- /run/systemd/resolve
+    [ ! -d /run/systemd/resolve ] || printf 'd /run/systemd/resolve 0755 systemd-resolve systemd-resolve -\na+ /run/systemd/resolve - - - - u:awaywork:---\n' | sudo tee /etc/tmpfiles.d/awaywork-awaywork.conf > /dev/null
+    [ ! -d /etc/dbus-1/system.d ] || echo '<busconfig><policy user="awaywork"><deny send_destination="org.freedesktop.resolve1"/></policy></busconfig>' | sudo tee /etc/dbus-1/system.d/awaywork-awaywork.conf > /dev/null
+    sudo systemctl reload dbus 2> /dev/null || true
 ```
 
-On a hosted runner, `scripts/worker-user.sh` (the action) puts the rules in [V, tested on `ubuntu-latest`: the worker's connection to `1.1.1.1:443` refused, name lookups failing, the proxy reachable]. On your machine they last until a reboot unless you save them (`iptables-persistent`'s `netfilter-persistent save`, or your firewall's own tool) [I, not run]. Awaywork's [image](#a-worker-user-in-awaywork-s-image) has no wall yet: `doctor` warns, and setup, checks and MCP servers there reach any host.
+On a hosted runner, `scripts/worker-user.sh` (the action) puts the rules in [V, tested on `ubuntu-latest`: the worker's connection to `1.1.1.1:443` refused, name lookups failing, the proxy reachable]. On your machine the `iptables` rules last until a reboot unless you save them (`iptables-persistent`'s `netfilter-persistent save`, or your firewall's own tool) [I, not run]; the ACL is renewed at each boot by a `tmpfiles.d` line and kept across a `systemd-resolved` restart [V, tested on Ubuntu 24.04]. Re-running the lines adds nothing. On a `ubuntu-latest` runner and in Colima (Ubuntu 24.04) `resolvectl`, `varlinkctl`, `busctl` and `getent` all fail for the worker with them in [V, tested]. Awaywork's [image](#a-worker-user-in-awaywork-s-image) has no wall yet: `doctor` warns, and setup, checks and MCP servers there reach any host.
 
 What the agent's own shell gets depends on its sandbox:
 
-- **Where it starts,** it stays tighter than its CLI: offline unless `network` lists hosts, and a listed host goes through awaywork's proxy, so it has to be on the agent phase's list, which `network` is. Codex's sandbox proxy chains to `HTTPS_PROXY` [V, tested on Linux 6.8, Codex 0.171.0: a curl to an allowed host reached awaywork's proxy and got a 200]. Claude's chains to it [V, Claude Code's docs]. Cursor's doesn't: through it a listed host fails with a 502 and never reaches awaywork's proxy [V, tested on a hosted runner], so behind the wall awaywork leaves Cursor's sandbox out, says so in `worker.log`, and its shell reaches the agent phase's list through the proxy [V, tested: a listed host 200, another refused, a client with `--noproxy` offline].
+- **Where it starts,** it stays tighter than its CLI: offline unless `network` lists hosts, and a listed host goes through awaywork's proxy, so it has to be on the agent phase's list, which `network` is. Codex's sandbox proxy chains to `HTTPS_PROXY` [V, tested on Linux 6.8, Codex 0.171.0: a curl to an allowed host reached awaywork's proxy and got a 200]. Claude's chains to it [V, Claude Code's docs]. Cursor's doesn't: through it a listed host fails with a 502 and never reaches awaywork's proxy [V, tested on a hosted runner], so behind the wall awaywork leaves Cursor's sandbox out, says so in `worker.log`, and its shell reaches the agent phase's list through the proxy [V, tested: a listed host 200, another refused, a client with `--noproxy` offline]. That costs Cursor's shell what its sandbox gave: it is no longer offline by default (it gets the agent list, your `network` included), nor limited to the clone and `writable` for writes, and the edit tool's `.cursor` and `.claude` denies are gone; its processes still run as the worker, behind the kernel wall. `doctor` warns.
 - **Where it can't,** a unit still runs if the wall holds, with its shell limited to its CLI's hosts and `network`, and `worker.log` says so in a line. Without the wall a unit is skipped; see [What each key does](#what-each-key-does).
 
 Still open:
 
 - **An allowed host is a way out.** Anyone can use `github.com`, a registry or the vendor's own API with an account of their own, an attacker's API key included, and the filter reads hostnames only, with no TLS inspection, so domain fronting works [I].
-- **Loopback** stays open for test suites: every loopback port on the machine, your dev servers and databases included, bar port 53.
+- **Loopback** stays open for test suites: every loopback port on the machine, your dev servers and databases included, bar port 53. An HTTP proxy listening there is a way out too: your own Claude sandbox's proxy, another profile's awaywork proxy during its phase, a corporate-proxy helper such as cntlm.
+- **Another resolver's socket.** Only systemd-resolved's are denied. A daemon such as `nscd` with a world-writable socket would resolve names for the worker; the probe's `getent` call catches it, and the wall then doesn't hold.
 - **What awaywork publishes** (commits, the PR body, reports), **MCP tools' own destinations** and **what the model provider sees** aren't filtered.
-- **A name that resolves to a private address** is reached when it is on the list: the proxy, run as you, resolves it [I].
+- **A name that resolves to a private address** is reached when it is on the list: the proxy, run as you, resolves it [I]. Link-local ones are refused.
 
 ### A worker user on your Linux machine
 

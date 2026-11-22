@@ -2,6 +2,7 @@ import { attemptsPath, skipsPath } from '#config/paths'
 import type { Config } from '#config/schema'
 import { readSetup } from '#config/skills'
 import type { Ctx, Forge, Item, Rule, Source } from '#core/types'
+import { shellRefusal } from '#core/wall'
 import { forgeFor } from '#forge/index'
 import { resolveTeams } from '#forge/teams'
 import { clip } from '#format/terminal'
@@ -98,6 +99,11 @@ export async function probeAndPlan(
       onProgress?.({ name, state: 'failed', detail: `unavailable: ${unavailable}` })
       continue
     }
+    const refused =
+      config.isolation === 'none' &&
+      provider &&
+      (await shellRefusal(provider, { dir: process.cwd() }))
+    if (refused) warnings.push(`${p.id}: its units are skipped: ${refused}`)
     onProgress?.({ name, state: 'running' })
     let reason: string | undefined
     const quota = await provider?.probe(ctx).catch((e: Error) => {

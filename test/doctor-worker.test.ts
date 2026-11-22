@@ -37,7 +37,11 @@ it('offers no setup for a profile whose worker user is over 32 characters', asyn
 
 it("prints a named profile's wall rules where the wall is missing, as a failure", async () => {
   const { wallCheck } = await doctorOf('work')
-  const check = await wallCheck('awaywork-work', {}, async () => false)
+  const check = await wallCheck(
+    'awaywork-work',
+    {},
+    async () => 'awaywork-work reaches api.github.com',
+  )
   expect(check.status).toBe('FAIL')
   expect(check.what).toBe('network wall')
   expect(check.detail).toContain(
@@ -51,17 +55,17 @@ it("prints a named profile's wall rules where the wall is missing, as a failure"
 it('tells a hosted runner to use the action, and warns in the image', async () => {
   const { wallCheck } = await doctorOf('default')
   const env = { RUNNER_ENVIRONMENT: 'github-hosted' }
-  const hosted = await wallCheck('awaywork', env, async () => false)
+  const hosted = await wallCheck('awaywork', env, async () => 'x')
   expect(hosted.status).toBe('FAIL')
   expect(hosted.detail).toContain('through its action')
   expect(hosted.detail).not.toContain('iptables')
-  const image = await wallCheck('awaywork', { AWAYWORK_IMAGE: '1' }, async () => false)
+  const image = await wallCheck('awaywork', { AWAYWORK_IMAGE: '1' }, async () => 'x')
   expect(image.status).toBe('warn')
 })
 
 it('is ok where the wall holds', async () => {
   const { wallCheck } = await doctorOf('default')
-  expect((await wallCheck('awaywork', {}, async () => true)).status).toBe('ok')
+  expect((await wallCheck('awaywork', {}, async () => undefined)).status).toBe('ok')
 })
 
 it('fails a sandbox that can’t start where its units are refused, warns where they run behind the wall or open', async () => {

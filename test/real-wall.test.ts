@@ -2,8 +2,8 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Phase } from '#core/egress'
-import { isolate, workerRoot } from '#core/isolation'
-import { isolateWalled, wallUp } from '#core/wall'
+import { isolate, WORKER, workerRoot } from '#core/isolation'
+import { isolateWalled, wallProblem, wallUp } from '#core/wall'
 import { runCommand } from '#worker/process/command'
 
 const env = { PATH: process.env.PATH }
@@ -38,8 +38,26 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('network wall, live', () => {
     origin.close()
   })
 
-  it('stands, probed as the worker', () => {
+  it('stands, probed as the worker', async () => {
     expect(wallUp()).toBe(true)
+    expect(await wallProblem(WORKER)).toBeUndefined()
+  })
+
+  it('resolves no name for the worker, through DNS, systemd-resolved’s socket or D-Bus', async () => {
+    const asks = [
+      'getent hosts api.github.com',
+      'resolvectl query api.github.com',
+      `varlinkctl call /run/systemd/resolve/io.systemd.Resolve io.systemd.Resolve.ResolveHostname '{"name":"api.github.com"}'`,
+      'busctl call org.freedesktop.resolve1 /org/freedesktop/resolve1 org.freedesktop.resolve1.Manager ResolveHostname isit 0 api.github.com 0 0',
+    ]
+    const script = asks
+      .map((ask) => `${ask} > /dev/null 2>&1 && echo "resolved: ${ask}"`)
+      .join('; ')
+    const result = await runCommand(`${script}; true`, dir, env, {
+      secrets: [],
+      egress: through([]),
+    })
+    expect(result.output.trim()).toBe('')
   })
 
   it('points a launch at the proxy', async () => {

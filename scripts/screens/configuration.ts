@@ -168,7 +168,7 @@ function isolationUserDoctor(): string {
 }
 
 async function networkWallDoctor(): Promise<string> {
-  return doctorLine(await wallCheck(WORKER, {}, async () => false))
+  return doctorLine(await wallCheck(WORKER, {}, async () => `${WORKER} reaches api.github.com`))
 }
 
 function containerDoctor(): string {

@@ -1,5 +1,8 @@
+import type { LookupAddress } from 'node:dns'
+import { lookup } from 'node:dns/promises'
 import { createServer, request } from 'node:http'
-import { connect, type Socket } from 'node:net'
+import { connect, isIP, type LookupFunction, type Socket } from 'node:net'
+import { withholdsGrants } from './trust'
 import type { Job, McpServer, Provider } from './types'
 
 /** The hosts one phase of a unit may reach through the proxy; its refusals go to `log`. */
@@ -24,6 +27,7 @@ export const SETUP_HOSTS = [
   'github.com',
   'codeload.github.com',
   'objects.githubusercontent.com',
+  'release-assets.githubusercontent.com',
 ]
 
 /** `*` is every host, `*.x` the subdomains of x and not x itself, anything else that host. */
@@ -51,30 +55,55 @@ export const checkPhase = (network: string[] = [], log: Phase['log']): Phase => 
   log,
 })
 
-/** The agent CLI's vendor, the hosts of the unit's HTTP MCP servers and the stdio ones' `network`, and the unit's `network`; on an untrusted author's PR only the vendor's. */
+/** The agent CLI's vendor, the hosts of the unit's HTTP MCP servers and the stdio ones' `network`, and the unit's `network`; on an untrusted author's PR or issue only the vendor's. */
 export function agentPhase(provider: Pick<Provider, 'hosts'>, job: Job, log: Phase['log']): Phase {
   const servers: McpServer[] = Object.values(job.mcp ?? {})
   const mcp = servers.flatMap((s) => [
     ...(s.url ? [new URL(s.url).hostname] : []),
     ...(s.network ?? []),
   ])
-  const network = job.unit.untrusted ? [] : (job.unit.network ?? [])
+  const network = withholdsGrants(job.unit) ? [] : (job.unit.network ?? [])
   return { name: 'agent', hosts: [...new Set([...provider.hosts, ...mcp, ...network])], log }
 }
 
 const NO_PROXY = 'localhost,127.0.0.1,::1'
 
-/** What points a launch at the proxy, in both cases tools read. */
+/** What points a launch at the proxy, in both cases tools read, and Node's `fetch` too. */
 export function proxyEnv(port: number): Record<string, string> {
   const url = `http://127.0.0.1:${port}`
-  return Object.fromEntries(
-    ['HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY'].flatMap((name) => {
+  return Object.fromEntries([
+    ['NODE_USE_ENV_PROXY', '1'],
+    ...['HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY'].flatMap((name) => {
       const value = name === 'NO_PROXY' ? NO_PROXY : url
       return [
         [name, value],
         [name.toLowerCase(), value],
       ]
     }),
+  ])
+}
+
+/** Link-local addresses: 169.254.0.0/16, where clouds keep their metadata service, and fe80::/10. */
+export const linkLocal = (address: string) => {
+  const ip = address.toLowerCase().replace(/^::ffff:/, '')
+  return /^169\.254\./.test(ip) || /^fe[89ab]/.test(ip)
+}
+
+const publicAddresses = async (name: string, options: object) => {
+  const found = await lookup(name, { ...options, all: true })
+  const kept = found.filter(({ address }) => !linkLocal(address))
+  if (!kept.length) throw new Error('link-local address')
+  return kept
+}
+
+/** `dns.lookup` that answers none of the link-local addresses a name has. */
+const publicLookup: LookupFunction = (name, options, done) => {
+  publicAddresses(name, options).then(
+    (kept) => {
+      if (options.all) (done as (e: null, a: LookupAddress[]) => void)(null, kept)
+      else done(null, kept[0]?.address ?? '', kept[0]?.family)
+    },
+    (error) => done(error, '', 4),
   )
 }
 
@@ -89,8 +118,9 @@ export async function startEgress(): Promise<Egress> {
   let phase: Phase | undefined
   const told = new Set<string>()
   const permits = (host: string, port: number) => {
-    if (phase && hostAllowed(host, phase.hosts)) return true
-    const line = `network: refused ${host}:${port} (${phase?.name ?? 'no phase'})`
+    if (phase && hostAllowed(host, phase.hosts) && !linkLocal(host)) return true
+    const shown = isIP(host) === 6 ? `[${host}]` : host
+    const line = `network: refused ${shown}:${port} (${phase?.name ?? 'no phase'})`
     if (!told.has(line)) phase?.log(line)
     told.add(line)
     return false
@@ -102,7 +132,14 @@ export async function startEgress(): Promise<Egress> {
     const port = Number(url.port) || 80
     if (!permits(host, port)) return void res.writeHead(403).end('awaywork: host not allowed\n')
     const upstream = request(
-      { host, port, method: req.method, path: url.pathname + url.search, headers: req.headers },
+      {
+        host,
+        port,
+        method: req.method,
+        path: url.pathname + url.search,
+        headers: req.headers,
+        lookup: publicLookup,
+      },
       (answer) => {
         res.writeHead(answer.statusCode ?? 502, answer.headers)
         answer.pipe(res)
@@ -113,8 +150,11 @@ export async function startEgress(): Promise<Egress> {
   })
   server.on('connect', (req, client: Socket, head) => {
     const [, host = '', port = '443'] = /^\[?([^\]]*?)\]?(?::(\d+))?$/.exec(req.url ?? '') ?? []
-    if (!permits(host, Number(port))) return void client.end('HTTP/1.1 403 Forbidden\r\n\r\n')
-    const upstream = connect(Number(port), host, () => {
+    const number = Number(port)
+    if (!Number.isInteger(number) || number < 1 || number > 65535)
+      return void client.end('HTTP/1.1 400 Bad Request\r\n\r\n')
+    if (!permits(host, number)) return void client.end('HTTP/1.1 403 Forbidden\r\n\r\n')
+    const upstream = connect({ host, port: number, lookup: publicLookup }, () => {
       client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
       upstream.write(head)
       upstream.pipe(client)

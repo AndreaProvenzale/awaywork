@@ -25,12 +25,16 @@ for fs in / $(findmnt -rn -t ext2,ext3,ext4,xfs,btrfs -o TARGET | grep -vx /); d
     sed 's/^\(default:other::.\)w/\1-/' | sudo setfacl --restore=-
 done
 
-# Nothing the worker sends leaves but over loopback, where awaywork's proxy lets a phase's hosts through (docs/guide/safety/isolation.md). A test keeps these equal to `wallLines`.
-sudo iptables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
-sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
-sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
-sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
-sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
-sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
-sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
-sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+# Nothing the worker sends leaves but over loopback, where awaywork's proxy lets a phase's hosts through, and no resolver answers it (docs/guide/safety/isolation.md). A test keeps these equal to `wallLines`.
+sudo iptables -C OUTPUT -m owner --uid-owner awaywork -j REJECT 2> /dev/null || sudo iptables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+sudo iptables -C OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT 2> /dev/null || sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+sudo iptables -C OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT 2> /dev/null || sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+sudo iptables -C OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT 2> /dev/null || sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -j REJECT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+[ ! -d /run/systemd/resolve ] || sudo setfacl -m u:awaywork:--- /run/systemd/resolve
+[ ! -d /run/systemd/resolve ] || printf 'd /run/systemd/resolve 0755 systemd-resolve systemd-resolve -\na+ /run/systemd/resolve - - - - u:awaywork:---\n' | sudo tee /etc/tmpfiles.d/awaywork-awaywork.conf > /dev/null
+[ ! -d /etc/dbus-1/system.d ] || echo '<busconfig><policy user="awaywork"><deny send_destination="org.freedesktop.resolve1"/></policy></busconfig>' | sudo tee /etc/dbus-1/system.d/awaywork-awaywork.conf > /dev/null
+sudo systemctl reload dbus 2> /dev/null || true

@@ -35,7 +35,7 @@ import {
   workerFor,
 } from '#core/isolation'
 import type { Ctx, Provider, Rule } from '#core/types'
-import { sandboxNeeds, wallHolds, wallLines } from '#core/wall'
+import { sandboxNeeds, wallLines, wallProblem } from '#core/wall'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '#forge/bitbucket'
 import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
 import { teamMembers, teamsIn } from '#forge/teams'
@@ -195,7 +195,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       )
     const starts = { claude: sandboxStarts, codex: codexSandboxStarts }[id]
     const exempt = boxed || inAwayworkImage(process.env)
-    const wall = asWorker && !exempt && (await wallHolds(WORKER))
+    const wall = asWorker && !exempt && !(await wallProblem(WORKER))
     if (starts && !isolation.some((c) => c.status === 'FAIL')) {
       const sandbox = await shellSandbox(id, starts, config, boxed, asWorker)
       report(...sandboxCheck(id, sandbox, exempt ? 'open' : wall ? 'wall' : 'refused'))
@@ -574,6 +574,12 @@ export async function isolationChecks(
     },
     await wallCheck(worker, env),
   ]
+  if (['HTTPS_PROXY', 'HTTP_PROXY'].some((name) => env[name] ?? env[name.toLowerCase()]))
+    checks.push({
+      status: 'warn',
+      what: 'network wall',
+      detail: `your own HTTP(S)_PROXY is replaced by awaywork's for ${worker}, which connects straight out: a box that only reaches out through a proxy fails every phase`,
+    })
   const home = homedir()
   const mode = statSync(home).mode & 0o777
   if (mode & 0o007)
@@ -611,10 +617,11 @@ export async function isolationChecks(
 export async function wallCheck(
   worker: string,
   env: NodeJS.ProcessEnv,
-  holds = wallHolds,
+  problemOf = wallProblem,
 ): Promise<Check> {
   const what = 'network wall'
-  if (await holds(worker))
+  const problem = await problemOf(worker)
+  if (!problem)
     return {
       status: 'ok',
       what,
@@ -633,7 +640,7 @@ export async function wallCheck(
   return {
     status: 'FAIL',
     what,
-    detail: `${worker} isn't walled from the network, so setup, the checks and MCP servers reach any host; ${how}`,
+    detail: `${worker} isn't walled from the network (${problem}), so setup, the checks and MCP servers reach any host; ${how}`,
   }
 }
 

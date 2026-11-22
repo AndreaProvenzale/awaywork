@@ -99,6 +99,6 @@ A yes to suggestions: follow [`suggest.md`](suggest.md) from its step 2, with th
 
 ## 7. Write
 
-On their yes, move the draft to `<config>`, then `awaywork doctor --json` once: it probes each provider's quota, a tiny model call, and its `gh login` and `<provider> login` rows name the account each run uses. A `FAIL` on the config is yours to fix; one on a binary, a login or a token is the developer's: say which and how. With `isolation: user` on Linux, a `FAIL` on the `network wall` row carries `sudo iptables` lines root runs once: show them as they are.
+On their yes, move the draft to `<config>`, then `awaywork doctor --json` once: it probes each provider's quota, a tiny model call, and its `gh login` and `<provider> login` rows name the account each run uses. A `FAIL` on the config is yours to fix; one on a binary, a login or a token is the developer's: say which and how. With `isolation: user` on Linux, a `FAIL` on the `network wall` row carries `sudo` lines root runs once (the firewall rules): show them as they are.
 
 End with a few lines: whose work and which logins, where it runs, the sources and repos, each rule by number and what it takes now, doctor's result. Then the commands for where it runs: `awaywork plan` previews the next run, `awaywork run --unit <id>` tries one unit, and `awaywork schedule install` (this machine), `awaywork schedule install --with github-actions` or `--with docker` (from the control folder) schedules it. Never run them yourself.

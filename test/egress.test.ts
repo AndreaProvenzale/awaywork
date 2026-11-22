@@ -7,17 +7,27 @@ import {
   checkPhase,
   type Egress,
   hostAllowed,
+  linkLocal,
   proxyEnv,
   SETUP_HOSTS,
   setupPhase,
   startEgress,
 } from '#core/egress'
-import { containerize } from '#core/isolation'
+import { containerize, isolate } from '#core/isolation'
 import type { Job, Provider } from '#core/types'
-import { shellRefusal, wallHolds, wallLines } from '#core/wall'
+import { isolateWalled, raiseWall, shellRefusal, wallLines, wallProblem, wallUp } from '#core/wall'
 import { claude } from '#providers/claude'
 import { codex } from '#providers/codex'
 import { cursor } from '#providers/cursor'
+
+describe('linkLocal', () => {
+  it('names 169.254.0.0/16 and fe80::/10, mapped IPv4 too', () => {
+    for (const address of ['169.254.169.254', 'fe80::1', 'FEBF::1', '::ffff:169.254.1.1'])
+      expect(linkLocal(address)).toBe(true)
+    for (const address of ['169.253.0.1', '10.0.0.1', '::1', 'fec0::1', '1.1.1.1'])
+      expect(linkLocal(address)).toBe(false)
+  })
+})
 
 describe('hostAllowed', () => {
   it('matches a host exactly, a wildcard on subdomains only, and * on everything', () => {
@@ -54,6 +64,7 @@ describe('phase lists', () => {
       'github.com',
       'codeload.github.com',
       'objects.githubusercontent.com',
+      'release-assets.githubusercontent.com',
     ])
       expect(hosts).toContain(host)
   })
@@ -87,8 +98,9 @@ describe('phase lists', () => {
 })
 
 describe('proxyEnv', () => {
-  it('sets both cases of the proxies, and loopback past them', () => {
+  it('sets both cases of the proxies, Node’s too, and loopback past them', () => {
     expect(proxyEnv(4321)).toEqual({
+      NODE_USE_ENV_PROXY: '1',
       HTTPS_PROXY: 'http://127.0.0.1:4321',
       https_proxy: 'http://127.0.0.1:4321',
       HTTP_PROXY: 'http://127.0.0.1:4321',
@@ -166,6 +178,26 @@ describe('the proxy', () => {
     expect(lines).toEqual(['network: refused evil.example:443 (setup)'])
   })
 
+  it('refuses a port no host has without throwing, and goes on', async () => {
+    proxy.use(phase(['github.com']))
+    for (const port of ['99999', '0', '65536'])
+      expect(await connect(`github.com:${port}`)).toBe(400)
+    proxy.use(phase(['127.0.0.1']))
+    expect(await connect(`127.0.0.1:${originPort}`)).toBe(200)
+  })
+
+  it('refuses link-local addresses even under *, brackets IPv6 in the log, and lets other ports through', async () => {
+    lines.length = 0
+    proxy.use(phase(['*']))
+    expect(await connect('169.254.169.254:80')).toBe(403)
+    expect(await connect('[fe80::1]:22')).toBe(403)
+    expect(await connect(`127.0.0.1:${originPort}`)).toBe(200)
+    expect(lines).toEqual([
+      'network: refused 169.254.169.254:80 (setup)',
+      'network: refused [fe80::1]:22 (setup)',
+    ])
+  })
+
   it('refuses plain HTTP outside the phase with a 403', async () => {
     lines.length = 0
     proxy.use(phase(['*.acme.test']))
@@ -186,43 +218,93 @@ describe('the proxy', () => {
 })
 
 describe('the wall', () => {
-  it('has rules for IPv4 and IPv6 that leave loopback but its DNS, and keep the script of the action equal', () => {
+  it('has rules for IPv4 and IPv6 that leave loopback but its DNS, deny the resolver, and keep the script of the action equal', () => {
     const lines = wallLines('awaywork-work')
-    expect(lines).toHaveLength(8)
-    expect(lines.slice(0, 4)).toEqual([
+    const rules = lines.filter((l) => l.includes('tables'))
+    expect(rules).toHaveLength(8)
+    expect(rules.slice(0, 4).map((l) => l.split(' || ')[1])).toEqual([
       'sudo iptables -I OUTPUT -m owner --uid-owner awaywork-work -j REJECT',
       'sudo iptables -I OUTPUT -m owner --uid-owner awaywork-work -o lo -j ACCEPT',
       'sudo iptables -I OUTPUT -m owner --uid-owner awaywork-work -o lo -p udp --dport 53 -j REJECT',
       'sudo iptables -I OUTPUT -m owner --uid-owner awaywork-work -o lo -p tcp --dport 53 -j REJECT',
     ])
-    expect(lines.slice(4)).toEqual(lines.slice(0, 4).map((l) => l.replace('iptables', 'ip6tables')))
+    expect(rules[0]).toContain(
+      'sudo iptables -C OUTPUT -m owner --uid-owner awaywork-work -j REJECT 2> /dev/null ||',
+    )
+    expect(rules.slice(4)).toEqual(
+      rules.slice(0, 4).map((l) => l.replaceAll('iptables', 'ip6tables')),
+    )
+    const resolver = lines.filter((l) => !l.includes('tables')).join('\n')
+    expect(resolver).toContain('setfacl -m u:awaywork-work:--- /run/systemd/resolve')
+    expect(resolver).toContain(
+      'user="awaywork-work"><deny send_destination="org.freedesktop.resolve1"',
+    )
     const script = readFileSync('scripts/worker-user.sh', 'utf8')
     for (const line of wallLines('awaywork')) expect(script).toContain(`${line}\n`)
   })
 
-  type Run = Parameters<typeof wallHolds>[1]
-  const ran = (stdout: string, failed = false) =>
-    (async () => ({ stdout, failed })) as unknown as Run
+  type Run = NonNullable<Parameters<typeof wallProblem>[1]>
+  /** A probe's answers: the first for awaywork's own uid, the second for the worker. */
+  const probes = (control: string, worker: string, failed = false) =>
+    (async (file: string) => ({
+      stdout: file.endsWith('sudo') ? worker : control,
+      failed: failed && file.endsWith('sudo'),
+    })) as unknown as Run
+  const reached = 'connect 0\nresolve 0'
+  const address = async () => '140.82.121.6'
 
-  it('holds when the worker reaches neither the outside nor the loopback resolver', async () => {
-    expect(await wallHolds('wall-a', ran(''))).toBe(true)
+  it('holds when the worker is refused at once and resolves nothing', async () => {
+    expect(await wallProblem('w', probes(reached, 'connect 1\nresolve 2'), address)).toBeUndefined()
   })
 
-  it('is missing when the worker reaches one of them, or the probe itself fails', async () => {
-    expect(await wallHolds('wall-b', ran('1.1.1.1:443\n'))).toBe(false)
-    expect(await wallHolds('wall-c', ran('127.0.0.53:53\n'))).toBe(false)
-    expect(await wallHolds('wall-d', ran('', true))).toBe(false)
+  it('is missing when the worker reaches the outside, resolves a name, or times out', async () => {
+    expect(await wallProblem('w', probes(reached, 'connect 0\nresolve 2'), address)).toContain(
+      'reaches',
+    )
+    expect(await wallProblem('w', probes(reached, 'connect 1\nresolve 0'), address)).toContain(
+      'resolves names',
+    )
+    expect(await wallProblem('w', probes(reached, 'connect 124\nresolve 2'), address)).toContain(
+      'times out',
+    )
+    expect(await wallProblem('w', probes(reached, '', true), address)).toContain('failed')
   })
 
-  it('probes once for each user', async () => {
-    let calls = 0
-    const run = (async () => {
-      calls++
-      return { stdout: '', failed: false }
-    }) as unknown as Run
-    await wallHolds('wall-e', run)
-    await wallHolds('wall-e', run)
-    expect(calls).toBe(1)
+  it('proves nothing when awaywork itself reaches nothing: no wall, the outside blackholed', async () => {
+    expect(
+      await wallProblem('w', probes('connect 124\nresolve 0', 'connect 124\nresolve 2'), address),
+    ).toContain("can't tell")
+    expect(
+      await wallProblem('w', probes(reached, 'connect 1\nresolve 2'), async () => {
+        throw new Error('offline')
+      }),
+    ).toContain("can't tell")
+  })
+
+  it('probes again at every raise, so rules added or lost show at once', async () => {
+    isolate('wall-user')
+    try {
+      await expect(raiseWall({}, async () => 'no rules')).rejects.toThrow(/no rules/)
+      expect(wallUp()).toBe(false)
+      await raiseWall({}, async () => undefined)
+      expect(wallUp()).toBe(true)
+      await expect(raiseWall({}, async () => 'rules flushed')).rejects.toThrow(/rules flushed/)
+      expect(wallUp()).toBe(false)
+    } finally {
+      isolate(undefined)
+      await raiseWall({}, async () => undefined)
+    }
+  })
+
+  it('runs open in awaywork’s image where the wall is missing, and refuses everywhere else', async () => {
+    isolate('wall-user')
+    try {
+      await raiseWall({ AWAYWORK_IMAGE: '1' }, async () => 'no rules')
+      expect(wallUp()).toBe(false)
+      await expect(isolateWalled('none', {}, async () => 'no rules')).resolves.toBeUndefined()
+    } finally {
+      isolate(undefined)
+    }
   })
 })
 
@@ -242,6 +324,17 @@ describe('shellRefusal', () => {
     expect(reason).toContain("claude's shell sandbox can't start here")
     expect(reason).toContain('bubblewrap, socat and user namespaces')
     expect(reason).toContain('isolation: user')
+  })
+
+  it('lets it run behind a wall that holds', async () => {
+    isolate('wall-user')
+    try {
+      await raiseWall({}, async () => undefined)
+      expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toBeUndefined()
+    } finally {
+      isolate(undefined)
+      await raiseWall({}, async () => undefined)
+    }
   })
 
   it('exempts a provider with no sandbox of its own', async () => {
