@@ -27,12 +27,17 @@ export function listedUnits(plan: Pick<RunPlan, 'units'>) {
 }
 
 /** The plan as text: providers, units, what needs you and how many items were skipped. */
-export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = false): string {
+export function formatPlan(
+  plan: RunPlan,
+  warnings: string[] = [],
+  styled = false,
+  now = Date.now(),
+): string {
   const style = styler(styled)
   const out = [...warningLines(warnings, styled), ...providerLines(plan, style)]
   out.push('', heading('Units', listedUnits(plan).length, style), ...planUnitLines(plan, style))
   out.push(...routineLines(plan, style))
-  out.push(...needsYouLines(plan.skipped, style), ...skippedLines(plan.skipped, style))
+  out.push(...needsYouLines(plan.skipped, style, now), ...skippedLines(plan.skipped, style))
   if (plan.skipped.length > 0)
     out.push(
       '',

@@ -212,9 +212,14 @@ export function commentKind(c: Item['comments'][number]): CommentKind | undefine
 }
 
 /** Awaywork's questions are the item's newest comment but a bot's or awaywork's result: it waits for an answer, from you or anyone its source trusts. */
-export const awaitsAnswer = (item: Pick<Item, 'comments'>): boolean => {
+export const awaitsAnswer = (item: Pick<Item, 'comments'>): boolean => !!questionsAsked(item)
+
+/** The comment of awaywork's questions that waits for an answer, if one does. */
+export const questionsAsked = (
+  item: Pick<Item, 'comments'>,
+): Item['comments'][number] | undefined => {
   const newest = item.comments.filter((c) => !c.bot && commentKind(c) !== 'result').at(-1)
-  return !!newest && commentKind(newest) === 'questions'
+  return newest && commentKind(newest) === 'questions' ? newest : undefined
 }
 
 const headings = {

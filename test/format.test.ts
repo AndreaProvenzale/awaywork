@@ -367,6 +367,29 @@ describe('plan views', () => {
     expect(row(plan.skipped)).toMatchObject({ action: 'read logs', note: reason })
   })
 
+  it('lists Needs you oldest first with how long each waited, the undated after', () => {
+    const now = Date.parse('2026-01-10T12:00:00Z')
+    const waiting = (n: number, since?: string) => ({
+      item: githubPr(n),
+      kind: 'waiting_for_review' as const,
+      reason: 'r',
+      ...(since && { since }),
+    })
+    const skipped = [
+      waiting(1),
+      waiting(2, '2026-01-10T11:20:00Z'),
+      waiting(3, '2026-01-05T12:00:00Z'),
+      waiting(4, '2026-01-10T07:00:00Z'),
+    ]
+    const rows = skipRows(skipped, undefined, now).flatMap(([, list]) => list)
+    expect(rows.map((r) => [r.ref, r.action])).toEqual([
+      ['#3', 'review PR 5d'],
+      ['#4', 'review PR 5h'],
+      ['#2', 'review PR 40m'],
+      ['#1', 'review PR'],
+    ])
+  })
+
   it('names the PR awaywork pushed onto without its URL, and with it under --why', () => {
     const plan = acmePlan()
     const url = 'https://github.com/acme/api/pull/31'

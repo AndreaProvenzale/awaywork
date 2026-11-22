@@ -211,8 +211,8 @@ export function expandPlans(
 ): { items: Item[]; skipped: Skipped[] } {
   const out: Item[] = []
   const skipped: Skipped[] = []
-  const skip = (item: Item, { kind, reason, url }: SkipReason) =>
-    skipped.push({ item, kind, reason, ...(url && { url }) })
+  const skip = (item: Item, { kind, reason, url, since }: SkipReason) =>
+    skipped.push({ item, kind, reason, ...(url && { url }), ...(since && { since }) })
   for (const card of items) {
     const state = planCard(setup, card)
     // Without its tasks' PRs a re-plan wouldn't know the retired ids, nor a fan-out what's done.

@@ -111,7 +111,10 @@ export function formatRun(r: RunReport, warnings: string[] = [], styled = false)
   const style = styler(styled)
   const out = [...runHeader(r, style), '', ...warningLines(warnings, styled)]
   out.push(heading('Units', chains(r).length, style), ...reportUnitLines(r, styled))
-  out.push(...needsYouLines(r.plan.skipped, style), ...skippedLines(r.plan.skipped, style))
+  out.push(
+    ...needsYouLines(r.plan.skipped, style, new Date(r.startedAt).getTime()),
+    ...skippedLines(r.plan.skipped, style),
+  )
   const quota = quotaLines(r)
   if (quota.length > 0) out.push('', style('bold', 'Quota'), ...indent(quota))
   const hints: [string, string][] = []

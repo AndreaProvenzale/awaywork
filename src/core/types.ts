@@ -15,6 +15,8 @@ export interface PrRef {
   branch: string
   /** Its branch's head commit, when the source reads it. */
   head?: string
+  /** When that head commit was made, as an ISO time, when the source reads it. */
+  headAt?: string
   /** The branch it merges into, and that branch's head commit, when the source reads them. */
   into?: string
   intoHead?: string

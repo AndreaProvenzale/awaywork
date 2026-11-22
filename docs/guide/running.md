@@ -97,7 +97,7 @@ An item goes to the first rule it matches; a later rule that matches it too show
 
 ## Why a unit waits
 
-`awaywork plan` says why a unit makes no work this run:
+`awaywork plan` says why a unit makes no work this run. Needs you lists the oldest wait first, with how long each has waited (`40m`, `5h`, `5d`):
 
 - **Waiting for review:** it links an open awaywork PR. awaywork doesn't add to work you haven't read.
 - **Waiting for your answer:** the item's newest comment is awaywork's [questions](./workflows/questions.md#questions).
