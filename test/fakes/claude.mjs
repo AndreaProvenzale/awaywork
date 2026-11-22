@@ -6,6 +6,11 @@ const args = process.argv.slice(2)
 if (process.env.FAKE_ARGV) writeFileSync(process.env.FAKE_ARGV, JSON.stringify(args))
 if (process.env.FAKE_CONNECTORS)
   writeFileSync(process.env.FAKE_CONNECTORS, process.env.ENABLE_CLAUDEAI_MCP_SERVERS ?? 'unset')
+if (process.env.FAKE_TELEMETRY)
+  writeFileSync(
+    process.env.FAKE_TELEMETRY,
+    process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC ?? 'unset',
+  )
 if (process.env.FAKE_SESSION)
   writeFileSync(process.env.FAKE_SESSION, process.env.CLAUDECODE ?? 'unset')
 if (args.includes('--version')) {

@@ -270,7 +270,7 @@ const network = z
   .array(host)
   .default([])
   .describe(
-    "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR or issue. Setup, verify, until, when and gate scripts aren't limited yet",
+    "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR or issue. Under isolation: user the same hosts, plus built-in registries for setup, are all setup, the checks (verify, until, when, gate scripts) and the agent CLI reach besides their own",
   )
 const trustEntry = z
   .string()
@@ -614,6 +614,12 @@ const mcpServer = z
       .describe(
         'Env vars the server reads, in its env under their own names or in headers; given only to units whose rule names it, listed in Actions',
       ),
+    network: z
+      .array(host)
+      .optional()
+      .describe(
+        "Hosts a stdio server reaches, for awaywork's network wall under isolation: user; an HTTP server's host is its url's",
+      ),
     tools: z
       .array(z.string().regex(/^[\w-]+$/, 'expected a tool name like search_issues'))
       .min(1)
@@ -627,6 +633,8 @@ const mcpServer = z
     if (!s.command && !s.url) issue('command', 'expected command (stdio) or url (HTTP)')
     if (s.url && (s.args || s.env)) issue(s.args ? 'args' : 'env', 'args and env need a command')
     if (s.command && s.headers) issue('headers', 'headers need a url')
+    if (s.url && s.network)
+      issue('network', "an HTTP server's host is its url's: network needs a command")
     const plain = {
       command: [s.command],
       args: s.args,

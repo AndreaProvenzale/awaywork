@@ -11,6 +11,7 @@ import {
   ghLogin,
   imageClis,
   providerLogin,
+  wallCheck,
   workerFailure,
 } from '#cli/commands/doctor'
 import { type Discoveries, formatDiscoveries } from '#cli/commands/sources'
@@ -166,6 +167,10 @@ function isolationUserDoctor(): string {
   return doctorLine(workerFailure(reason, true, sudoersLines('runner', '1001:1001')))
 }
 
+async function networkWallDoctor(): Promise<string> {
+  return doctorLine(await wallCheck(WORKER, {}, async () => `${WORKER} reaches api.github.com`))
+}
+
 function containerDoctor(): string {
   const found = ['claude 2.1.290 (Claude Code stand-in)', 'codex codex-cli 0.162.1 (stand-in)']
   // An excerpt: docker and the image, without the logins' warnings after them.
@@ -300,6 +305,7 @@ export default {
   'config-doctor-extends': await extendsDoctor(),
   'config-doctor-logins': await loginsDoctor(),
   'config-doctor-isolation-user': isolationUserDoctor(),
+  'config-doctor-network-wall': await networkWallDoctor(),
   'config-doctor-container': containerDoctor(),
   'config-plan-why-routine': routineWhy(),
   'config-plan-rules-merged': mergedRules(),

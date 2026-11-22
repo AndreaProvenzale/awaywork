@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { configDir, defaultConfigPath, profilesPath, rootStateDir } from '#config/paths'
 import { readRegistry } from '#config/profiles'
+import { grantedNetwork, setupPhase } from '#core/egress'
 import {
   AGENT_HOME,
   CONTAINER_HOME,
@@ -14,6 +15,7 @@ import {
 } from '#core/isolation'
 import { withholdsGrants } from '#core/trust'
 import type { McpServer, Unit } from '#core/types'
+import { shellRefusal, wallUp } from '#core/wall'
 import { describeCondition, holds } from '#plan/condition'
 import { modelFor, modelsFor, type PlannedUnit, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
@@ -156,7 +158,12 @@ async function settle(
   if (merge.kind === 'merged' && unit.verify && settings.setup && !unit.untrusted) {
     const own = pickedUp ? [] : settings.secrets
     const env = setupEnv(input.ctx.env, dir, secrets, own)
-    const options = { secrets: own, signal: input.signal, until: input.until }
+    const options = {
+      secrets: own,
+      signal: input.signal,
+      until: input.until,
+      egress: setupPhase(grantedNetwork(unit), log),
+    }
     const failed = await runSetup(settings.setup, dir, env, log, options)
     if (failed) {
       Object.assign(result, { status: 'skipped', reason: failed })
@@ -295,6 +302,11 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     end(`no provider left: ${passed.join('; ') || 'none configured'}`)
     return
   }
+  const refused = await shellRefusal(provider, { dir }, input.signal)
+  if (refused) {
+    end(refused)
+    return
+  }
   // A resumed draft's branch is the unit's own: no other name to find.
   if (cs.cloned === undefined && opensPr && !shape.resume) {
     const named = p.unit.branch
@@ -332,6 +344,10 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
   await mkdir(unitDir, { recursive: true })
   const logFile = createWriteStream(join(unitDir, 'worker.log'))
   const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
+  if (wallUp() && provider.startsSandbox && !(await provider.startsSandbox({ dir }, input.signal)))
+    log(
+      `network: ${id}'s shell sandbox can't start here: its shell reaches the CLI's hosts and \`network\` through awaywork's wall`,
+    )
   const result: UnitResult = {
     planned: { ...p, unit: { ...p.unit, branch: unit.branch } },
     provider: id,
@@ -405,7 +421,12 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
         dir,
         setupEnv(input.ctx.env, dir, secrets, own),
         log,
-        { secrets: own, signal: input.signal, until: input.until },
+        {
+          secrets: own,
+          signal: input.signal,
+          until: input.until,
+          egress: setupPhase(grantedNetwork(unit), log),
+        },
       )
       // A conflicted lockfile, say, fails an install: the worker resolves the merge all the same.
       if (failed && cs.resolving) {

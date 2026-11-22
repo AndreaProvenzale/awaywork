@@ -226,6 +226,8 @@ export interface McpServer {
   url?: string
   headers?: Record<string, string>
   secrets: string[]
+  /** The hosts a stdio server reaches, for awaywork's wall; an HTTP server's is its url's. */
+  network?: string[]
   /** The tools a worker may call; unset, all of them. */
   tools?: string[]
 }
@@ -240,6 +242,10 @@ export interface Provider {
   install?: { npm: string } | { script: string }
   /** Env var names it reads unattended; locally a login may stand in. */
   secrets: string[]
+  /** The hosts the CLI itself needs: its API and its login. */
+  hosts: string[]
+  /** Whether the CLI's own shell sandbox can start where `job` runs; unset, it has none. */
+  startsSandbox?(job: Pick<Job, 'dir'>, signal?: AbortSignal): Promise<boolean>
   /** Why it can't run in this environment, if it can't; routing then skips it. */
   unavailable?(env: NodeJS.ProcessEnv): string | undefined
   detect(): Promise<{ installed: boolean; version?: string }>

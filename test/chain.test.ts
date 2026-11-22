@@ -58,6 +58,17 @@ vi.mock('#config/paths', async (original) => {
   }
 })
 
+const wall = vi.hoisted(() => ({ up: false }))
+vi.mock('#core/wall', async (original) => {
+  const real = await original<typeof import('#core/wall')>()
+  return {
+    ...real,
+    wallUp: () => wall.up,
+    shellRefusal: (...args: Parameters<typeof real.shellRefusal>) =>
+      wall.up ? undefined : real.shellRefusal(...args),
+  }
+})
+
 process.env.GIT_COMMITTER_NAME ??= 't'
 process.env.GIT_COMMITTER_EMAIL ??= 't@t'
 
@@ -625,6 +636,30 @@ it("keeps a publish error whole in the last step's worker.log", async () => {
   const last = await readFile(join(unitDir, '2-review/worker.log'), 'utf8')
   expect(last).toMatch(/^\S+Z publish error: Error: gh: y+ PUB-TAIL/m)
   expect(await readFile(join(unitDir, '1-implement/worker.log'), 'utf8')).not.toContain('PUB-TAIL')
+})
+
+it('skips a unit whose provider’s shell sandbox can’t start where no wall holds, before any model call', async () => {
+  const provider: Provider = { ...worker({}), startsSandbox: async () => false }
+  const { report } = await run('queue: [{ skill: implement, deliver: pr }]\n', [issue(1)], provider)
+  expect(report.results[0]?.status).toBe('skipped')
+  expect(report.results[0]?.reason).toContain("claude's shell sandbox can't start here")
+})
+
+it('runs it behind a wall that holds, and says in worker.log its shell goes through the wall', async () => {
+  wall.up = true
+  try {
+    const provider: Provider = { ...worker({}), startsSandbox: async () => false }
+    const { runDir, report } = await run(
+      'queue: [{ skill: implement, deliver: pr }]\n',
+      [issue(1)],
+      provider,
+    )
+    expect(report.results[0]?.status).toBe('done')
+    const log = await readFile(join(runDir, 'units/acme-api-1/1-implement/worker.log'), 'utf8')
+    expect(log).toContain("network: claude's shell sandbox can't start here")
+  } finally {
+    wall.up = false
+  }
 })
 
 it("logs what a provider set aside and what it refused, and shows the set-aside in the chain's notes", async () => {

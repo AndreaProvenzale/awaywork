@@ -6,6 +6,7 @@ import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import { withholdsGrants } from '#core/trust'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
+import { wallUp } from '#core/wall'
 import { parseJson } from '#util/json'
 import { killGroupSoon, killGroupWhenDone, withoutParentSession } from '#util/process'
 
@@ -26,6 +27,8 @@ const stream = ['--output-format', 'stream-json', '--verbose']
 const noMemory = { autoMemoryEnabled: false }
 /** The account's claude.ai connectors load with any login, whatever the setting sources. */
 const noConnectors = { ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }
+/** Its telemetry goes to Datadog, which awaywork's wall refuses and logs for every run. */
+const noTelemetry = { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }
 /** The repo's settings, hooks, MCP servers, CLAUDE.md and skills, and the CLAUDE.md of every folder above it, `~` included under `none`. */
 const repoOnly = ['--setting-sources', 'project,local']
 /** Neither ~/.claude nor the clone's own config: on an untrusted author's PR it is theirs. */
@@ -42,7 +45,8 @@ const configSchema = z.strictObject({
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
 export function claudeProvider(
   bin = 'claude',
-  startsSandbox = (job: Job, signal: AbortSignal) => sandboxStarts(whereRuns(job.dir), signal),
+  startsSandbox = (job: Pick<Job, 'dir'>, signal?: AbortSignal) =>
+    sandboxStarts(whereRuns(job.dir), signal),
 ): Provider {
   return {
     id: 'claude',
@@ -52,6 +56,8 @@ export function claudeProvider(
     unattended: 'allowed',
     install: { npm: '@anthropic-ai/claude-code' },
     secrets: [TOKEN],
+    hosts: ['api.anthropic.com', 'platform.claude.com', 'claude.ai'],
+    startsSandbox,
     loginDir: { env: 'CLAUDE_CONFIG_DIR', default: '~/.claude', command: 'claude /login' },
 
     async account(env) {
@@ -102,7 +108,7 @@ export function claudeProvider(
       args.push('--permission-mode', 'dontAsk', '--allowedTools', tools.join(' '))
       const child = launch(bin, args, {
         cwd: job.dir,
-        env: { ...job.env, ...noConnectors },
+        env: { ...job.env, ...noConnectors, ...(wallUp() && noTelemetry) },
         extendEnv: false,
         cancelSignal: signal,
         killDescendants: true,

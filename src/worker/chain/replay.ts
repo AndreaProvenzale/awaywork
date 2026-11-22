@@ -4,8 +4,10 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
 import type { Config } from '#config/schema'
+import { grantedNetwork, setupPhase } from '#core/egress'
 import { contain, contained, isolated, lostToWorker, workerHome, workerRoot } from '#core/isolation'
 import type { Ctx, Forge, Provider, Source, Unit } from '#core/types'
+import { shellRefusal } from '#core/wall'
 import { modelFor } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
 import { type Allowance, MAX_TURNS } from '#quota/budget'
@@ -72,6 +74,9 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   if (contained() && !image)
     throw new Error(`no image for ${unit.repo}: isolation: container needs one in its repos entry`)
 
+  const refused = await shellRefusal(provider, { dir: r.runDir }, r.signal)
+  if (refused) throw new Error(refused)
+
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
   const root = join(r.runDir, 'replays', `${r.unitId}-${stamp}-${randomBytes(2).toString('hex')}`)
   // The worker user can't reach the run dir: the clone and the plugin get folders of their own under /tmp.
@@ -104,6 +109,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
       const failed = await runSetup(setup, dir, commandEnv(r.ctx.env, dir, secrets), log, {
         secrets: [],
         signal: r.signal,
+        egress: setupPhase(grantedNetwork(unit), log),
       })
       if (failed) throw new Error(failed)
     }

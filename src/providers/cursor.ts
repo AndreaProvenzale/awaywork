@@ -3,10 +3,11 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { bin as resolveBin } from '#config/paths'
+import { grantedNetwork } from '#core/egress'
 import { AGENT_HOME, cursorSandboxStarts, whereRuns } from '#core/isolation'
 import { launch } from '#core/launch'
-import { withholdsGrants } from '#core/trust'
 import type { Job, McpServer, Provider, WorkerEvent } from '#core/types'
+import { wallUp } from '#core/wall'
 import { parseJson } from '#util/json'
 import { killGroupSoon, killGroupWhenDone } from '#util/process'
 import { inClone } from '#worker/clone/workspace'
@@ -41,7 +42,7 @@ const homeOf = (job: Job) => join(job.dir, AGENT_HOME)
 /** Cursor's `agent` binary on `CURSOR_API_KEY`: a fresh `HOME` hides the Keychain login. */
 export function cursorProvider(
   bin = 'agent',
-  startsSandbox = (job: Job, signal?: AbortSignal) =>
+  startsSandbox = (job: Pick<Job, 'dir'>, signal?: AbortSignal) =>
     cursorSandboxStarts(bin, whereRuns(job.dir), signal),
 ): Provider {
   return {
@@ -53,6 +54,8 @@ export function cursorProvider(
     unattended: 'allowed',
     install: { script: INSTALL },
     secrets: OWN_SECRETS,
+    hosts: ['*.cursor.sh', '*.cursorapi.com', '*.cursor-cdn.com'],
+    startsSandbox,
 
     async detect() {
       const version = (await execa(bin, ['--version']).catch(() => undefined))?.stdout.trim()
@@ -75,7 +78,8 @@ export function cursorProvider(
       await rm(homeOf(job), { recursive: true, force: true })
       await mkdir(dir, { recursive: true, mode: 0o700 })
       const servers = job.mcp ?? {}
-      const sandboxed = await startsSandbox(job)
+      // Its sandbox's proxy doesn't chain to awaywork's, so behind the wall even a listed host fails.
+      const sandboxed = !wallUp() && (await startsSandbox(job))
       sandboxedClones.set(job.dir, sandboxed)
       await writeFile(
         join(dir, 'cli-config.json'),
@@ -110,7 +114,12 @@ export function cursorProvider(
       const capped = new AbortController()
       const sandboxed = sandboxedClones.get(job.dir)
       if (!sandboxed && !signal.aborted)
-        yield { type: 'log', line: "Cursor's sandbox can't start here: its shell runs unsandboxed" }
+        yield {
+          type: 'log',
+          line: wallUp()
+            ? "Cursor's sandbox can't use awaywork's proxy: its shell runs behind the network wall instead"
+            : "Cursor's sandbox can't start here: its shell runs unsandboxed",
+        }
       const model = job.model ? ['--model', job.model] : []
       const plugin = job.plugin ? ['--plugin-dir', job.plugin] : []
       // Either would point Cursor at your own config.
@@ -173,7 +182,7 @@ export function cursorProvider(
 export const cursor = cursorProvider()
 
 /** The hosts a unit's shell reaches: the `network` list, none when an author isn't on trust. */
-const shellHosts = ({ unit }: Job) => (withholdsGrants(unit) ? [] : (unit.network ?? []))
+const shellHosts = ({ unit }: Job) => grantedNetwork(unit)
 
 /** Cursor's own tools, and each server's tools, or all of them when the server names none; the shell too, open, unless `network` says to wall it. */
 export function cliConfig(servers: Record<string, McpServer>, network?: string[]) {

@@ -18,6 +18,7 @@ mcp:
     env: { READ_ONLY: "1" }
     secrets: [DATABASE_URL]     # in the server's env as DATABASE_URL
     tools: [query]              # default: all the server's tools
+    network: [db.acme.internal] # hosts it reaches under isolation: user
 
 queue:
   - skill: implement
@@ -31,6 +32,7 @@ The shape is a subset of Claude Code's `.mcp.json`, translated per agent. A `the
 
 - A stdio server gets its `secrets` in its env; an HTTP one in headers, as `${NAME}` or `Bearer ${NAME}`. Never in `command`, `args` or `url` (the process list shows them) or `env` (Codex takes literals only).
 - `GH_`, `GITHUB_` and `TWG_` names are reserved: workers never get forge logins, and Actions refuses `GITHUB_` secrets.
+- Under [`isolation: user`](../safety/isolation.md#the-network-under-user) an MCP server reaches only what the wall's agent list holds: an HTTP server's `url` host is added for you, a stdio server says its own hosts in `network` (hosts as in [`network`](./repos.md), an `*.x` subdomains only, `*` all), and none by default.
 - `tools` limits what the agent may call. Only units naming a server get its secrets; `schedule` maps them into Actions, and `doctor` shows whether each is set.
 - Servers start for your own PRs, issues and tasks, never on a PR or an issue by an author off your [`trust`](../safety/index.md#trusting-an-author) list (by default, one who isn't a collaborator), nor on an issue such a PR closes, nor on your PR that closes a stranger's issue, nor with a secret unset.
 - Only token-based servers work unattended; workers never get your claude.ai connectors. Its secret is one the agent can read, its tools ones injected text can call: [Safety](../safety/index.md#mcp-servers).

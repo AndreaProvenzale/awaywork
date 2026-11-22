@@ -13,7 +13,7 @@ import {
 import { runTriage, screenJson, type UnitFiles } from '#cli/tui/triage'
 import { ConfigError, configPath, loadConfig } from '#config/load'
 import { remoteDir, runLockPath, runsDir, watchLockPath } from '#config/paths'
-import { isolateFor } from '#core/isolation'
+import { isolateWalled } from '#core/wall'
 import { fetchRun, type UploadedRun, uploadedRuns } from '#forge/artifacts'
 import { type Exec, exec, gitRoot } from '#forge/gh'
 import { reportJson } from '#format/json'
@@ -79,7 +79,7 @@ export function runCommand(program: Command): void {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
-        await isolateFor(config.isolation, process.env)
+        await isolateWalled(config.isolation, process.env)
         const now = new Date()
         const until = opts.scheduled
           ? runEnd(config.windows, now, process.env)

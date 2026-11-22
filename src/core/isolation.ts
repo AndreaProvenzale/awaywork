@@ -8,6 +8,7 @@ import { bin, profile, rootStateDir } from '#config/paths'
 import { DEFAULT_PROFILE } from '#config/profiles'
 import type { Config } from '#config/schema'
 import { lock } from '#util/lock'
+import { type Egress, type Phase, proxyEnv, startEgress } from './egress'
 import type { Login } from './types'
 
 /** Linux's longest user name. */
@@ -65,6 +66,12 @@ export const CONTAINER_HOME = '.away/home'
 export const AGENT_HOME = '.away/agent-home'
 
 let worker: string | undefined
+/** The proxy every launch of the worker user goes through, where the kernel wall holds. */
+let egress: Egress | undefined
+export async function useEgress(on: boolean): Promise<void> {
+  egress = on ? (egress ?? (await startEgress())) : undefined
+}
+export const workerUser = () => worker
 /** The worker's `HOME` in the phase that runs now. */
 let phaseHome: string | undefined
 let killing: Promise<unknown> = Promise.resolve()
@@ -100,8 +107,9 @@ export function start<O extends LaunchOptions>(file: string, args: readonly stri
   const { home, tmpdir: _, ...rest } = options
   if (!worker)
     return execa(file, args, (home ? { ...rest, env: { ...rest.env, HOME: home } } : rest) as O)
-  const subprocess = execa(bin('sudo'), sudoArgs(worker, file, args, options), {
-    ...rest,
+  const walled = egress ? { ...rest, env: { ...rest.env, ...proxyEnv(egress.port) } } : rest
+  const subprocess = execa(bin('sudo'), sudoArgs(worker, file, args, { ...options, ...walled }), {
+    ...walled,
     shell: false,
   } as O)
   subprocess.nodeChildProcess.once('exit', () => void killWorker())
@@ -448,8 +456,14 @@ export function sudoersLines(user = userInfo().username, owner = developer()): s
  * Runs a phase that launches repo code in the clone `dir`. Under `user`, the worker owns the clone and
  * a `HOME` of its own while it runs, and once it ends none of the worker's processes is left and both
  * are the developer's again: the very folders handed over, closed to everyone else.
+ * Where the network wall holds, its launches reach only the hosts of its `phase`, through awaywork's proxy.
  */
-export async function asWorker<T>(dir: string, run: () => Promise<T>, login?: Login): Promise<T> {
+export async function asWorker<T>(
+  dir: string,
+  run: () => Promise<T>,
+  login?: Login,
+  phase?: Phase,
+): Promise<T> {
   unrestored.add(dir)
   if (boxed) return inContainers(dir, run, login)
   const user = worker
@@ -462,10 +476,12 @@ export async function asWorker<T>(dir: string, run: () => Promise<T>, login?: Lo
   try {
     const handed = await handOver([dir, home], `${user}:`)
     phaseHome = home
+    egress?.use(phase)
     try {
       return await run()
     } finally {
       phaseHome = undefined
+      egress?.use()
       await killWorker()
       await takeBack(handed)
       back = true
