@@ -1,6 +1,6 @@
 import type { Item } from '#core/types'
 import { type SkipKind, shortRef } from '#plan/foreman'
-import { byKind, needsYouOn, type ReportedSkip } from '#posts/report'
+import { ageSince, byKind, needsYouOn, oldestFirst, type ReportedSkip } from '#posts/report'
 import {
   brief,
   byGroup,
@@ -102,21 +102,6 @@ export interface SkipRow {
   action: string
   /** What the reason adds to the action, clipped; empty when nothing. */
   note: string
-}
-
-const sinceMs = (s: ReportedSkip) => (s.since ? Date.parse(s.since) : Number.NaN)
-
-/** Oldest wait first; a skip with no known start follows, in the order it had. */
-const oldestFirst = (a: ReportedSkip, b: ReportedSkip) =>
-  Number.isNaN(sinceMs(a)) || Number.isNaN(sinceMs(b))
-    ? Number(Number.isNaN(sinceMs(a))) - Number(Number.isNaN(sinceMs(b)))
-    : sinceMs(a) - sinceMs(b)
-
-/** How long since, as `40m`, `5h` or `5d`. */
-export function ageSince(since: string, now: number): string {
-  const minutes = Math.max(0, Math.floor((now - Date.parse(since)) / 60_000))
-  if (minutes < 60) return `${minutes}m`
-  return minutes < 24 * 60 ? `${Math.floor(minutes / 60)}h` : `${Math.floor(minutes / 1440)}d`
 }
 
 /** Each skip's row under its group, by action: its ref there, title, action (with how long it waited) and note, which leaves out the closest rule in Needs you; Needs you rows oldest first. */

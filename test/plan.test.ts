@@ -1189,7 +1189,7 @@ queue:
 
   it('skips a feature whose awaywork PR waits for review, whatever item links it', () => {
     const ours = githubPr(9, { checks: 'failing', ours: true })
-    const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true }
+    const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true, headAt: '2026-01-05T12:00:00Z' }
     const task = asanaTask(4, {}, { linkedPrs: [pr] })
     const yaml =
       'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {}, asana: { workspace: "1" } }\nqueue: [{ skill: fix }]'
@@ -1208,6 +1208,10 @@ queue:
     expect(result.skipped.map((s) => [s.item.key, s.url])).toEqual([
       ['acme/api#9', 'https://github.com/acme/api/pull/9'],
       ['T-4', 'https://github.com/acme/api/pull/9'],
+    ])
+    expect(result.skipped.map((s) => s.since)).toEqual([
+      '2026-01-05T12:00:00Z',
+      '2026-01-05T12:00:00Z',
     ])
   })
 
@@ -1729,6 +1733,13 @@ ${yaml.replace('limits: { units: 1 }\n', '')}`
     const picked = oneOff('acme/api#5', 'implement', [{ ...mineIssue, linkedPrs: [ours] }])
     expect(picked.units).toEqual([])
     expect(picked.skipped).toMatchObject([{ kind: 'waiting_for_review' }])
+  })
+
+  it("dates the wait on an awaywork PR no rule takes by that PR's head commit", () => {
+    const headAt = '2026-01-05T12:00:00Z'
+    const ours = { ...failing.linkedPrs[0], ours: true, headAt } as PrRef
+    const waiting = oneOff('acme/api#5', 'implement', [{ ...mineIssue, linkedPrs: [ours] }])
+    expect(waiting.skipped[0]?.since).toBe(headAt)
   })
 
   it('refuses what a rule took, and names nothing when the name is ambiguous or unknown', () => {

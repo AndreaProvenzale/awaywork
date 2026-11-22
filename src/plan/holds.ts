@@ -128,13 +128,16 @@ export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[
       liftable: true,
     })
   // Read off the item, not attempts, so a runner without state waits too, and awaywork's comment doesn't count as a change; a task's questions wait on its card.
-  const asked = items.find((i) => !i.task && questionsAsked(i))
+  const asked = items.flatMap((i) => {
+    const questions = i.task ? undefined : questionsAsked(i)
+    return questions ? [{ item: i, questions }] : []
+  })[0]
   if (asked)
     out.push({
       kind: 'waiting_for_answer',
-      reason: `waiting for your answer on ${postsOn(asked)}`,
-      url: postsOn(asked),
-      since: questionsAsked(asked)?.at,
+      reason: `waiting for your answer on ${postsOn(asked.item)}`,
+      url: postsOn(asked.item),
+      since: asked.questions.at,
     })
   const unplanned =
     stack && !stack.pr && !stack.after

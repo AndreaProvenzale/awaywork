@@ -452,7 +452,7 @@ export function noRuleReason(item: Item, queue: Rule[]): SkipReason {
   const ours = isAwayworkPr(item)
   const kind = ours ? 'waiting_for_review' : 'no_rule'
   const why = ours ? `waiting for review: awaywork PR ${item.url} is open` : 'matched no rule'
-  const url = ours ? { url: item.url } : {}
+  const url = ours ? { url: item.url, since: item.linkedPrs[0]?.headAt } : {}
   if (!closest) return { kind, reason: why, ...url }
   const rule = queue[closest.rule] as Rule
   const failed = describeFailed(rule.where, item, closest.failed)

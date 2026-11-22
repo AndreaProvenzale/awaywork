@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import type { Ctx } from '#core/types'
-import { awaitsAnswer, isAwayworkComment, markComment } from '#posts/comments'
+import { isAwayworkComment, markComment, questionsAsked } from '#posts/comments'
 import { adfToMarkdown, jiraSource, textToAdf } from '#sources/jira'
 import { recordedFetch } from './fakes/asana'
 import { jiraFetch, jiraFixture } from './fakes/jira'
@@ -448,6 +448,6 @@ describe('jira writes', () => {
       ctx,
     )
     expect(found?.comments.map((c) => c.bot)).toEqual([undefined, true])
-    expect(found && awaitsAnswer(found)).toBe(true)
+    expect(found && questionsAsked(found)).toBeDefined()
   })
 })

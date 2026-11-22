@@ -11,6 +11,8 @@ import { byName, linksItem, prText } from './pr'
 import { pushHead } from './push'
 
 /** Who opened a PR and who last edited its body, if anyone. */
+const HEAD_AT = 'headRef { target { ... on Commit { committedDate } } }'
+
 export const EDITED = 'viewerDidAuthor author { login __typename } editor { login }'
 export type Edited = {
   viewerDidAuthor: boolean
@@ -24,9 +26,16 @@ export const notYours = (pr: Edited): string | undefined =>
 
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
-    nodes { ... on PullRequest { number url title body isDraft ${EDITED} headRefName headRefOid isCrossRepository repository { nameWithOwner } } }
+    nodes { ... on PullRequest { number url title body isDraft ${EDITED} headRefName headRefOid ${HEAD_AT} isCrossRepository repository { nameWithOwner } } }
   }
 }`
+
+type HeadRef = { target: { committedDate?: string } | null } | null
+
+const headAt = (pr: { headRef: HeadRef }) => {
+  const at = pr.headRef?.target?.committedDate
+  return at ? { headAt: at } : {}
+}
 
 type PrNode = Edited & {
   number: number
@@ -36,6 +45,7 @@ type PrNode = Edited & {
   isDraft: boolean
   headRefName: string
   headRefOid: string
+  headRef: HeadRef
   isCrossRepository: boolean
   repository: { nameWithOwner: string }
 }
@@ -75,7 +85,7 @@ type PrState = {
 const headPrsQuery = `query($owner: String!, $name: String!, $branch: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(headRefName: $branch, states: [OPEN, CLOSED, MERGED], first: 100) {
-      nodes { number url body state isDraft ${EDITED} closedAt headRefOid isCrossRepository }
+      nodes { number url body state isDraft ${EDITED} closedAt headRefOid ${HEAD_AT} isCrossRepository }
     }
   }
 }`
@@ -138,6 +148,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
           url: pr.url,
           branch: pr.headRefName,
           head: pr.headRefOid,
+          ...headAt(pr),
           ours: isOurs(pr.body),
           mine: true,
           trusted: true,
@@ -166,6 +177,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
               isDraft: boolean
               closedAt: string | null
               headRefOid: string
+              headRef: HeadRef
               isCrossRepository: boolean
             })[]
           }
@@ -178,6 +190,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
           number: pr.number,
           body: pr.body,
           head: pr.headRefOid,
+          ...headAt(pr),
           open: pr.state === 'OPEN',
           merged: pr.state === 'MERGED',
           ...leftIn(pr.body, pr.state === 'OPEN' && pr.isDraft, notYours(pr)),

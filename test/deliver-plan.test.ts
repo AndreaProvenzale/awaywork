@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { Item } from '#core/types'
 import {
   approveReply,
-  awaitsAnswer,
   commentKind,
   commentMarkdown,
   commentTask,
   markComment,
   planComment,
+  questionsAsked,
   questionsComment,
   resultComment,
   resultStatus,
@@ -163,11 +163,13 @@ describe('the plan comment', () => {
   })
 
   it("waits for an answer only on awaywork's questions, not its plan or approve reply", () => {
-    expect(awaitsAnswer({ comments: [posted(questionsComment('Per user?'))] })).toBe(true)
-    expect(awaitsAnswer({ comments: [plan] })).toBe(false)
-    expect(awaitsAnswer({ comments: [plan, posted(approveReply(''), 2)] })).toBe(false)
+    expect(questionsAsked({ comments: [posted(questionsComment('Per user?'))] })).toBeDefined()
+    expect(questionsAsked({ comments: [plan] })).toBeUndefined()
+    expect(questionsAsked({ comments: [plan, posted(approveReply(''), 2)] })).toBeUndefined()
     const result = posted(resultComment('Done.', 'done', 'triage'), 2)
-    expect(awaitsAnswer({ comments: [posted(questionsComment('Per user?')), result] })).toBe(true)
+    expect(
+      questionsAsked({ comments: [posted(questionsComment('Per user?')), result] }),
+    ).toBeDefined()
   })
 
   it('heads each kind in item.md, the approve reply as yours', () => {

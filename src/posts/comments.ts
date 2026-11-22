@@ -133,11 +133,15 @@ export function commentTask(c: Item['comments'][number]): string | undefined {
 
 /** The tasks whose questions on the card wait: those after its last comment that's neither a bot's nor awaywork's, which answers every one above it. */
 export function waitingTasks(item: Pick<Item, 'comments'>): string[] {
+  return [...new Set(taskQuestions(item).flatMap((c) => commentTask(c) ?? []))]
+}
+
+/** The task questions on the card that wait, oldest first. */
+export function taskQuestions(item: Pick<Item, 'comments'>): Item['comments'] {
   const answered = item.comments.findLastIndex((c) => !c.bot && !isAwayworkComment(c))
-  const asked = item.comments
+  return item.comments
     .slice(answered + 1)
-    .flatMap((c) => (commentKind(c) === 'questions' && commentTask(c)) || [])
-  return [...new Set(asked)]
+    .filter((c) => commentKind(c) === 'questions' && commentTask(c))
 }
 
 /** What awaywork posts on an item for a `deliver: plan` rule: the report, the contract and `plan.yml` in fences, and how to answer, or that it went ahead. */
@@ -211,10 +215,7 @@ export function commentKind(c: Item['comments'][number]): CommentKind | undefine
   return statusLine.test(statusAt(c)) ? 'result' : 'questions'
 }
 
-/** Awaywork's questions are the item's newest comment but a bot's or awaywork's result: it waits for an answer, from you or anyone its source trusts. */
-export const awaitsAnswer = (item: Pick<Item, 'comments'>): boolean => !!questionsAsked(item)
-
-/** The comment of awaywork's questions that waits for an answer, if one does. */
+/** Awaywork's questions are the item's newest comment but a bot's or awaywork's result: they wait for an answer, from you or anyone its source trusts. */
 export const questionsAsked = (
   item: Pick<Item, 'comments'>,
 ): Item['comments'][number] | undefined => {

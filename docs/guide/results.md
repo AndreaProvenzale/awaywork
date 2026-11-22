@@ -76,13 +76,13 @@ There are no built-in integrations. A failure or a run over a minute is logged (
 
 ### Nudge on a wait older than 3 days
 
-Each wait in `report.json` carries a `since`: when it began. awaywork posts no reminders itself; a `run` hook can:
+A wait in `report.json` carries `since`, when it began, if awaywork can tell. awaywork posts no reminders itself; a `run` hook can:
 
 ```yaml
 notify:                         # ntfy, waits older than 3 days
   command: |
     [ "$AWAYWORK_EVENT" = run ] || exit 0
-    late=$(jq -r 'now as $now | .plan.skipped[] | select(.needsYou and .since and $now - (.since | fromdate) > 3 * 86400) | "\(.item.key) \(.reason)"' "$(dirname "$AWAYWORK_REPORT")/report.json")
+    late=$(jq -r 'now as $now | .plan.skipped[] | select(.needsYou and .since and $now - (.since | sub("\\.[0-9]+"; "") | fromdate) > 3 * 86400) | "\(.item.key) \(.reason)"' "$(dirname "$AWAYWORK_REPORT")/report.json")
     [ -n "$late" ] || exit 0
     curl -sf -H "Title: awaywork waits on you" -d "$late" "https://ntfy.sh/$NTFY_TOPIC"
   secrets: [NTFY_TOPIC]

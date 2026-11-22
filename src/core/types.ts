@@ -360,6 +360,8 @@ export interface BranchPr {
   body: string
   /** Its head commit, when the forge says. */
   head?: string
+  /** When that head commit was made, when the forge says. */
+  headAt?: string
   open: boolean
   merged: boolean
   /** On an open awaywork draft for a later run: what its footer says it left. */

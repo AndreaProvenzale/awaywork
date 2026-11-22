@@ -706,6 +706,23 @@ describe('report views', () => {
     `)
   })
 
+  it('lists report.md Needs you oldest first with its age at the run start', () => {
+    const run = acmeRun()
+    const needs = { kind: 'waiting_for_review' as const, reason: 'r' }
+    const wait = (n: number, since?: string) => ({
+      ...needs,
+      item: githubPr(n),
+      ...(since && { since }),
+    })
+    run.plan.skipped = [wait(8), wait(9, '2026-10-14T22:00:00Z'), wait(10, '2026-10-10T22:00:00Z')]
+    const lines = formatReport(run).split('\n')
+    expect(lines.filter((l) => l.startsWith('- [api#'))).toEqual([
+      '- [api#10 PR 10](https://github.com/acme/api/pull/10): r (5d)',
+      '- [api#9 PR 9](https://github.com/acme/api/pull/9): r (1d)',
+      '- [api#8 PR 8](https://github.com/acme/api/pull/8): r',
+    ])
+  })
+
   it('writes report.md with a summary per unit, what needs you, skips by kind and reports folded, headings demoted', () => {
     const run = acmeRun()
     const review = '# Review\n\nApprove.\n\n## Nits\n\n```md\n# not a heading\n```'

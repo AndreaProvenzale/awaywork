@@ -165,6 +165,18 @@ export type ReportedSkip = Omit<Skipped, 'kind'> & Partial<Pick<Skipped, 'kind'>
 /** Whether you can act to make the skipped item run; a skip without a kind doesn't say. */
 export const needsYouOn = (s: ReportedSkip): s is Skipped => !!s.kind && needsYou[s.kind]
 
+const sinceMs = (s: ReportedSkip) => (s.since ? Date.parse(s.since) : Infinity)
+
+/** Oldest wait first; a skip with no known start follows, in the order it had. */
+export const oldestFirst = (a: ReportedSkip, b: ReportedSkip) => sinceMs(a) - sinceMs(b) || 0
+
+/** How long since, as `40m`, `5h` or `5d`. */
+export function ageSince(since: string, now: number): string {
+  const minutes = Math.max(0, Math.floor((now - Date.parse(since)) / 60_000))
+  if (minutes < 60) return `${minutes}m`
+  return minutes < 24 * 60 ? `${Math.floor(minutes / 60)}h` : `${Math.floor(minutes / 1440)}d`
+}
+
 export interface RunReport {
   runId: string
   dryRun: boolean
@@ -256,10 +268,13 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     )
     if (notes.length > 0) out.push('', ...notes)
   }
-  const waiting = r.plan.skipped.filter(needsYouOn)
+  const waiting = r.plan.skipped.filter(needsYouOn).sort(oldestFirst)
   if (waiting.length > 0) {
     out.push('', `## Needs you (${waiting.length})`, '')
-    for (const s of waiting) out.push(`- [${refAndTitle(s.item)}](${s.item.url}): ${s.reason}`)
+    const age = (s: ReportedSkip) =>
+      s.since ? ` (${ageSince(s.since, new Date(r.startedAt).getTime())})` : ''
+    for (const s of waiting)
+      out.push(`- [${refAndTitle(s.item)}](${s.item.url}): ${s.reason}${age(s)}`)
   }
   const rest = r.plan.skipped.filter((s) => !needsYouOn(s))
   if (rest.length > 0) {

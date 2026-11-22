@@ -161,6 +161,7 @@ queue:
         "waiting for your approval of story's result on https://example.com/1",
       ],
     ])
+    expect(p.skipped[0]?.since).toBe(at(1))
   })
 
   it('runs the step again on your feedback, its next post waiting whatever wait says', () => {
