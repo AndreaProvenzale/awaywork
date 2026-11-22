@@ -469,8 +469,8 @@ export interface Unit {
   foreign: boolean
   /** `base` is someone else's PR whose author isn't on the `trust` list: none of its code, config or your grants are used. */
   untrusted: boolean
-  /** An item's author (an issue's opener) isn't on the `trust` list: the clone and its config are yours, but none of your grants are used. */
-  stranger?: true
+  /** An issue's opener (or a task's card's) isn't on the `trust` list: its text is theirs, the clone and its config yours, so none of your grants are used. */
+  untrustedText?: true
   /** `base` is PR `number`'s branch on a fork, read at `head`: only a report delivers there. */
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */

@@ -201,7 +201,7 @@ describe('codex provider', () => {
 
   it("withholds the hosts from a stranger's issue", () => {
     const run = job()
-    Object.assign(run.unit, { network: ['npmjs.org'], stranger: true })
+    Object.assign(run.unit, { network: ['npmjs.org'], untrustedText: true })
     expect(wall(run)).toContain('permissions.awaywork.network.domains={}')
   })
 

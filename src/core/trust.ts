@@ -11,5 +11,5 @@ export const trusts = (trust: string[], author: string | undefined, collaborator
 }
 
 /** Whether a unit runs without your grants (`network`, `writable`, MCP servers, serve): its PR, or an issue it works on, comes from an author off `trust`. */
-export const withholdsGrants = (unit: Pick<Unit, 'untrusted' | 'stranger'>) =>
-  unit.untrusted || !!unit.stranger
+export const withholdsGrants = (unit: Pick<Unit, 'untrusted' | 'untrustedText'>) =>
+  unit.untrusted || !!unit.untrustedText

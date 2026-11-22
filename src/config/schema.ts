@@ -283,7 +283,7 @@ const trust = (fallback: string[]) =>
     .array(trustEntry)
     .default(fallback)
     .describe(
-      "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), a team (org/slug: its members, read with a token that has read:org), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
+      "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), a team (org/slug: its members, read with a token that has read:org), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. An issue by anyone else still gets setup and the repo's config, but no MCP servers, network or writable paths. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
     )
 const writablePath = z
   .string()

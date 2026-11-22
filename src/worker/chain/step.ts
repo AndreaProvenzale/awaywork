@@ -107,7 +107,7 @@ export async function writablePaths(
     return []
   }
   if (withholdsGrants(unit)) {
-    log("writable: not opened, the author isn't on trust")
+    log("writable: not opened, an author isn't on trust")
     return []
   }
   const home = await real(homedir())
@@ -462,8 +462,8 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     const named = unit.rule.mcp ?? []
     const bare = withholdsGrants(unit)
     if (named.length > 0 && bare)
-      log(`mcp: ${named.join(', ')} not started, the author isn't on trust`)
-    if (unit.network?.length && bare) log("network: not opened, the author isn't on trust")
+      log(`mcp: ${named.join(', ')} not started, an author isn't on trust`)
+    if (unit.network?.length && bare) log("network: not opened, an author isn't on trust")
     const writable = await writablePaths(unit, dir, log, [input.configDir, input.config.baseDir])
     const mcp: Record<string, McpServer> = {}
     for (const name of bare ? [] : named) {

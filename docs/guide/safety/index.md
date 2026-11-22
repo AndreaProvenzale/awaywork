@@ -142,9 +142,9 @@ _Hidden: 2 comments from authors the repo doesn't trust._
 - A thread an untrusted author started is hidden whole and doesn't count toward `unresolved_threads`, so it starts no `fix`. If GitHub won't say who started a PR's threads, all count, and the run sees only trusted ones. In a trusted thread, only untrusted replies go. Always on.
 - `collaborators` comes from GitHub: without `read:org`, a teammate with private membership looks like an outsider. `gh auth login` and `schedule install` ask for it.
 
-A stranger's issue, one whose opener isn't on `trust`, runs without your grants: no [`network`](#network-hosts) hosts, no [`writable`](#writable-paths) paths, no [MCP servers](#mcp-servers) and no `serve`. Setup and the repo's own config and skills stay, as the clone is your base branch. Put the opener on `trust` to give them back, or skip such issues with `where: { trusted: true }` on the rule.
-
 It can't hide the item's own title and body (the default `review` rule skips untrusted authors' PRs with `trusted: true`), an untrusted author's diff when a rule reviews it anyway, CI logs and check names and links in `checks.md` or a task's `item.md`, or what a trusted person or bot quotes. So the agent can still be steered, and without a worker user it can read your `GH_TOKEN` ([Not a sandbox](./isolation.md#not-a-sandbox)).
+
+A stranger's issue, one whose opener isn't on `trust`, and the tasks of its plan run without your grants: no [`network`](#network-hosts) hosts, no [`writable`](#writable-paths) paths, no [MCP servers](#mcp-servers) and no `serve`: what awaywork's `mcp`, `network` and `writable` keys grant. Setup and the repo's own config, skills and committed Claude settings stay, as the clone is your base branch. Put the opener on `trust` to give them back, or skip such issues with `where: { trusted: true }` on the rule.
 
 The classic token `schedule install` asks for reaches every repo you can; a dedicated account is your call. A fine-grained token reaches less but [can't call the Checks API](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations), which `checks` and `checks.md` read, so those likely break. Untried.
 

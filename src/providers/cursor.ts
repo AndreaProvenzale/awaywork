@@ -172,7 +172,7 @@ export function cursorProvider(
 
 export const cursor = cursorProvider()
 
-/** The hosts a unit's shell reaches: the `network` list, none when the author isn't trusted. */
+/** The hosts a unit's shell reaches: the `network` list, none when an author isn't on trust. */
 const shellHosts = ({ unit }: Job) => (withholdsGrants(unit) ? [] : (unit.network ?? []))
 
 /** Cursor's own tools, and each server's tools, or all of them when the server names none; the shell too, open, unless `network` says to wall it. */

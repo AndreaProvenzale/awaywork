@@ -175,7 +175,7 @@ queue: [{ skill: review, deliver: report }]
         allowances: { claude: allowance(config.budget, null, 0, config.windows) },
       }),
     )
-    expect(text).toContain("   runs without your grants: its author isn't on trust")
+    expect(text).toContain("   runs without your grants: an issue's opener isn't on trust")
     expect(text).not.toContain('runs bare')
   })
 })

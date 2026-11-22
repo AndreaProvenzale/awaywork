@@ -43,7 +43,7 @@ export const serveRefusal = (unit: Unit, serve?: { command: string }): string | 
   !serve
     ? `${unit.repo} has no serve command`
     : withholdsGrants(unit)
-      ? "the author isn't trusted"
+      ? "an author isn't on trust"
       : isolated() || contained()
         ? "isolation: user and container don't support it yet"
         : undefined

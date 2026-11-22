@@ -137,7 +137,7 @@ describe('serve', () => {
   })
 
   it("refuses it on a stranger's issue", () => {
-    expect(serveRefusal(unit({ stranger: true }), settings)).toBe("the author isn't trusted")
+    expect(serveRefusal(unit({ untrustedText: true }), settings)).toBe("an author isn't on trust")
   })
 
   it("doesn't start it on a PR whose author isn't trusted", async () => {
@@ -152,7 +152,7 @@ describe('serve', () => {
     const served = await startServe(request as ServeRequest, job, new AbortController().signal)
 
     expect(existsSync(started)).toBe(false)
-    expect(served.note).toBe("serve not run: the author isn't trusted")
+    expect(served.note).toBe("serve not run: an author isn't on trust")
   })
 
   it("doesn't start it under isolation: user", async () => {
@@ -211,7 +211,7 @@ describe('serve', () => {
 
     expect(result).toMatchObject({
       status: 'done',
-      notes: ["serve not run: the author isn't trusted"],
+      notes: ["serve not run: an author isn't on trust"],
     })
     expect(prompt).toBe('prove it')
   })

@@ -607,11 +607,11 @@ queue:
     const flags = (fields: Item['fields']) => {
       const unit = plan(config, [{ ...issue, fields: { repo: 'acme/api', ...fields } }], {})
         .units[0]?.unit
-      return { untrusted: unit?.untrusted, stranger: unit?.stranger }
+      return { untrusted: unit?.untrusted, untrustedText: unit?.untrustedText }
     }
-    expect(flags({ trusted: false })).toEqual({ untrusted: false, stranger: true })
-    expect(flags({ trusted: true })).toEqual({ untrusted: false, stranger: undefined })
-    expect(flags({})).toEqual({ untrusted: false, stranger: undefined })
+    expect(flags({ trusted: false })).toEqual({ untrusted: false, untrustedText: true })
+    expect(flags({ trusted: true })).toEqual({ untrusted: false, untrustedText: undefined })
+    expect(flags({})).toEqual({ untrusted: false, untrustedText: undefined })
   })
 
   it("refuses a chain that could commit onto someone else's PR or a fork, and reports there", () => {
