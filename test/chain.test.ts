@@ -19,9 +19,9 @@ import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
-import { asWorker, contain, useMode, workerHome } from '#core/isolation'
 import { lostToWorker } from '#core/isolation/clones'
 import { containerMode } from '#core/isolation/container'
+import { asWorker, contain, useMode, workerHome } from '#core/isolation/index'
 import { none } from '#core/isolation/none'
 import { userMode } from '#core/isolation/user'
 import { launch } from '#core/launch'
@@ -63,8 +63,8 @@ vi.mock('#config/paths', async (original) => {
 })
 
 const wall = vi.hoisted(() => ({ up: false }))
-vi.mock('#core/isolation', async (original) => ({
-  ...(await original<typeof import('#core/isolation')>()),
+vi.mock('#core/isolation/index', async (original) => ({
+  ...(await original<typeof import('#core/isolation/index')>()),
   wallUp: () => wall.up,
 }))
 

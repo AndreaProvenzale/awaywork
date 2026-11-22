@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, relative } from 'node:path'
-import { checkPhase, grantedNetwork } from '#core/egress'
+import { checkPhase, grantedNetwork } from '#core/isolation/egress'
 import type { Condition, Unit } from '#core/types'
 import { type Facts, holds } from '#plan/condition'
 import { checkEnv, gateEnv } from '#worker/clone/env'

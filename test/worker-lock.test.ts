@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { execa } from 'execa'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { holdingWorker, useMode } from '#core/isolation'
+import { holdingWorker, useMode } from '#core/isolation/index'
 import { none } from '#core/isolation/none'
 import { WORKER_LOCK as file, userMode } from '#core/isolation/user'
 

@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { isolated } from '#core/isolation'
+import { isolated } from '#core/isolation/index'
 import { workerRoot } from '#core/isolation/user'
 import type { Deliver, Rule, Unit } from '#core/types'
 import { byHand } from '#plan/attempts'

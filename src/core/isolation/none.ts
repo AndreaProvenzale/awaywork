@@ -1,5 +1,5 @@
 import { execa } from 'execa'
-import type { Mode } from '../isolation'
+import type { Mode } from '.'
 
 /** Launches as the developer's user, with the provider's `HOME` when one is given. */
 export const none: Mode = {

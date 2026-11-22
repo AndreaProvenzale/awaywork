@@ -2,8 +2,8 @@ import type { LookupAddress } from 'node:dns'
 import { lookup } from 'node:dns/promises'
 import { createServer, request } from 'node:http'
 import { BlockList, connect, isIP, type LookupFunction, type Socket } from 'node:net'
-import { withholdsGrants } from './trust'
-import type { Job, McpServer, Provider, Unit } from './types'
+import { withholdsGrants } from '../trust'
+import type { Job, McpServer, Provider, Unit } from '../types'
 
 /** The hosts one phase of a unit may reach through the proxy; its refusals go to `log`. */
 export interface Phase {

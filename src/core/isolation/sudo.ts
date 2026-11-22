@@ -1,7 +1,7 @@
 import { execa } from 'execa'
 import { bin, profile } from '#config/paths'
 import { DEFAULT_PROFILE } from '#config/profiles'
-import type { LaunchOptions } from '../isolation'
+import type { LaunchOptions } from '.'
 
 /** Set by awaywork's Dockerfile, whose image runs every launch as the worker user, as a GitHub-hosted runner does. */
 export const inAwayworkImage = (env: NodeJS.ProcessEnv) => Boolean(env.AWAYWORK_IMAGE)

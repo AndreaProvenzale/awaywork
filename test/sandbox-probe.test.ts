@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { contain, useMode, whereRuns } from '#core/isolation'
 import { containerMode } from '#core/isolation/container'
+import { contain, useMode, whereRuns } from '#core/isolation/index'
 import { none } from '#core/isolation/none'
 import { userMode } from '#core/isolation/user'
 import { sandboxStarts } from '#providers/claude'

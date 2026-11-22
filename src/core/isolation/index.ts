@@ -1,11 +1,11 @@
 import type { Options, ResultPromise } from 'execa'
 import type { Config } from '#config/schema'
+import type { Login } from '../types'
+import { unrestored } from './clones'
+import { type Box, containerMode, DOCKER_TIMEOUT_MS, dockerVersion } from './container'
 import type { Phase } from './egress'
-import { unrestored } from './isolation/clones'
-import { type Box, containerMode, DOCKER_TIMEOUT_MS, dockerVersion } from './isolation/container'
-import { none } from './isolation/none'
-import { userMode, workerFor } from './isolation/user'
-import type { Login } from './types'
+import { none } from './none'
+import { userMode, workerFor } from './user'
 
 /** A provider's own `HOME` for its binary, written afresh before each run, whatever the isolation; see `LaunchOptions`. */
 export const AGENT_HOME = '.away/agent-home'

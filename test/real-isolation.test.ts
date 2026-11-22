@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { switchTo } from '#config/profiles'
-import { asWorker, useMode, workerHome } from '#core/isolation'
 import { lostToWorker } from '#core/isolation/clones'
+import { asWorker, useMode, workerHome } from '#core/isolation/index'
 import { none } from '#core/isolation/none'
 import { WORKER } from '#core/isolation/sudo'
 import { userMode, workerFor, workerRoot } from '#core/isolation/user'
@@ -345,7 +345,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       vi.stubEnv('RUNNER_ENVIRONMENT', '')
       vi.resetModules()
       const [isolation, user, sudo, command] = await Promise.all([
-        import('#core/isolation'),
+        import('#core/isolation/index'),
         import('#core/isolation/user'),
         import('#core/isolation/sudo'),
         import('#worker/process/command'),

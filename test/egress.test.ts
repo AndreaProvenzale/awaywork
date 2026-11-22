@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { createServer, request, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { containerMode } from '#core/isolation/container'
 import {
   agentPhase,
   checkPhase,
@@ -13,9 +14,8 @@ import {
   SETUP_HOSTS,
   setupPhase,
   startEgress,
-} from '#core/egress'
-import { isolateWalled, raiseWall, useMode, wallUp } from '#core/isolation'
-import { containerMode } from '#core/isolation/container'
+} from '#core/isolation/egress'
+import { isolateWalled, raiseWall, useMode, wallUp } from '#core/isolation/index'
 import { none } from '#core/isolation/none'
 import { userMode } from '#core/isolation/user'
 import { wallLines, wallProblem } from '#core/isolation/user-wall'

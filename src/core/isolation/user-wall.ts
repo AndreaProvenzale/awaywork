@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
-import { type Egress, sharedEgress } from '../egress'
+import { type Egress, sharedEgress } from './egress'
 import { inAwayworkImage, sudoArgs, WORKER } from './sudo'
 
 /** One command per rule, `-C` first so a second run adds nothing. Each goes in first, so the last is the first checked. */

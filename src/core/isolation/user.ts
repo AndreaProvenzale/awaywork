@@ -5,10 +5,10 @@ import { execa } from 'execa'
 import { bin, profile, rootStateDir } from '#config/paths'
 import type { Config } from '#config/schema'
 import { lock } from '#util/lock'
-import { type Egress, type Phase, proxyEnv } from '../egress'
-import type { LaunchOptions, Mode } from '../isolation'
 import type { Login } from '../types'
+import type { LaunchOptions, Mode } from '.'
 import { lose, lostToWorker } from './clones'
+import { type Egress, type Phase, proxyEnv } from './egress'
 import {
   CHOWN,
   chown,

@@ -1,7 +1,7 @@
 import type { execa } from 'execa'
 import { bin } from '#config/paths'
-import { contained, type Where, wallUp } from '#core/isolation'
 import { inImage } from '#core/isolation/container'
+import { contained, type Where, wallUp } from '#core/isolation/index'
 import { inAwayworkImage, sudoArgs } from '#core/isolation/sudo'
 import type { Job, Provider } from '#core/types'
 
