@@ -408,4 +408,27 @@ describe('units_max_open for tasks', () => {
     const p = plan(total, [card(1, { api: taskPr('api') }), prItem('api'), issue(5)])
     expect(capped(p)).toEqual([['acme/api#5', 'over the cap: limits.units_max_open is 1']])
   })
+
+  it('counts a card no rule takes once, however many task PRs it has', () => {
+    const total = base(
+      '{ units_max_open: 2 }',
+      '  - { skill: plan, deliver: plan, where: { type: issue } }\n  - { skill: implement, where: { planned: true, label: nope } }',
+    )
+    const under = card(1, { api: taskPr('api'), web: taskPr('web') })
+    expect(capped(plan(total, [under, prItem('api'), prItem('web'), issue(5)]))).toEqual([])
+  })
+
+  it("doesn't count a card no rule takes whose task asked questions and has no PR", () => {
+    const total = base(
+      '{ units_max_open: 1 }',
+      '  - { skill: plan, deliver: plan, where: { type: issue } }\n  - { skill: implement, where: { planned: true, label: nope } }',
+    )
+    const questions = {
+      author: 'me',
+      body: markComment(questionsComment('Per key?', 'web')),
+      at: day(3),
+      mine: true as const,
+    }
+    expect(capped(plan(total, [card(1, {}, [questions]), issue(5)]))).toEqual([])
+  })
 })

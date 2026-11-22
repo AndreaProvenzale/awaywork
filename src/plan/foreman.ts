@@ -261,6 +261,13 @@ export function planRun(input: {
       link(item)
       markOpen(caps, ruleFor(queue, item), openKey(item, ''))
     }
+  for (const { task } of unmatched) {
+    const prs = Object.values(task?.parent.taskPrs ?? {}).filter(
+      (pr) => pr.state === 'open' && !linked.has(pr.url),
+    )
+    for (const pr of prs) linked.add(pr.url)
+    if (task && prs.length) caps.open.total.add(task.parent.url)
+  }
   for (const item of unmatched.filter(isAwayworkPr))
     if (!linked.has(item.url)) caps.open.total.add(item.url)
   for (const found of blocks) {
