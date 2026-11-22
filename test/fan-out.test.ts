@@ -419,6 +419,16 @@ describe('tasks as items', () => {
     expect(rank([issue], q.slice(2)).unmatched).toEqual([issue])
   })
 
+  it("withholds grants from the tasks of a stranger's card, and from nobody else's", () => {
+    const flag = (trusted?: boolean) => {
+      const card = approved()
+      Object.assign(card.fields, trusted === undefined ? {} : { trusted })
+      return plan([card]).units.map((u) => u.unit.untrustedText)
+    }
+    expect(flag(false)).toEqual([true])
+    expect(flag(true)).toEqual([undefined])
+    expect(flag()).toEqual([undefined])
+  })
   it('fans out onto away/<card>-<id>, or the configured template, and names the card in --why', () => {
     const fanned = plan([approved()])
     expect(units(fanned)).toEqual([['acme-api-1-api', 'away/acme-api-1-api']])

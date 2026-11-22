@@ -17,6 +17,7 @@ import { z } from 'zod'
 import { rootStateDir } from '#config/paths'
 import { codexSandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
+import { withholdsGrants } from '#core/trust'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
 import { lock } from '#util/lock'
@@ -288,8 +289,8 @@ const ignoreMasks = (dir: string | undefined) =>
 
 /** A profile whose shell writes the clone and the unit's `writable` paths and reaches only the unit's `network` hosts, none by default. */
 export function shellWall(job: Job): string[] {
-  const { untrusted, network = [] } = job.unit
-  const hosts = untrusted ? [] : network
+  const { network = [] } = job.unit
+  const hosts = withholdsGrants(job.unit) ? [] : network
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
   const writable = [
