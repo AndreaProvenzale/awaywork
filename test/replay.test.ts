@@ -8,7 +8,7 @@ import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
-import { containerize, isolate } from '#core/isolation'
+import { containerize, isolate, workerHome } from '#core/isolation'
 import { builtinSkills } from '#core/skills'
 import type { Provider, PrRef } from '#core/types'
 import { type Exec, exec } from '#forge/gh'
@@ -203,7 +203,8 @@ it('keeps a replay’s fresh clone yours alone under isolation: user until its f
   } finally {
     isolate(undefined)
     process.env.PATH = path
-    if (clone.startsWith('/tmp/awaywork-')) await rm(clone, { recursive: true, force: true })
+    for (const dir of [clone, workerHome(clone)])
+      if (dir?.startsWith('/tmp/awaywork-')) await rm(dir, { recursive: true, force: true })
   }
 })
 
