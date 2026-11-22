@@ -19,7 +19,7 @@ import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
-import { asWorker, contain, containerize, isolate, lostToWorker } from '#core/isolation'
+import { asWorker, contain, containerize, isolate, lostToWorker, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import { builtinSkills } from '#core/skills'
 import type { Forge, Item, Login, Provider, Source } from '#core/types'
@@ -1006,7 +1006,8 @@ it('ends the chain on a clone it couldn’t take back from the worker user, and 
   } finally {
     isolate(undefined)
     process.env.PATH = path
-    if (clone.startsWith('/tmp/awaywork-')) await rm(clone, { recursive: true, force: true })
+    for (const dir of [clone, workerHome(clone)])
+      if (dir?.startsWith('/tmp/awaywork-')) await rm(dir, { recursive: true, force: true })
   }
 })
 
