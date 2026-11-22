@@ -143,6 +143,28 @@ describe('codex provider', () => {
     }
   })
 
+  it('turns off account apps, web search and rules, whatever the trust or the config', async () => {
+    process.env.FAKE_ARGV = join(tmp, 'argv.json')
+    try {
+      for (const untrusted of [false, true]) {
+        const run = job()
+        run.unit.untrusted = untrusted
+        const config = { config: { 'features.apps': true, web_search: 'live' } }
+        await collect(provider.run({ ...run, config }, new AbortController().signal))
+        const args = (JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]).join(
+          ' ',
+        )
+        const last = (key: string) => args.lastIndexOf(`-c ${key}=`)
+        expect(args).toContain('--ignore-user-config --ignore-rules')
+        expect(args).toContain('-c features.apps=false -c web_search="disabled"')
+        expect(last('features.apps')).toBeGreaterThan(args.indexOf('-c features.apps=true'))
+        expect(last('web_search')).toBeGreaterThan(args.indexOf('-c web_search="live"'))
+      }
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
   const wall = (run: Job) => shellWall(run).filter((f) => f !== '-c')
 
   it("walls the shell to the clone and the unit's hosts, loopback open", () => {
