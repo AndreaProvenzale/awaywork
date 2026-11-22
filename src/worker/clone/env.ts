@@ -2,6 +2,7 @@ import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
+import { parentSession } from '#util/process'
 import { refuseSymlinks, WORK_DIR } from './files'
 
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
@@ -32,7 +33,7 @@ export function commandEnv(
   dir: string,
   withheld: string[],
 ): NodeJS.ProcessEnv {
-  const hidden = new Set([...forgeTokens, ...withheld])
+  const hidden = new Set([...forgeTokens, ...withheld, ...parentSession])
   // Every TWG_ name, whatever the forge: twg logins come in many names, and you may be logged in for Jira alone.
   const kept = Object.entries(env).filter(([name]) => !hidden.has(name) && !name.startsWith('TWG_'))
   return {

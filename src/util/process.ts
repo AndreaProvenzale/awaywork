@@ -1,5 +1,27 @@
 import type { ChildProcess } from 'node:child_process'
 
+/** The handles of the Claude Code session awaywork runs in: its messaging socket and IDE bridge, its identity and plugin dirs. */
+export const parentSession = [
+  'CLAUDECODE',
+  'CLAUDE_PID',
+  'CLAUDE_EFFORT',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_MESSAGING_TOKEN',
+  'CLAUDE_CODE_SSE_PORT',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_BRIDGE_SESSION_ID',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_CHILD_NOTES_DIR',
+  'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_EXECPATH',
+  'CLAUDE_CODE_PLUGIN_DIRS',
+  'TRACEPARENT',
+]
+
+export const withoutParentSession = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(env).filter(([name]) => !parentSession.includes(name)))
+
 type Child = { pid?: number; nodeChildProcess: ChildProcess }
 
 function killGroup(child: Child): void {

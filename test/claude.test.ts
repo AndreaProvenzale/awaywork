@@ -236,6 +236,31 @@ describe('claude provider', () => {
     })
   })
 
+  it("drops the parent Claude Code session's handles and keeps Claude's own config", () => {
+    const session = [
+      'CLAUDECODE',
+      'CLAUDE_PID',
+      'CLAUDE_EFFORT',
+      'CLAUDE_CODE_MESSAGING_SOCKET',
+      'CLAUDE_CODE_MESSAGING_TOKEN',
+      'CLAUDE_CODE_SSE_PORT',
+      'CLAUDE_CODE_SESSION_ID',
+      'CLAUDE_CODE_BRIDGE_SESSION_ID',
+      'CLAUDE_CODE_CHILD_SESSION',
+      'CLAUDE_CODE_CHILD_NOTES_DIR',
+      'CLAUDE_CODE_SESSION_ATTENDED',
+      'CLAUDE_CODE_ENTRYPOINT',
+      'CLAUDE_CODE_EXECPATH',
+      'CLAUDE_CODE_PLUGIN_DIRS',
+      'TRACEPARENT',
+    ]
+    const kept = { CLAUDE_CODE_OAUTH_TOKEN: 't', CLAUDE_CODE_USE_BEDROCK: '1', PATH: '/bin' }
+    const env = { ...Object.fromEntries(session.map((name) => [name, 'x'])), ...kept }
+    for (const phase of [commandEnv(env, '/work', []), workerEnv(env, '/work', [])])
+      expect(Object.keys(phase).filter((name) => session.includes(name))).toEqual([])
+    expect(workerEnv(env, '/work', [])).toMatchObject(kept)
+  })
+
   it("commits as the identity the action puts in the job's env, with no git config at all", async () => {
     const repo = await mkdtemp(join(tmpdir(), 'awaywork-identity-'))
     const email = '583231+octocat@users.noreply.github.com'
@@ -284,6 +309,22 @@ describe('claude provider', () => {
       expect(await readFile(file, 'utf8')).toBe('false')
     } finally {
       delete process.env.FAKE_CONNECTORS
+    }
+  })
+
+  it("keeps the parent session's handles out of a probe and an account check", async () => {
+    const file = join(dir, 'session')
+    process.env.FAKE_SESSION = file
+    process.env.CLAUDECODE = '1'
+    try {
+      await provider.probe({ env: process.env, log: () => {} })
+      expect(await readFile(file, 'utf8')).toBe('unset')
+      await rm(file)
+      await provider.account?.(process.env).catch(() => {})
+      expect(await readFile(file, 'utf8')).toBe('unset')
+    } finally {
+      delete process.env.FAKE_SESSION
+      delete process.env.CLAUDECODE
     }
   })
 
