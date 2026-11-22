@@ -72,7 +72,7 @@ runs:
       shell: bash
       run: |
         command -v claude > /dev/null || exit 0
-        sudo apt-get install -y -qq bubblewrap socat > /dev/null
+        sudo NEEDRESTART_SUSPEND=1 apt-get install -y -qq bubblewrap socat > /dev/null
         [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ] || exit 0
         sudo install -D -m 755 /usr/bin/bwrap /opt/awaywork/bin/bwrap
         printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
