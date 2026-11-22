@@ -207,6 +207,36 @@ describe('units_max_open', () => {
     expect(ids(p)).toEqual(['acme-api-2'])
   })
 
+  it("doesn't count a plan that is invalid", () => {
+    const duplicate = 'tasks:\n  - { id: api, title: A }\n  - { id: api, title: B }'
+    const bad = issue(1, {
+      comments: [
+        { author: 'me', body: markComment(planComment('Plan.', duplicate)), at, mine: true },
+      ],
+    })
+    const yaml = base(
+      '{ units_max_open: 1 }',
+      '  - { skill: plan, deliver: plan, where: { type: issue } }\n  - { skill: implement, where: { planned: true } }',
+    )
+    const p = plan(yaml, [bad, issue(2)])
+    expect(p.skipped.map((s) => s.kind)).toContain('invalid_plan')
+    expect(capped(p)).toEqual([])
+  })
+
+  it('counts the awaywork PR of an item no rule takes anymore', () => {
+    const labelled = (n: number, more: Partial<Item> = {}) =>
+      issue(n, { fields: { repo: 'acme/api', mine: true, label: ['awaywork'] }, ...more })
+    const yaml = base(
+      '{ units_max_open: 1 }',
+      '  - { skill: implement, where: { type: issue, label: awaywork } }',
+    )
+    const relabeled = issue(5, { linkedPrs: [ours(105)] })
+    const pr = { ...githubPr(105, { ours: true }), linkedPrs: [ours(105)] }
+    expect(capped(plan(yaml, [relabeled, pr, labelled(2)]))).toEqual([
+      ['acme/api#2', 'over the cap: limits.units_max_open is 1'],
+    ])
+  })
+
   it('counts a draft with its questions and its PR item once', () => {
     const left = {
       items: ['github:acme/api#1'],
@@ -295,6 +325,12 @@ describe('units_max_open for tasks', () => {
       ],
       taskPrs,
     })
+  const prItem = (id: string) => ({
+    ...githubPr(0, { ours: true }),
+    key: `acme/api#${id}`,
+    id,
+    url: `https://github.com/acme/api/pull/${id}`,
+  })
   const yaml = base(
     '{}',
     '  - { skill: plan, deliver: plan, where: { type: issue } }\n  - { skill: implement, where: { planned: true }, units_max_open: 1 }',
@@ -335,12 +371,6 @@ describe('units_max_open for tasks', () => {
       '{ units_max_open: 2 }',
       '  - { skill: plan, deliver: plan, where: { type: issue } }\n  - { skill: implement, where: { planned: true } }',
     )
-    const prItem = (id: string) => ({
-      ...githubPr(0, { ours: true }),
-      key: `acme/api#${id}`,
-      id,
-      url: `https://github.com/acme/api/pull/${id}`,
-    })
     const under = card(1, { api: taskPr('api'), web: taskPr('web') })
     expect(capped(plan(total, [under, prItem('api'), prItem('web'), issue(5)]))).toEqual([])
   })
@@ -353,5 +383,29 @@ describe('units_max_open for tasks', () => {
     expect(ids(p)).toContain('acme-api-1-web')
     expect(ids(p)).toContain('acme-api-1-docs')
     expect(capped(p)).toEqual([])
+  })
+
+  it('counts a card with questions and two task PR items once in the total', () => {
+    const total = base(
+      '{ units_max_open: 2 }',
+      '  - { skill: plan, deliver: plan, where: { type: issue } }\n  - { skill: implement, where: { planned: true } }',
+    )
+    const questions = {
+      author: 'me',
+      body: markComment(questionsComment('Per key?', 'docs')),
+      at: day(3),
+      mine: true as const,
+    }
+    const under = card(1, { api: taskPr('api'), web: taskPr('web') }, [questions])
+    expect(capped(plan(total, [under, prItem('api'), prItem('web'), issue(5)]))).toEqual([])
+  })
+
+  it('counts the open task PRs of a card no rule takes anymore', () => {
+    const total = base(
+      '{ units_max_open: 1 }',
+      '  - { skill: plan, deliver: plan, where: { type: issue } }\n  - { skill: implement, where: { planned: true, label: nope } }',
+    )
+    const p = plan(total, [card(1, { api: taskPr('api') }), prItem('api'), issue(5)])
+    expect(capped(p)).toEqual([['acme/api#5', 'over the cap: limits.units_max_open is 1']])
   })
 })

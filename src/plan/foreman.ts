@@ -245,21 +245,24 @@ export function planRun(input: {
     counted: 0,
     open: { total: new Set(), perRule: {} },
   }
-  const linked = new Set(
-    input.items
-      .filter((item) => !isAwayworkPr(item))
-      .flatMap((item) => [...item.linkedPrs, ...Object.values(item.taskPrs ?? {})])
-      .map((pr) => pr.url),
-  )
-  for (const item of unmatched.filter(isAwayworkPr))
-    if (!linked.has(item.url)) caps.open.total.add(item.url)
+  const linked = new Set<string>()
+  const link = (item: Item) => {
+    for (const pr of [...item.linkedPrs, ...Object.values(item.task?.parent.taskPrs ?? {})])
+      linked.add(pr.url)
+  }
   for (const found of blocks) {
+    for (const { item } of found) link(item)
     const group = readGroup(run, rules, found, [], waiting)
     const url = openUrl(group, holdsOn(run, group, []))
     if (url) markOpen(caps, group.ruleIndex, openKey(group.lead, url))
   }
   for (const { item, kind } of expanded.skipped)
-    if (item.task && waits.includes(kind)) markOpen(caps, ruleFor(queue, item), openKey(item, ''))
+    if (item.task && waits.includes(kind) && ruleFor(queue, item) >= 0) {
+      link(item)
+      markOpen(caps, ruleFor(queue, item), openKey(item, ''))
+    }
+  for (const item of unmatched.filter(isAwayworkPr))
+    if (!linked.has(item.url)) caps.open.total.add(item.url)
   for (const found of blocks) {
     const group = readGroup(run, rules, found, units, waiting)
     const { items, lead, rule, ruleIndex, id, ours, draft, prs } = group
@@ -432,7 +435,6 @@ const leavesOpen = (units: PlannedUnit[]) =>
   )
 
 function markOpen(caps: Caps, ruleIndex: number, key: string) {
-  if (ruleIndex < 0) return
   caps.open.total.add(key)
   caps.open.perRule[ruleIndex] = (caps.open.perRule[ruleIndex] ?? new Set()).add(key)
 }
