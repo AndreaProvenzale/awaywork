@@ -162,7 +162,7 @@ async function settle(
       secrets: own,
       signal: input.signal,
       until: input.until,
-      egress: setupPhase(unit.network, log),
+      egress: setupPhase(withholdsGrants(unit) ? [] : unit.network, log),
     }
     const failed = await runSetup(settings.setup, dir, env, log, options)
     if (failed) {

@@ -5,7 +5,9 @@ import { planTriage, screenJson } from '#cli/tui/triage'
 import { configPath, loadConfig } from '#config/load'
 import { skillsDirOf } from '#config/paths'
 import type { Config } from '#config/schema'
+import { inAwayworkImage, workerFor } from '#core/isolation'
 import type { Ctx } from '#core/types'
+import { wallProblem } from '#core/wall'
 import { resolveTeams } from '#forge/teams'
 import { planJson } from '#format/json'
 import { formatPlan } from '#format/plan'
@@ -58,6 +60,8 @@ export function planCommand(program: Command): void {
           ...opts,
           onProgress: screen?.progress,
         })
+        const unwalled = await wallWarning(config)
+        if (unwalled) warnings.push(unwalled)
         const none =
           !plan.units.length && (opts.repo !== undefined || opts.rule !== undefined)
             ? 'no unit matches --repo/--rule'
@@ -94,6 +98,15 @@ export function planCommand(program: Command): void {
         reportConfigError(e)
       }
     })
+}
+
+/** Under `user`, a run refuses as a whole while the worker's network wall isn't up. */
+async function wallWarning(config: Config): Promise<string | undefined> {
+  if (config.isolation !== 'user' || inAwayworkImage(process.env)) return
+  const worker = await workerFor(config.isolation, process.env).catch(() => undefined)
+  const problem = worker && (await wallProblem(worker))
+  if (problem)
+    return `no unit runs: the network wall isn't up for ${worker} (${problem}): \`awaywork doctor\` shows the rules`
 }
 
 type PlanOptions = {

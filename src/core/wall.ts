@@ -27,6 +27,7 @@ const rules = (tool: string, user: string) =>
 
 /** iptables can't see unix sockets, and systemd-resolved answers any user on its varlink socket and over D-Bus: both deny the worker, the first again after a reboot. */
 const resolverLines = (user: string) => [
+  '[ ! -d /run/systemd/resolve ] || command -v setfacl > /dev/null || sudo apt-get install -y acl',
   `[ ! -d /run/systemd/resolve ] || sudo setfacl -m u:${user}:--- /run/systemd/resolve`,
   `[ ! -d /run/systemd/resolve ] || printf 'd /run/systemd/resolve 0755 systemd-resolve systemd-resolve -\\na+ /run/systemd/resolve - - - - u:${user}:---\\n' | sudo tee /etc/tmpfiles.d/awaywork-${user}.conf > /dev/null`,
   `[ ! -d /etc/dbus-1/system.d ] || echo '<busconfig><policy user="${user}"><deny send_destination="org.freedesktop.resolve1"/></policy></busconfig>' | sudo tee /etc/dbus-1/system.d/awaywork-${user}.conf > /dev/null`,
@@ -41,7 +42,13 @@ export const wallLines = (user = WORKER): string[] => [
 ]
 
 const CONTROL = 'api.github.com'
-const PROBE = `timeout 3 bash -c 'exec 3<>/dev/tcp/$0/443' "$1" 2> /dev/null; echo "connect $?"; timeout 5 getent hosts "$2" > /dev/null; echo "resolve $?"`
+const CONTROL_V6 = '2606:4700:4700::1111'
+const PROBE = [
+  `timeout 3 bash -c 'exec 3<>/dev/tcp/$0/443' "$1" 2> /dev/null; echo "connect $?"`,
+  'timeout 5 getent -s dns hosts "$2" > /dev/null; echo "resolve $?"',
+  '[ -d /run/systemd/resolve ] && [ -x /run/systemd/resolve ]; echo "socket $?"',
+  'timeout 5 resolvectl query "$2" > /dev/null 2>&1; echo "dbus $?"',
+].join('; ')
 const probeOptions = { env: {}, extendEnv: false, reject: false } as const
 
 async function probe(run: typeof execa, ip: string, as?: string) {
@@ -56,9 +63,19 @@ async function probe(run: typeof execa, ip: string, as?: string) {
 
 const addressOf = async (name: string) => (await lookup(name, { family: 4 })).address
 
+/** Why the worker's connect to `ip` isn't the quick refusal the wall gives. */
+async function connectProblem(run: typeof execa, user: string, ip: string, label: string) {
+  const worker = await probe(run, ip, user)
+  if (!worker) return `the probe as ${user} failed`
+  if (worker.connect === '0') return `${user} reaches ${label}`
+  if (worker.connect !== '1') return `${user}'s connection to ${label} isn't refused, it times out`
+  return worker
+}
+
 /**
  * What keeps the wall from holding, if anything. Awaywork's own uid first connects to an outside address and resolves a
- * public name, which proves the probe can tell; the worker must then be refused at once (not time out) and resolve nothing.
+ * public name, which proves the probe can tell; the worker must then be refused at once (not time out) and resolve nothing,
+ * by any road: getent, resolved's socket, D-Bus. The same for IPv6 where awaywork's own uid has a route out; with none, there's no way out over it.
  */
 export async function wallProblem(
   user: string,
@@ -69,12 +86,15 @@ export async function wallProblem(
   const control = ip && (await probe(run, ip))
   if (!ip || !control || control.connect !== '0' || control.resolve !== '0')
     return `can't tell: awaywork itself doesn't reach ${CONTROL} to compare with`
-  const worker = await probe(run, ip, user)
-  if (!worker) return `the probe as ${user} failed`
-  if (worker.connect === '0') return `${user} reaches ${CONTROL}`
-  if (worker.connect !== '1')
-    return `${user}'s connection to ${CONTROL} isn't refused, it times out`
+  const worker = await connectProblem(run, user, ip, CONTROL)
+  if (typeof worker === 'string') return worker
   if (worker.resolve === '0') return `${user} resolves names`
+  if (worker.socket === '0') return `${user} can open systemd-resolved's socket`
+  if (worker.dbus === '0') return `${user} resolves names through systemd-resolved's D-Bus`
+  const v6 = await probe(run, CONTROL_V6)
+  if (v6?.connect !== '0') return
+  const over = await connectProblem(run, user, CONTROL_V6, `${CONTROL_V6} over IPv6`)
+  if (typeof over === 'string') return over
 }
 
 /** Where the kernel wall holds for the worker user: the egress proxy is up, and every launch goes through it. */

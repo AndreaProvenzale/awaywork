@@ -22,9 +22,16 @@ import { cursor } from '#providers/cursor'
 
 describe('linkLocal', () => {
   it('names 169.254.0.0/16 and fe80::/10, mapped IPv4 too', () => {
-    for (const address of ['169.254.169.254', 'fe80::1', 'FEBF::1', '::ffff:169.254.1.1'])
+    for (const address of [
+      '169.254.169.254',
+      'fe80::1',
+      'FEBF::1',
+      '::ffff:169.254.1.1',
+      '::ffff:a9fe:a9fe',
+      '0:0:0:0:0:ffff:a9fe:a9fe',
+    ])
       expect(linkLocal(address)).toBe(true)
-    for (const address of ['169.253.0.1', '10.0.0.1', '::1', 'fec0::1', '1.1.1.1'])
+    for (const address of ['169.253.0.1', '10.0.0.1', '::1', 'fec0::1', '1.1.1.1', 'github.com'])
       expect(linkLocal(address)).toBe(false)
   })
 })
@@ -191,10 +198,12 @@ describe('the proxy', () => {
     proxy.use(phase(['*']))
     expect(await connect('169.254.169.254:80')).toBe(403)
     expect(await connect('[fe80::1]:22')).toBe(403)
+    expect(await connect('[::ffff:a9fe:a9fe]:80')).toBe(403)
     expect(await connect(`127.0.0.1:${originPort}`)).toBe(200)
     expect(lines).toEqual([
       'network: refused 169.254.169.254:80 (setup)',
       'network: refused [fe80::1]:22 (setup)',
+      'network: refused [::ffff:a9fe:a9fe]:80 (setup)',
     ])
   })
 
@@ -268,6 +277,38 @@ describe('the wall', () => {
       'times out',
     )
     expect(await wallProblem('w', probes(reached, '', true), address)).toContain('failed')
+  })
+
+  it('is missing when the worker can still open resolved’s socket or ask it over D-Bus', async () => {
+    expect(
+      await wallProblem('w', probes(reached, 'connect 1\nresolve 2\nsocket 0\ndbus 1'), address),
+    ).toContain('socket')
+    expect(
+      await wallProblem('w', probes(reached, 'connect 1\nresolve 2\nsocket 1\ndbus 0'), address),
+    ).toContain('D-Bus')
+    expect(
+      await wallProblem('w', probes(reached, 'connect 1\nresolve 2\nsocket 1\ndbus 127'), address),
+    ).toBeUndefined()
+  })
+
+  describe('IPv6', () => {
+    const v6 = (control: string, worker: string) =>
+      (async (file: string, args: string[]) => {
+        const six = JSON.stringify(args).includes('2606')
+        const own = file.endsWith('sudo') ? 'connect 1\nresolve 2' : reached
+        const stdout = six ? (file.endsWith('sudo') ? worker : control) : own
+        return { stdout, failed: false }
+      }) as unknown as Run
+
+    it('is skipped where awaywork itself has no route out', async () => {
+      expect(await wallProblem('w', v6('connect 1', 'connect 0'), address)).toBeUndefined()
+    })
+
+    it('needs the worker refused at once where awaywork has one', async () => {
+      expect(await wallProblem('w', v6(reached, 'connect 1'), address)).toBeUndefined()
+      expect(await wallProblem('w', v6(reached, 'connect 0'), address)).toContain('IPv6')
+      expect(await wallProblem('w', v6(reached, 'connect 124'), address)).toContain('times out')
+    })
   })
 
   it('proves nothing when awaywork itself reaches nothing: no wall, the outside blackholed', async () => {

@@ -1,7 +1,7 @@
 import type { LookupAddress } from 'node:dns'
 import { lookup } from 'node:dns/promises'
 import { createServer, request } from 'node:http'
-import { connect, isIP, type LookupFunction, type Socket } from 'node:net'
+import { BlockList, connect, isIP, type LookupFunction, type Socket } from 'node:net'
 import { withholdsGrants } from './trust'
 import type { Job, McpServer, Provider } from './types'
 
@@ -83,16 +83,22 @@ export function proxyEnv(port: number): Record<string, string> {
   ])
 }
 
-/** Link-local addresses: 169.254.0.0/16, where clouds keep their metadata service, and fe80::/10. */
+const linkLocalRanges = new BlockList()
+linkLocalRanges.addSubnet('169.254.0.0', 16, 'ipv4')
+linkLocalRanges.addSubnet('fe80::', 10, 'ipv6')
+
+/** Link-local addresses: 169.254.0.0/16, where clouds keep their metadata service, and fe80::/10; IPv4-mapped forms too. */
 export const linkLocal = (address: string) => {
-  const ip = address.toLowerCase().replace(/^::ffff:/, '')
-  return /^169\.254\./.test(ip) || /^fe[89ab]/.test(ip)
+  const family = isIP(address)
+  return family !== 0 && linkLocalRanges.check(address, family === 6 ? 'ipv6' : 'ipv4')
 }
+
+const LINK_LOCAL = 'link-local address'
 
 const publicAddresses = async (name: string, options: object) => {
   const found = await lookup(name, { ...options, all: true })
   const kept = found.filter(({ address }) => !linkLocal(address))
-  if (!kept.length) throw new Error('link-local address')
+  if (!kept.length) throw new Error(LINK_LOCAL)
   return kept
 }
 
@@ -117,14 +123,24 @@ export interface Egress {
 export async function startEgress(): Promise<Egress> {
   let phase: Phase | undefined
   const told = new Set<string>()
-  const permits = (host: string, port: number) => {
-    if (phase && hostAllowed(host, phase.hosts) && !linkLocal(host)) return true
+  const refuse = (host: string, port: number) => {
     const shown = isIP(host) === 6 ? `[${host}]` : host
     const line = `network: refused ${shown}:${port} (${phase?.name ?? 'no phase'})`
     if (!told.has(line)) phase?.log(line)
     told.add(line)
+  }
+  const permits = (host: string, port: number) => {
+    if (phase && hostAllowed(host, phase.hosts) && !linkLocal(host)) return true
+    refuse(host, port)
     return false
   }
+  const lookupFor =
+    (host: string, port: number): LookupFunction =>
+    (name, options, done) =>
+      publicLookup(name, options, (error, ...rest) => {
+        if (error?.message === LINK_LOCAL) refuse(host, port)
+        ;(done as (...args: unknown[]) => void)(error, ...rest)
+      })
   const server = createServer((req, res) => {
     const url = URL.parse(req.url ?? '')
     if (!url?.hostname) return void res.writeHead(400).end()
@@ -138,7 +154,7 @@ export async function startEgress(): Promise<Egress> {
         method: req.method,
         path: url.pathname + url.search,
         headers: req.headers,
-        lookup: publicLookup,
+        lookup: lookupFor(host, port),
       },
       (answer) => {
         res.writeHead(answer.statusCode ?? 502, answer.headers)
@@ -154,7 +170,7 @@ export async function startEgress(): Promise<Egress> {
     if (!Number.isInteger(number) || number < 1 || number > 65535)
       return void client.end('HTTP/1.1 400 Bad Request\r\n\r\n')
     if (!permits(host, number)) return void client.end('HTTP/1.1 403 Forbidden\r\n\r\n')
-    const upstream = connect({ host, port: number, lookup: publicLookup }, () => {
+    const upstream = connect({ host, port: number, lookup: lookupFor(host, number) }, () => {
       client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
       upstream.write(head)
       upstream.pipe(client)

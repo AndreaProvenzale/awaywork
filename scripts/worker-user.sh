@@ -34,6 +34,7 @@ sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -j REJECT 2> /dev/null ||
 sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
 sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
 sudo ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT 2> /dev/null || sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+[ ! -d /run/systemd/resolve ] || command -v setfacl > /dev/null || sudo apt-get install -y acl
 [ ! -d /run/systemd/resolve ] || sudo setfacl -m u:awaywork:--- /run/systemd/resolve
 [ ! -d /run/systemd/resolve ] || printf 'd /run/systemd/resolve 0755 systemd-resolve systemd-resolve -\na+ /run/systemd/resolve - - - - u:awaywork:---\n' | sudo tee /etc/tmpfiles.d/awaywork-awaywork.conf > /dev/null
 [ ! -d /etc/dbus-1/system.d ] || echo '<busconfig><policy user="awaywork"><deny send_destination="org.freedesktop.resolve1"/></policy></busconfig>' | sudo tee /etc/dbus-1/system.d/awaywork-awaywork.conf > /dev/null
