@@ -79,6 +79,9 @@ export function chainUnits(
     base,
     foreign: landed.foreign,
     untrusted: pr ? !pr.mine && !trusts(trustFor(config, repo), pr.author, pr.trusted) : false,
+    ...(items.some((i) => i.type === 'issue' && i.fields.trusted === false) && {
+      stranger: true as const,
+    }),
     fork: landed.fork,
     ...(merging && { merge: pr?.into }),
     branch: draft ? base : landed.branch,

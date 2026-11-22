@@ -8,7 +8,13 @@ import { isolate } from '#core/isolation'
 import type { Job, Provider, Unit } from '#core/types'
 import type { Allowance } from '#quota/budget'
 import { assemblePrompt } from '#worker/clone/prompt'
-import { asksServe, type ServeRequest, serveRequest, startServe } from '#worker/process/serve'
+import {
+  asksServe,
+  type ServeRequest,
+  serveRefusal,
+  serveRequest,
+  startServe,
+} from '#worker/process/serve'
 import { defaultLimits, killTree, startWatchdog } from '#worker/process/watchdog'
 import { runWorker } from '#worker/process/worker'
 import { fakeItem } from './fakes/items'
@@ -130,6 +136,10 @@ describe('serve', () => {
     expect(served.job.prompt).toContain('boom: no database')
   })
 
+  it("refuses it on a stranger's issue", () => {
+    expect(serveRefusal(unit({ stranger: true }), settings)).toBe("the author isn't trusted")
+  })
+
   it("doesn't start it on a PR whose author isn't trusted", async () => {
     const started = join(await mkdtemp(join(tmpdir(), 'awaywork-serve-')), 'started')
     const { job } = await setup({ SERVE_STARTED: started })
@@ -142,7 +152,7 @@ describe('serve', () => {
     const served = await startServe(request as ServeRequest, job, new AbortController().signal)
 
     expect(existsSync(started)).toBe(false)
-    expect(served.note).toBe("serve not run: this PR's author isn't trusted")
+    expect(served.note).toBe("serve not run: the author isn't trusted")
   })
 
   it("doesn't start it under isolation: user", async () => {
@@ -201,7 +211,7 @@ describe('serve', () => {
 
     expect(result).toMatchObject({
       status: 'done',
-      notes: ["serve not run: this PR's author isn't trusted"],
+      notes: ["serve not run: the author isn't trusted"],
     })
     expect(prompt).toBe('prove it')
   })

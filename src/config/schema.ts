@@ -270,7 +270,7 @@ const network = z
   .array(host)
   .default([])
   .describe(
-    "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR. Setup, verify, until, when and gate scripts aren't limited yet",
+    "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR or issue. Setup, verify, until, when and gate scripts aren't limited yet",
   )
 const trustEntry = z
   .string()
@@ -295,7 +295,7 @@ const writable = z
   .array(writablePath)
   .default([])
   .describe(
-    "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR. Not applied under isolation: container",
+    "Paths the agent's shell may write besides the clone, on top of the other levels' (top level, repos and rule add up); ~/ is your home, never listed whole nor a folder holding awaywork's own files; a path that doesn't exist at the run's start is skipped, none by default, and none on an untrusted author's PR or issue. Not applied under isolation: container",
   )
 const stepSettings = {
   provider: oneOrMany

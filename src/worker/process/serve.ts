@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { contained, isolated } from '#core/isolation'
 import { launch } from '#core/launch'
+import { withholdsGrants } from '#core/trust'
 import type { Job, Rule, Unit } from '#core/types'
 import { killGroupWhenDone } from '#util/process'
 import { refuseSymlinks, WORK_DIR, writeOutput } from '#worker/clone/files'
@@ -41,8 +42,8 @@ export const asksServe = (rule: Rule): boolean =>
 export const serveRefusal = (unit: Unit, serve?: { command: string }): string | undefined =>
   !serve
     ? `${unit.repo} has no serve command`
-    : unit.untrusted
-      ? "this PR's author isn't trusted"
+    : withholdsGrants(unit)
+      ? "the author isn't trusted"
       : isolated() || contained()
         ? "isolation: user and container don't support it yet"
         : undefined

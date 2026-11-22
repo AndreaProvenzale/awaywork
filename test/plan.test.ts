@@ -602,6 +602,18 @@ queue:
     expect(flags(yaml('[]'), { mine: true })).toEqual({ foreign: false, untrusted: false })
   })
 
+  it("withholds grants from a stranger's issue but keeps its clone yours, and from nobody else's", () => {
+    const config = `providers: [claude]\nrepos: { acme/api: {} }\nsources: { github: {} }\nqueue: [{ skill: review, deliver: report }]`
+    const flags = (fields: Item['fields']) => {
+      const unit = plan(config, [{ ...issue, fields: { repo: 'acme/api', ...fields } }], {})
+        .units[0]?.unit
+      return { untrusted: unit?.untrusted, stranger: unit?.stranger }
+    }
+    expect(flags({ trusted: false })).toEqual({ untrusted: false, stranger: true })
+    expect(flags({ trusted: true })).toEqual({ untrusted: false, stranger: undefined })
+    expect(flags({})).toEqual({ untrusted: false, stranger: undefined })
+  })
+
   it("refuses a chain that could commit onto someone else's PR or a fork, and reports there", () => {
     const yaml = `
 providers: [claude]

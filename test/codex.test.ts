@@ -199,6 +199,12 @@ describe('codex provider', () => {
     expect(wall(run)).toContain('permissions.awaywork.network.domains={}')
   })
 
+  it("withholds the hosts from a stranger's issue", () => {
+    const run = job()
+    Object.assign(run.unit, { network: ['npmjs.org'], stranger: true })
+    expect(wall(run)).toContain('permissions.awaywork.network.domains={}')
+  })
+
   it("gives a trusted author's PR the hosts", () => {
     const run = job()
     Object.assign(run.unit, { network: ['npmjs.org'], foreign: true, untrusted: false })
