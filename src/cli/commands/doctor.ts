@@ -34,7 +34,7 @@ import {
   WORKER,
   workerFor,
 } from '#core/isolation'
-import type { Ctx, Provider } from '#core/types'
+import type { Ctx, Provider, Rule } from '#core/types'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '#forge/bitbucket'
 import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
 import { teamMembers, teamsIn } from '#forge/teams'
@@ -237,6 +237,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     config.isolation !== 'none' ||
     process.env.RUNNER_ENVIRONMENT === 'github-hosted' ||
     inAwayworkImage(process.env)
+  const mode = boxed ? 'container' : walled ? 'user' : 'none'
+  for (const c of inertKeys(config, queue, mode)) report(c.status, c.what, c.detail)
   queue.forEach((rule, i) => {
     if (walled && asksServe(rule))
       report(
@@ -273,6 +275,34 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     const unset = server.secrets.filter((s) => !process.env[s])
     const facts = [server.command ?? server.url, ...server.secrets.map(secret)].join(', ')
     report(unset.length > 0 ? 'warn' : 'ok', `mcp ${name}`, facts)
+  }
+  return checks
+}
+
+/** The keys set in the config that do nothing under the isolation `mode` units run in, once each, with where they're set. */
+export function inertKeys(config: Config, queue: Rule[], mode: Config['isolation']): Check[] {
+  const checks: Check[] = []
+  const note = (what: string, where: string) =>
+    checks.push({ status: 'ok', what, detail: `no effect under isolation: ${mode} (${where})` })
+  const repos = Object.entries(config.repos)
+  const named = (has: (repo: Config['repos'][string]) => unknown) =>
+    repos.filter(([, repo]) => has(repo)).map(([name]) => name)
+  if (mode === 'container') {
+    const where = [
+      ...(config.writable.length > 0 ? ['top level'] : []),
+      ...named((r) => r.writable.length),
+      ...queue.flatMap((r, i) => (r.writable?.length ? [`rule #${i + 1}`] : [])),
+    ].join(', ')
+    if (where) note('writable', where)
+  }
+  if (mode !== 'container') {
+    const where = named((r) => r.image).join(', ')
+    if (where) note('image', where)
+  }
+  // A rule that asks for the app gets its own warning.
+  if (mode !== 'none' && !queue.some(asksServe)) {
+    const where = named((r) => r.serve).join(', ')
+    if (where) note('serve', where)
   }
   return checks
 }

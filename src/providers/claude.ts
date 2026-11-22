@@ -25,7 +25,7 @@ const stream = ['--output-format', 'stream-json', '--verbose']
 const noMemory = { autoMemoryEnabled: false }
 /** The account's claude.ai connectors load with any login, whatever the setting sources. */
 const noConnectors = { ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }
-/** The repo's settings, hooks, MCP servers, CLAUDE.md and skills; nothing from ~/.claude. */
+/** The repo's settings, hooks, MCP servers, CLAUDE.md and skills, and the CLAUDE.md of every folder above it, `~` included under `none`. */
 const repoOnly = ['--setting-sources', 'project,local']
 /** Neither ~/.claude nor the clone's own config: on an untrusted author's PR it is theirs. */
 const isolated = ['--setting-sources', '', '--strict-mcp-config']
