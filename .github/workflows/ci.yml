@@ -40,7 +40,11 @@ jobs:
       - run: |
           sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin awaywork-proof
           echo awaywork-proof | sudo tee -a /etc/cron.deny > /dev/null
-      - run: pnpm vitest run test/real-isolation.test.ts test/real-wall.test.ts test/launch.test.ts
+      - run: pnpm vitest run test/real-isolation.test.ts test/launch.test.ts
+        env:
+          AWAYWORK_WORKER_TEST: "1"
+      # Alone: the other files kill every process of the worker user, the wall's probe included.
+      - run: pnpm vitest run test/real-wall.test.ts
         env:
           AWAYWORK_WORKER_TEST: "1"
 
