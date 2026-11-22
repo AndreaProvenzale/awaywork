@@ -137,8 +137,9 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
       log(`its .git is as the worker left it: ${restore.message}`),
     )
     await provider.finish?.(dir).catch(() => {})
-    if (plugins !== root && !lostToWorker(plugins))
-      await rm(plugins, { recursive: true, force: true })
+    for (const path of [plugins, workerHome(dir)])
+      if (path && path !== root && !lostToWorker(path))
+        await rm(path, { recursive: true, force: true })
     throw e
   }
   await keep(dir, gitConfig, unit.branch, log)
