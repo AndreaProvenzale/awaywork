@@ -79,10 +79,7 @@ export function chainUnits(
     base,
     foreign: landed.foreign,
     untrusted: pr ? !pr.mine && !trusts(trustFor(config, repo), pr.author, pr.trusted) : false,
-    ...(items.some(
-      (i) =>
-        (i.task?.parent ?? i).type === 'issue' && (i.task?.parent ?? i).fields.trusted === false,
-    ) && {
+    ...(items.some((i) => (i.task?.parent ?? i).type === 'issue' && i.fields.trusted === false) && {
       untrustedText: true as const,
     }),
     fork: landed.fork,
