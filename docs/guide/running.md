@@ -139,7 +139,7 @@ Started api#1 as run 20261109-095329; awaywork report 20261109-095329 shows it o
 
 To stop a detached unit, kill the pid in `~/.local/state/awaywork/run.lock`: it ends as Ctrl-C would, report included.
 
-- A unit you name goes past `limits.units`, `limits.units_per_repo` and its rule's `units`; the rest of the plan stays capped.
+- A unit you name goes past `limits.units`, `limits.units_per_repo`, `limits.units_max_open` and its rule's `units` and `units_max_open`; the rest of the plan stays capped.
 - A step of a rule's `then` runs its whole chain, from the first step.
 - It plans first, so a unit that can't start exits 1 saying why: not in the plan, the run lock taken, or no provider.
 - An item no rule takes needs a skill: [`--skill`](./skills.md#run-one-on-an-item-no-rule-takes), detached too.

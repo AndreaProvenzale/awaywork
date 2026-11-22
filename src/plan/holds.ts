@@ -190,13 +190,15 @@ export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[
   return out
 }
 
-const waits: SkipKind[] = ['waiting_for_review', 'waiting_for_answer', 'waiting_for_approval']
+export const waits: SkipKind[] = [
+  'waiting_for_review',
+  'waiting_for_answer',
+  'waiting_for_approval',
+]
 
-/** The URL of what awaywork left open on the group, the one you'd open: a wait, a draft that goes on, or the PR a rule took up. */
-export function openUrl(group: Group, held: Hold[]): string | undefined {
-  const { draft, pickup, ours } = group
-  return held.find((h) => waits.includes(h.kind))?.url ?? (draft || pickup ? ours?.url : undefined)
-}
+/** The URL of what awaywork left open on the group, the one you'd open: its open PR, else the post that waits. */
+export const openUrl = ({ ours }: Group, held: Hold[]): string | undefined =>
+  ours?.url ?? held.find((h) => waits.includes(h.kind))?.url
 
 /** Whether you answered the item's questions and no result of awaywork's came since. */
 const answered = ({ comments }: Item) => {
@@ -209,10 +211,9 @@ const answered = ({ comments }: Item) => {
   )
 }
 
-/** Whether the group lands on something already open, which a cap on open units never holds: going on with a draft, a rule taking up awaywork's PR, the rerun after your answer or feedback. */
-export const landsOnOpen = ({ draft, pickup, card, posted, items }: Group): boolean =>
-  !!draft ||
-  pickup ||
+/** Whether the group lands on something already open, which a cap on open units never holds: the rerun after your answer or feedback, a task of a card with a PR already. */
+export const landsOnOpen = ({ lead, card, posted, items }: Group): boolean =>
+  Object.keys(lead.task?.parent.taskPrs ?? {}).length > 0 ||
   card?.state === 'feedback' ||
   posted?.answer === 'feedback' ||
   items.some(answered)

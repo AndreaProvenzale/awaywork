@@ -4,7 +4,13 @@ import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, PrRef, TaskPr } from '#core/types'
 import { planRun } from '#plan/foreman'
-import { approveReply, markComment, planComment, resultComment } from '#posts/comments'
+import {
+  approveReply,
+  markComment,
+  planComment,
+  questionsComment,
+  resultComment,
+} from '#posts/comments'
 import { allowance } from '#quota/budget'
 import { fakeItem, githubPr } from './fakes/items'
 
@@ -191,10 +197,75 @@ describe('units_max_open', () => {
   })
 
   it("doesn't count what asks for a fix", () => {
-    const yaml = base('{}', rule(', units_max_open: 1, deliver: pending_review'))
-    const p = plan(yaml, [issue(1), issue(2)])
-    expect(p.skipped.every((s) => s.kind === 'refused_delivery')).toBe(true)
+    const yaml = base(
+      '{ units_max_open: 1 }',
+      `  - { skill: review, where: { type: issue, repo: acme/web }, deliver: pending_review }\n${rule()}`,
+    )
+    const refused = issue(1, { fields: { repo: 'acme/web', mine: true } })
+    const p = plan(yaml, [refused, issue(2)])
+    expect(p.skipped.map((s) => s.kind)).toEqual(['refused_delivery'])
+    expect(ids(p)).toEqual(['acme-api-2'])
+  })
+
+  it('counts a draft with its questions and its PR item once', () => {
+    const left = {
+      items: ['github:acme/api#1'],
+      status: 'ask' as const,
+      continued: 0,
+      head: 'h',
+      from: 'f',
+    }
+    const draft = ours(101, { head: 'h', left })
+    const asking = issue(1, {
+      linkedPrs: [draft],
+      comments: [{ author: 'me', body: markComment(questionsComment('Per key?')), at, mine: true }],
+    })
+    const pr = { ...githubPr(101, { ours: true }), linkedPrs: [draft] }
+    const p = plan(base('{ units_max_open: 2 }', rule()), [asking, pr, issue(2)])
+    expect(ids(p)).toEqual(['acme-api-2'])
     expect(capped(p)).toEqual([])
+  })
+
+  it('counts a plain report or a pending review taken this run for nothing', () => {
+    const report = base(
+      '{ units_max_open: 1 }',
+      `  - { skill: review, where: { type: pr }, deliver: report }\n${rule()}`,
+    )
+    expect(capped(plan(report, [githubPr(1), issue(2)]))).toEqual([])
+    const review =
+      '  - { skill: review, where: { type: pr }, deliver: pending_review, units_max_open: 1 }'
+    expect(capped(plan(base('{}', review), [githubPr(7), githubPr(8)]))).toEqual([])
+  })
+
+  it('counts a report that waits, taken this run', () => {
+    const yaml = base(
+      '{ units_max_open: 1 }',
+      `  - { skill: review, where: { type: pr }, deliver: report, wait: true }\n${rule()}`,
+    )
+    expect(capped(plan(yaml, [githubPr(1), issue(2)]))).toEqual([
+      ['acme/api#2', 'over the cap: limits.units_max_open is 1'],
+    ])
+  })
+
+  it('never holds the re-plan after feedback on a plan', () => {
+    const card = issue(1, {
+      comments: [
+        {
+          author: 'me',
+          body: markComment(planComment('Tasks.', 'tasks:\n  - { id: api, title: A }'), {
+            waits: true,
+          }),
+          at,
+          mine: true,
+        },
+        { author: 'me', body: 'Fewer tasks.', at: '2026-01-02T00:00:00Z', mine: true },
+      ],
+    })
+    const yaml = base(
+      '{ units_max_open: 1 }',
+      '  - { skill: plan, deliver: plan, where: { type: issue } }\n  - { skill: implement, where: { planned: true } }',
+    )
+    expect(ids(plan(yaml, [open(2), card]))).toEqual(['acme-api-1'])
   })
 })
 
@@ -204,7 +275,7 @@ describe('units_max_open for tasks', () => {
   - { id: api, title: A }
   - { id: web, title: W }
   - { id: docs, title: D }`
-  const taskPr = (id: string): TaskPr => ({
+  const taskPr = (id: string, state: TaskPr['state'] = 'open'): TaskPr => ({
     repo: 'acme/api',
     number: id.length,
     url: `https://github.com/acme/api/pull/${id}`,
@@ -213,13 +284,14 @@ describe('units_max_open for tasks', () => {
     mine: true,
     trusted: true,
     fork: false,
-    state: 'open',
+    state,
   })
-  const card = (n: number, taskPrs: Record<string, TaskPr> = {}) =>
+  const card = (n: number, taskPrs: Record<string, TaskPr> = {}, more: Item['comments'] = []) =>
     issue(n, {
       comments: [
         { author: 'me', body: markComment(planComment('Plan.', tasks)), at: day(1), mine: true },
         { author: 'me', body: approveReply(''), at: day(2), mine: true },
+        ...more,
       ],
       taskPrs,
     })
@@ -244,5 +316,42 @@ describe('units_max_open for tasks', () => {
       'acme-api-1-web',
       'acme-api-1-docs',
     ])
+  })
+
+  it('counts a card whose task asked questions, its open PRs too', () => {
+    const questions = {
+      author: 'me',
+      body: markComment(questionsComment('Per key?', 'web')),
+      at: day(3),
+      mine: true as const,
+    }
+    const p = plan(yaml, [card(1, { api: taskPr('api') }, [questions]), card(2)])
+    expect(ids(p)).toEqual([])
+    expect(capped(p)).toHaveLength(3)
+  })
+
+  it('counts a card once in the total however many task PRs it has', () => {
+    const total = base(
+      '{ units_max_open: 2 }',
+      '  - { skill: plan, deliver: plan, where: { type: issue } }\n  - { skill: implement, where: { planned: true } }',
+    )
+    const prItem = (id: string) => ({
+      ...githubPr(0, { ours: true }),
+      key: `acme/api#${id}`,
+      id,
+      url: `https://github.com/acme/api/pull/${id}`,
+    })
+    const under = card(1, { api: taskPr('api'), web: taskPr('web') })
+    expect(capped(plan(total, [under, prItem('api'), prItem('web'), issue(5)]))).toEqual([])
+  })
+
+  it('never cuts the rest of a block under way once its first PR merged', () => {
+    const p = plan(yaml, [
+      card(3, { api: taskPr('api') }),
+      card(1, { api: taskPr('api', 'merged') }),
+    ])
+    expect(ids(p)).toContain('acme-api-1-web')
+    expect(ids(p)).toContain('acme-api-1-docs')
+    expect(capped(p)).toEqual([])
   })
 })

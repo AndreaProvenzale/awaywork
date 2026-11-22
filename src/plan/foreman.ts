@@ -18,6 +18,7 @@ import {
   postsOn,
   refusal,
   stackTarget,
+  waits,
 } from './holds'
 import {
   closestRule,
@@ -244,12 +245,21 @@ export function planRun(input: {
     counted: 0,
     open: { total: new Set(), perRule: {} },
   }
-  for (const item of unmatched.filter(isAwayworkPr)) caps.open.total.add(item.url)
+  const linked = new Set(
+    input.items
+      .filter((item) => !isAwayworkPr(item))
+      .flatMap((item) => [...item.linkedPrs, ...Object.values(item.taskPrs ?? {})])
+      .map((pr) => pr.url),
+  )
+  for (const item of unmatched.filter(isAwayworkPr))
+    if (!linked.has(item.url)) caps.open.total.add(item.url)
   for (const found of blocks) {
     const group = readGroup(run, rules, found, [], waiting)
     const url = openUrl(group, holdsOn(run, group, []))
-    if (url) markOpen(caps, group.ruleIndex, openKey(group, url))
+    if (url) markOpen(caps, group.ruleIndex, openKey(group.lead, url))
   }
+  for (const { item, kind } of expanded.skipped)
+    if (item.task && waits.includes(kind)) markOpen(caps, ruleFor(queue, item), openKey(item, ''))
   for (const found of blocks) {
     const group = readGroup(run, rules, found, units, waiting)
     const { items, lead, rule, ruleIndex, id, ours, draft, prs } = group
@@ -291,7 +301,7 @@ export function planRun(input: {
       skip(refused)
       continue
     }
-    const key = openKey(group, openUrl(group, held))
+    const key = openKey(lead, openUrl(group, held) ?? id)
     const capped = overCap(caps, run, group, repo, key)
     if (capped && !named) {
       skip({ kind: 'over_cap', reason: capped })
@@ -299,7 +309,10 @@ export function planRun(input: {
     }
     const chain = chainUnits(run, group, at, caps.routed)
     units.push(...chain.units)
-    if (chain.counts && !capped && !lifted) take(caps, repo, ruleIndex, key)
+    if (chain.counts && !capped && !lifted) {
+      take(caps, repo, ruleIndex)
+      if (leavesOpen(chain.units)) markOpen(caps, ruleIndex, key)
+    }
   }
   return { queue, units, skipped, allowances }
 }
@@ -409,10 +422,17 @@ interface Caps {
 }
 
 /** A unit counts once toward `units_max_open`: a card for all its tasks, else the URL left open, else the unit itself. */
-const openKey = (group: Group, url = group.id) =>
-  group.lead.task ? `${group.lead.task.parent.source}:${group.lead.task.parent.key}` : url
+const openKey = ({ task }: Item, url: string) =>
+  task ? `${task.parent.source}:${task.parent.key}` : url
+
+/** Whether a chain opens a PR or pushes, or reports and waits or may: a plain report or a pending review leaves nothing open. */
+const leavesOpen = (units: PlannedUnit[]) =>
+  units.some(
+    ({ unit }) => unit.waits !== undefined || !['report', 'pending_review'].includes(unit.deliver),
+  )
 
 function markOpen(caps: Caps, ruleIndex: number, key: string) {
+  if (ruleIndex < 0) return
   caps.open.total.add(key)
   caps.open.perRule[ruleIndex] = (caps.open.perRule[ruleIndex] ?? new Set()).add(key)
 }
@@ -459,8 +479,7 @@ function openCaps(
     .map(({ name, max, set }) => ({ name, max, count: set.size }))
 }
 
-function take(caps: Caps, repo: string, ruleIndex: number, key: string) {
-  markOpen(caps, ruleIndex, key)
+function take(caps: Caps, repo: string, ruleIndex: number) {
   caps.counted++
   caps.perRepo[repo] = (caps.perRepo[repo] ?? 0) + 1
   caps.perRule[ruleIndex] = (caps.perRule[ruleIndex] ?? 0) + 1
