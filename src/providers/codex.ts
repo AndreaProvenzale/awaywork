@@ -22,11 +22,13 @@ import { parseJson } from '#util/json'
 import { lock } from '#util/lock'
 import { killGroupSoon, killGroupWhenDone } from '#util/process'
 
-/** No user config (MCP servers, notify hooks, plugins), no saved session. */
-const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
+/** No user config (MCP servers, notify hooks, plugins), no execpolicy rules (an `allow` skips the shell wall), no saved session. */
+const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules']
 /** Where the sandbox can't start: workspace-write can't commit (.git is read-only), so the shell is open. */
 const FULL_ACCESS = ['--sandbox', 'danger-full-access']
 const PROFILE = 'awaywork'
+/** The account's ChatGPT apps and Codex's web search run on OpenAI's side, outside the shell's `network` wall. */
+const NO_ACCOUNT_TOOLS = ['-c', 'features.apps=false', '-c', 'web_search="disabled"']
 const HOOKED = ['.claude', '.mcp.json']
 /** The proxy's line in a command's output when it reached a host outside the profile's `domains`. */
 const BLOCKED = /Network access to \\*"([^"\\]+)\\*" was blocked/g
@@ -205,6 +207,7 @@ export function codexProvider(
           ...EXEC,
           ...model,
           ...overrides,
+          ...NO_ACCOUNT_TOOLS,
           ...mcp,
           ...shell,
           ...ignoreMasks(excludes),
