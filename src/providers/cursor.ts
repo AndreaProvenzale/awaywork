@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { bin as resolveBin } from '#config/paths'
-import { AGENT_HOME, cursorSandboxStarts, whereRuns } from '#core/isolation'
+import { AGENT_HOME, cursorSandboxStarts, wallUp, whereRuns } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
@@ -76,7 +76,8 @@ export function cursorProvider(
       await rm(homeOf(job), { recursive: true, force: true })
       await mkdir(dir, { recursive: true, mode: 0o700 })
       const servers = job.mcp ?? {}
-      const sandboxed = await startsSandbox(job)
+      // Its sandbox's proxy doesn't chain to awaywork's, so behind the wall even a listed host fails.
+      const sandboxed = !wallUp() && (await startsSandbox(job))
       sandboxedClones.set(job.dir, sandboxed)
       await writeFile(
         join(dir, 'cli-config.json'),
@@ -111,7 +112,12 @@ export function cursorProvider(
       const capped = new AbortController()
       const sandboxed = sandboxedClones.get(job.dir)
       if (!sandboxed && !signal.aborted)
-        yield { type: 'log', line: "Cursor's sandbox can't start here: its shell runs unsandboxed" }
+        yield {
+          type: 'log',
+          line: wallUp()
+            ? "Cursor's sandbox can't use awaywork's proxy: its shell runs behind the network wall instead"
+            : "Cursor's sandbox can't start here: its shell runs unsandboxed",
+        }
       const model = job.model ? ['--model', job.model] : []
       const plugin = job.plugin ? ['--plugin-dir', job.plugin] : []
       // Either would point Cursor at your own config.

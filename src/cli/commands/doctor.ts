@@ -203,8 +203,11 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       report(...sandboxCheck(id, sandbox, exempt ? 'open' : wall ? 'wall' : 'refused'))
     }
     if (id === 'cursor' && !keyless && !isolation.some((c) => c.status === 'FAIL')) {
-      const sandbox = await cursorSandbox(config, boxed, asWorker, provider.bin)
-      report(...sandboxCheck(id, sandbox, exempt ? 'open' : wall ? 'wall' : 'refused'))
+      if (wall) report('warn', 'cursor sandbox', CURSOR_BEHIND_WALL)
+      else {
+        const sandbox = await cursorSandbox(config, boxed, asWorker, provider.bin)
+        report(...sandboxCheck(id, sandbox, exempt ? 'open' : 'refused'))
+      }
     }
     if (!keyless && asWorker && !provider.login && unset.length > 0)
       report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
@@ -397,6 +400,9 @@ async function cursorSandbox(config: Config, boxed: boolean, asWorker: boolean, 
   const where = await noSandbox(config, boxed, asWorker, (w) => cursorSandboxStarts(bin, w))
   return where && `its sandbox can't start${where} (needs ${sandboxNeeds('cursor')})`
 }
+
+const CURSOR_BEHIND_WALL =
+  "left out under the network wall, which its proxy can't pass: its shell reaches the CLI's hosts and `network` through awaywork's proxy"
 
 /**
  * An agent's shell sandbox as a check. Where it can't start, its units are refused (`refused`, a failure), or run with the

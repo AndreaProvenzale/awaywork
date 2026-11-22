@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
+import { sandboxStarts, wallUp, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
@@ -25,6 +25,8 @@ const stream = ['--output-format', 'stream-json', '--verbose']
 const noMemory = { autoMemoryEnabled: false }
 /** The account's claude.ai connectors load with any login, whatever the setting sources. */
 const noConnectors = { ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }
+/** Its telemetry goes to Datadog, which awaywork's wall refuses and logs for every run. */
+const noTelemetry = { CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }
 /** The repo's settings, hooks, MCP servers, CLAUDE.md and skills, and the CLAUDE.md of every folder above it, `~` included under `none`. */
 const repoOnly = ['--setting-sources', 'project,local']
 /** Neither ~/.claude nor the clone's own config: on an untrusted author's PR it is theirs. */
@@ -104,7 +106,7 @@ export function claudeProvider(
       args.push('--permission-mode', 'dontAsk', '--allowedTools', tools.join(' '))
       const child = launch(bin, args, {
         cwd: job.dir,
-        env: { ...job.env, ...noConnectors },
+        env: { ...job.env, ...noConnectors, ...(wallUp() && noTelemetry) },
         extendEnv: false,
         cancelSignal: signal,
         killDescendants: true,
