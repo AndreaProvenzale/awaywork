@@ -4,6 +4,7 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
+import { withholdsGrants } from '#core/trust'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { wallUp } from '#core/wall'
 import { parseJson } from '#util/json'
@@ -143,8 +144,8 @@ function sandbox(job: Job, theirs?: Theirs) {
   const secrets = Object.values(job.mcp ?? {}).flatMap((s) => s.secrets)
   // Under `user` the worker's HOME is a /tmp folder, read-only to the sandbox otherwise.
   const home = workerHome(job.dir)
-  const { untrusted, network = [] } = job.unit
-  const hosts = untrusted
+  const { network = [] } = job.unit
+  const hosts = withholdsGrants(job.unit)
     ? []
     : [...new Set([...(theirs?.network?.allowedDomains ?? []), ...network])]
   const allowWrite = [

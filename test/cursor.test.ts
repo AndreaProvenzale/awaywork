@@ -339,6 +339,11 @@ describe('cursor shell walled to the network hosts', () => {
     expect((await read('sandbox.json')).networkPolicy.allow).toEqual(['localhost', '127.0.0.1'])
   })
 
+  it("lists no host on a stranger's issue", async () => {
+    const { read } = await walled({ network: ['pypi.org'], untrustedText: true })
+    expect((await read('sandbox.json')).networkPolicy.allow).toEqual(['localhost', '127.0.0.1'])
+  })
+
   it("lists the hosts on a trusted author's PR", async () => {
     const { read } = await walled({ network: ['pypi.org'], foreign: true })
     expect((await read('sandbox.json')).networkPolicy.allow).toContain('pypi.org')

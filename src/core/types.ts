@@ -475,11 +475,13 @@ export interface Unit {
   foreign: boolean
   /** `base` is someone else's PR whose author isn't on the `trust` list: none of its code, config or your grants are used. */
   untrusted: boolean
+  /** An issue's opener (or a task's card's) isn't on the `trust` list: its text is theirs, the clone and its config yours, so none of your grants are used. */
+  untrustedText?: true
   /** `base` is PR `number`'s branch on a fork, read at `head`: only a report delivers there. */
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on an untrusted author's PR. */
+  /** Hosts the agent's shell may reach, from the top level, the repo and the rule; `*` opens all; none on an untrusted author's PR or issue. */
   network?: string[]
   /** Paths the agent's shell may write besides the clone, from the top level, the repo and the rule; `~/` as written. */
   writable?: string[]

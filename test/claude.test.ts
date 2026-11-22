@@ -457,6 +457,21 @@ describe('claude provider', () => {
     }
   })
 
+  it("withholds the hosts from a stranger's issue but keeps the repo's config", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    try {
+      const run = job()
+      Object.assign(run.unit, { network: ['npmjs.org'], untrustedText: true })
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const { sandbox } = JSON.parse(args[args.indexOf('--settings') + 1] as string)
+      expect(sandbox.network).toEqual({ allowLocalBinding: true, allowedDomains: [] })
+      expect(args[args.indexOf('--setting-sources') + 1]).toBe('project,local')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
   it("gives a trusted author's PR the hosts and the repo's config", async () => {
     process.env.FAKE_ARGV = join(dir, 'argv.json')
     try {

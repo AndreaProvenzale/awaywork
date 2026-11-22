@@ -14,7 +14,7 @@ import { type PlannedUnit, planRun, type RunPlan } from '#plan/foreman'
 import { formatReport, type RunReport, summaryOf, type UnitResult } from '#posts/report'
 import { allowance } from '#quota/budget'
 import { acmePlan, acmeRun, waitingSkip } from './fakes/acme'
-import { asanaTask, fakeItem, githubPr } from './fakes/items'
+import { asanaTask, fakeItem, githubPr, issue } from './fakes/items'
 
 /** The row of `acme/api#31` among the skips. */
 const row = (skipped: RunPlan['skipped'], clipAt?: number): SkipRow | undefined =>
@@ -159,6 +159,24 @@ queue: [{ skill: review, deliver: report }]
       "   runs bare: its author isn't on trust",
     )
     expect(textFor({ trusted: true })).not.toContain('runs bare')
+  })
+
+  it("says a stranger's issue runs without your grants", () => {
+    const config = parseConfig(`
+providers: [claude: {}]
+repos: { acme/api: {} }
+sources: { github: {} }
+queue: [{ skill: review, deliver: report }]
+`)
+    const text = formatPlan(
+      planRun({
+        setup: setupOf(config, { builtin: builtinSkills }),
+        items: [{ ...issue(2), fields: { repo: 'acme/api', trusted: false } }],
+        allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+      }),
+    )
+    expect(text).toContain("   runs without your grants: an issue's opener isn't on trust")
+    expect(text).not.toContain('runs bare')
   })
 })
 

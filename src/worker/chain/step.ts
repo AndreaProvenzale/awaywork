@@ -13,6 +13,7 @@ import {
   lostToWorker,
   whereRuns,
 } from '#core/isolation'
+import { withholdsGrants } from '#core/trust'
 import type { McpServer, Unit } from '#core/types'
 import { shellRefusal, wallUp } from '#core/wall'
 import { describeCondition, holds } from '#plan/condition'
@@ -94,7 +95,7 @@ const registeredConfigs = () => {
   }
 }
 
-/** The unit's `writable` paths that exist, as real paths, `~/` as the developer's home; none on an untrusted author's PR or in a container, a skipped or refused one logged. */
+/** The unit's `writable` paths that exist, as real paths, `~/` as the developer's home; none from an untrusted author or in a container, a skipped or refused one logged. */
 export async function writablePaths(
   unit: Unit,
   dir: string,
@@ -107,8 +108,8 @@ export async function writablePaths(
     log('writable: not applied under isolation: container')
     return []
   }
-  if (unit.untrusted) {
-    log("writable: not opened on an untrusted author's PR")
+  if (withholdsGrants(unit)) {
+    log("writable: not opened, an author isn't on trust")
     return []
   }
   const home = await real(homedir())
@@ -480,13 +481,13 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     if (gated) event(starts)
     const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
     const named = unit.rule.mcp ?? []
-    if (named.length > 0 && unit.untrusted)
-      log(`mcp: ${named.join(', ')} not started on an untrusted author's PR`)
-    if (unit.network?.length && unit.untrusted)
-      log("network: not opened on an untrusted author's PR")
+    const bare = withholdsGrants(unit)
+    if (named.length > 0 && bare)
+      log(`mcp: ${named.join(', ')} not started, an author isn't on trust`)
+    if (unit.network?.length && bare) log("network: not opened, an author isn't on trust")
     const writable = await writablePaths(unit, dir, log, [input.configDir, input.config.baseDir])
     const mcp: Record<string, McpServer> = {}
-    for (const name of unit.untrusted ? [] : named) {
+    for (const name of bare ? [] : named) {
       const server = input.config.mcp[name] as McpServer
       const unset = server.secrets.filter((secret) => !input.ctx.env[secret])
       if (unset.length > 0) log(`mcp: ${name} not started, unset: ${unset.join(', ')}`)

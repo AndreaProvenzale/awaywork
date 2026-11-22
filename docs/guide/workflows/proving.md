@@ -171,7 +171,7 @@ Other shapes:
 
   The app stops with the agent, before `until`, `verify` and the gates, so a gate judges the files the step left, not the app. A step that wants the app again, say each round of a loop, asks again and gets a fresh one on the tree the step before left. Without secrets, the app boots on what the repo commits: `.env.example`, SQLite or mocks.
 
-  If it never answers, or exits first, the step runs without the app: the prompt says `Serve didn't come up` with `serve.log`'s tail, and the report shows it. The proof gate fires on its own, so a change that broke the boot is what the next step reads. Not started on an untrusted author's PR, as setup isn't. Under `isolation: user` or `container` it isn't supported yet: the step runs without it, and `awaywork doctor` warns.
+  If it never answers, or exits first, the step runs without the app: the prompt says `Serve didn't come up` with `serve.log`'s tail, and the report shows it. The proof gate fires on its own, so a change that broke the boot is what the next step reads. Not started on an untrusted author's PR or issue, though setup runs on the issue. Under `isolation: user` or `container` it isn't supported yet: the step runs without it, and `awaywork doctor` warns.
 
 Details:
 

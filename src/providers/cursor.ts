@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { bin as resolveBin } from '#config/paths'
 import { AGENT_HOME, cursorSandboxStarts, whereRuns } from '#core/isolation'
 import { launch } from '#core/launch'
+import { withholdsGrants } from '#core/trust'
 import type { Job, McpServer, Provider, WorkerEvent } from '#core/types'
 import { wallUp } from '#core/wall'
 import { parseJson } from '#util/json'
@@ -180,8 +181,8 @@ export function cursorProvider(
 
 export const cursor = cursorProvider()
 
-/** The hosts a unit's shell reaches: the `network` list, none on an untrusted author's PR. */
-const shellHosts = ({ unit }: Job) => (unit.untrusted ? [] : (unit.network ?? []))
+/** The hosts a unit's shell reaches: the `network` list, none when an author isn't on trust. */
+const shellHosts = ({ unit }: Job) => (withholdsGrants(unit) ? [] : (unit.network ?? []))
 
 /** Cursor's own tools, and each server's tools, or all of them when the server names none; the shell too, open, unless `network` says to wall it. */
 export function cliConfig(servers: Record<string, McpServer>, network?: string[]) {
