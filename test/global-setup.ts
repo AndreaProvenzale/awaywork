@@ -22,9 +22,10 @@ async function remove(dir: string) {
 /** Every temp file of the run, its tests' and the code's they spawn, goes in one folder, removed when the run ends. */
 export default async function setup() {
   const parent = tmpdir()
-  for (const name of await readdir(parent)) {
+  // Best effort: a dead run's folder may be undeletable or still being written.
+  for (const name of await readdir(parent).catch(() => [])) {
     const pid = Number(/^awaywork-tests-(\d+)-/.exec(name)?.[1])
-    if (pid && !isAlive(pid)) await remove(join(parent, name))
+    if (pid && !isAlive(pid)) await remove(join(parent, name)).catch(() => {})
   }
   const previous = process.env.TMPDIR
   const dir = await mkdtemp(join(parent, `awaywork-tests-${process.pid}-`))
