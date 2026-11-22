@@ -263,7 +263,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     until: a.until,
     providers: providersOf(config),
     sources,
-    forge: forgeFor(config),
+    forge: forgeFor(planned.config),
     ctx: { ...ctx, log: (line) => log.info(`  ${line}`) },
     event: (line) => log.info(`  ${line}`, true),
     signal: a.signal(),

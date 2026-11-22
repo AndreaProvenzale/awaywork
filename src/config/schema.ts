@@ -275,15 +275,15 @@ const network = z
 const trustEntry = z
   .string()
   .regex(
-    /^(\*|[A-Za-z\d](-?[A-Za-z\d])*(\[bot\])?)$/,
-    "expected collaborators, *, or a login like alice; a team (org/slug) isn't supported yet",
+    /^(\*|[A-Za-z\d](-?[A-Za-z\d])*(\[bot\]|\/[\w-]+)?)$/,
+    'expected collaborators, *, a login like alice, or a team like acme/platform',
   )
 const trust = (fallback: string[]) =>
   z
     .array(trustEntry)
     .default(fallback)
     .describe(
-      "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
+      "Authors whose PRs and comments awaywork acts on: collaborators (write access or org membership), a login (a bot as GitHub shows it, dependabot[bot]), a team (org/slug: its members, read with a token that has read:org), or * for anyone. Someone else's PR by anyone else gets no setup, checks, agent config, MCP servers, network or writable paths, and their comments stay hidden. A repo's list adds to the top level's, which replaces the default; [] trusts nobody but you",
     )
 const writablePath = z
   .string()

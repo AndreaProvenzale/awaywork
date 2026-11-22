@@ -78,11 +78,12 @@ repos:
     expect(settingsFor(repos, 'acme/api').trust).toEqual(['Bob', '*', 'alice', 'collaborators'])
     expect(parseConfig(config('repos: { acme/api: }')).trust).toEqual(['collaborators'])
     expect(parseConfig(config('trust: []\nrepos: { acme/api: }')).trust).toEqual([])
-    for (const bad of ['acme/platform', '@alice', '-alice', 'a b'])
+    for (const bad of ['acme/', '/platform', 'acme/a/b', 'acme/a b', '@alice', '-alice', 'a b'])
       expect(problems(config(`repos: { acme/api: }\ntrust: ["${bad}"]`))).toHaveLength(1)
-    expect(problems(config('repos: { acme/api: }\ntrust: [acme/platform]'))[0]).toContain(
-      "a team (org/slug) isn't supported yet",
-    )
+    expect(problems(config('repos: { acme/api: }\ntrust: [acme/platform]'))).toHaveLength(0)
+    expect(parseConfig(config('trust: [Acme/Dev_Team-2]\nrepos: { acme/api: }')).trust).toEqual([
+      'Acme/Dev_Team-2',
+    ])
   })
 
   it('adds up the network hosts of every key naming a repo, and checks them', () => {

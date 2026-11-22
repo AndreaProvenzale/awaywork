@@ -6,6 +6,7 @@ import { configPath, loadConfig } from '#config/load'
 import { skillsDirOf } from '#config/paths'
 import type { Config } from '#config/schema'
 import type { Ctx } from '#core/types'
+import { resolveTeams } from '#forge/teams'
 import { planJson } from '#format/json'
 import { formatPlan } from '#format/plan'
 import { formatQueue, rulesJson } from '#format/rules'
@@ -116,9 +117,10 @@ export function ruleNumber(text: string): number {
 }
 
 /** The queue with what each rule takes now, as text or JSON; reads the sources, probes no provider. */
-async function describeRules(config: Config, json = false): Promise<string> {
+async function describeRules(given: Config, json = false): Promise<string> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
+  const config = await resolveTeams(given, ctx.log)
   const items = await collectItems(config, ctx)
   const secrets = configSecrets(config, providersOf(config), configuredSources(config))
   const masked = warnings.map((w) => maskSecrets(w, secrets, ctx.env))
