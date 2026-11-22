@@ -704,6 +704,15 @@ describe('schedule status', () => {
     expect(out).toContain('Daemon: not running')
   })
 
+  it('says the pause in place of the next window while one is in force', async () => {
+    const path = await config('[{ start: "01:00", end: "07:00" }]')
+    const current = installed(job(['/node', '/awaywork', 'watch', '--config', path]))
+    await savePause(pausePath, { until: '2999-01-01' })
+    await printStatus(undefined, current)
+    expect(out).toContain('Scheduled runs paused until 2999-01-01 (awaywork resume to undo)')
+    expect(out.some((l) => l.startsWith('Next window'))).toBe(false)
+  })
+
   it('tells an older per-window job to reinstall, without daemon lines', async () => {
     await printStatus(undefined, installed(job(['/node', '/awaywork', 'run', '--scheduled'])))
     expect(out[0]).toBe(

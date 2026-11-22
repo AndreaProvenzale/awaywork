@@ -63,6 +63,8 @@ const allowed: Record<string, { flags: Record<string, Value>; args: number }> = 
   'config path': { flags: {}, args: 0 },
   skip: { flags: { '--until': 'required', '--reason': 'required' }, args: 1 },
   unskip: { flags: {}, args: 1 },
+  pause: { flags: { '--until': 'required' }, args: 0 },
+  resume: { flags: {}, args: 0 },
   approve: { flags: {}, args: Number.POSITIVE_INFINITY },
   run: { flags: { '--unit': 'required', '--detach': 'none', '--skill': 'required' }, args: 0 },
   'skills list': { flags: { '--json': 'none' }, args: 0 },

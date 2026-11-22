@@ -290,6 +290,33 @@ describe('report command', () => {
     expect(out.join('\n')).toContain('  paused until 2999-01-01 (awaywork resume to undo)')
   })
 
+  it('leaves the local pause off a run GitHub uploaded', async () => {
+    const id = '20261016-010203'
+    const written = reportJson({
+      runId: id,
+      startedAt: 0,
+      finishedAt: 0,
+      plan: { queue: [], units: [], allowances: {}, skipped: [] },
+      results: [],
+      quotas: {},
+    } as unknown as RunReport)
+    const control = await controlRepo(['awaywork.yml'], `awaywork-${id}\t12`)
+    const run = Object.assign(async (cmd: string, args: string[]) => {
+      const out = await control(cmd, args)
+      if (cmd === 'gh' && args[1] === 'download')
+        await writeFile(join(args[args.indexOf('-D') + 1] ?? '', 'report.json'), written)
+      return out
+    }, control)
+    const { out } = output()
+    await savePause(pausePath, { until: '2999-01-01' })
+    try {
+      await printReport(id, false, run)
+    } finally {
+      await clearPause(pausePath)
+    }
+    expect(out.join('\n')).not.toContain('paused until')
+  })
+
   it("prints a unit's worker.log or diff, saying so when it left none or the name fits two", async () => {
     const unit = (n: number, repo: string, files: StepFiles) => ({
       planned: {

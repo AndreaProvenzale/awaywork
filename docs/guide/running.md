@@ -108,7 +108,7 @@ An item goes to the first rule it matches; a later rule that matches it too show
 
 `run --unit` runs a unit anyway, unchanged, skipped or given up; a given-up one runs as its one try.
 
-`awaywork pause --until 2026-11-24` holds the scheduled runs on this machine until that day starts, for a holiday: the windows, `run: soon` and `awaywork watch`, and `run --scheduled` says `paused until 2026-11-24 (awaywork resume to undo), nothing to do`. `--until` is required, so nothing stays paused by mistake (`windows: []` is the open-ended way). A hand `awaywork run`, `run --unit` and the /away pane's start now still run. `plan` and `report` show the pause; `awaywork resume` ends it, and the first run after it may spend to catch up, `limits.units_max_open` bounding what lands. The pause lives in `~/.local/state/awaywork/pause.json`, not in the config, so a team's shared config can't hold one person's holiday.
+`awaywork pause --until 2026-11-24` holds the scheduled runs on this machine until that day starts, for a holiday: the windows, `run: soon` and `awaywork watch`, and `run --scheduled` says `paused until 2026-11-24 (awaywork resume to undo), nothing to do`. `--until` is required, so nothing stays paused by mistake (`windows: []` is the open-ended way). A run already going carries on, and a hand `awaywork run`, `run --unit` and the /away pane's start now still run. `plan` and `report` show the pause; `awaywork resume` ends it, and the first run after it may spend to catch up, `limits.units_max_open` bounding what lands. The pause lives in the profile's state dir (`~/.local/state/awaywork/pause.json` for the default one), so it holds that profile only, and not in the config, so a team's shared config can't hold one person's holiday.
 
 Details:
 

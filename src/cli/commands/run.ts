@@ -321,7 +321,7 @@ async function printRun(
   remote: boolean,
   held: string[] = [],
 ) {
-  const paused = await pausedUntil(pausePath)
+  const paused = remote ? undefined : await pausedUntil(pausePath)
   const pauseNote = paused ? [pausedLine(paused)] : []
   if (view.skipped)
     return console.log(

@@ -64,7 +64,7 @@ export function planCommand(program: Command): void {
         const unwalled = await wallWarning(config)
         if (unwalled) warnings.push(unwalled)
         const paused = await pausedUntil(pausePath)
-        if (paused) warnings.push(pausedLine(paused))
+        if (paused) warnings.unshift(pausedLine(paused))
         const none =
           !plan.units.length && (opts.repo !== undefined || opts.rule !== undefined)
             ? 'no unit matches --repo/--rule'

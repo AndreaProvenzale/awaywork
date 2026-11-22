@@ -482,7 +482,12 @@ export async function watchStatus(config: string, now = new Date()): Promise<str
     (c) => c.windows,
     () => undefined,
   )
-  return daemonLines(up ? state : undefined, windows, now)
+  return daemonLines(
+    up ? state : undefined,
+    windows,
+    now,
+    await pausedUntil(pausePath, now.getTime()),
+  )
 }
 
 /** The daemon's lines, `running` its state while it runs; the next window is left out when the config didn't load. */
@@ -490,6 +495,7 @@ export function daemonLines(
   running: WatchState | undefined,
   windows: Config['windows'] | undefined,
   now: Date,
+  paused?: string,
 ): string[] {
   const lines = [
     running
@@ -505,7 +511,8 @@ export function daemonLines(
     lines.push(`Next poll of ${id}: ${localTime(new Date(p.next))}${backoff}`)
   }
   const next = windows && firstOpening(windows, now.getTime() + 1, now.getTime() + 8 * DAY)
-  if (windows)
+  if (paused) lines.push(`Scheduled runs ${pausedLine(paused)}`)
+  else if (windows)
     lines.push(`Next window: ${next ? localTime(new Date(next)) : 'none, no windows set'}`)
   lines.push(`Daemon log: ${watchLogPath}`)
   return lines
