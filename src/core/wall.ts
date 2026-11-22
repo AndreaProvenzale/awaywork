@@ -47,7 +47,7 @@ const PROBE = [
   `timeout 3 bash -c 'exec 3<>/dev/tcp/$0/443' "$1" 2> /dev/null; echo "connect $?"`,
   'timeout 5 getent -s dns hosts "$2" > /dev/null; echo "resolve $?"',
   '[ -d /run/systemd/resolve ] && [ -x /run/systemd/resolve ]; echo "socket $?"',
-  'timeout 5 resolvectl query "$2" > /dev/null 2>&1; echo "dbus $?"',
+  'timeout 5 busctl call org.freedesktop.resolve1 /org/freedesktop/resolve1 org.freedesktop.resolve1.Manager ResolveHostname isit 0 "$2" 0 0 > /dev/null 2>&1; echo "dbus $?"',
 ].join('; ')
 const probeOptions = { env: {}, extendEnv: false, reject: false } as const
 

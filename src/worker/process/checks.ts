@@ -1,7 +1,6 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, relative } from 'node:path'
-import { checkPhase } from '#core/egress'
-import { withholdsGrants } from '#core/trust'
+import { checkPhase, grantedNetwork } from '#core/egress'
 import type { Condition, Unit } from '#core/types'
 import { type Facts, holds } from '#plan/condition'
 import { checkEnv, gateEnv } from '#worker/clone/env'
@@ -89,7 +88,7 @@ export function createChecks(input: ChecksInput) {
       secrets: [],
       signal: input.signal,
       until: input.until,
-      egress: checkPhase(withholdsGrants(unit) ? [] : unit.network, log),
+      egress: checkPhase(grantedNetwork(unit), log),
     })
     log(`check ${command}: ${result.failed ?? 'passed'}${result.output && `\n${result.output}`}`)
     await restoreGit(dir)

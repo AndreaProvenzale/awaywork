@@ -3,7 +3,7 @@ import { lookup } from 'node:dns/promises'
 import { createServer, request } from 'node:http'
 import { BlockList, connect, isIP, type LookupFunction, type Socket } from 'node:net'
 import { withholdsGrants } from './trust'
-import type { Job, McpServer, Provider } from './types'
+import type { Job, McpServer, Provider, Unit } from './types'
 
 /** The hosts one phase of a unit may reach through the proxy; its refusals go to `log`. */
 export interface Phase {
@@ -43,6 +43,10 @@ export const hostAllowed = (host: string, hosts: string[]) => {
   })
 }
 
+/** The unit's `network`, none on work an author off `trust` brought in. */
+export const grantedNetwork = (unit: Pick<Unit, 'network' | 'untrusted' | 'untrustedText'>) =>
+  withholdsGrants(unit) ? [] : (unit.network ?? [])
+
 export const setupPhase = (network: string[] = [], log: Phase['log']): Phase => ({
   name: 'setup',
   hosts: [...SETUP_HOSTS, ...network],
@@ -62,8 +66,11 @@ export function agentPhase(provider: Pick<Provider, 'hosts'>, job: Job, log: Pha
     ...(s.url ? [new URL(s.url).hostname] : []),
     ...(s.network ?? []),
   ])
-  const network = withholdsGrants(job.unit) ? [] : (job.unit.network ?? [])
-  return { name: 'agent', hosts: [...new Set([...provider.hosts, ...mcp, ...network])], log }
+  return {
+    name: 'agent',
+    hosts: [...new Set([...provider.hosts, ...mcp, ...grantedNetwork(job.unit)])],
+    log,
+  }
 }
 
 const NO_PROXY = 'localhost,127.0.0.1,::1'

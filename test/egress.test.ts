@@ -6,6 +6,7 @@ import {
   agentPhase,
   checkPhase,
   type Egress,
+  grantedNetwork,
   hostAllowed,
   linkLocal,
   proxyEnv,
@@ -14,7 +15,7 @@ import {
   startEgress,
 } from '#core/egress'
 import { containerize, isolate } from '#core/isolation'
-import type { Job, Provider } from '#core/types'
+import type { Job, Provider, Unit } from '#core/types'
 import { isolateWalled, raiseWall, shellRefusal, wallLines, wallProblem, wallUp } from '#core/wall'
 import { claude } from '#providers/claude'
 import { codex } from '#providers/codex'
@@ -51,6 +52,16 @@ describe('hostAllowed', () => {
 
 const job = (unit: object, mcp?: Job['mcp']) => ({ unit, mcp }) as unknown as Job
 const log = () => {}
+
+describe('grantedNetwork', () => {
+  it('gives no network to work an author off trust brought in', () => {
+    const granted = (unit: object) => grantedNetwork(unit as Unit)
+    expect(granted({ network: ['a.org'] })).toEqual(['a.org'])
+    expect(granted({ network: ['a.org'], untrusted: true })).toEqual([])
+    expect(granted({ network: ['a.org'], untrustedText: true })).toEqual([])
+    expect(granted({})).toEqual([])
+  })
+})
 
 describe('phase lists', () => {
   it('gives setup the built-in registries plus network', () => {

@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { configDir, defaultConfigPath, profilesPath, rootStateDir } from '#config/paths'
 import { readRegistry } from '#config/profiles'
-import { setupPhase } from '#core/egress'
+import { grantedNetwork, setupPhase } from '#core/egress'
 import {
   AGENT_HOME,
   CONTAINER_HOME,
@@ -162,7 +162,7 @@ async function settle(
       secrets: own,
       signal: input.signal,
       until: input.until,
-      egress: setupPhase(withholdsGrants(unit) ? [] : unit.network, log),
+      egress: setupPhase(grantedNetwork(unit), log),
     }
     const failed = await runSetup(settings.setup, dir, env, log, options)
     if (failed) {
@@ -425,7 +425,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
           secrets: own,
           signal: input.signal,
           until: input.until,
-          egress: setupPhase(unit.network, log),
+          egress: setupPhase(grantedNetwork(unit), log),
         },
       )
       // A conflicted lockfile, say, fails an install: the worker resolves the merge all the same.

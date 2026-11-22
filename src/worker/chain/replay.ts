@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
 import type { Config } from '#config/schema'
-import { setupPhase } from '#core/egress'
+import { grantedNetwork, setupPhase } from '#core/egress'
 import { contain, contained, isolated, lostToWorker, workerHome, workerRoot } from '#core/isolation'
 import type { Ctx, Forge, Provider, Source, Unit } from '#core/types'
 import { shellRefusal } from '#core/wall'
@@ -109,7 +109,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
       const failed = await runSetup(setup, dir, commandEnv(r.ctx.env, dir, secrets), log, {
         secrets: [],
         signal: r.signal,
-        egress: setupPhase(unit.network, log),
+        egress: setupPhase(grantedNetwork(unit), log),
       })
       if (failed) throw new Error(failed)
     }
