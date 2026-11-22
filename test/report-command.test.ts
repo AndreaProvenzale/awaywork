@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printReport } from '#cli/commands/run'
 import { fromScreenJson } from '#cli/tui/triage'
-import { remoteDir, runsDir } from '#config/paths'
+import { pausePath, remoteDir, runsDir } from '#config/paths'
 import { reportJson } from '#format/json'
+import { clearPause, savePause } from '#plan/pause'
 import type { RunReport, StepFiles } from '#posts/report'
 import { githubPr } from './fakes/items'
 
@@ -17,6 +18,7 @@ vi.mock('#config/paths', async (original) => {
     ...(await original<typeof import('#config/paths')>()),
     runsDir: `${state}/runs`,
     remoteDir: `${state}/remote`,
+    pausePath: `${state}/pause.json`,
   }
 })
 
@@ -265,6 +267,27 @@ describe('report command', () => {
     await printReport(id, false, gh, false, { unit: '2' })
     expect(err).toEqual([`no unit "2" in run ${id}; awaywork report lists them`])
     expect(process.exitCode).toBe(1)
+  })
+
+  it('says paused until the date atop a run while a pause is in force', async () => {
+    const id = '20261015-220000'
+    const run = {
+      runId: id,
+      startedAt: 0,
+      finishedAt: 0,
+      plan: { queue: [], units: [], allowances: {}, skipped: [] },
+      results: [],
+      quotas: {},
+    }
+    await writeFile(join(runsDir, id, 'report.json'), reportJson(run as unknown as RunReport))
+    const { out } = output()
+    await savePause(pausePath, { until: '2999-01-01' })
+    try {
+      await printReport(id, false, await controlRepo([], ''))
+    } finally {
+      await clearPause(pausePath)
+    }
+    expect(out.join('\n')).toContain('  paused until 2999-01-01 (awaywork resume to undo)')
   })
 
   it("prints a unit's worker.log or diff, saying so when it left none or the name fits two", async () => {

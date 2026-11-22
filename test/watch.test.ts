@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printStatus } from '#cli/commands/schedule'
 import {
   attemptsPath,
+  pausePath,
   runLockPath,
   runsDir,
   watchLockPath,
@@ -17,6 +18,7 @@ import {
 import type { Config } from '#config/schema'
 import { contained, isolateFor } from '#core/isolation'
 import type { Job } from '#core/types'
+import { savePause } from '#plan/pause'
 import { appendLog, isolation, stopWatch, watch } from '#run/daemon'
 import type { Schedule, Scheduler } from '#scheduler/index'
 
@@ -128,6 +130,7 @@ vi.mock('#config/paths', async (original) => {
     ...(await original<typeof import('#config/paths')>()),
     runsDir: `${state}/runs`,
     attemptsPath: `${state}/attempts.json`,
+    pausePath: `${state}/pause.json`,
     runLockPath: `${state}/run.lock`,
     skipsPath: `${state}/skips.json`,
     watchLockPath: `${state}/watch.lock`,
@@ -174,6 +177,7 @@ beforeEach(async () => {
     runLockPath,
     windowEndPath,
     attemptsPath,
+    pausePath,
   ])
     await rm(file, { force: true })
   lock.releaseMs = 0
@@ -331,6 +335,27 @@ queue:
     await rm(join(runsDir, '20200101-000000'), { recursive: true })
   })
 
+  it('starts no window run while paused, saying so once', async () => {
+    await savePause(pausePath, { until: '2999-01-01' })
+    clock.fast = true
+    try {
+      const stop = new AbortController()
+      const done = watch(await config(), stop.signal)
+      await vi.waitFor(async () => expect(await daemonLog()).toContain('paused until'))
+      await new Promise((r) => globalThis.setTimeout(r, 200))
+      stop.abort()
+      await done
+      const log = await daemonLog()
+      expect(log.match(/paused until/g)).toHaveLength(1)
+      expect(log).toContain(
+        'paused until 2999-01-01 (awaywork resume to undo): no window or soon run starts',
+      )
+      expect(log).not.toContain('window run')
+    } finally {
+      clock.fast = false
+    }
+  })
+
   it('starts a present soon run for a due unit, notifying nothing for one that sat out, and backs off a failing source', async () => {
     const path = await config('[]')
     const dir = dirname(path)
@@ -443,6 +468,7 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
 
   it('queues a remote run --unit as a one-off run of that item alone, refusing one no rule takes', async () => {
     const path = await config('[]')
+    await savePause(pausePath, { until: '2999-01-01' })
     const item = (n: number) => ({
       id: String(n),
       key: `CH-${n}`,
@@ -492,6 +518,7 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
     stop.abort()
     await done
     const log = await daemonLog()
+    expect(log).toContain('paused until 2999-01-01')
     expect(log).toContain(`unit run ${runId} started for CH-2\n`)
     expect(log).toContain('remote: ["run","--unit","CH-2"]: exit 0')
     const plan = await readFile(join(runsDir, runId ?? '', 'plan.txt'), 'utf8')

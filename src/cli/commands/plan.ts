@@ -3,7 +3,7 @@ import { reportConfigError } from '#cli/tui/ask'
 import { interactive, itemCommands, openScreen } from '#cli/tui/browse'
 import { planTriage, screenJson } from '#cli/tui/triage'
 import { configPath, loadConfig } from '#config/load'
-import { skillsDirOf } from '#config/paths'
+import { pausePath, skillsDirOf } from '#config/paths'
 import type { Config } from '#config/schema'
 import { inAwayworkImage, workerFor } from '#core/isolation'
 import type { Ctx } from '#core/types'
@@ -16,6 +16,7 @@ import { formatSkipped } from '#format/skips'
 import { warningLines } from '#format/terminal'
 import { ambiguous, formatWhy, namedItems } from '#format/why'
 import { needsYou } from '#plan/foreman'
+import { pausedLine, pausedUntil } from '#plan/pause'
 import { collectItems, configuredSources, probeAndPlan } from '#plan/probe'
 import { providersOf } from '#providers/index'
 import { configSecrets } from '#worker/clone/context'
@@ -62,6 +63,8 @@ export function planCommand(program: Command): void {
         })
         const unwalled = await wallWarning(config)
         if (unwalled) warnings.push(unwalled)
+        const paused = await pausedUntil(pausePath)
+        if (paused) warnings.push(pausedLine(paused))
         const none =
           !plan.units.length && (opts.repo !== undefined || opts.rule !== undefined)
             ? 'no unit matches --repo/--rule'
