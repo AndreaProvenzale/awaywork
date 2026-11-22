@@ -458,7 +458,7 @@ export function wallLines(user = WORKER): string[] {
 /** What the worker tries to reach: an outside address, and the loopback resolver. */
 const WALL_TARGETS = ['1.1.1.1:443', '127.0.0.53:53']
 const WALL_PROBE =
-  'for t; do timeout 3 bash -c \'exec 3<>/dev/tcp/${0%:*}/${0##*:}\' "$t" 2>/dev/null && echo "$t"; done'
+  'for t; do timeout 3 bash -c \'exec 3<>/dev/tcp/${0%:*}/${0##*:}\' "$t" 2>/dev/null && echo "$t"; done; true'
 const walls = new Map<string, Promise<boolean>>()
 
 /** Whether the worker user can reach neither of `WALL_TARGETS`, once per process for each user. */
