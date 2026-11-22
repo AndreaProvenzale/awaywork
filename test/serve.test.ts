@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isolate } from '#core/isolation'
+import { useMode } from '#core/isolation'
+import { none } from '#core/isolation/none'
+import { userMode } from '#core/isolation/user'
 import type { Job, Provider, Unit } from '#core/types'
 import type { Allowance } from '#quota/budget'
 import { assemblePrompt } from '#worker/clone/prompt'
@@ -76,7 +78,7 @@ const watch = (dir: string, onLimit: (reason: string) => void) =>
   startWatchdog(dir, onLimit, { ...defaultLimits, minMemory: 0, minDisk: 0 })
 
 describe('serve', () => {
-  afterEach(() => isolate(undefined))
+  afterEach(() => useMode(none))
 
   it('starts the app for the agent and leaves nothing running once the agent is done', async () => {
     const { dir, job, request } = await setup()
@@ -156,7 +158,7 @@ describe('serve', () => {
   })
 
   it("doesn't start it under isolation: user", async () => {
-    isolate('awaywork')
+    useMode(userMode('awaywork'))
     const { job } = await setup()
     const request = serveRequest(unit(), settings, join(job.dir, 'serve.log'), {})
     const served = await startServe(request as ServeRequest, job, new AbortController().signal)

@@ -1,17 +1,8 @@
 import { lookup } from 'node:dns/promises'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
-import type { Config } from '#config/schema'
-import {
-  contained,
-  inAwayworkImage,
-  isolateFor,
-  sudoArgs,
-  useEgress,
-  WORKER,
-  workerUser,
-} from './isolation'
-import type { Job, Provider } from './types'
+import { type Egress, sharedEgress } from '../egress'
+import { inAwayworkImage, sudoArgs, WORKER } from './sudo'
 
 /** One command per rule, `-C` first so a second run adds nothing. Each goes in first, so the last is the first checked. */
 const rules = (tool: string, user: string) =>
@@ -99,50 +90,17 @@ export async function wallProblem(
   if (typeof over === 'string') return over
 }
 
-/** Where the kernel wall holds for the worker user: the egress proxy is up, and every launch goes through it. */
-let walled = false
-export const wallUp = () => walled
-
-/** Under a worker user, probes the wall, again at each call, and starts the proxy. Awaywork's image has no wall yet and runs open; elsewhere a worker without one is refused. */
-export async function raiseWall(env: NodeJS.ProcessEnv, holds = wallProblem): Promise<void> {
-  const worker = workerUser()
-  const problem = worker ? await holds(worker) : undefined
-  walled = worker !== undefined && !problem
-  await useEgress(walled)
-  if (worker && problem && !inAwayworkImage(env))
+/** Under a worker user, probes the wall, again at each call, and starts the proxy. Awaywork's image has no wall yet and runs open; elsewhere a worker without one is refused. Returns the proxy where the wall holds. */
+export async function raiseUserWall(
+  worker: string,
+  env: NodeJS.ProcessEnv,
+  holds = wallProblem,
+): Promise<Egress | undefined> {
+  const problem = await holds(worker)
+  const egress = problem ? undefined : await sharedEgress()
+  if (problem && !inAwayworkImage(env))
     throw new Error(
       `the network wall isn't up for the ${worker} user (${problem}), so its setup, checks and MCP servers could reach any host: \`awaywork doctor\` shows the rules to add`,
     )
-}
-
-/** `isolateFor`, then the wall for the worker user it set, if any: the proxy starts where the wall holds, and a worker without one is refused. */
-export async function isolateWalled(
-  isolation: Config['isolation'],
-  env: NodeJS.ProcessEnv,
-  holds = wallProblem,
-): Promise<void> {
-  await isolateFor(isolation, env)
-  await raiseWall(env, holds)
-}
-
-/** What each agent's shell sandbox needs, as `doctor` says it. */
-export const sandboxNeeds = (agent: string) =>
-  agent === 'claude'
-    ? 'bubblewrap, socat and user namespaces'
-    : agent === 'codex'
-      ? 'bubblewrap and user namespaces'
-      : 'user namespaces'
-
-/**
- * Why a unit can't run: its agent's shell sandbox can't start here and awaywork's wall doesn't hold, so its shell would
- * reach any host. awaywork's image and `container` keep running open until their walls land; a provider with no sandbox is exempt.
- */
-export async function shellRefusal(
-  provider: Provider,
-  job: Pick<Job, 'dir'>,
-  signal?: AbortSignal,
-): Promise<string | undefined> {
-  if (!provider.startsSandbox || walled || contained() || inAwayworkImage(process.env)) return
-  if (await provider.startsSandbox(job, signal)) return
-  return `${provider.id}'s shell sandbox can't start here (needs ${sandboxNeeds(provider.id)}) and no network wall holds: install them, or run under isolation: user, whose wall \`awaywork doctor\` shows`
+  return egress
 }

@@ -8,7 +8,10 @@ import { expect, it } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
-import { containerize, isolate, workerHome } from '#core/isolation'
+import { useMode, workerHome } from '#core/isolation'
+import { containerMode } from '#core/isolation/container'
+import { none } from '#core/isolation/none'
+import { userMode } from '#core/isolation/user'
 import { builtinSkills } from '#core/skills'
 import type { Provider, PrRef } from '#core/types'
 import { type Exec, exec } from '#forge/gh'
@@ -194,14 +197,14 @@ it('keeps a replay’s fresh clone yours alone under isolation: user until its f
   }
   const path = process.env.PATH
   process.env.PATH = `${root}:${path}`
-  isolate('awaywork')
+  useMode(userMode('awaywork'))
   try {
     await expect(replayUnit({ ...replay, forge: cloning })).rejects.toThrow(
       "couldn't chown the clone, left as it is: refused",
     )
     expect(mode).toBe(0o700)
   } finally {
-    isolate(undefined)
+    useMode(none)
     process.env.PATH = path
     for (const dir of [clone, workerHome(clone)])
       if (dir?.startsWith('/tmp/awaywork-')) await rm(dir, { recursive: true, force: true })
@@ -216,7 +219,7 @@ it('replays in a container of the repo’s image under isolation: container, and
   await writeFile(join(root, 'docker'), `#!/bin/sh\necho "$*" >> ${calls}\n`, { mode: 0o755 })
   const path = process.env.PATH
   process.env.PATH = `${root}:${path}`
-  containerize(true)
+  useMode(containerMode())
   try {
     const result = await replayUnit(replay)
     const log = await readFile(calls, 'utf8')
@@ -227,7 +230,7 @@ it('replays in a container of the repo’s image under isolation: container, and
       'no image for acme/api: isolation: container needs one in its repos entry',
     )
   } finally {
-    containerize(false)
+    useMode(none)
     process.env.PATH = path
   }
 })

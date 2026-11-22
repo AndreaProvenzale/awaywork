@@ -5,15 +5,11 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { switchTo } from '#config/profiles'
-import {
-  asWorker,
-  isolate,
-  lostToWorker,
-  WORKER,
-  workerFor,
-  workerHome,
-  workerRoot,
-} from '#core/isolation'
+import { asWorker, useMode, workerHome } from '#core/isolation'
+import { lostToWorker } from '#core/isolation/clones'
+import { none } from '#core/isolation/none'
+import { WORKER } from '#core/isolation/sudo'
+import { userMode, workerFor, workerRoot } from '#core/isolation/user'
 import { launch } from '#core/launch'
 import type { Job } from '#core/types'
 import { codexProvider } from '#providers/codex'
@@ -47,9 +43,9 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     expect(await workerFor('none', { ...process.env, AWAYWORK_IMAGE: '1' })).toBe(WORKER)
     dir = await workerRoot()
     await execa('git', ['init', '-q', dir])
-    isolate(WORKER)
+    useMode(userMode(WORKER))
   })
-  afterAll(() => isolate(undefined))
+  afterAll(() => useMode(none))
 
   it('runs a command as the worker, with the env but none of its values on argv', async () => {
     const leaks = [
@@ -348,12 +344,20 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       vi.stubEnv('AWAYWORK_PROFILE', profile)
       vi.stubEnv('RUNNER_ENVIRONMENT', '')
       vi.resetModules()
-      const [isolation, command] = await Promise.all([
+      const [isolation, user, sudo, command] = await Promise.all([
         import('#core/isolation'),
+        import('#core/isolation/user'),
+        import('#core/isolation/sudo'),
         import('#worker/process/command'),
       ])
-      isolation.isolate(isolation.WORKER)
-      return { ...isolation, runCommand: command.runCommand, clone: await isolation.workerRoot() }
+      isolation.useMode(user.userMode(sudo.WORKER))
+      return {
+        ...isolation,
+        WORKER: sudo.WORKER,
+        WORKER_LOCK: user.WORKER_LOCK,
+        runCommand: command.runCommand,
+        clone: await user.workerRoot(),
+      }
     }
     const asOther = (...command: string[]) =>
       execa('sudo', ['-n', '-u', 'awaywork-proof', ...command], { reject: false })

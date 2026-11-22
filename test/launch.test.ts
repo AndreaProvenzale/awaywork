@@ -5,15 +5,11 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
-import {
-  AWAYWORK_ENV,
-  dockerArgs,
-  failure,
-  isolate,
-  sudoArgs,
-  WORKER,
-  workerFor,
-} from '#core/isolation'
+import { useMode } from '#core/isolation'
+import { AWAYWORK_ENV, dockerArgs } from '#core/isolation/container'
+import { none } from '#core/isolation/none'
+import { sudoArgs, WORKER } from '#core/isolation/sudo'
+import { failure, userMode, workerFor } from '#core/isolation/user'
 import { launch } from '#core/launch'
 import type { Job, Unit } from '#core/types'
 import { claudeProvider } from '#providers/claude'
@@ -114,7 +110,7 @@ describe('the launcher', () => {
     await writeFile(join(fakes, 'sudo'), `#!/bin/sh\necho "$*" >> ${calls}\n`, { mode: 0o755 })
     const path = process.env.PATH
     process.env.PATH = `${fakes}:${path}`
-    isolate(WORKER)
+    useMode(userMode(WORKER))
     const context = { command: 'echo hi > "$AWAYWORK_CONTEXT_DIR/out.md"', secrets: [] }
     try {
       await fetchContexts([fakeItem({ source: 'github', key: 'ACME-1' })], dir, {
@@ -127,7 +123,7 @@ describe('the launcher', () => {
         log: () => {},
       })
     } finally {
-      isolate(undefined)
+      useMode(none)
       process.env.PATH = path
     }
     expect(await readFile(join(dir, '.away/context/acme-1/extra/out.md'), 'utf8')).toBe('hi\n')

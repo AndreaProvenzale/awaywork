@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { execa } from 'execa'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { WORKER_LOCK as file, holdingWorker, isolate } from '#core/isolation'
+import { holdingWorker, useMode } from '#core/isolation'
+import { none } from '#core/isolation/none'
+import { WORKER_LOCK as file, userMode } from '#core/isolation/user'
 
 vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
@@ -14,7 +16,7 @@ vi.mock('#config/paths', async (original) => {
 })
 
 afterEach(async () => {
-  isolate(undefined)
+  useMode(none)
   await rm(file, { force: true })
 })
 
@@ -27,7 +29,7 @@ describe('holdingWorker', () => {
   })
 
   it('holds the lock for the whole unit and frees it after', async () => {
-    isolate('awaywork')
+    useMode(userMode('awaywork'))
     await holdingWorker(
       async () => expect(existsSync(file)).toBe(true),
       () => {},
@@ -36,7 +38,7 @@ describe('holdingWorker', () => {
   })
 
   it('frees the lock when the unit throws', async () => {
-    isolate('awaywork')
+    useMode(userMode('awaywork'))
     await expect(
       holdingWorker(
         () => Promise.reject(new Error('boom')),
@@ -47,7 +49,7 @@ describe('holdingWorker', () => {
   })
 
   it('makes a second unit wait for the first, saying so', async () => {
-    isolate('awaywork')
+    useMode(userMode('awaywork'))
     const order: string[] = []
     const waits: string[] = []
     let finish = () => {}
@@ -75,7 +77,7 @@ describe('holdingWorker', () => {
   })
 
   it('takes over a lock whose holder is dead', async () => {
-    isolate('awaywork')
+    useMode(userMode('awaywork'))
     await writeFile(file, (await execa('node', ['-e', 'console.log(process.pid)'])).stdout)
     let ran = false
     await holdingWorker(
@@ -88,7 +90,7 @@ describe('holdingWorker', () => {
   })
 
   it('stops waiting when the signal aborts, and never runs the unit', async () => {
-    isolate('awaywork')
+    useMode(userMode('awaywork'))
     await writeFile(file, String(process.pid))
     const abort = new AbortController()
     setTimeout(() => abort.abort(), 100)

@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  codexSandboxStarts,
-  contain,
-  containerize,
-  cursorSandboxStarts,
-  isolate,
-  sandboxStarts,
-  whereRuns,
-} from '#core/isolation'
+import { contain, useMode, whereRuns } from '#core/isolation'
+import { containerMode } from '#core/isolation/container'
+import { none } from '#core/isolation/none'
+import { userMode } from '#core/isolation/user'
+import { sandboxStarts } from '#providers/claude'
+import { codexSandboxStarts } from '#providers/codex'
+import { cursorSandboxStarts } from '#providers/cursor'
 
 type Run = Parameters<typeof sandboxStarts>[2]
 
@@ -45,8 +43,8 @@ describe('sandboxStarts', () => {
   })
   afterEach(() => {
     vi.restoreAllMocks()
-    containerize(false)
-    isolate(undefined)
+    useMode(none)
+    useMode(none)
   })
 
   it('runs bwrap itself as the developer', async () => {
@@ -113,11 +111,11 @@ describe('sandboxStarts', () => {
   })
 
   it('looks where the phase runs: the image under a container, else the worker', () => {
-    containerize(true)
+    useMode(containerMode())
     contain('/clone', { image: 'probe/image:four', secrets: [] })
     expect(whereRuns('/clone')).toEqual({ image: 'probe/image:four' })
-    containerize(false)
-    isolate('awaywork')
+    useMode(none)
+    useMode(userMode('awaywork'))
     expect(whereRuns('/clone')).toEqual({ user: 'awaywork' })
   })
 })

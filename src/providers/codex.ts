@@ -15,13 +15,14 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { rootStateDir } from '#config/paths'
-import { codexSandboxStarts, whereRuns, workerHome } from '#core/isolation'
+import { type Where, whereRuns, workerHome } from '#core/isolation'
 import { launch } from '#core/launch'
 import { withholdsGrants } from '#core/trust'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
 import { parseJson } from '#util/json'
 import { lock } from '#util/lock'
 import { killGroupSoon, killGroupWhenDone } from '#util/process'
+import { bwrapStarts, DEV } from './sandbox'
 
 /** No user config (MCP servers, notify hooks, plugins), no execpolicy rules (an `allow` skips the shell wall), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules']
@@ -50,6 +51,10 @@ const configSchema = z.strictObject({
 /** Your Codex login, which `codex login` keeps in `auth.json`. */
 export const codexLogin = (env: NodeJS.ProcessEnv) =>
   join(env.CODEX_HOME || join(homedir(), '.codex'), 'auth.json')
+
+/** Whether Codex's sandbox can start `where`: the same, without the nested namespace or fresh `/proc` mount, which Docker's masked `/proc` refuses and Codex doesn't need. */
+export const codexSandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
+  bwrapStarts('codex', where, [...DEV, 'true'], signal, run)
 
 /**
  * The stock `codex` binary on the machine's own login (`codex login`), which Codex rotates in place;

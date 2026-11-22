@@ -4,7 +4,10 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { contain, containerize, lostToWorker } from '#core/isolation'
+import { contain, useMode } from '#core/isolation'
+import { lostToWorker } from '#core/isolation/clones'
+import { containerMode } from '#core/isolation/container'
+import { none } from '#core/isolation/none'
 import type { Job } from '#core/types'
 import { codexProvider } from '#providers/codex'
 import { commandProvider } from '#providers/command'
@@ -29,11 +32,11 @@ describe.skipIf(!image)('isolation container, live', { timeout: 30_000 }, () => 
     await writeFile(join(outside, 'secret'), CANARY)
     dir = join(outside, 'clone')
     await mkdir(dir)
+    useMode(containerMode())
     contain(dir, { image, secrets: ['GIVEN'] })
-    containerize(true)
   })
   afterAll(async () => {
-    containerize(false)
+    useMode(none)
     await rm(outside, { recursive: true, force: true })
   })
 

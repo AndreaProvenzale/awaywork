@@ -5,21 +5,16 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { configDir, defaultConfigPath, profilesPath, rootStateDir } from '#config/paths'
 import { readRegistry } from '#config/profiles'
 import { grantedNetwork, setupPhase } from '#core/egress'
-import {
-  AGENT_HOME,
-  CONTAINER_HOME,
-  contain,
-  contained,
-  lostToWorker,
-  whereRuns,
-} from '#core/isolation'
+import { AGENT_HOME, contain, contained, wallUp, whereRuns } from '#core/isolation'
+import { lostToWorker } from '#core/isolation/clones'
+import { CONTAINER_HOME } from '#core/isolation/container'
 import { withholdsGrants } from '#core/trust'
 import type { McpServer, Unit } from '#core/types'
-import { shellRefusal, wallUp } from '#core/wall'
 import { describeCondition, holds } from '#plan/condition'
 import { modelFor, modelsFor, type PlannedUnit, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
 import type { UnitResult } from '#posts/report'
+import { shellRefusal } from '#providers/sandbox'
 import { MAX_TURNS, modelOver, quotaFacts, route, withQuota } from '#quota/budget'
 import { bounded, counted } from '#util/text'
 import { fetchContexts } from '#worker/clone/context'

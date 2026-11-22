@@ -1,5 +1,6 @@
 import { join } from 'node:path'
-import { isolated, workerRoot } from '#core/isolation'
+import { isolated } from '#core/isolation'
+import { workerRoot } from '#core/isolation/user'
 import type { Deliver, Rule, Unit } from '#core/types'
 import { byHand } from '#plan/attempts'
 import { describeChain, type PlannedUnit } from '#plan/foreman'

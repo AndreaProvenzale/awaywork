@@ -203,3 +203,10 @@ export async function startEgress(): Promise<Egress> {
     },
   }
 }
+
+let shared: Egress | undefined
+/** The one proxy of the process, started at the first call. */
+export async function sharedEgress(): Promise<Egress> {
+  shared ??= await startEgress()
+  return shared
+}

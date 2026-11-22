@@ -13,7 +13,7 @@ import {
 import { runTriage, screenJson, type UnitFiles } from '#cli/tui/triage'
 import { ConfigError, configPath, loadConfig } from '#config/load'
 import { remoteDir, runLockPath, runsDir, watchLockPath } from '#config/paths'
-import { isolateWalled } from '#core/wall'
+import { isolateWalled } from '#core/isolation'
 import { fetchRun, type UploadedRun, uploadedRuns } from '#forge/artifacts'
 import { type Exec, exec, gitRoot } from '#forge/gh'
 import { reportJson } from '#format/json'
