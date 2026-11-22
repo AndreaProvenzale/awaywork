@@ -10,9 +10,9 @@ import { type Exec, exec, graphql, onHost } from './gh'
 import { byName, linksItem, prText } from './pr'
 import { pushHead } from './push'
 
-/** Who opened a PR and who last edited its body, if anyone. */
-const HEAD_AT = 'headRef { target { ... on Commit { committedDate } } }'
+export const HEAD_AT = 'headRef { target { ... on Commit { committedDate } } }'
 
+/** Who opened a PR and who last edited its body, if anyone. */
 export const EDITED = 'viewerDidAuthor author { login __typename } editor { login }'
 export type Edited = {
   viewerDidAuthor: boolean
@@ -30,9 +30,9 @@ const myPrsQuery = `query {
   }
 }`
 
-type HeadRef = { target: { committedDate?: string } | null } | null
+export type HeadRef = { target: { committedDate?: string } | null } | null
 
-const headAt = (pr: { headRef: HeadRef }) => {
+export const headAt = (pr: { headRef?: HeadRef }) => {
   const at = pr.headRef?.target?.committedDate
   return at ? { headAt: at } : {}
 }

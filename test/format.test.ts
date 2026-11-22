@@ -715,6 +715,7 @@ describe('report views', () => {
       ...(since && { since }),
     })
     run.plan.skipped = [wait(8), wait(9, '2026-10-14T22:00:00Z'), wait(10, '2026-10-10T22:00:00Z')]
+    expect(formatRun(run)).toContain('review PR 5d')
     const lines = formatReport(run).split('\n')
     expect(lines.filter((l) => l.startsWith('- [api#'))).toEqual([
       '- [api#10 PR 10](https://github.com/acme/api/pull/10): r (5d)',

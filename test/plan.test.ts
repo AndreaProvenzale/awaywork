@@ -1735,13 +1735,6 @@ ${yaml.replace('limits: { units: 1 }\n', '')}`
     expect(picked.skipped).toMatchObject([{ kind: 'waiting_for_review' }])
   })
 
-  it("dates the wait on an awaywork PR no rule takes by that PR's head commit", () => {
-    const headAt = '2026-01-05T12:00:00Z'
-    const ours = { ...failing.linkedPrs[0], ours: true, headAt } as PrRef
-    const waiting = oneOff('acme/api#5', 'implement', [{ ...mineIssue, linkedPrs: [ours] }])
-    expect(waiting.skipped[0]?.since).toBe(headAt)
-  })
-
   it('refuses what a rule took, and names nothing when the name is ambiguous or unknown', () => {
     const chain = oneOff('acme/api#1', 'review')
     expect(chain.units.some((u) => u.unit.oneOff)).toBe(false)

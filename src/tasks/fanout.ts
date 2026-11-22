@@ -247,10 +247,6 @@ export function expandPlans(
     // A gate that fired on a task's result holds the card's tasks like its questions, until you answer the post.
     const gated = tasks.filter((t) => reportsOnly(t) && results[t.id] === 'waiting')
     const posts = card.thread?.url ?? card.url
-    const gatedSince = gated
-      .flatMap((g) => taskPost(card, g.id)?.at ?? [])
-      .sort()
-      .at(0)
     // A task's result awaywork couldn't read back decides nothing yet: nothing of the card counts as done or runs.
     const unread = unreadTaskResult(card)
     const states: string[] = []
@@ -300,7 +296,7 @@ export function expandPlans(
           kind: gated.includes(t) ? 'waiting_for_approval' : 'waiting_for_task',
           reason: `waiting for your approval of ${named} result on ${posts}`,
           url: posts,
-          ...(gated.includes(t) && { since: gatedSince }),
+          ...(gated.includes(t) && { since: taskPost(card, t.id)?.at }),
         })
       } else if (pr) {
         states.push(pr.left ? `${t.id} draft says ${pr.left.status}` : `${t.id} PR open`)
