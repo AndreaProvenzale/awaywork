@@ -29,15 +29,13 @@ import {
   inAwayworkImage,
   inImage,
   MAX_USER,
-  sandboxNeeds,
   sandboxStarts,
   sudoersLines,
   WORKER,
-  wallHolds,
-  wallLines,
   workerFor,
 } from '#core/isolation'
 import type { Ctx, Provider, Rule } from '#core/types'
+import { sandboxNeeds, wallHolds, wallLines } from '#core/wall'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '#forge/bitbucket'
 import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
 import { teamMembers, teamsIn } from '#forge/teams'

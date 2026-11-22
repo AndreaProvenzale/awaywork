@@ -8,8 +8,8 @@ import { claudeProvider } from '#providers/claude'
 import { cursorProvider } from '#providers/cursor'
 import { fakeItem } from './fakes/items'
 
-vi.mock('#core/isolation', async (original) => ({
-  ...(await original<typeof import('#core/isolation')>()),
+vi.mock('#core/wall', async (original) => ({
+  ...(await original<typeof import('#core/wall')>()),
   wallUp: () => true,
 }))
 

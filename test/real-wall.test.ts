@@ -2,7 +2,8 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Phase } from '#core/egress'
-import { isolate, isolateFor, wallUp, workerRoot } from '#core/isolation'
+import { isolate, workerRoot } from '#core/isolation'
+import { isolateWalled, wallUp } from '#core/wall'
 import { runCommand } from '#worker/process/command'
 
 const env = { PATH: process.env.PATH }
@@ -29,7 +30,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('network wall, live', () => {
     origin = createServer((_, res) => res.end('hello')).listen(0, '127.0.0.2')
     await new Promise((ready) => origin.once('listening', ready))
     port = (origin.address() as AddressInfo).port
-    await isolateFor('user', process.env)
+    await isolateWalled('user', process.env)
     dir = await workerRoot()
   })
   afterAll(() => {

@@ -12,8 +12,9 @@ import {
   setupPhase,
   startEgress,
 } from '#core/egress'
-import { containerize, shellRefusal, wallHolds, wallLines } from '#core/isolation'
+import { containerize } from '#core/isolation'
 import type { Job, Provider } from '#core/types'
+import { shellRefusal, wallHolds, wallLines } from '#core/wall'
 import { claude } from '#providers/claude'
 import { codex } from '#providers/codex'
 import { cursor } from '#providers/cursor'

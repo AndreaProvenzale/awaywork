@@ -3,7 +3,8 @@ import type { Command } from 'commander'
 import { reportConfigError } from '#cli/tui/ask'
 import { configPath, loadConfig } from '#config/load'
 import { runsDir } from '#config/paths'
-import { holdingWorker, isolateFor } from '#core/isolation'
+import { holdingWorker } from '#core/isolation'
+import { isolateWalled } from '#core/wall'
 import { forgeFor } from '#forge/index'
 import { providersOf } from '#providers/index'
 import { abortOnSignals } from '#run/execute'
@@ -21,7 +22,7 @@ export function replayCommand(program: Command): void {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
-        await isolateFor(config.isolation, process.env)
+        await isolateWalled(config.isolation, process.env)
         const signal = abortOnSignals()
         const log = (line: string) => console.log(`  ${line}`)
         const result = await holdingWorker(

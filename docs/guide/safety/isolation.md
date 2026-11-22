@@ -35,6 +35,7 @@ No home, no login shell: each clone gets a fresh `HOME`. The first sudoers line 
 - **Linux only:** `isolation: user runs on Linux only, not darwin`.
 - **Always on** a GitHub-hosted runner and in awaywork's image, whatever the config says; the action or the [Dockerfile](../scheduling/container.md) makes the user.
 - **One developer per worker user:** the `chown` line reaches anyone's awaywork clones.
+- **A network wall:** the kernel leaves the worker only loopback, and awaywork's proxy lets each phase reach its own hosts: [the network under `user`](#the-network-under-user). `doctor` prints the `iptables` lines root runs once, and `run` refuses until they're in.
 
 ## In a container
 
@@ -73,12 +74,12 @@ Four keys depend on the mode. Cells say what the key does to the agent's shell, 
 
 | Key | `none` | `user` | `container` |
 | --- | --- | --- | --- |
-| [`network`](../config/repos.md) | Walls the shell to the hosts; setup, checks and MCP servers stay open | Same | Same, the shell's sandbox runs in the image |
+| [`network`](../config/repos.md) | Walls the shell to the hosts; setup, checks and MCP servers stay open | Walls everything the worker runs: setup, checks, the agent CLI and MCP servers reach only their phase's hosts ([below](#the-network-under-user)) | Walls the shell to the hosts, its sandbox running in the image; setup, checks and MCP servers stay open |
 | [`writable`](../config/repos.md) | Opens the paths to the shell; the rest needs no grant | Same, and the worker user's file permissions still apply | No effect: host paths aren't there |
 | [`serve`](../config/repos.md) | Starts the app for a step with `serve: true`, as you; the agent's MCP servers and its Codex and Cursor shells reach it, Claude's shell on Linux [doesn't](#claude-s-shell-is-offline), setup and checks don't | No effect: the step runs without the app | No effect: the step runs without the app |
 | [`image`](../config/repos.md) | No effect | No effect | Setup, the shell, checks and stdio MCP servers run in it |
 
-`network` and `writable` need the agent's own sandbox: where it can't start, the shell runs open and `doctor` warns ([Claude](#claude-s-shell-is-offline), [Codex](#codex-s-shell-is-offline), [Cursor](#cursor-s-shell-is-offline)). A command provider has no sandbox: `network` and `writable` do nothing for it. On an untrusted author's PR the shell gets no hosts and no `writable` paths and `serve` isn't started; `image` still applies. For a key that does nothing in the mode, `doctor` prints `writable: no effect under isolation: container (top level, acme/api)`: an info line, once per key, naming where it's set.
+Under `none`, `network` and `writable` need the agent's own sandbox ([Claude](#claude-s-shell-is-offline), [Codex](#codex-s-shell-is-offline), [Cursor](#cursor-s-shell-is-offline)): where it can't start, the unit is skipped before any model call, with what to install in its reason, and `doctor` fails. Under `user` the [network wall](#the-network-under-user) stands in for it. In awaywork's image and under `container`, whose walls are yet to come, the shell still runs open and `doctor` warns. A command provider has no sandbox and is never skipped for it: `network` and `writable` do nothing for its shell, and under `user` the wall limits it to the hosts of its phase. On an untrusted author's PR the shell gets no hosts and no `writable` paths and `serve` isn't started; `image` still applies. For a key that does nothing in the mode, `doctor` prints `writable: no effect under isolation: container (top level, acme/api)`: an info line, once per key, naming where it's set.
 
 ## Not a sandbox
 
@@ -129,6 +130,51 @@ A clone's own committed `.cursor/sandbox.json` would add its hosts, and Cursor r
 
 It needs Seatbelt on macOS and unprivileged user namespaces on Linux. Before a Cursor unit runs, awaywork runs the helper beside `agent` the way Cursor's own startup check does (`cursorsandbox --policy … --preflight-only -- /bin/true`, no model call), once per process for each image or user, as the worker user, as you or in the image. If it fails, the sandbox is left out, the unit's `worker.log` says so, and the shell runs open with `Shell(*)` rather than the run failing at startup; `doctor` runs the same probe. That's the case on a default Docker, including awaywork's image [V, tested in Colima: probe exit 2, then the open shell ran]. It starts with `kernel.apparmor_restrict_unprivileged_userns=0` and, in Docker, `seccomp=unconfined` and `apparmor=unconfined` [V, tested in Colima]. On GitHub's `ubuntu-latest` the action loads an AppArmor profile for the helper (`userns,` only), so it starts without opening user namespaces to every process.
 
+### The network under `user`
+
+Under `user` the kernel leaves the worker user loopback and nothing else, and awaywork runs a small proxy there that connects only to the hosts of the phase that runs. Every launch gets `HTTPS_PROXY` and `HTTP_PROXY` (and their lowercase forms) pointing at it and `NO_PROXY=localhost,127.0.0.1,::1`, replacing any proxy variables of your own: the proxy connects straight out and doesn't chain to a corporate one. A client that ignores the proxy is refused, and names don't resolve for it. Hosts match as in [`network`](../config/repos.md): a name exactly, `*.x` its subdomains, `*` everything.
+
+| Phase | Hosts |
+| --- | --- |
+| Setup | the package registries (`registry.npmjs.org`, `registry.yarnpkg.com`, `pypi.org`, `files.pythonhosted.org`, `proxy.golang.org`, `sum.golang.org`, `crates.io`, `static.crates.io`, `index.crates.io`, `rubygems.org`) and GitHub for git dependencies (`github.com`, `codeload.github.com`, `objects.githubusercontent.com`), plus `network` |
+| The agent CLI | its vendor's (Claude: `api.anthropic.com`, `platform.claude.com`, `claude.ai`; Codex: `chatgpt.com`, `auth.openai.com`, `api.openai.com`; Cursor: `*.cursor.sh`, `*.cursorapi.com`, `*.cursor-cdn.com`), the host of each HTTP MCP server's `url`, `network`, and each stdio server's [`network`](../config/mcp.md) |
+| `verify`, `until`, `when`, gate scripts | `network` |
+| A gate's judge | its vendor's |
+
+The built-in setup list is on and not configurable. On an untrusted author's PR setup doesn't run, and the agent gets its vendor's hosts alone. A refused connection fails the client's request (a 403 for the proxy's clients) and leaves `network: refused <host>:<port> (<phase>)` in the unit's `worker.log`, once per host and phase. A `verify` has no log of its own: its refusal shows in `verify.log` as the command's own failure. A CLI's optional calls are refused too and logged: Codex's `ab.chatgpt.com` and `*.oaiusercontent.com` [V, tested, Codex 0.171.0], which it runs without. Claude's telemetry would be, and awaywork turns it off behind the wall (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`).
+
+The rules are the part you run. For a worker user `awaywork` they are the lines below, for IPv4 and IPv6: loopback is open, so the proxy and a test suite's own servers stay reachable, except port 53, where a resolver such as systemd-resolved would answer for the worker; everything else the worker sends is rejected. `doctor` prints them for your worker user until the worker can reach neither an outside address nor the resolver, probed as the worker (a TCP connection to `1.1.1.1:443` and to `127.0.0.53:53`), once per process; `run` refuses the same way, before any phase.
+
+<!-- Generated by `pnpm docs:gen` from scripts/screens/configuration.ts. Do not edit. -->
+
+<!-- Generated by `pnpm docs:gen` from scripts/screens.ts. Do not edit. -->
+
+```text config-doctor-network-wall
+✖  network wall: awaywork isn't walled from the network, so setup, the checks and MCP servers reach any host; run these once as root, and keep them past a reboot (iptables-persistent saves them):
+    sudo iptables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+    sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+    sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+    sudo iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+    sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+    sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+    sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+    sudo ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+```
+
+On a hosted runner, `scripts/worker-user.sh` (the action) puts the rules in [V, tested on `ubuntu-latest`: the worker's connection to `1.1.1.1:443` refused, name lookups failing, the proxy reachable]. On your machine they last until a reboot unless you save them (`iptables-persistent`'s `netfilter-persistent save`, or your firewall's own tool) [I, not run]. Awaywork's [image](#a-worker-user-in-awaywork-s-image) has no wall yet: `doctor` warns, and setup, checks and MCP servers there reach any host.
+
+What the agent's own shell gets depends on its sandbox:
+
+- **Where it starts,** it stays tighter than its CLI: offline unless `network` lists hosts, and a listed host goes through awaywork's proxy, so it has to be on the agent phase's list, which `network` is. Codex's sandbox proxy chains to `HTTPS_PROXY` [V, tested on Linux 6.8, Codex 0.171.0: a curl to an allowed host reached awaywork's proxy and got a 200]. Claude's chains to it [V, Claude Code's docs]. Cursor's doesn't: through it a listed host fails with a 502 and never reaches awaywork's proxy [V, tested on a hosted runner], so behind the wall awaywork leaves Cursor's sandbox out, says so in `worker.log`, and its shell reaches the agent phase's list through the proxy [V, tested: a listed host 200, another refused, a client with `--noproxy` offline].
+- **Where it can't,** a unit still runs if the wall holds, with its shell limited to its CLI's hosts and `network`, and `worker.log` says so in a line. Without the wall a unit is skipped; see [What each key does](#what-each-key-does).
+
+Still open:
+
+- **An allowed host is a way out.** Anyone can use `github.com`, a registry or the vendor's own API with an account of their own, an attacker's API key included, and the filter reads hostnames only, with no TLS inspection, so domain fronting works [I].
+- **Loopback** stays open for test suites: every loopback port on the machine, your dev servers and databases included, bar port 53.
+- **What awaywork publishes** (commits, the PR body, reports), **MCP tools' own destinations** and **what the model provider sees** aren't filtered.
+- **A name that resolves to a private address** is reached when it is on the list: the proxy, run as you, resolves it [I].
+
 ### A worker user on your Linux machine
 
 With [`isolation: user`](./isolation.md), setup, the agent and the checks run as `awaywork`, a user you make once (`awaywork-work` under a profile `work`, and so on for each: a profile name of 23 characters or fewer, as Linux limits user names to 32). As on a [hosted runner](#a-worker-user-on-github-hosted-runners), the clone is the worker's only while repo code runs, awaywork kills all the worker's processes after each phase, and its own git runs only on a clone that's yours again. Without the user or the sudoers lines, `run` refuses rather than run as you. It closes:
@@ -174,7 +220,7 @@ Tried with only those two lines (sudo 1.9.13p3):
 
 Still open:
 
-- **The network,** except Claude's, Codex's and Cursor's shells (limited to [`network`](#claude-s-shell-is-offline) where their sandboxes start: not in Docker, and Claude's not on a stock GitHub-hosted runner).
+- **The network,** to the [allowed hosts](#the-network-under-user), each of them a way out, and loopback.
 - **The worker's own login,** in its env as it must be: `CLAUDE_CODE_OAUTH_TOKEN`, `CURSOR_API_KEY`, or a copy of your Codex `auth.json` in its `HOME` ([the lent Codex login](#the-lent-codex-login)).
 - **`/tmp`:** every unit of a profile is the same user, so a file left in `/tmp` or `/var/tmp` outside its folders is there for a later unit. Nothing runs it unless something looks.
 - **The machine:** localhost services answer it, and anything world-writable is a place to plant a binary you run later. Hosted runners clear that bit; on your machine `find / -xdev -perm -o+w ! -type l ! -perm -1000` lists them.
@@ -235,6 +281,7 @@ A hosted runner is where your classic token meets issue text unattended, with pa
 - **awaywork's git** uses the clone's own `.git` only, never a repo above it in `/tmp`, and only once its config is awaywork's again. A `.git` turned into a link, with a symlink outside its hooks, or borrowing another repo's objects gets no more git and publishes nothing. A clone the runner can't take back (a failing `chown`) ends its chain unpublished and untouched.
 - **Nothing outlives its phase:** awaywork kills all the worker's processes after each one.
 - **No value on argv:** env goes through sudo by name (`sudo --preserve-env=PATH,CLAUDE_CODE_OAUTH_TOKEN,…`), and pushes use gh's credential helper, never a token in a URL.
+- **Only loopback and a proxy:** `iptables` rules for the worker's uid, IPv4 and IPv6, from the same script: the worker reaches awaywork's proxy and nothing outside, [the network under `user`](#the-network-under-user).
 - **No silent fallback:** without the user, say `awaywork run` without the action, it refuses: `can't run as the awaywork user on this GitHub-hosted runner: run awaywork through its action, which creates it`.
 
 A spike tried every leak above from setup, a `when` check and two agent runs, with `GITHUB_TOKEN` as `GH_TOKEN`. As `runner`, all of them worked: awaywork's `/proc` env, `RUNNER_TEMP`, `GITHUB_ENV`, sudo, docker, crontab, planting in the toolcache, a leftover process. As the worker user:
@@ -253,7 +300,7 @@ agent: ok   no PATH or toolchain dir writable
 agent: ok   nothing left from an earlier phase
 ```
 
-That spike predates per-clone `HOME`s, now a `/tmp/awaywork-XXXXXX`. Still open: the agent's own secrets (its token, its MCP servers'), the network, the clone, what's world-readable (toolchains, `/tmp`, every command line but not env), and the disk and memory, where the watchdog stops the unit.
+That spike predates per-clone `HOME`s, now a `/tmp/awaywork-XXXXXX`. Still open: the agent's own secrets (its token, its MCP servers'), the [allowed hosts](#the-network-under-user), the clone, what's world-readable (toolchains, `/tmp`, every command line but not env), and the disk and memory, where the watchdog stops the unit.
 
 ### A worker user in awaywork's image
 
@@ -270,7 +317,7 @@ agent: GH_TOKEN=none
 agent: committed smoke.txt
 ```
 
-It closes and leaves open what the [local worker user](#a-worker-user-on-your-linux-machine) does. On a shared box:
+It closes and leaves open what the [local worker user](#a-worker-user-on-your-linux-machine) does, except the network: the image has no [wall](#the-network-under-user) yet, so setup, checks and MCP servers there reach any host, and `doctor` warns. On a shared box:
 
 - **One container per developer:** everything is in one `GH_TOKEN`'s name, and the `chown` line is for one developer. A company box runs a container, control repo and token per person.
 - **Host root reads every token:** `docker inspect` shows env, so a Coolify admin or anyone with `docker` has them all. Put your token only where you'd trust root.

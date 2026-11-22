@@ -14,7 +14,7 @@ import {
   windowEndPath,
 } from '#config/paths'
 import type { Config } from '#config/schema'
-import { isolateFor } from '#core/isolation'
+import { isolateWalled } from '#core/wall'
 import { exec } from '#forge/gh'
 import { ambiguous } from '#format/why'
 import { loadAttempts } from '#plan/attempts'
@@ -114,7 +114,7 @@ export function isolation(turn: <T>(f: () => Promise<T>) => Promise<T>, log: (l:
     if (current !== config.isolation)
       switched = turn(async () => {
         current = undefined
-        await isolateFor(config.isolation, process.env)
+        await isolateWalled(config.isolation, process.env)
         current = config.isolation
       })
     return switched

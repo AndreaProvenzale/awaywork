@@ -11,11 +11,10 @@ import {
   contain,
   contained,
   lostToWorker,
-  shellRefusal,
-  wallUp,
   whereRuns,
 } from '#core/isolation'
 import type { McpServer, Unit } from '#core/types'
+import { shellRefusal, wallUp } from '#core/wall'
 import { describeCondition, holds } from '#plan/condition'
 import { modelFor, modelsFor, type PlannedUnit, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'

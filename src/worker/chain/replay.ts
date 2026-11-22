@@ -5,16 +5,9 @@ import { execa } from 'execa'
 import { bin } from '#config/paths'
 import type { Config } from '#config/schema'
 import { setupPhase } from '#core/egress'
-import {
-  contain,
-  contained,
-  isolated,
-  lostToWorker,
-  shellRefusal,
-  workerHome,
-  workerRoot,
-} from '#core/isolation'
+import { contain, contained, isolated, lostToWorker, workerHome, workerRoot } from '#core/isolation'
 import type { Ctx, Forge, Provider, Source, Unit } from '#core/types'
+import { shellRefusal } from '#core/wall'
 import { modelFor } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
 import { type Allowance, MAX_TURNS } from '#quota/budget'
