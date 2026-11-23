@@ -14,6 +14,7 @@ import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Provider, Source, Write } from '#core/types'
+import { formatReport } from '#format/report-md'
 import { planRun } from '#plan/foreman'
 import {
   commentKind,
@@ -27,7 +28,6 @@ import {
 } from '#posts/comments'
 import { footer, footerPins, type Pin, pinBlock } from '#posts/footer'
 import { postAnswer, readBackPosts, reportPost, taskResults, withApproved } from '#posts/posts'
-import { formatReport } from '#posts/report'
 import { checkPins, putFiles, readBack, type Store } from '#posts/store'
 import { allowance } from '#quota/budget'
 import { TIMEOUT_MS } from '#sources/command'

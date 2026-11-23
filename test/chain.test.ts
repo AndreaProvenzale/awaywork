@@ -30,20 +30,11 @@ import type { Forge, Item, Login, Provider, Source } from '#core/types'
 import { reportJson } from '#format/json'
 import { formatPlan } from '#format/plan'
 import { summarize } from '#format/report'
+import { formatReport, laterNotes, runHeadline, runLine, unitNotes } from '#format/report-md'
 import { type Attempts, recordAttempts } from '#plan/attempts'
 import { planRun } from '#plan/foreman'
 import { footer } from '#posts/footer'
-import {
-  type Chain,
-  chains,
-  formatReport,
-  laterNotes,
-  type RunReport,
-  runHeadline,
-  runLine,
-  type UnitResult,
-  unitNotes,
-} from '#posts/report'
+import { type Chain, chains, type RunReport, type UnitResult } from '#posts/report'
 import { cursorProvider } from '#providers/cursor'
 import { allowance } from '#quota/budget'
 import { runUnits } from '#worker/units/run'

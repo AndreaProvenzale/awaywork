@@ -18,11 +18,12 @@ import { fetchRun, type UploadedRun, uploadedRuns } from '#forge/artifacts'
 import { type Exec, exec, gitRoot } from '#forge/gh'
 import { reportJson } from '#format/json'
 import { findChains, formatRun, formatUnit } from '#format/report'
+import { runLine } from '#format/report-md'
 import { formatSkipped } from '#format/skips'
 import { ambiguous } from '#format/why'
 import { pausedLine, pausedUntil } from '#plan/pause'
 import type { OnProgress } from '#plan/probe'
-import { type Chain, chains, localTime, type RunReport, runLine } from '#posts/report'
+import { type Chain, chains, type RunReport } from '#posts/report'
 import { describeWindow, hostedEnd, runEnd } from '#quota/window'
 import {
   abortOnSignals,
@@ -38,7 +39,7 @@ import {
 } from '#run/execute'
 import { lockHolder, takeRunLock } from '#run/run-lock'
 import { WORKFLOW } from '#scheduler/github-actions'
-import { counted } from '#util/text'
+import { counted, localTime } from '#util/text'
 import { ruleNumber, skipKinds } from './plan'
 
 export function runCommand(program: Command): void {

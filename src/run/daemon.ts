@@ -31,11 +31,10 @@ import {
   soonSources,
 } from '#plan/poll'
 import { probeAndPlan, sourceFailure } from '#plan/probe'
-import { localTime } from '#posts/report'
 import { firstOpening, windowEnd, windowRun } from '#quota/window'
 import { holdAwake } from '#scheduler/wake'
 import { readJson } from '#util/json'
-import { counted } from '#util/text'
+import { counted, localTime } from '#util/text'
 import { maskSecrets } from '#worker/process/command'
 import { namedChains } from '#worker/units/run'
 import {
