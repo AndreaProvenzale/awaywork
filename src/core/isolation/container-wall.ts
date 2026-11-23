@@ -237,7 +237,7 @@ export function probeProblem(seen: string, control: string, forwarded: string): 
   if (!control.includes('outside open'))
     return `can't tell: a container on docker's default network doesn't reach ${OUTSIDE} to compare with, and \`container\` can't be walled on a network that only reaches the internet through a proxy`
   if (!control.includes('canary open'))
-    return `can't tell: a container on docker's default network doesn't reach the listener on docker's host network, so the gateway check proves nothing`
+    return `can't tell: a container on docker's default network doesn't reach the listener on docker's host network, so the gateway check proves nothing; allow docker's bridge to this machine if a firewall such as ufw drops it`
   const lines = seen.split('\n').map((line) => line.split(' '))
   const result = (kind: string) => lines.filter(([k]) => k === kind)
   for (const [, target, answer] of result('direct'))
