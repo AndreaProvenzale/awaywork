@@ -1,7 +1,14 @@
 import type { LookupAddress } from 'node:dns'
 import { lookup } from 'node:dns/promises'
-import { createServer, request } from 'node:http'
-import { BlockList, connect, isIP, type LookupFunction, type Socket } from 'node:net'
+import { createServer, type IncomingHttpHeaders, type IncomingMessage, request } from 'node:http'
+import {
+  BlockList,
+  connect,
+  createServer as createListener,
+  isIP,
+  type LookupFunction,
+  type Socket,
+} from 'node:net'
 import { withholdsGrants } from '../trust'
 import type { Job, McpServer, Provider, Unit } from '../types'
 
@@ -74,10 +81,17 @@ export function agentPhase(provider: Pick<Provider, 'hosts'>, job: Job, log: Pha
 }
 
 const NO_PROXY = 'localhost,127.0.0.1,::1'
+const PROXY_USER = 'awaywork'
 
-/** What points a launch at the proxy, in both cases tools read, and Node's `fetch` too. */
-export function proxyEnv(port: number): Record<string, string> {
-  const url = `http://127.0.0.1:${port}`
+/** The names `proxyEnv` sets. */
+export const PROXY_ENV = [
+  'NODE_USE_ENV_PROXY',
+  ...['HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY'].flatMap((name) => [name, name.toLowerCase()]),
+]
+
+/** What points a launch at the proxy at `host`, with the `token` where it asks for one, in both cases tools read, and Node's `fetch` too. */
+export function proxyEnv(port: number, host = '127.0.0.1', token?: string): Record<string, string> {
+  const url = `http://${token ? `${PROXY_USER}:${token}@` : ''}${host}:${port}`
   return Object.fromEntries([
     ['NODE_USE_ENV_PROXY', '1'],
     ...['HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY'].flatMap((name) => {
@@ -120,8 +134,24 @@ const publicLookup: LookupFunction = (name, options, done) => {
   )
 }
 
+/** The request's headers without the ones addressed to this proxy, its token among them. */
+const withoutProxyHeaders = (headers: IncomingHttpHeaders): IncomingHttpHeaders =>
+  Object.fromEntries(
+    Object.entries(headers).filter(
+      ([name]) => !['proxy-authorization', 'proxy-connection'].includes(name),
+    ),
+  )
+
+/** A listener of the proxy that other containers can reach, closed with `close`. */
+export interface Exposed {
+  port: number
+  close(): void
+}
+
 export interface Egress {
   port: number
+  /** Serves the same phases on `host` too, to clients that send `token` and no other. */
+  expose(host: string, token: string): Promise<Exposed>
   /** The phase that runs now, or none. A launch is always in the one phase running: units take turns. */
   use(phase?: Phase): void
 }
@@ -141,6 +171,16 @@ export async function startEgress(): Promise<Egress> {
     refuse(host, port)
     return false
   }
+  /** The sockets of `expose`'s listener, which must send its token. */
+  const exposed = new WeakMap<Socket, string>()
+  /** The token of the exposed listener, asked of the loopback one too: on a Mac a container reaches both. */
+  let required: string | undefined
+  const unauthorized = (req: IncomingMessage) => {
+    const token = exposed.get(req.socket) ?? required
+    if (token === undefined) return false
+    const sent = req.headers['proxy-authorization']
+    return sent !== `Basic ${Buffer.from(`${PROXY_USER}:${token}`).toString('base64')}`
+  }
   const lookupFor =
     (host: string, port: number): LookupFunction =>
     (name, options, done) =>
@@ -149,6 +189,7 @@ export async function startEgress(): Promise<Egress> {
         ;(done as (...args: unknown[]) => void)(error, ...rest)
       })
   const server = createServer((req, res) => {
+    if (unauthorized(req)) return void res.writeHead(407, { 'proxy-authenticate': 'Basic' }).end()
     const url = URL.parse(req.url ?? '')
     if (!url?.hostname) return void res.writeHead(400).end()
     const host = url.hostname.replace(/^\[|\]$/g, '')
@@ -160,7 +201,7 @@ export async function startEgress(): Promise<Egress> {
         port,
         method: req.method,
         path: url.pathname + url.search,
-        headers: req.headers,
+        headers: withoutProxyHeaders(req.headers),
         lookup: lookupFor(host, port),
       },
       (answer) => {
@@ -172,6 +213,14 @@ export async function startEgress(): Promise<Egress> {
     req.pipe(upstream)
   })
   server.on('connect', (req, client: Socket, head) => {
+    if (unauthorized(req)) {
+      // Back to the HTTP parser, since a client that tries without the token (curl, git) sends its retry on this connection.
+      client.write(
+        'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\nContent-Length: 0\r\n\r\n',
+      )
+      if (head.length) client.unshift(head)
+      return void server.emit('connection', client)
+    }
     const [, host = '', port = '443'] = /^\[?([^\]]*?)\]?(?::(\d+))?$/.exec(req.url ?? '') ?? []
     const number = Number(port)
     if (!Number.isInteger(number) || number < 1 || number > 65535)
@@ -197,6 +246,25 @@ export async function startEgress(): Promise<Egress> {
   const address = server.address()
   return {
     port: typeof address === 'object' && address ? address.port : 0,
+    async expose(host, token) {
+      const listener = createListener((socket) => {
+        exposed.set(socket, token)
+        server.emit('connection', socket)
+      })
+      await new Promise<void>((ready, fail) => {
+        listener.once('error', fail)
+        listener.listen(0, host, ready)
+      })
+      required = token
+      const address = listener.address()
+      return {
+        port: typeof address === 'object' && address ? address.port : 0,
+        close: () => {
+          listener.close()
+          if (required === token) required = undefined
+        },
+      }
+    },
     use(next) {
       phase = next
       told.clear()

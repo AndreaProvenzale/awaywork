@@ -1,7 +1,7 @@
 import type { execa } from 'execa'
 import { bin } from '#config/paths'
 import { inImage } from '#core/isolation/container'
-import { contained, type Where, wallUp } from '#core/isolation/index'
+import { type Where, wallUp } from '#core/isolation/index'
 import { sudoArgs } from '#core/isolation/sudo'
 import type { Job, Provider } from '#core/types'
 
@@ -61,14 +61,14 @@ export const sandboxNeeds = (agent: string) =>
 
 /**
  * Why a unit can't run: its agent's shell sandbox can't start here and awaywork's wall doesn't hold, so its shell would
- * reach any host. `container` keeps running open until its wall lands; a provider with no sandbox is exempt.
+ * reach any host. A provider with no sandbox is exempt.
  */
 export async function shellRefusal(
   provider: Provider,
   job: Pick<Job, 'dir'>,
   signal?: AbortSignal,
 ): Promise<string | undefined> {
-  if (!provider.startsSandbox || wallUp() || contained()) return
+  if (!provider.startsSandbox || wallUp()) return
   if (await provider.startsSandbox(job, signal)) return
   return `${provider.id}'s shell sandbox can't start here (needs ${sandboxNeeds(provider.id)}) and no network wall holds: install them, or run under isolation: user, whose wall \`awaywork doctor\` shows`
 }

@@ -63,6 +63,9 @@ jobs:
       - run: pnpm vitest run test/real-container.test.ts
         env:
           AWAYWORK_CONTAINER_TEST: alpine:3.22
+      - run: pnpm vitest run test/real-container-wall.test.ts
+        env:
+          AWAYWORK_CONTAINER_WALL_TEST: "1"
 
   # The container template still builds; the newest release stands in for a version not published yet.
   image:

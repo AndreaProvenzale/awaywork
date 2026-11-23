@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { createServer, request, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { type AddressInfo, connect as connectTo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { containerMode } from '#core/isolation/container'
 import {
@@ -241,6 +241,127 @@ describe('the proxy', () => {
   })
 })
 
+describe('the proxy exposed to containers', () => {
+  const via = (port: number, path: string, auth?: string) =>
+    new Promise<number>((done, fail) => {
+      const headers = auth ? { 'proxy-authorization': auth } : undefined
+      const req = request({ host: '127.0.0.1', port, method: 'CONNECT', path, headers })
+      req.on('connect', (res, socket) => {
+        socket.destroy()
+        done(res.statusCode ?? 0)
+      })
+      req.on('response', (res) => done(res.statusCode ?? 0))
+      req.on('error', fail)
+      req.end()
+    })
+
+  it('answers only with its token, on its own listener, the phases the same', async () => {
+    const proxy = await startEgress()
+    const exposed = await proxy.expose('127.0.0.1', 'secret')
+    const origin = createServer((_, res) => res.end()).listen(0, '127.0.0.1')
+    await new Promise((ready) => origin.once('listening', ready))
+    const target = `127.0.0.1:${(origin.address() as AddressInfo).port}`
+    const basic = (token: string) => `Basic ${Buffer.from(`awaywork:${token}`).toString('base64')}`
+    try {
+      proxy.use({ name: 'setup', hosts: ['127.0.0.1'], log: () => {} })
+      expect(await via(exposed.port, target)).toBe(407)
+      expect(await via(exposed.port, target, basic('guess'))).toBe(407)
+      expect(await via(exposed.port, target, basic('secret'))).toBe(200)
+      expect(await via(exposed.port, 'evil.example:443', basic('secret'))).toBe(403)
+      expect(await via(proxy.port, target)).toBe(407)
+      expect(await via(proxy.port, target, basic('secret'))).toBe(200)
+      exposed.close()
+      expect(await via(proxy.port, target)).toBe(200)
+    } finally {
+      exposed.close()
+      origin.close()
+    }
+  })
+
+  it('leaves the loopback listener open when the listen fails', async () => {
+    const proxy = await startEgress()
+    const origin = createServer((_, res) => res.end()).listen(0, '127.0.0.1')
+    await new Promise((ready) => origin.once('listening', ready))
+    const target = `127.0.0.1:${(origin.address() as AddressInfo).port}`
+    try {
+      proxy.use({ name: 'setup', hosts: ['127.0.0.1'], log: () => {} })
+      await expect(proxy.expose('203.0.113.1', 'secret')).rejects.toThrow()
+      expect(await via(proxy.port, target)).toBe(200)
+    } finally {
+      origin.close()
+    }
+  })
+
+  it('keeps the token and the proxy headers from the origin of a plain HTTP request', async () => {
+    const proxy = await startEgress()
+    const exposed = await proxy.expose('127.0.0.1', 'secret')
+    let seen: Record<string, unknown> = {}
+    const origin = createServer((req, res) => {
+      seen = req.headers
+      res.end()
+    }).listen(0, '127.0.0.1')
+    await new Promise((ready) => origin.once('listening', ready))
+    const port = (origin.address() as AddressInfo).port
+    try {
+      proxy.use({ name: 'setup', hosts: ['127.0.0.1'], log: () => {} })
+      await new Promise<void>((done, fail) => {
+        const req = request({
+          host: '127.0.0.1',
+          port: exposed.port,
+          path: `http://127.0.0.1:${port}/`,
+          headers: {
+            'proxy-authorization': `Basic ${Buffer.from('awaywork:secret').toString('base64')}`,
+            'proxy-connection': 'keep-alive',
+            'x-kept': 'yes',
+          },
+        })
+        req.on('response', (res) => res.resume().on('end', done))
+        req.on('error', fail)
+        req.end()
+      })
+      expect(seen['x-kept']).toBe('yes')
+      expect(seen['proxy-authorization']).toBeUndefined()
+      expect(seen['proxy-connection']).toBeUndefined()
+    } finally {
+      exposed.close()
+      origin.close()
+    }
+  })
+
+  it('takes the retry with the token on the connection that got the 407, as curl and git send it', async () => {
+    const proxy = await startEgress()
+    const exposed = await proxy.expose('127.0.0.1', 'secret')
+    proxy.use({ name: 'setup', hosts: ['127.0.0.1'], log: () => {} })
+    const origin = createServer((_, res) => res.end()).listen(0, '127.0.0.1')
+    await new Promise((ready) => origin.once('listening', ready))
+    const target = `127.0.0.1:${(origin.address() as AddressInfo).port}`
+    const socket = connectTo(exposed.port, '127.0.0.1')
+    const answers: string[] = []
+    socket.on('data', (chunk) => answers.push(String(chunk).split('\r\n')[0] ?? ''))
+    const token = Buffer.from('awaywork:secret').toString('base64')
+    try {
+      socket.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n\r\n`)
+      await new Promise((tick) => setTimeout(tick, 100))
+      socket.write(`CONNECT ${target} HTTP/1.1\r\nProxy-Authorization: Basic ${token}\r\n\r\n`)
+      await new Promise((tick) => setTimeout(tick, 100))
+      expect(answers).toEqual([
+        'HTTP/1.1 407 Proxy Authentication Required',
+        'HTTP/1.1 200 Connection Established',
+      ])
+    } finally {
+      socket.destroy()
+      exposed.close()
+      origin.close()
+    }
+  })
+
+  it('puts the token in the proxy URL, for the forwarder’s alias', () => {
+    expect(proxyEnv(3128, 'awaywork-egress', 'abc').HTTPS_PROXY).toBe(
+      'http://awaywork:abc@awaywork-egress:3128',
+    )
+  })
+})
+
 describe('the wall', () => {
   it('has rules for IPv4 and IPv6 that leave loopback but its DNS, deny the resolver, and keep the script of the action equal', () => {
     const lines = wallLines('awaywork-work')
@@ -419,10 +540,10 @@ describe('shellRefusal', () => {
     expect(await shellRefusal(bare, { dir: '/x' })).toBeUndefined()
   })
 
-  it('exempts isolation: container', async () => {
+  it('refuses under isolation: container while its wall is down', async () => {
     useMode(containerMode())
     try {
-      expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toBeUndefined()
+      expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toMatch(/no network wall holds/)
     } finally {
       useMode(none)
     }

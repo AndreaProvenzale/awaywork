@@ -7,6 +7,8 @@ import { bin } from '#config/paths'
 import type { Login } from '../types'
 import type { LaunchOptions, Mode } from '.'
 import { lose, lost, lostToWorker } from './clones'
+import { type ContainerWall, raiseContainerWall } from './container-wall'
+import { type Egress, type Phase, PROXY_ENV, sharedEgress } from './egress'
 import { developer } from './sudo'
 
 /** The names awaywork sets in a phase's env (`commandEnv`, `workerEnv`, the checks', the providers), which a container always gets. */
@@ -50,20 +52,29 @@ export function containerMode(dockerTimeout = DOCKER_TIMEOUT_MS): Mode {
   const boxes = new Map<string, Box>()
   /** The containers launched in the running phase, by name. */
   const started = new Set<string>()
+  /** Where the network wall holds: the proxy every launch goes through, and the network that leads only to it. */
+  let wall: (ContainerWall & { egress: Egress }) | undefined
 
   /**
    * Under `container`, a phase gets the clone's `HOME`, and once it ends none of its containers is left.
    * Nothing in the clone is touched through a link one left, nor at all while one may still run.
    */
-  async function inContainers<T>(dir: string, run: () => Promise<T>, login?: Login): Promise<T> {
+  async function inContainers<T>(
+    dir: string,
+    run: () => Promise<T>,
+    login?: Login,
+    phase?: Phase,
+  ): Promise<T> {
     if (lostToWorker(dir)) throw new Error('the clone is lost: a container of it may still run')
     await refuseLinks(dir)
     const home = join(dir, CONTAINER_HOME)
     await mkdir(home, { recursive: true })
     const save = await login?.(home)
     try {
+      wall?.egress.use(phase)
       return await run()
     } finally {
+      wall?.egress.use()
       const gone = await removeContainers([...started], dockerTimeout)
       started.clear()
       // Lost before the save, so a save that throws can't leave it open.
@@ -77,26 +88,36 @@ export function containerMode(dockerTimeout = DOCKER_TIMEOUT_MS): Mode {
     name: 'container',
     start<O extends LaunchOptions>(file: string, args: readonly string[], options: O) {
       const { home: _, ...rest } = options
+      const walled = wall ? { ...options, env: { ...options.env, ...wall.env } } : options
       const dir = String(options.cwd)
       const box = boxes.get(dir)
       if (!box) throw new Error(`no container for ${dir}`)
       const name = `awaywork-${randomBytes(6).toString('hex')}`
-      const env = options.extendEnv === false ? options.env : { ...process.env, ...options.env }
+      const env = options.extendEnv === false ? walled.env : { ...process.env, ...walled.env }
       started.add(name)
-      const subprocess = execa(bin('docker'), dockerArgs(name, box, file, args, options), {
-        ...rest,
-        shell: false,
-        env: { ...process.env, ...env },
-        extendEnv: false,
-      } as O)
+      const subprocess = execa(
+        bin('docker'),
+        dockerArgs(name, box, file, args, walled, wall?.network),
+        {
+          ...rest,
+          shell: false,
+          env: { ...process.env, ...env },
+          extendEnv: false,
+        } as O,
+      )
       subprocess.nodeChildProcess.once('exit', () => void removeContainers([name], dockerTimeout))
       return subprocess
     },
     phase: inContainers,
     hold: (run) => run(),
     where: (dir) => ({ image: boxes.get(dir)?.image }),
-    raiseWall: async () => {},
-    walled: () => false,
+    async raiseWall() {
+      // a wall that fails must leave none up
+      wall = undefined
+      const egress = await sharedEgress()
+      wall = { ...(await raiseContainerWall(egress)), egress }
+    },
+    walled: () => wall !== undefined,
     /** Runs every launch in the clone `dir` in a container of `box`. */
     contain: (dir, box) => void boxes.set(dir, box),
   }
@@ -131,6 +152,7 @@ const runFlags = () => [
 /**
  * docker's argv running `file` in a fresh container: the clone at its own path and the plugin read-only, nothing else,
  * and the env's names, whose values the client reads from its own env. Only the names awaywork sets and the phase's secrets go in.
+ * With a `network`, the container joins only it, and the proxy's names go in too.
  */
 export function dockerArgs(
   name: string,
@@ -138,6 +160,7 @@ export function dockerArgs(
   file: string,
   args: readonly string[],
   options: LaunchOptions,
+  network?: string,
 ): string[] {
   const dir = String(options.cwd)
   const env = (options.extendEnv === false ? options.env : { ...process.env, ...options.env }) ?? {}
@@ -146,7 +169,9 @@ export function dockerArgs(
       /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) &&
       name !== 'HOME' &&
       env[name] !== undefined &&
-      (box.secrets.includes(name) || AWAYWORK_ENV.includes(name)),
+      (box.secrets.includes(name) ||
+        AWAYWORK_ENV.includes(name) ||
+        (network !== undefined && PROXY_ENV.includes(name))),
   )
   const mount = (path: string, more = '') => [
     '--mount',
@@ -159,6 +184,7 @@ export function dockerArgs(
     '-i',
     '--name',
     name,
+    ...(network ? ['--network', network] : []),
     '-w',
     dir,
     ...mount(dir),

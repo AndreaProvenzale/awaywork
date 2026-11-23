@@ -3,6 +3,7 @@ import type { Config } from '#config/schema'
 import type { Login } from '../types'
 import { unrestored } from './clones'
 import { type Box, containerMode, DOCKER_TIMEOUT_MS, dockerVersion } from './container'
+import { lowerContainerWall } from './container-wall'
 import type { Phase } from './egress'
 import { none } from './none'
 import { userMode, workerFor } from './user'
@@ -97,7 +98,10 @@ export async function isolateFor(
   env: NodeJS.ProcessEnv,
 ): Promise<void> {
   // A failed pick still leaves the container behind, as it always did.
-  if (contained()) useMode(none)
+  if (contained()) {
+    await lowerContainerWall()
+    useMode(none)
+  }
   const user = await workerFor(isolation, env)
   useMode(user ? userMode(user) : none)
   if (user || isolation !== 'container') return

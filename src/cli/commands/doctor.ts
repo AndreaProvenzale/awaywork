@@ -22,6 +22,8 @@ import type { Config } from '#config/schema'
 import { hasSkills, readSetup, unknownSkillsWarning } from '#config/skills'
 import { canMatch } from '#config/validate/where'
 import { DOCKER_TIMEOUT_MS, dockerVersion, inImage } from '#core/isolation/container'
+import { lowerContainerWall, raiseContainerWall } from '#core/isolation/container-wall'
+import { sharedEgress } from '#core/isolation/egress'
 import { inAwayworkImage, WORKER } from '#core/isolation/sudo'
 import { MAX_USER, sudoersLines, workerFor } from '#core/isolation/user'
 import { wallFix, wallLines, wallProblem } from '#core/isolation/user-wall'
@@ -187,16 +189,18 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
         facts.filter(Boolean).join(', '),
       )
     const starts = { claude: sandboxStarts, codex: codexSandboxStarts }[id]
-    const wall = asWorker && !boxed && !(await wallProblem(WORKER))
+    const wall = boxed
+      ? isolation.some((c) => c.what === 'network wall' && c.status === 'ok')
+      : asWorker && !(await wallProblem(WORKER))
     if (starts && !isolation.some((c) => c.status === 'FAIL')) {
       const sandbox = await shellSandbox(id, starts, config, boxed, asWorker)
-      report(...sandboxCheck(id, sandbox, boxed ? 'open' : wall ? 'wall' : 'refused'))
+      report(...sandboxCheck(id, sandbox, wall ? 'wall' : 'refused'))
     }
     if (id === 'cursor' && !keyless && !isolation.some((c) => c.status === 'FAIL')) {
       if (wall) report('warn', 'cursor sandbox', CURSOR_BEHIND_WALL)
       else {
         const sandbox = await cursorSandbox(config, boxed, asWorker, provider.bin)
-        report(...sandboxCheck(id, sandbox, boxed ? 'open' : 'refused'))
+        report(...sandboxCheck(id, sandbox, 'refused'))
       }
     }
     if (!keyless && asWorker && !provider.login && unset.length > 0)
@@ -396,18 +400,16 @@ const CURSOR_BEHIND_WALL =
 
 /**
  * An agent's shell sandbox as a check. Where it can't start, its units are refused (`refused`, a failure), or run with the
- * shell behind awaywork's wall (`wall`), or open, in a container, whose wall is yet to come (`open`).
+ * shell behind awaywork's wall (`wall`).
  */
 export function sandboxCheck(
   agent: string,
   down: string | undefined,
-  mode: 'refused' | 'wall' | 'open',
+  mode: 'refused' | 'wall',
 ): [Status, string, string] {
   const what = `${agent} sandbox`
   if (!down) return ['ok', what, `${agent === 'cursor' ? 'its ' : ''}shell runs offline`]
   const name = `${agent[0]?.toUpperCase()}${agent.slice(1)}`
-  if (mode === 'open')
-    return ['warn', what, `${down}: ${name}'s shell runs unsandboxed, with network access`]
   if (mode === 'wall')
     return [
       'warn',
@@ -631,6 +633,27 @@ export async function wallCheck(
   }
 }
 
+export const containerWallUp: Check = {
+  status: 'ok',
+  what: 'network wall',
+  detail:
+    "containers join an internal network whose only way out is a forwarder to awaywork's proxy: setup, the checks and the agent go to the hosts of their phase",
+}
+
+/** Whether a container's only way out is awaywork's proxy: raises the wall and takes it down again. */
+export async function containerWallCheck(raise = raiseContainerWall): Promise<Check> {
+  const failed = await sharedEgress()
+    .then(raise)
+    .then(
+      () => undefined,
+      (e: Error) => e,
+    )
+  await lowerContainerWall()
+  return failed
+    ? { status: 'FAIL', what: containerWallUp.what, detail: failed.message }
+    : containerWallUp
+}
+
 /** `isolation: user` without a worker to run as, and where making it is yours (`local`), how. */
 export function workerFailure(reason: string, local: boolean, sudoers = sudoersLines()): Check {
   const setup = [
@@ -676,7 +699,7 @@ export async function containerChecks(
 ): Promise<Check[]> {
   const version = await dockerVersion(timeout).catch((e: Error) => e)
   if (version instanceof Error) return [boxCheck('FAIL', `container, but ${version.message}`)]
-  const checks = [dockerReady(version)]
+  const checks = [dockerReady(version), await containerWallCheck()]
   const docker = (...args: string[]) => execa(bin('docker'), args, { reject: false, timeout })
   const clis = config.providers.map(({ id, config: cfg }) =>
     isCommandProvider(cfg)

@@ -150,7 +150,7 @@ The classic token `schedule install` asks for reaches every repo you can; a dedi
 
 ## Network hosts
 
-The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), and under `isolation: user` so do setup, the checks, the agent CLI and MCP servers, through [awaywork's proxy and a kernel wall](./isolation.md#the-network-under-user). A steered agent can send what it reads to any host listed, the vendor's, a registry or GitHub, and `*` reopens it. Not on an untrusted author's PR or issue. Under `none` a unit whose agent's sandbox can't start is skipped; under `container`, setup, checks and MCP servers still reach any host. The image holds the wall like `user`, and refuses to run without it.
+The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), and under `isolation: user` or `container` so do setup, the checks, the agent CLI and MCP servers, through awaywork's proxy and a wall: [a kernel one under `user`](./isolation.md#the-network-under-user), [an internal Docker network in a container](./isolation.md#the-network-in-a-container). A steered agent can send what it reads to any host listed, the vendor's, a registry or GitHub, and `*` reopens it. Not on an untrusted author's PR or issue. Under `none` a unit whose agent's sandbox can't start is skipped. The image holds the wall like `user`, and refuses to run without it.
 
 ## Writable paths
 
