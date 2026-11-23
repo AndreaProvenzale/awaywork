@@ -18,7 +18,7 @@ const OUTSIDE = '1.1.1.1:443'
 const TIMEOUT_MS = 60_000
 
 /** A script of the package's `docker/wall/`, as `node -e` runs it in a container: no host path to mount. */
-const node = (script: string, ...args: string[]) => [
+const wallScript = (script: string, ...args: string[]) => [
   'node',
   '-e',
   readFileSync(join(dockerDir, 'wall', `${script}.cjs`), 'utf8'),
@@ -140,7 +140,7 @@ async function startCanary(name: string, label: string[]): Promise<number> {
       '--network',
       'host',
       WALL_IMAGE,
-      ...node('canary', String(port)),
+      ...wallScript('canary', String(port)),
     ])
     if (started.failed)
       throw unwalled(
@@ -267,7 +267,12 @@ export async function raiseContainerWall(egress: Egress): Promise<ContainerWall>
     '--add-host',
     `host.docker.internal:${gateway ?? 'host-gateway'}`,
     WALL_IMAGE,
-    ...node('forwarder', String(FORWARDER_PORT), 'host.docker.internal', String(exposed.port)),
+    ...wallScript(
+      'forwarder',
+      String(FORWARDER_PORT),
+      'host.docker.internal',
+      String(exposed.port),
+    ),
   ])
   if (started.failed) return fail(`the forwarder didn't start: ${firstLine(started)}`)
   const joined = await docker(['network', 'connect', 'bridge', forwarder])
@@ -294,14 +299,14 @@ export async function raiseContainerWall(egress: Egress): Promise<ContainerWall>
       '--rm',
       ...flags(network),
       WALL_IMAGE,
-      ...node('probe', ALIAS, String(FORWARDER_PORT), token, ...targets),
+      ...wallScript('probe', ALIAS, String(FORWARDER_PORT), token, ...targets),
     ]),
     docker([
       'run',
       '--rm',
       ...flags(),
       WALL_IMAGE,
-      ...node('control', candidate ?? '', String(hostPort)),
+      ...wallScript('control', candidate ?? '', String(hostPort)),
     ]),
   ])
   await docker(['rm', '-f', canary])
