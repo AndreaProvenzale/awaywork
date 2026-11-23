@@ -10,7 +10,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
