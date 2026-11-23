@@ -1,6 +1,6 @@
 import type { Item } from '#core/types'
 import { type SkipKind, shortRef } from '#plan/foreman'
-import { byKind, needsYouOn, type ReportedSkip } from '#posts/report'
+import { ageSince, byKind, needsYouOn, oldestFirst, type ReportedSkip } from '#posts/report'
 import {
   brief,
   byGroup,
@@ -15,7 +15,11 @@ import {
 } from './terminal'
 
 /** The skipped items you can act on, under their groups: a row each ending on its action, and what its reason adds under the title. */
-export function needsYouLines(skipped: ReportedSkip[], style: Style = (_, text) => text): string[] {
+export function needsYouLines(
+  skipped: ReportedSkip[],
+  style: Style = (_, text) => text,
+  now = Date.now(),
+): string[] {
   const waiting = skipped.filter(needsYouOn)
   if (waiting.length === 0) return []
   const group = (list: SkipRow[]) => {
@@ -29,7 +33,9 @@ export function needsYouLines(skipped: ReportedSkip[], style: Style = (_, text) 
   return [
     '',
     heading('Needs you', waiting.length, style),
-    ...indent(skipRows(waiting).flatMap(([name, list]) => [name, ...indent(group(list))])),
+    ...indent(
+      skipRows(waiting, CELL, now).flatMap(([name, list]) => [name, ...indent(group(list))]),
+    ),
   ]
 }
 
@@ -98,23 +104,33 @@ export interface SkipRow {
   note: string
 }
 
-/** Each skip's row under its group, by action: its ref there, title, action and note, which leaves out the closest rule in Needs you. */
-export function skipRows(skipped: ReportedSkip[], clipAt = CELL): [string, SkipRow[]][] {
+/** Each skip's row under its group, by action: its ref there, title, action (with how long it waited) and note, which leaves out the closest rule in Needs you; Needs you rows oldest first. */
+export function skipRows(
+  skipped: ReportedSkip[],
+  clipAt = CELL,
+  now = Date.now(),
+): [string, SkipRow[]][] {
   const rank = (s: ReportedSkip) => (s.kind ? ranks.indexOf(s.kind) : ranks.length)
   const note = (s: ReportedSkip) => {
     const reason = needsYouOn(s) ? reasonOf(s).replace(/; closest #.*$/, '') : reasonOf(s)
     return brief(reason.replace((s.kind && kindSays[s.kind]) || '', ''), clipAt)
   }
-  return byGroup(skipped, (s) => groupOf(s.item), rank).map(([group, list]) => [
-    group,
-    list.map((s) => ({
-      skipped: s,
-      ref: refIn(group, s.item),
-      title: s.item.title,
-      action: s.kind ? actions[s.kind] : 'skipped',
-      note: note(s),
-    })),
-  ])
+  const action = (s: ReportedSkip) => {
+    const what = s.kind ? actions[s.kind] : 'skipped'
+    return s.since && needsYouOn(s) ? `${what} ${ageSince(s.since, now)}` : what
+  }
+  return byGroup(skipped.toSorted(oldestFirst), (s) => groupOf(s.item), rank).map(
+    ([group, list]) => [
+      group,
+      list.toSorted(oldestFirst).map((s) => ({
+        skipped: s,
+        ref: refIn(group, s.item),
+        title: s.item.title,
+        action: action(s),
+        note: note(s),
+      })),
+    ],
+  )
 }
 
 /** A skip's reason without the URL its row, or `--why`, already shows. */

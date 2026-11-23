@@ -125,6 +125,8 @@ export interface SkipReason {
   reason: string
   /** The PR it waits on for review: one the item links, the PR awaywork pushed onto, or the item itself; or the item awaywork asked its questions or posted its plan on. */
   url?: string
+  /** When the wait began, as an ISO time, when it's known. */
+  since?: string
 }
 
 /** An item the run made no unit for, and why. */
@@ -232,8 +234,16 @@ export function planRun(input: {
     if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
     if (only.soon && rule.run !== 'soon') continue
     if (only.units && !only.units.includes(id)) continue
-    const skip = ({ kind, reason, url }: SkipReason) =>
-      skipped.push(...items.map((item) => ({ item, kind, reason, ...(url && { url }) })))
+    const skip = ({ kind, reason, url, since }: SkipReason) =>
+      skipped.push(
+        ...items.map((item) => ({
+          item,
+          kind,
+          reason,
+          ...(url && { url }),
+          ...(since && { since }),
+        })),
+      )
     // An approved plan runs as its tasks, so naming its card lifts nothing.
     const named =
       name !== undefined && group.card?.state !== 'approved' && namesChain(id, rule, items, name)
@@ -442,7 +452,7 @@ export function noRuleReason(item: Item, queue: Rule[]): SkipReason {
   const ours = isAwayworkPr(item)
   const kind = ours ? 'waiting_for_review' : 'no_rule'
   const why = ours ? `waiting for review: awaywork PR ${item.url} is open` : 'matched no rule'
-  const url = ours ? { url: item.url } : {}
+  const url = ours ? { url: item.url, since: item.linkedPrs[0]?.headAt } : {}
   if (!closest) return { kind, reason: why, ...url }
   const rule = queue[closest.rule] as Rule
   const failed = describeFailed(rule.where, item, closest.failed)

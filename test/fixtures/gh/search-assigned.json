@@ -44,6 +44,7 @@
                 "isDraft": false,
                 "headRefName": "rate-limits",
                 "headRefOid": "abc1234",
+                "headRef": { "target": { "committedDate": "2026-01-02T03:04:05Z" } },
                 "baseRefName": "main",
                 "baseRef": { "target": { "oid": "def5678" } },
                 "viewerDidAuthor": true,

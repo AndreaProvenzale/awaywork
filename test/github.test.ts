@@ -8,7 +8,7 @@ import type { Ctx, Item, Write } from '#core/types'
 import { type Exec, exec } from '#forge/gh'
 import { githubForge } from '#forge/github'
 import { NOT_YOURS } from '#plan/attempts'
-import { awaitsAnswer, isAwayworkComment, markComment } from '#posts/comments'
+import { isAwayworkComment, markComment, questionsAsked } from '#posts/comments'
 import { footer, footerItems, footerLeft, isOurs } from '#posts/footer'
 import { githubSource } from '#sources/github'
 import { writeItem } from '#sources/index'
@@ -462,6 +462,7 @@ describe('github source', () => {
       url: 'https://github.com/acme/api/pull/1',
       branch: 'rate-limits',
       head: 'abc1234',
+      headAt: '2026-01-02T03:04:05Z',
       into: 'main',
       intoHead: 'def5678',
       ours: false,
@@ -742,7 +743,7 @@ describe('github source', () => {
       ['dev', undefined],
       ['codecov', true],
     ])
-    expect(issue5 && awaitsAnswer(issue5)).toBe(true)
+    expect(issue5 && questionsAsked(issue5)).toBeDefined()
   })
 
   it('reads a long thread back past its last 50 comments, keeping what it read when a page fails', async () => {
@@ -1143,6 +1144,18 @@ describe('github forge', () => {
     expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2, 9, 10])
   })
 
+  it("reads a PR's head commit time", async () => {
+    const headRef = { target: { committedDate: '2026-10-19T10:00:00Z' } }
+    const run = recorded([
+      [
+        /author:@me/,
+        authored({ headRefName: 'eng-12-cache', headRef }, { headRefName: 'eng-12-more' }),
+      ],
+    ])
+    const prs = await githubForge(run).prsFor(fakeItem({ source: 'linear', key: 'ENG-12' }))
+    expect(prs.map((pr) => pr.headAt)).toEqual(['2026-10-19T10:00:00Z', undefined])
+  })
+
   it("reads what awaywork's draft left only while it's a draft, as yours while you edited its body last", async () => {
     const left = { status: 'ask', continued: 0, head: 'abc1234', from: 'def5678' } as const
     const body = `Half.\n\n${footer('r1', [{ source: 'linear', key: 'ENG-12' }], left)}`
@@ -1183,7 +1196,10 @@ describe('github forge', () => {
       isCrossRepository: fork,
     })
     const nodes = [
-      pr(7, 'MERGED', '2026-10-20T10:00:00Z'),
+      {
+        ...pr(7, 'MERGED', '2026-10-20T10:00:00Z'),
+        headRef: { target: { committedDate: '2026-10-19T10:00:00Z' } },
+      },
       pr(8, 'OPEN', null, true),
       pr(9, 'CLOSED', '2026-10-21T10:00:00Z'),
       { ...pr(10, 'OPEN', null), editor: { login: 'dev' } },
@@ -1198,7 +1214,15 @@ describe('github forge', () => {
     const url = (n: number) => `https://github.com/acme/api/pull/${n}`
     const kept = { ...left, items: ['linear:ENG-12'] }
     expect(await githubForge(run).prsOn('acme/api', 'away/eng-12')).toEqual([
-      { number: 7, url: url(7), body, open: false, merged: true, closedAt: '2026-10-20T10:00:00Z' },
+      {
+        number: 7,
+        url: url(7),
+        body,
+        headAt: '2026-10-19T10:00:00Z',
+        open: false,
+        merged: true,
+        closedAt: '2026-10-20T10:00:00Z',
+      },
       {
         number: 9,
         url: url(9),
