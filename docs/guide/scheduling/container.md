@@ -25,9 +25,9 @@ Before the first run:
 
 | File | What it does |
 | --- | --- |
-| `Dockerfile` | Debian with Node 22, git, gh, sudo and tini; awaywork and your providers' CLIs, pinned to the awaywork that wrote it; `away`, the user awaywork runs as, and `awaywork`, the worker user, with the sudoers lines [`isolation: user`](../safety/isolation.md) needs |
-| `compose.yml` | `restart: unless-stopped`, `stop_grace_period: 2m`, `mem_limit: 4g`, volumes for the state dir and Codex's login, each secret your config needs as an env var, `TZ` defaulting to your timezone; `AWAYWORK_REMOTE_TOKEN` and port 7480, exposed to the proxy, for [your laptop](./laptop.md) |
-| `entrypoint.sh` | Fails on an empty `GH_TOKEN`, commits as the token's user (env vars, as the action does), then `exec awaywork watch`, its log on the container's output |
+| `Dockerfile` | Debian with Node 22, git, gh, iptables, sudo and tini; awaywork and your providers' CLIs, pinned to the awaywork that wrote it; `away`, the user awaywork runs as, and `awaywork`, the worker user, with the sudoers lines [`isolation: user`](../safety/isolation.md) needs, and the script that sets the [network wall](../safety/isolation.md#a-worker-user-in-awaywork-s-image) |
+| `compose.yml` | `restart: unless-stopped`, `cap_add: [NET_ADMIN]` for the wall, `stop_grace_period: 2m`, `mem_limit: 4g`, volumes for the state dir and Codex's login, each secret your config needs as an env var, `TZ` defaulting to your timezone; `AWAYWORK_REMOTE_TOKEN` and port 7480, exposed to the proxy, for [your laptop](./laptop.md) |
+| `entrypoint.sh` | Fails on an empty `GH_TOKEN`, commits as the token's user (env vars, as the action does), sets the network wall, then `exec awaywork watch`, its log on the container's output |
 
 Commit and push: that's a deploy. Details:
 
@@ -69,6 +69,7 @@ Keep `.env` out of git. Without `GH_TOKEN`, compose refuses: `required variable 
 ## Living with it
 
 - **Secrets are env vars**, no env file: Coolify passes only what `compose.yml` names, so install lists every secret your config needs as `NAME: ${NAME:-}`. Added one? Run install again.
+- **The network wall** needs `NET_ADMIN`, which `compose.yml` asks for and Coolify's Docker Compose build pack grants. Without it the daemon stays up, `doctor` fails (`the container needs NET_ADMIN for the wall: \`cap_add: [NET_ADMIN]\` in compose.yml`) and every run is refused with the same words. A `compose.yml` from before the wall lacks the line: run install again.
 - **Codex:** install adds `@openai/codex` to the Dockerfile's `PACKAGES`. Log in once into the volume, `docker exec -it <container> codex login --device-auth`; it survives redeploys.
 - **Toolchains** go in the Dockerfile as `RUN` lines at the marked spot, system-wide, since the worker can't enter `/home/away` (`RUN npm install -g pnpm@10`), [your own CLI](../config/providers.md#bring-your-own-cli) too.
 - **Cursor:** no npm package, so install puts [the installer](./actions.md#running-cursor) at that spot as one `RUN`, without `sudo` (the build is root):

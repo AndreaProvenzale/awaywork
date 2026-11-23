@@ -2,7 +2,7 @@ import type { execa } from 'execa'
 import { bin } from '#config/paths'
 import { inImage } from '#core/isolation/container'
 import { contained, type Where, wallUp } from '#core/isolation/index'
-import { inAwayworkImage, sudoArgs } from '#core/isolation/sudo'
+import { sudoArgs } from '#core/isolation/sudo'
 import type { Job, Provider } from '#core/types'
 
 const BWRAP_PROBE = ['--unshare-user', '--unshare-net', '--unshare-pid', '--ro-bind', '/', '/']
@@ -61,14 +61,14 @@ export const sandboxNeeds = (agent: string) =>
 
 /**
  * Why a unit can't run: its agent's shell sandbox can't start here and awaywork's wall doesn't hold, so its shell would
- * reach any host. awaywork's image and `container` keep running open until their walls land; a provider with no sandbox is exempt.
+ * reach any host. `container` keeps running open until its wall lands; a provider with no sandbox is exempt.
  */
 export async function shellRefusal(
   provider: Provider,
   job: Pick<Job, 'dir'>,
   signal?: AbortSignal,
 ): Promise<string | undefined> {
-  if (!provider.startsSandbox || wallUp() || contained() || inAwayworkImage(process.env)) return
+  if (!provider.startsSandbox || wallUp() || contained()) return
   if (await provider.startsSandbox(job, signal)) return
   return `${provider.id}'s shell sandbox can't start here (needs ${sandboxNeeds(provider.id)}) and no network wall holds: install them, or run under isolation: user, whose wall \`awaywork doctor\` shows`
 }

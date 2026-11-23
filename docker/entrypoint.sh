@@ -15,6 +15,9 @@ export GIT_AUTHOR_EMAIL=$user@users.noreply.github.com GIT_COMMITTER_EMAIL=$user
 state=~/.local/state/awaywork
 rm -f "$state"/{run,watch,worker,codex}.lock
 
+# The worker's way out is awaywork's proxy only; without NET_ADMIN the rules fail, the daemon stays up and runs are refused.
+sudo -n /usr/local/sbin/awaywork-wall || echo "network wall not set: add cap_add: [NET_ADMIN] to the container" >&2
+
 # The daemon's log is the container's output, for `docker logs` and Coolify's Logs tab.
 tail -n0 -F ~/.local/state/awaywork/watch.log 2> /dev/null &
 exec awaywork watch

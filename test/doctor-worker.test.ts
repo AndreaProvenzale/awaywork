@@ -52,7 +52,7 @@ it("prints a named profile's wall rules where the wall is missing, as a failure"
   )
 })
 
-it('tells a hosted runner to use the action, and warns in the image', async () => {
+it('tells a hosted runner to use the action, and NET_ADMIN in the image', async () => {
   const { wallCheck } = await doctorOf('default')
   const env = { RUNNER_ENVIRONMENT: 'github-hosted' }
   const hosted = await wallCheck('awaywork', env, async () => 'x')
@@ -60,7 +60,8 @@ it('tells a hosted runner to use the action, and warns in the image', async () =
   expect(hosted.detail).toContain('through its action')
   expect(hosted.detail).not.toContain('iptables')
   const image = await wallCheck('awaywork', { AWAYWORK_IMAGE: '1' }, async () => 'x')
-  expect(image.status).toBe('warn')
+  expect(image.status).toBe('FAIL')
+  expect(image.detail).toContain('cap_add: [NET_ADMIN]')
 })
 
 it('is ok where the wall holds', async () => {

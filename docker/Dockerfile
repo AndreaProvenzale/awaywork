@@ -3,7 +3,7 @@
 FROM node:22-bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends acl ca-certificates curl git procps sudo tini \
+  && apt-get install -y --no-install-recommends acl ca-certificates curl git iptables procps sudo tini \
   && mkdir -p -m 755 /etc/apt/keyrings \
   && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
@@ -32,6 +32,21 @@ RUN useradd --no-create-home --user-group --shell /usr/sbin/nologin awaywork \
 COPY --chmod=440 <<"EOF" /etc/sudoers.d/awaywork
 away ALL=(awaywork) NOPASSWD:SETENV: ALL
 away ALL=(root) NOPASSWD: /usr/bin/chown -R -h -P awaywork\: /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9], /usr/bin/chown -R -h -P 1001\:1001 /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]
+away ALL=(root) NOPASSWD: /usr/local/sbin/awaywork-wall
+EOF
+# The network wall: the entrypoint runs it as root, the only way `away` can (docs/guide/safety/isolation.md). A test keeps these equal to `wallLines`, plus Docker's resolver, which listens on loopback behind a rewritten port.
+COPY --chmod=755 <<"EOF" /usr/local/sbin/awaywork-wall
+#!/usr/bin/env bash
+set -euo pipefail
+iptables -C OUTPUT -m owner --uid-owner awaywork -j REJECT 2> /dev/null || iptables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+iptables -C OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT 2> /dev/null || iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+iptables -C OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT 2> /dev/null || iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+iptables -C OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT 2> /dev/null || iptables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+ip6tables -C OUTPUT -m owner --uid-owner awaywork -j REJECT 2> /dev/null || ip6tables -I OUTPUT -m owner --uid-owner awaywork -j REJECT
+ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT 2> /dev/null || ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -j ACCEPT
+ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT 2> /dev/null || ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p udp --dport 53 -j REJECT
+ip6tables -C OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT 2> /dev/null || ip6tables -I OUTPUT -m owner --uid-owner awaywork -o lo -p tcp --dport 53 -j REJECT
+iptables -C OUTPUT -m owner --uid-owner awaywork -d 127.0.0.11 -j REJECT 2> /dev/null || iptables -I OUTPUT -m owner --uid-owner awaywork -d 127.0.0.11 -j REJECT
 EOF
 # Nothing world-writable to plant in, nor a default ACL that makes it so again.
 RUN visudo -c \

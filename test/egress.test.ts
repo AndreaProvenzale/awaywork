@@ -267,6 +267,14 @@ describe('the wall', () => {
     for (const line of wallLines('awaywork')) expect(script).toContain(`${line}\n`)
   })
 
+  it('keeps the image’s script equal to the rules, as root, and walls Docker’s resolver', () => {
+    const dockerfile = readFileSync('docker/Dockerfile', 'utf8')
+    for (const rule of wallLines('awaywork').filter((l) => l.includes('tables')))
+      expect(dockerfile).toContain(`${rule.replaceAll('sudo ', '')}\n`)
+    expect(dockerfile).toContain('-d 127.0.0.11 -j REJECT\n')
+    expect(readFileSync('docker/compose.yml', 'utf8')).toContain('- NET_ADMIN')
+  })
+
   type Run = NonNullable<Parameters<typeof wallProblem>[1]>
   /** A probe's answers: the first for awaywork's own uid, the second for the worker. */
   const probes = (control: string, worker: string, failed = false) =>
@@ -358,10 +366,12 @@ describe('the wall', () => {
     }
   })
 
-  it('runs open in awaywork’s image where the wall is missing, and refuses everywhere else', async () => {
+  it('refuses in awaywork’s image where the wall is missing, naming NET_ADMIN', async () => {
     useMode(userMode('wall-user'))
     try {
-      await raiseWall({ AWAYWORK_IMAGE: '1' }, async () => 'no rules')
+      await expect(raiseWall({ AWAYWORK_IMAGE: '1' }, async () => 'no rules')).rejects.toThrow(
+        /no rules.*cap_add: \[NET_ADMIN\]/,
+      )
       expect(wallUp()).toBe(false)
       await expect(isolateWalled('none', {}, async () => 'no rules')).resolves.toBeUndefined()
     } finally {
@@ -412,11 +422,11 @@ describe('shellRefusal', () => {
     }
   })
 
-  it('exempts awaywork’s image', async () => {
+  it('refuses in awaywork’s image too', async () => {
     const before = process.env.AWAYWORK_IMAGE
     process.env.AWAYWORK_IMAGE = '1'
     try {
-      expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toBeUndefined()
+      expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toContain("can't start here")
     } finally {
       if (before === undefined) delete process.env.AWAYWORK_IMAGE
       else process.env.AWAYWORK_IMAGE = before

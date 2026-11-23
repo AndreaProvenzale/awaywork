@@ -3,6 +3,9 @@ services:
   awaywork:
     build: .
     restart: unless-stopped
+    # The wall that leaves the worker user only awaywork's proxy: iptables rules, set by the entrypoint.
+    cap_add:
+      - NET_ADMIN
     # The 2 minutes `schedule install` gives watch to stop its runs; Docker's default is 10s.
     stop_grace_period: 2m
     # The watchdog starts no unit under 1.5 GB free.
