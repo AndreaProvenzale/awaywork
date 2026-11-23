@@ -89,7 +89,7 @@ export const holdingWorker = <T>(
   options: { signal?: AbortSignal } = {},
 ): Promise<T | undefined> => mode.hold(run, log, options)
 
-/** Under a worker user, probes the wall, again at each call, and starts the proxy. Awaywork's image has no wall yet and runs open; elsewhere a worker without one is refused. */
+/** Under a worker user, probes the wall, again at each call, and starts the proxy. A worker without one is refused. */
 export const raiseWall = (env: NodeJS.ProcessEnv, holds?: Holds) => mode.raiseWall(env, holds)
 
 /** Sets how every later launch runs: as the worker user, in a container once docker answers, or as the developer. */

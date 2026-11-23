@@ -367,6 +367,29 @@ describe('plan views', () => {
     expect(row(plan.skipped)).toMatchObject({ action: 'read logs', note: reason })
   })
 
+  it('lists Needs you oldest first with how long each waited, the undated after', () => {
+    const now = Date.parse('2026-01-10T12:00:00Z')
+    const waiting = (n: number, since?: string) => ({
+      item: githubPr(n),
+      kind: 'waiting_for_review' as const,
+      reason: 'r',
+      ...(since && { since }),
+    })
+    const skipped = [
+      waiting(1),
+      waiting(2, '2026-01-10T11:20:00Z'),
+      waiting(3, '2026-01-05T12:00:00Z'),
+      waiting(4, '2026-01-10T07:00:00Z'),
+    ]
+    const rows = skipRows(skipped, undefined, now).flatMap(([, list]) => list)
+    expect(rows.map((r) => [r.ref, r.action])).toEqual([
+      ['#3', 'review PR 5d'],
+      ['#4', 'review PR 5h'],
+      ['#2', 'review PR 40m'],
+      ['#1', 'review PR'],
+    ])
+  })
+
   it('names the PR awaywork pushed onto without its URL, and with it under --why', () => {
     const plan = acmePlan()
     const url = 'https://github.com/acme/api/pull/31'
@@ -681,6 +704,24 @@ describe('report views', () => {
         github:acme/api#1       PR 1
         github:acme-labs/api#1  Labs PR 1"
     `)
+  })
+
+  it('lists report.md Needs you oldest first with its age at the run start', () => {
+    const run = { ...acmeRun(), startedAt: new Date('2026-10-15T22:00:00Z') }
+    const needs = { kind: 'waiting_for_review' as const, reason: 'r' }
+    const wait = (n: number, since?: string) => ({
+      ...needs,
+      item: githubPr(n),
+      ...(since && { since }),
+    })
+    run.plan.skipped = [wait(8), wait(9, '2026-10-14T22:00:00Z'), wait(10, '2026-10-10T22:00:00Z')]
+    expect(formatRun(run)).toContain('review PR 5d')
+    const lines = formatReport(run).split('\n')
+    expect(lines.filter((l) => l.startsWith('- [api#'))).toEqual([
+      '- [api#10 PR 10](https://github.com/acme/api/pull/10): r (5d)',
+      '- [api#9 PR 9](https://github.com/acme/api/pull/9): r (1d)',
+      '- [api#8 PR 8](https://github.com/acme/api/pull/8): r',
+    ])
   })
 
   it('writes report.md with a summary per unit, what needs you, skips by kind and reports folded, headings demoted', () => {

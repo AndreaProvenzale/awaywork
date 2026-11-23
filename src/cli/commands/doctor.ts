@@ -26,7 +26,7 @@ import { lowerContainerWall, raiseContainerWall } from '#core/isolation/containe
 import { sharedEgress } from '#core/isolation/egress'
 import { inAwayworkImage, WORKER } from '#core/isolation/sudo'
 import { MAX_USER, sudoersLines, workerFor } from '#core/isolation/user'
-import { wallLines, wallProblem } from '#core/isolation/user-wall'
+import { wallFix, wallLines, wallProblem } from '#core/isolation/user-wall'
 import type { Ctx, Provider, Rule } from '#core/types'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '#forge/bitbucket'
 import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
@@ -189,19 +189,18 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
         facts.filter(Boolean).join(', '),
       )
     const starts = { claude: sandboxStarts, codex: codexSandboxStarts }[id]
-    const exempt = inAwayworkImage(process.env)
     const wall = boxed
       ? isolation.some((c) => c.what === 'network wall' && c.status === 'ok')
-      : asWorker && !exempt && !(await wallProblem(WORKER))
+      : asWorker && !(await wallProblem(WORKER))
     if (starts && !isolation.some((c) => c.status === 'FAIL')) {
       const sandbox = await shellSandbox(id, starts, config, boxed, asWorker)
-      report(...sandboxCheck(id, sandbox, exempt ? 'open' : wall ? 'wall' : 'refused'))
+      report(...sandboxCheck(id, sandbox, wall ? 'wall' : 'refused'))
     }
     if (id === 'cursor' && !keyless && !isolation.some((c) => c.status === 'FAIL')) {
       if (wall) report('warn', 'cursor sandbox', CURSOR_BEHIND_WALL)
       else {
         const sandbox = await cursorSandbox(config, boxed, asWorker, provider.bin)
-        report(...sandboxCheck(id, sandbox, exempt ? 'open' : 'refused'))
+        report(...sandboxCheck(id, sandbox, 'refused'))
       }
     }
     if (!keyless && asWorker && !provider.login && unset.length > 0)
@@ -401,18 +400,16 @@ const CURSOR_BEHIND_WALL =
 
 /**
  * An agent's shell sandbox as a check. Where it can't start, its units are refused (`refused`, a failure), or run with the
- * shell behind awaywork's wall (`wall`), or open, in awaywork's image, whose wall is yet to come (`open`).
+ * shell behind awaywork's wall (`wall`).
  */
 export function sandboxCheck(
   agent: string,
   down: string | undefined,
-  mode: 'refused' | 'wall' | 'open',
+  mode: 'refused' | 'wall',
 ): [Status, string, string] {
   const what = `${agent} sandbox`
   if (!down) return ['ok', what, `${agent === 'cursor' ? 'its ' : ''}shell runs offline`]
   const name = `${agent[0]?.toUpperCase()}${agent.slice(1)}`
-  if (mode === 'open')
-    return ['warn', what, `${down}: ${name}'s shell runs unsandboxed, with network access`]
   if (mode === 'wall')
     return [
       'warn',
@@ -610,7 +607,7 @@ export async function isolationChecks(
   return checks
 }
 
-/** Whether the kernel leaves the worker only loopback, where the proxy is; awaywork's image has no such wall yet. */
+/** Whether the kernel leaves the worker only loopback, where the proxy is. */
 export async function wallCheck(
   worker: string,
   env: NodeJS.ProcessEnv,
@@ -624,20 +621,15 @@ export async function wallCheck(
       what,
       detail: `${worker} reaches only loopback: setup, the checks and the agent go through awaywork's proxy, to the hosts of their phase`,
     }
-  if (inAwayworkImage(env))
-    return {
-      status: 'warn',
-      what,
-      detail: 'none in this image yet: setup, the checks and MCP servers reach any host',
-    }
-  const how =
-    env.RUNNER_ENVIRONMENT === 'github-hosted'
+  const how = inAwayworkImage(env)
+    ? wallFix(problem, env)
+    : env.RUNNER_ENVIRONMENT === 'github-hosted'
       ? 'run awaywork through its action, which sets it up'
       : `run these once as root, and keep them past a reboot (iptables-persistent saves them):\n    ${wallLines(worker).join('\n    ')}`
   return {
     status: 'FAIL',
     what,
-    detail: `${worker} isn't walled from the network (${problem}), so setup, the checks and MCP servers reach any host; ${how}`,
+    detail: `${worker} isn't walled from the network (${problem}), so setup, the checks and MCP servers reach any host${how ? `; ${how}` : ''}`,
   }
 }
 

@@ -39,6 +39,9 @@ Commands:
                             items
   unskip <key>              let awaywork pick up a skipped item (source:key)
                             again
+  pause [options]           hold scheduled runs (windows, run: soon, watch) on
+                            this machine until a date
+  resume                    let scheduled runs start again after awaywork pause
   approve <key> [notes...]  approve the plan or result an item (source:key, e.g.
                             github:acme/api#5) waits on, replying approve on it
                             with the notes below
@@ -211,6 +214,29 @@ Options:
 Usage: awaywork unskip [options] <key>
 
 let awaywork pick up a skipped item (source:key) again
+
+Options:
+  -h, --help  display help for command
+```
+
+## awaywork pause
+
+```text
+Usage: awaywork pause [options]
+
+hold scheduled runs (windows, run: soon, watch) on this machine until a date
+
+Options:
+  --until <date>  pause until this local date (YYYY-MM-DD) starts
+  -h, --help      display help for command
+```
+
+## awaywork resume
+
+```text
+Usage: awaywork resume [options]
+
+let scheduled runs start again after awaywork pause
 
 Options:
   -h, --help  display help for command

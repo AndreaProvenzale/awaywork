@@ -1189,7 +1189,7 @@ queue:
 
   it('skips a feature whose awaywork PR waits for review, whatever item links it', () => {
     const ours = githubPr(9, { checks: 'failing', ours: true })
-    const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true }
+    const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true, headAt: '2026-01-05T12:00:00Z' }
     const task = asanaTask(4, {}, { linkedPrs: [pr] })
     const yaml =
       'providers: [claude: {}]\nrepos: { acme/*: {} }\nsources: { github: {}, asana: { workspace: "1" } }\nqueue: [{ skill: fix }]'
@@ -1208,6 +1208,10 @@ queue:
     expect(result.skipped.map((s) => [s.item.key, s.url])).toEqual([
       ['acme/api#9', 'https://github.com/acme/api/pull/9'],
       ['T-4', 'https://github.com/acme/api/pull/9'],
+    ])
+    expect(result.skipped.map((s) => s.since)).toEqual([
+      '2026-01-05T12:00:00Z',
+      '2026-01-05T12:00:00Z',
     ])
   })
 
@@ -1237,6 +1241,11 @@ queue: [{ skill: fix, deliver: push }]`
       ],
     ])
     expect(held.skipped[0]?.url).toBe('https://github.com/acme/api/pull/1')
+    const timed = (n: number) => {
+      const item = at('def5678', pushedAt, n)
+      return { ...item, linkedPrs: [{ ...(item.linkedPrs[0] as PrRef), headAt: pushedAt }] }
+    }
+    expect(plan(yaml, [timed(1)], {}, {}, attempts).skipped[0]?.since).toBe(pushedAt)
     const skipped = planRun({
       setup: setupOf(parseConfig(yaml), { builtin: builtinSkills }),
       items: [at('def5678', pushedAt)],
@@ -1622,8 +1631,11 @@ queue:
         url: 'https://example.com/1',
       },
     ])
+    expect(waiting.skipped[0]?.since).toBe(asked.at)
     expect(needsYou.waiting_for_answer).toBe(true)
-    expect(formatPlan(waiting)).toMatch(/ {4}#5 .* answer question\n/)
+    expect(formatPlan(waiting, [], false, Date.parse('2026-01-03T00:00:00Z'))).toMatch(
+      / {4}#5 .* answer question 2d\n/,
+    )
   })
 
   it('runs again once a trusted comment replies after the questions', () => {
@@ -1779,7 +1791,8 @@ queue:
       },
     ])
     expect(needsYou.waiting_for_approval).toBe(true)
-    expect(formatPlan(waiting)).toMatch(/ {4}#5 .* approve\n/)
+    expect(waiting.skipped[0]?.since).toBe(at(1))
+    expect(formatPlan(waiting, [], false, Date.parse(at(3)))).toMatch(/ {4}#5 .* approve 2d\n/)
   })
 
   it('fans an approved plan out into tasks, the card skipped with their states', () => {
@@ -1959,8 +1972,10 @@ describe('plan --json', () => {
 
   it('marks the skips that need you', () => {
     const result = plan(example, [githubPr(3)], { claude: week(0.36), codex: null })
-    const waiting = { item: githubPr(4), kind: 'waiting_for_review' as const, reason: 'r' }
+    const since = '2026-01-01T00:00:00Z'
+    const waiting = { item: githubPr(4), kind: 'waiting_for_review' as const, reason: 'r', since }
     const json = JSON.parse(planJson({ ...result, skipped: [...result.skipped, waiting] }))
+    expect(json.skipped[1].since).toBe(since)
     expect(json.skipped[0]).toMatchObject({ kind: 'no_rule' })
     expect(json.skipped[0]).not.toHaveProperty('needsYou')
     expect(json.skipped[1]).toMatchObject({ kind: 'waiting_for_review', needsYou: true })

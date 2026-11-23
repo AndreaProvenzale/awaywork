@@ -97,7 +97,7 @@ An item goes to the first rule it matches; a later rule that matches it too show
 
 ## Why a unit waits
 
-`awaywork plan` says why a unit makes no work this run:
+`awaywork plan` says why a unit makes no work this run. Needs you lists the oldest wait first, with how long each has waited (`40m`, `5h`, `5d`):
 
 - **Waiting for review:** it links an open awaywork PR. awaywork doesn't add to work you haven't read.
 - **Waiting for your answer:** the item's newest comment is awaywork's [questions](./workflows/questions.md#questions).
@@ -107,6 +107,8 @@ An item goes to the first rule it matches; a later rule that matches it too show
 - **Skipped by you:** `awaywork skip <source:key>` (e.g. `github:acme/api#5`) holds an item, and any unit it joins, until `awaywork unskip` or the `--until` date. `plan --skipped skipped_by_you` lists it with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`.
 
 `run --unit` runs a unit anyway, unchanged, skipped or given up; a given-up one runs as its one try.
+
+`awaywork pause --until 2026-11-24` holds the scheduled runs on this machine until that day starts, for a holiday: the windows, `run: soon` and `awaywork watch`, and `run --scheduled` says `paused until 2026-11-24 (awaywork resume to undo), nothing to do`. `--until` is required, so nothing stays paused by mistake (`windows: []` is the open-ended way). A run already going carries on, and a hand `awaywork run`, `run --unit` and the /away pane's start now still run. `plan`, `report` and `schedule status` show the pause; `awaywork resume` ends it, and the first run after it may spend to catch up, `limits.units_max_open` bounding what lands. The pause lives in the profile's state dir (`~/.local/state/awaywork/pause.json` for the default one), so it holds that profile only; it isn't a config key, since a team's shared config can't hold one person's holiday.
 
 Details:
 
@@ -139,7 +141,7 @@ Started api#1 as run 20261109-095329; awaywork report 20261109-095329 shows it o
 
 To stop a detached unit, kill the pid in `~/.local/state/awaywork/run.lock`: it ends as Ctrl-C would, report included.
 
-- A unit you name goes past `limits.units`, `limits.units_per_repo` and its rule's `units`; the rest of the plan stays capped.
+- A unit you name goes past `limits.units`, `limits.units_per_repo`, `limits.units_max_open` and its rule's `units` and `units_max_open`; the rest of the plan stays capped.
 - A step of a rule's `then` runs its whole chain, from the first step.
 - It plans first, so a unit that can't start exits 1 saying why: not in the plan, the run lock taken, or no provider.
 - An item no rule takes needs a skill: [`--skill`](./skills.md#run-one-on-an-item-no-rule-takes), detached too.

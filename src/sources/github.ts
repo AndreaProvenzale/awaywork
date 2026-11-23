@@ -5,7 +5,7 @@ import { trusts } from '#core/trust'
 import type { Item, Thread as ItemThread, PrRef, Source, ThreadHost } from '#core/types'
 import { type Check, checkContexts, checkResult } from '#forge/checks'
 import { type Exec, exec, graphql, onHost } from '#forge/gh'
-import { EDITED, type Edited, notYours } from '#forge/github'
+import { EDITED, type Edited, HEAD_AT, type HeadRef, headAt, notYours } from '#forge/github'
 import { repoListed } from '#plan/repos'
 import { commentMarkdown } from '#posts/comments'
 import { isOurs, leftIn, threadBody, threadOf } from '#posts/footer'
@@ -59,11 +59,11 @@ const searchQuery = `query($q: String!, $first: Int!, $after: String) {
       __typename
       ... on Issue { ${common} viewerDidAuthor
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url isDraft headRefName headRefOid baseRefName baseRef { target { oid } } isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
+          nodes { number url isDraft headRefName headRefOid ${HEAD_AT} baseRefName baseRef { target { oid } } isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
-        isDraft headRefName headRefOid baseRefName baseRef { target { oid } } isCrossRepository viewerDidAuthor editor { login }
+        isDraft headRefName headRefOid ${HEAD_AT} baseRefName baseRef { target { oid } } isCrossRepository viewerDidAuthor editor { login }
         additions deletions mergeable
         files(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { path } }
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
@@ -159,6 +159,7 @@ type PrLink = Edited & {
   isDraft: boolean
   headRefName: string
   headRefOid: string
+  headRef?: HeadRef
   baseRefName?: string
   baseRef?: { target: { oid: string } | null } | null
   isCrossRepository: boolean
@@ -684,6 +685,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   url: pr.url,
   branch: pr.headRefName,
   head: pr.headRefOid,
+  ...headAt(pr),
   ...(pr.baseRefName && { into: pr.baseRefName }),
   ...(pr.baseRef?.target && { intoHead: pr.baseRef.target.oid }),
   ours: isOurs(pr.body),

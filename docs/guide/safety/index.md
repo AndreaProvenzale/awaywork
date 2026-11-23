@@ -150,7 +150,7 @@ The classic token `schedule install` asks for reaches every repo you can; a dedi
 
 ## Network hosts
 
-The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), and under `isolation: user` or `container` so do setup, the checks, the agent CLI and MCP servers, through awaywork's proxy and a wall: [a kernel one under `user`](./isolation.md#the-network-under-user), [an internal Docker network in a container](./isolation.md#the-network-in-a-container). A steered agent can send what it reads to any host listed, the vendor's, a registry or GitHub, and `*` reopens it. Not on an untrusted author's PR or issue. Under `none` a unit whose agent's sandbox can't start is skipped; in awaywork's image, setup, checks and MCP servers still reach any host.
+The agent's shell reaches only the hosts [`network`](../config/repos.md) lists (Claude's, Codex's and Cursor's), and under `isolation: user` or `container` so do setup, the checks, the agent CLI and MCP servers, through awaywork's proxy and a wall: [a kernel one under `user`](./isolation.md#the-network-under-user), [an internal Docker network in a container](./isolation.md#the-network-in-a-container). A steered agent can send what it reads to any host listed, the vendor's, a registry or GitHub, and `*` reopens it. Not on an untrusted author's PR or issue. Under `none` a unit whose agent's sandbox can't start is skipped. The image holds the wall like `user`, and refuses to run without it.
 
 ## Writable paths
 
@@ -181,7 +181,7 @@ In GitHub Actions your credentials are the control repo's secrets. The workflow 
 `AWAYWORK_REMOTE_TOKEN` lets your laptop [reach the container's daemon](../scheduling/laptop.md). Whoever has it and the domain gets:
 
 - **Reads:** `report`, `plan`, `stats`, `sources`, `doctor`, `schedule status`: your items' text, reports and the box's paths. `sources <id>` takes any built-in source, configured or not, so it shows what the box's credentials see (login and orgs; workspaces, teams, projects, statuses). Configured secrets are masked.
-- **A few writes, inside the usual guardrails:** `skip`, `unskip`, `approve` with notes (marking it, or replying `approve <notes>`, marked as awaywork's, on its plan), and `run --unit` of an item a rule already takes. Nothing a run couldn't do on your items.
+- **A few writes, inside the usual guardrails:** `skip`, `unskip`, `pause`, `resume`, `approve` with notes (marking it, or replying `approve <notes>`, marked as awaywork's, on its plan), and `run --unit` of an item a rule already takes. Nothing a run couldn't do on your items.
 - **Nothing else:** an allowlist of commands and flags, never a shell; arguments are plain text (`x; touch /tmp/pwned` is just a missing key). Always its own config: `--config` or `-c` is refused anywhere, a flag's value included; no cwd or env from the request; `report`'s run id must be in its runs dir. So no `init`, `config`, `schedule install` or `remove`, no full `run`, no env or credentials: `GH_TOKEN` and the agents' logins stay in the container.
 
 The daemon blanks it before anything starts, so no agent, setup, check or spawned command gets it. Under `isolation: user`, which the image always uses, they can't reach it. Under `none` they run as the daemon's user and can read its env (`/proc/<pid>/environ`), like your other secrets ([Not a sandbox](./isolation.md#not-a-sandbox)). From inside the image:

@@ -9,7 +9,17 @@ import { latestResult, planState } from '#tasks/plan-file'
 import { globToRegExp } from '#util/glob'
 import type { Attempts } from './attempts'
 import { chainUnits, landing } from './chain'
-import { type Group, holdsOn, openedElsewhere, postsOn, refusal, stackTarget } from './holds'
+import {
+  type Group,
+  holdsOn,
+  landsOnOpen,
+  openedElsewhere,
+  openUrl,
+  postsOn,
+  refusal,
+  stackTarget,
+  waits,
+} from './holds'
 import {
   closestRule,
   dedupe,
@@ -125,6 +135,8 @@ export interface SkipReason {
   reason: string
   /** The PR it waits on for review: one the item links, the PR awaywork pushed onto, or the item itself; or the item awaywork asked its questions or posted its plan on. */
   url?: string
+  /** When the wait began, as an ISO time, when it's known. */
+  since?: string
 }
 
 /** An item the run made no unit for, and why. */
@@ -213,7 +225,6 @@ export function planRun(input: {
       .map((item) => ({ item, ...noRuleReason(item, queue) })),
   ]
   const units: PlannedUnit[] = []
-  const caps: Caps = { routed: {}, perRepo: {}, perRule: {}, counted: 0 }
   const run: PlanRun = {
     ...setup,
     allowances,
@@ -226,14 +237,55 @@ export function planRun(input: {
   // A post that waits holds its card for its rule only: the card's linked items rank on their own.
   const waiting = (e: Ranked) => waitsOn(rules[e.rule] as Rule, e.item)
   const takenHere = [...ranked, ...picked.map((item) => ({ item, rule: queue.length }))]
-  for (const found of inBlocks(dedupe(takenHere, waiting), candidates)) {
+  const blocks = inBlocks(dedupe(takenHere, waiting), candidates)
+  const caps: Caps = {
+    routed: {},
+    perRepo: {},
+    perRule: {},
+    counted: 0,
+    open: { total: new Set(), perRule: {} },
+  }
+  const linked = new Set<string>()
+  const link = (item: Item) => {
+    for (const pr of [...item.linkedPrs, ...Object.values(item.task?.parent.taskPrs ?? {})])
+      linked.add(pr.url)
+  }
+  for (const found of blocks) {
+    for (const { item } of found) link(item)
+    const group = readGroup(run, rules, found, [], waiting)
+    const url = openUrl(group, holdsOn(run, group, []))
+    if (url) markOpen(caps, group.ruleIndex, openKey(group.lead, url))
+  }
+  for (const { item, kind } of expanded.skipped)
+    if (item.task && waits.includes(kind) && ruleFor(queue, item) >= 0) {
+      link(item)
+      markOpen(caps, ruleFor(queue, item), openKey(item, ''))
+    }
+  for (const { task } of unmatched) {
+    const prs = Object.values(task?.parent.taskPrs ?? {}).filter(
+      (pr) => pr.state === 'open' && !linked.has(pr.url),
+    )
+    for (const pr of prs) linked.add(pr.url)
+    if (task && prs.length) caps.open.total.add(task.parent.url)
+  }
+  for (const item of unmatched.filter(isAwayworkPr))
+    if (!linked.has(item.url)) caps.open.total.add(item.url)
+  for (const found of blocks) {
     const group = readGroup(run, rules, found, units, waiting)
     const { items, lead, rule, ruleIndex, id, ours, draft, prs } = group
     if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
     if (only.soon && rule.run !== 'soon') continue
     if (only.units && !only.units.includes(id)) continue
-    const skip = ({ kind, reason, url }: SkipReason) =>
-      skipped.push(...items.map((item) => ({ item, kind, reason, ...(url && { url }) })))
+    const skip = ({ kind, reason, url, since }: SkipReason) =>
+      skipped.push(
+        ...items.map((item) => ({
+          item,
+          kind,
+          reason,
+          ...(url && { url }),
+          ...(since && { since }),
+        })),
+      )
     // An approved plan runs as its tasks, so naming its card lifts nothing.
     const named =
       name !== undefined && group.card?.state !== 'approved' && namesChain(id, rule, items, name)
@@ -259,14 +311,18 @@ export function planRun(input: {
       skip(refused)
       continue
     }
-    const capped = overCap(caps, run, group, repo)
+    const key = openKey(lead, openUrl(group, held) ?? id)
+    const capped = overCap(caps, run, group, repo, key)
     if (capped && !named) {
       skip({ kind: 'over_cap', reason: capped })
       continue
     }
     const chain = chainUnits(run, group, at, caps.routed)
     units.push(...chain.units)
-    if (chain.counts && !capped && !lifted) take(caps, repo, ruleIndex)
+    if (chain.counts && !capped && !lifted) {
+      take(caps, repo, ruleIndex)
+      if (leavesOpen(chain.units)) markOpen(caps, ruleIndex, key)
+    }
   }
   return { queue, units, skipped, allowances }
 }
@@ -371,10 +427,33 @@ interface Caps {
   perRepo: Record<string, number>
   perRule: Record<number, number>
   counted: number
+  /** What's open, once each by the URL you'd open or, for tasks, by card: standing, then taken this run. */
+  open: { total: Set<string>; perRule: Record<number, Set<string>> }
+}
+
+/** A unit counts once toward `units_max_open`: a card for all its tasks, else the URL left open, else the unit itself. */
+const openKey = ({ task }: Item, url: string) =>
+  task ? `${task.parent.source}:${task.parent.key}` : url
+
+/** Whether a chain opens a PR or pushes, or reports and waits or may: a plain report or a pending review leaves nothing open. */
+const leavesOpen = (units: PlannedUnit[]) =>
+  units.some(
+    ({ unit }) => unit.waits !== undefined || !['report', 'pending_review'].includes(unit.deliver),
+  )
+
+function markOpen(caps: Caps, ruleIndex: number, key: string) {
+  caps.open.total.add(key)
+  caps.open.perRule[ruleIndex] = (caps.open.perRule[ruleIndex] ?? new Set()).add(key)
 }
 
 /** The first cap a chain of the rule in the repo would go over, as why it's skipped. */
-function overCap(caps: Caps, run: PlanRun, group: Group, repo: string): string | undefined {
+function overCap(
+  caps: Caps,
+  run: PlanRun,
+  group: Group,
+  repo: string,
+  key: string,
+): string | undefined {
   const { config } = run
   const { rule, ruleIndex } = group
   const cap = [
@@ -385,8 +464,28 @@ function overCap(caps: Caps, run: PlanRun, group: Group, repo: string): string |
       count: caps.perRepo[repo] ?? 0,
     },
     { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: caps.perRule[ruleIndex] ?? 0 },
+    ...(landsOnOpen(group)
+      ? []
+      : openCaps(caps, config.limits.units_max_open, rule, ruleIndex, key)),
   ].find((c) => c.max !== undefined && c.count >= c.max)
   return cap && `over the cap: ${cap.name} is ${cap.max}`
+}
+
+/** The open caps a unit with this key would add to: not one whose count already holds the key, as a card's later tasks. */
+function openCaps(
+  caps: Caps,
+  total: number | undefined,
+  rule: Rule,
+  ruleIndex: number,
+  key: string,
+) {
+  const own = caps.open.perRule[ruleIndex] ?? new Set()
+  return [
+    { name: 'limits.units_max_open', max: total, set: caps.open.total },
+    { name: `rule #${ruleIndex + 1} units_max_open`, max: rule.units_max_open, set: own },
+  ]
+    .filter((c) => !c.set.has(key))
+    .map(({ name, max, set }) => ({ name, max, count: set.size }))
 }
 
 function take(caps: Caps, repo: string, ruleIndex: number) {
@@ -442,7 +541,7 @@ export function noRuleReason(item: Item, queue: Rule[]): SkipReason {
   const ours = isAwayworkPr(item)
   const kind = ours ? 'waiting_for_review' : 'no_rule'
   const why = ours ? `waiting for review: awaywork PR ${item.url} is open` : 'matched no rule'
-  const url = ours ? { url: item.url } : {}
+  const url = ours ? { url: item.url, since: item.linkedPrs[0]?.headAt } : {}
   if (!closest) return { kind, reason: why, ...url }
   const rule = queue[closest.rule] as Rule
   const failed = describeFailed(rule.where, item, closest.failed)

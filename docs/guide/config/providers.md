@@ -21,10 +21,12 @@ Pacing follows the clock, not the number of windows. A run may spend up to where
 Limits cap what you'd have to review, per run and for every provider. None is set by default:
 
 ```yaml
-limits: { units: 8, units_per_repo: 3, unit_minutes: 90 }
+limits: { units: 8, units_per_repo: 3, units_max_open: 6, unit_minutes: 90 }
 ```
 
 Units past a cap are skipped in queue order, the cap named in `awaywork plan` and the report. The keys are in the [reference](../../reference/config.md#limits).
+
+`units_max_open` caps what's still waiting on you rather than what one run starts: awaywork's open PRs, its questions, and the plans and results that wait for your answer, each counted once. A new unit is skipped while that many are open, however many runs it takes you to review them. A rule can set its own, see [Open units](./queue-rules.md#open-units).
 
 Details:
 

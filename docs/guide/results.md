@@ -74,6 +74,20 @@ The command gets both events, so filter as above. `secrets` names the env vars i
 
 There are no built-in integrations. A failure or a run over a minute is logged (`notify failed for acme-api-1: Command failed with exit code 3: ...`) and the run still succeeds; anything left in the background is stopped. Recipes, ntfy, Slack and Notion among them, are in [Where results go](#examples).
 
+### Nudge on a wait older than 3 days
+
+A wait in `report.json` carries `since`, when it began, if awaywork can tell. awaywork posts no reminders itself; a `run` hook can:
+
+```yaml
+notify:                         # ntfy, waits older than 3 days
+  command: |
+    [ "$AWAYWORK_EVENT" = run ] || exit 0
+    late=$(jq -r 'now as $now | .plan.skipped[] | select(.needsYou and .since and $now - (.since | sub("\\.[0-9]+"; "") | fromdate) > 3 * 86400) | "\(.item.key) \(.reason)"' "$(dirname "$AWAYWORK_REPORT")/report.json")
+    [ -n "$late" ] || exit 0
+    curl -sf -H "Title: awaywork waits on you" -d "$late" "https://ntfy.sh/$NTFY_TOPIC"
+  secrets: [NTFY_TOPIC]
+```
+
 ### PR labels, reviewers and ready for review
 
 Ready for review is [`deliver: pr`](./config/queue-rules.md). Otherwise a PR gets the agent's title and body, no labels or reviewers, into the base awaywork picked. `gh` in the hook adds the rest:

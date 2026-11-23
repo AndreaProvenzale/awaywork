@@ -46,7 +46,7 @@ It commits as the token's user through env, not git config, appends the morning 
 
 ## On the runner
 
-- **No state on a hosted runner:** no attempts, skips or earlier reports, so unchanged items run again, none is given up on, your local `awaywork skip` doesn't reach it, and a chain starts without the last report. Waiting [questions](../workflows/questions.md#questions) and [posts](../workflows/posts.md#posts-that-wait) still wait, read off the item, and `awaywork approve` replies there.
+- **No state on a hosted runner:** no attempts, skips or earlier reports, so unchanged items run again, none is given up on, your local `awaywork skip` and `awaywork pause` don't reach it (to hold it, `gh workflow disable awaywork` and `gh workflow enable awaywork` later; unlike the pause, that also blocks `gh workflow run awaywork -f unit=…`), and a chain starts without the last report. Waiting [questions](../workflows/questions.md#questions) and [posts](../workflows/posts.md#posts-that-wait) still wait, read off the item, and `awaywork approve` replies there.
 - **No push hold:** without the head a [`deliver: push`](../config/chains.md#push) left, the rule pushes again every run its `where` holds.
 - **A self-hosted runner** keeps its user's `~/.local/state/awaywork`, as on your machine.
 - **MCP servers and toolchains:** a stdio [MCP server](../config/mcp.md)'s `command` must exist on the runner (`npx` and `node` do). On a hosted runner it runs as the worker, who can't enter the runner's home, so a script in your checkout won't start; install packages, pnpm included, with the action's `packages`, not a setup action that installs into the home (`pnpm/action-setup` does). HTTP servers must be reachable from GitHub.

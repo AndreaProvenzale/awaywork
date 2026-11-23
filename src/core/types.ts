@@ -15,6 +15,8 @@ export interface PrRef {
   branch: string
   /** Its branch's head commit, when the source reads it. */
   head?: string
+  /** When that head commit was made, as an ISO time, when the source reads it. */
+  headAt?: string
   /** The branch it merges into, and that branch's head commit, when the source reads them. */
   into?: string
   intoHead?: string
@@ -358,6 +360,8 @@ export interface BranchPr {
   body: string
   /** Its head commit, when the forge says. */
   head?: string
+  /** When that head commit was made, when the forge says. */
+  headAt?: string
   open: boolean
   merged: boolean
   /** On an open awaywork draft for a later run: what its footer says it left. */
@@ -439,6 +443,7 @@ export interface Rule extends Step {
   where: Where
   order?: Order
   units?: number
+  units_max_open?: number
   /** A `deliver: plan` rule's: at most this many tasks in its plan; unset, 8. */
   plan_tasks?: number
   /** Steps run in turn after the rule's unit, in its clone; the chain publishes once, when it ends. */

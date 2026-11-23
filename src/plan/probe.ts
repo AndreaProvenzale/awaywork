@@ -1,6 +1,7 @@
 import { attemptsPath, skipsPath } from '#config/paths'
 import type { Config } from '#config/schema'
 import { readSetup } from '#config/skills'
+import { inAwayworkImage } from '#core/isolation/sudo'
 import type { Ctx, Forge, Item, Rule, Source } from '#core/types'
 import { forgeFor } from '#forge/index'
 import { resolveTeams } from '#forge/teams'
@@ -101,6 +102,7 @@ export async function probeAndPlan(
     }
     const refused =
       config.isolation === 'none' &&
+      !inAwayworkImage(process.env) &&
       provider &&
       (await shellRefusal(provider, { dir: process.cwd() }))
     if (refused) warnings.push(`${p.id}: its units are skipped: ${refused}`)

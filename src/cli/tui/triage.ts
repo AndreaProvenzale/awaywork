@@ -126,8 +126,13 @@ const nothing =
   'Nothing to run and nothing skipped; awaywork sources lists what your sources can see'
 
 /** Skips under a heading per repo or project, by action, their titles in line within each group. */
-function skipGroups(plan: RunReport['plan'], skipped: ReportedSkip[], id: string): Row[] {
-  return skipRows(skipped, whole).map(([group, list], g) => {
+function skipGroups(
+  plan: RunReport['plan'],
+  skipped: ReportedSkip[],
+  id: string,
+  now: number,
+): Row[] {
+  return skipRows(skipped, whole, now).map(([group, list], g) => {
     const refs = Math.max(...list.map((r) => width(r.ref)))
     return {
       id: `${id}/${group}`,
@@ -143,11 +148,12 @@ function sectionsOf(
   warnings: string[],
   units: Row[],
   empty = nothing,
+  now = Date.now(),
 ): Row[] {
   const waiting = plan.skipped.filter(needsYouOn)
   const rest = plan.skipped.filter((s) => !needsYouOn(s))
-  const needs = skipGroups(plan, waiting, 'needs')
-  const skipped = skipGroups(plan, rest, 'skipped')
+  const needs = skipGroups(plan, waiting, 'needs', now)
+  const skipped = skipGroups(plan, rest, 'skipped', now)
   const items = [
     ...(waiting.length ? [section('needs', 'Needs you', waiting.length, needs)] : []),
     ...units,
@@ -264,7 +270,13 @@ export function runTriage(
   })
   return triage(
     [...runHeader(r, style), ...quotaLines(r)],
-    sectionsOf(r.plan, warnings, unitSection(header, unitRows)),
+    sectionsOf(
+      r.plan,
+      warnings,
+      unitSection(header, unitRows),
+      undefined,
+      new Date(r.startedAt).getTime(),
+    ),
     rows,
     footerKeys.map(([, action]) => action),
   )

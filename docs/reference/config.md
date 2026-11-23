@@ -71,6 +71,7 @@ Unit counts and time per run, for every provider.
 |---|---|---|
 | `units` | integer | At most this many units per run |
 | `units_per_repo` | integer | At most this many units per run in one repo |
+| `units_max_open` | integer | At most this many units open at once, for all rules together |
 | `unit_minutes` | integer | Stop a worker after this many minutes |
 
 ## `budget`
@@ -361,6 +362,7 @@ First matching rule wins; top = highest priority.
 | `quota` | object | Run this rule's unit only when the quota holds; otherwise skip it |
 | `plan_tasks` | integer | deliver: plan: at most this many tasks in its plan; default 8 |
 | `units` | integer | At most this many units per run from this rule; a chain counts once |
+| `units_max_open` | integer | At most this many of this rule's units open at once: its open PRs, and its questions, plans and results that wait |
 | `then` | string \| object \| (string \| object)[] | Steps run in turn after this rule's unit, in its clone; the chain publishes once, when it ends; a {loop} repeats its steps |
 | `on_done` | object | Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported |
 | `run` | "soon" \| "window" | When its units start: window (default), in the next window run; soon, as soon as awaywork watch sees one due (a new item, or one changed since its last attempt), polling every watch.every |

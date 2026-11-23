@@ -52,15 +52,22 @@ it("prints a named profile's wall rules where the wall is missing, as a failure"
   )
 })
 
-it('tells a hosted runner to use the action, and warns in the image', async () => {
+it('tells a hosted runner to use the action, and NET_ADMIN in the image', async () => {
   const { wallCheck } = await doctorOf('default')
   const env = { RUNNER_ENVIRONMENT: 'github-hosted' }
   const hosted = await wallCheck('awaywork', env, async () => 'x')
   expect(hosted.status).toBe('FAIL')
   expect(hosted.detail).toContain('through its action')
   expect(hosted.detail).not.toContain('iptables')
-  const image = await wallCheck('awaywork', { AWAYWORK_IMAGE: '1' }, async () => 'x')
-  expect(image.status).toBe('warn')
+  const image = await wallCheck(
+    'awaywork',
+    { AWAYWORK_IMAGE: '1' },
+    async () => 'awaywork reaches x',
+  )
+  expect(image.status).toBe('FAIL')
+  expect(image.detail).toContain('cap_add: [NET_ADMIN]')
+  const other = await wallCheck('awaywork', { AWAYWORK_IMAGE: '1' }, async () => `can't tell: x`)
+  expect(other.detail).not.toContain('NET_ADMIN')
 })
 
 it('is ok where the wall holds', async () => {
@@ -81,5 +88,4 @@ it('fails a sandbox that can’t start where its units are refused, warns where 
   expect(detail).toContain("Codex's units are skipped")
   expect(sandboxCheck('codex', down, 'wall')[0]).toBe('warn')
   expect(sandboxCheck('codex', down, 'wall')[2]).toContain("through awaywork's wall")
-  expect(sandboxCheck('codex', down, 'open')[2]).toContain('unsandboxed, with network access')
 })

@@ -6,9 +6,9 @@ import type { Skipped, SkipReason } from '#plan/foreman'
 import { isLoop, ruleFor } from '#plan/queue'
 import { settingsFor } from '#plan/repos'
 import type { Skip } from '#plan/skips'
-import { commentKind, commentMarkdown, waitingTasks } from '#posts/comments'
+import { commentKind, commentMarkdown, taskQuestions, waitingTasks } from '#posts/comments'
 import { footerItems } from '#posts/footer'
-import { taskResults, unreadTaskResult } from '#posts/posts'
+import { taskPost, taskResults, unreadTaskResult } from '#posts/posts'
 import {
   type Contract,
   cardTasks,
@@ -192,6 +192,7 @@ export function taskPr(
     trusted: true,
     fork: false,
     ...(pr.head && { head: pr.head }),
+    ...(pr.headAt && { headAt: pr.headAt }),
     ...(pr.left && { left: pr.left }),
     state: pr.open ? 'open' : pr.merged ? 'merged' : 'closed',
     ...(pr.closedAt && { closedAt: pr.closedAt }),
@@ -211,8 +212,8 @@ export function expandPlans(
 ): { items: Item[]; skipped: Skipped[] } {
   const out: Item[] = []
   const skipped: Skipped[] = []
-  const skip = (item: Item, { kind, reason, url }: SkipReason) =>
-    skipped.push({ item, kind, reason, ...(url && { url }) })
+  const skip = (item: Item, { kind, reason, url, since }: SkipReason) =>
+    skipped.push({ item, kind, reason, ...(url && { url }), ...(since && { since }) })
   for (const card of items) {
     const state = planCard(setup, card)
     // Without its tasks' PRs a re-plan wouldn't know the retired ids, nor a fan-out what's done.
@@ -285,6 +286,7 @@ export function expandPlans(
           kind: 'waiting_for_answer',
           reason: `waiting for your answer to ${named} questions on ${card.url}`,
           url: card.url,
+          since: taskQuestions(card)[0]?.at,
         })
       } else if (gated.length) {
         const named = gated.map((g) => `task ${g.id}'s`).join(' and ')
@@ -294,6 +296,7 @@ export function expandPlans(
           kind: gated.includes(t) ? 'waiting_for_approval' : 'waiting_for_task',
           reason: `waiting for your approval of ${named} result on ${posts}`,
           url: posts,
+          ...(gated.includes(t) && { since: taskPost(card, t.id)?.at }),
         })
       } else if (pr) {
         states.push(pr.left ? `${t.id} draft says ${pr.left.status}` : `${t.id} PR open`)

@@ -1,6 +1,6 @@
 import { isValidRef } from '#core/branch'
 import type { Item, PrRef, Rule, TaskPr } from '#core/types'
-import { awaitsAnswer } from '#posts/comments'
+import { commentKind, questionsAsked } from '#posts/comments'
 import type { DraftLeft } from '#posts/footer'
 import { reportPost, taskPost } from '#posts/posts'
 import { gatesNeverRun } from '#tasks/fanout'
@@ -14,7 +14,7 @@ import {
   unchangedSince,
 } from './attempts'
 import type { Landing } from './chain'
-import type { ChainStep, PlannedUnit, PlanRun, SkipReason } from './foreman'
+import type { ChainStep, PlannedUnit, PlanRun, SkipKind, SkipReason } from './foreman'
 import { repoListed, settingsFor } from './repos'
 import { describeSkip, type Skip } from './skips'
 
@@ -97,6 +97,7 @@ export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[
       kind: 'waiting_for_review',
       reason: `waiting for review: awaywork PR ${ours.url} is open`,
       url: ours.url,
+      since: ours.headAt,
     })
   const where = (draft && ours?.url) || item.url
   const stop = left && byHand(left, { head: ours?.head })
@@ -123,15 +124,20 @@ export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[
       kind: 'waiting_for_review',
       reason: `waiting for review: awaywork pushed onto your PR ${pushed.url}`,
       url: pushed.url,
+      since: pushed.headAt,
       liftable: true,
     })
   // Read off the item, not attempts, so a runner without state waits too, and awaywork's comment doesn't count as a change; a task's questions wait on its card.
-  const asked = items.find((i) => !i.task && awaitsAnswer(i))
+  const asked = items.flatMap((i) => {
+    const questions = i.task ? undefined : questionsAsked(i)
+    return questions ? [{ item: i, questions }] : []
+  })[0]
   if (asked)
     out.push({
       kind: 'waiting_for_answer',
-      reason: `waiting for your answer on ${postsOn(asked)}`,
-      url: postsOn(asked),
+      reason: `waiting for your answer on ${postsOn(asked.item)}`,
+      url: postsOn(asked.item),
+      since: asked.questions.at,
     })
   const unplanned =
     stack && !stack.pr && !stack.after
@@ -149,6 +155,7 @@ export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[
       kind: 'waiting_for_approval',
       reason: `waiting for your approval of the plan on ${postsOn(card.item)}`,
       url: postsOn(card.item),
+      since: planThread(card.item)?.plan.at,
     })
   if (card?.state === 'invalid')
     out.push({
@@ -161,6 +168,7 @@ export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[
       kind: 'waiting_for_approval',
       reason: `waiting for your approval of ${rule.skill}'s result on ${postsOn(posted.item)}`,
       url: postsOn(posted.item),
+      since: reportPost(posted.item, rule.skill)?.post.at,
     })
   // Closing a task's PR doesn't touch the card, nor editing a pinned file: its re-plan is due all the same.
   const replan = card?.state === 'replan'
@@ -181,6 +189,34 @@ export function holdsOn(run: PlanRun, group: Group, units: PlannedUnit[]): Hold[
     })
   return out
 }
+
+export const waits: SkipKind[] = [
+  'waiting_for_review',
+  'waiting_for_answer',
+  'waiting_for_approval',
+]
+
+/** The URL of what awaywork left open on the group, the one you'd open: its open PR, else the post that waits. */
+export const openUrl = ({ ours }: Group, held: Hold[]): string | undefined =>
+  ours?.url ?? held.find((h) => waits.includes(h.kind))?.url
+
+/** Whether you answered the item's questions and no result of awaywork's came since. */
+const answered = ({ comments }: Item) => {
+  const asked = comments.findLastIndex((c) => commentKind(c) === 'questions')
+  const since = comments.slice(asked + 1)
+  return (
+    asked >= 0 &&
+    since.some((c) => !c.bot && !commentKind(c)) &&
+    !since.some((c) => commentKind(c) === 'result')
+  )
+}
+
+/** Whether the group lands on something already open, which a cap on open units never holds: the rerun after your answer or feedback, a task of a card with a PR already. */
+export const landsOnOpen = ({ lead, card, posted, items }: Group): boolean =>
+  Object.keys(lead.task?.parent.taskPrs ?? {}).length > 0 ||
+  card?.state === 'feedback' ||
+  posted?.answer === 'feedback' ||
+  items.some(answered)
 
 /** Why the chain can't deliver where it lands, the first the plan checks. */
 export function refusal(run: PlanRun, group: Group, at: Landing): Hold | undefined {

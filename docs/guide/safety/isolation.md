@@ -92,7 +92,7 @@ Four keys depend on the mode. Cells say what the key does to the agent's shell, 
 | [`serve`](../config/repos.md) | Starts the app for a step with `serve: true`, as you; the agent's MCP servers and its Codex and Cursor shells reach it, Claude's shell on Linux [doesn't](#claude-s-shell-is-offline), setup and checks don't | No effect: the step runs without the app | No effect: the step runs without the app |
 | [`image`](../config/repos.md) | No effect | No effect | Setup, the shell, checks and stdio MCP servers run in it |
 
-Under `none`, `network` and `writable` need the agent's own sandbox ([Claude](#claude-s-shell-is-offline), [Codex](#codex-s-shell-is-offline), [Cursor](#cursor-s-shell-is-offline)): where it can't start, the unit is skipped before any model call, with what to install in its reason, and `doctor` fails. Under `user` the [network wall](#the-network-under-user) stands in for it. Under `container` the [network wall](#the-network-in-a-container) does the same. In awaywork's image, whose wall is yet to come, the shell still runs open and `doctor` warns. A command provider has no sandbox and is never skipped for it: `network` and `writable` do nothing for its shell, and under `user` or `container` the wall limits it to the hosts of its phase. On an untrusted author's PR or issue the shell gets no hosts and no `writable` paths and `serve` isn't started; `image` still applies. For a key that does nothing in the mode, `doctor` prints `writable: no effect under isolation: container (top level, acme/api)`: an info line, once per key, naming where it's set.
+Under `none`, `network` and `writable` need the agent's own sandbox ([Claude](#claude-s-shell-is-offline), [Codex](#codex-s-shell-is-offline), [Cursor](#cursor-s-shell-is-offline)): where it can't start, the unit is skipped before any model call, with what to install in its reason, and `doctor` fails. Under `user` the [network wall](#the-network-under-user) stands in for it. Under `container` the [network wall](#the-network-in-a-container) does the same. In awaywork's image the wall is `user`'s, and the same refusal applies. A command provider has no sandbox and is never skipped for it: `network` and `writable` do nothing for its shell, and under `user` or `container` the wall limits it to the hosts of its phase. On an untrusted author's PR or issue the shell gets no hosts and no `writable` paths and `serve` isn't started; `image` still applies. For a key that does nothing in the mode, `doctor` prints `writable: no effect under isolation: container (top level, acme/api)`: an info line, once per key, naming where it's set.
 
 ## Not a sandbox
 
@@ -179,7 +179,7 @@ The rules are the part you run. For a worker user `awaywork` they are the lines 
     sudo systemctl reload dbus 2> /dev/null || true
 ```
 
-On a hosted runner, `scripts/worker-user.sh` (the action) puts the rules in [V, tested on `ubuntu-latest`: the worker's connection to `1.1.1.1:443` refused, name lookups failing, the proxy reachable]. On your machine the `iptables` rules last until a reboot unless you save them (`iptables-persistent`'s `netfilter-persistent save`, or your firewall's own tool) [I, not run]; the ACL is renewed at each boot by a `tmpfiles.d` line and kept across a `systemd-resolved` restart [V, tested on Ubuntu 24.04]. Re-running the lines adds nothing. On a `ubuntu-latest` runner and in Colima (Ubuntu 24.04) `resolvectl`, `varlinkctl`, `busctl` and `getent` all fail for the worker with them in [V, tested]. Awaywork's [image](#a-worker-user-in-awaywork-s-image) has no wall yet: `doctor` warns, and setup, checks and MCP servers there reach any host.
+On a hosted runner, `scripts/worker-user.sh` (the action) puts the rules in [V, tested on `ubuntu-latest`: the worker's connection to `1.1.1.1:443` refused, name lookups failing, the proxy reachable]. On your machine the `iptables` rules last until a reboot unless you save them (`iptables-persistent`'s `netfilter-persistent save`, or your firewall's own tool) [I, not run]; the ACL is renewed at each boot by a `tmpfiles.d` line and kept across a `systemd-resolved` restart [V, tested on Ubuntu 24.04]. Re-running the lines adds nothing. On a `ubuntu-latest` runner and in Colima (Ubuntu 24.04) `resolvectl`, `varlinkctl`, `busctl` and `getent` all fail for the worker with them in [V, tested]. Awaywork's [image](#a-worker-user-in-awaywork-s-image) sets the same rules at start.
 
 What the agent's own shell gets depends on its sandbox:
 
@@ -193,7 +193,7 @@ Still open:
 - **Another resolver's socket.** Only systemd-resolved's are denied. A daemon such as `nscd` with a world-writable socket would resolve names for the worker, though the probe's `getent -s dns` skips it [V, tested, nscd on Ubuntu 24.04]. The probe fails the wall when the worker can write `/var/run/nscd/socket` or `/run/nscd/socket`; other daemons' sockets aren't checked.
 - **IPv6 is probed only where awaywork's own user has a route out over it.** With none there is no way out over it; with one, the worker must be refused at once too, else the wall doesn't hold [V, the refusal logic tested; no IPv6 route on the boxes tested].
 - **What awaywork publishes** (commits, the PR body, reports), **MCP tools' own destinations** and **what the model provider sees** aren't filtered.
-- **A name that resolves to a private address** is reached when it is on the list: the proxy, run as you, resolves it [I]. Link-local ones are refused. `*` reaches everything but link-local the same way, your own loopback services and the LAN too.
+- **A name that resolves to a private address** is reached when it is on the list: the proxy, run as you, resolves it. Under `*`, and for any listed host that resolves to one, that includes your own loopback services and the LAN, and in the image the other containers on its compose network and the Docker host (on Coolify, its proxy and whatever shares the network), which the direct wall blocks [V, tested in the image: a peer container 200, the gateway accepted]. Link-local addresses stay refused.
 
 ### A worker user on your Linux machine
 
@@ -337,7 +337,13 @@ agent: GH_TOKEN=none
 agent: committed smoke.txt
 ```
 
-It closes and leaves open what the [local worker user](#a-worker-user-on-your-linux-machine) does, except the network: the image has no [wall](#the-network-under-user) yet, so setup, checks and MCP servers there reach any host, and `doctor` warns. On a shared box:
+The image holds the [network wall](#the-network-under-user) too. Its entrypoint runs `/usr/local/sbin/awaywork-wall` as root, the one script `away`'s sudoers lets it run: the hosted runner's eight rules plus one for Docker's resolver (below), for IPv4 and IPv6, in the container's own network namespace, where they last until the container is gone. It needs `NET_ADMIN`, which `compose.yml` asks for (`cap_add: [NET_ADMIN]`). Without it the script fails with a line in the container's output, the daemon stays up for `doctor` and `docker exec`, and a run is refused before any phase:
+
+```
+the network wall isn't up for the awaywork user (awaywork reaches api.github.com), so its setup, checks and MCP servers could reach any host: the rules are missing: the container needs NET_ADMIN for the wall, `cap_add: [NET_ADMIN]` in compose.yml
+```
+
+On a compose network `/etc/resolv.conf` names Docker's resolver, `127.0.0.11`, which Docker redirects to a port of its own before the filter sees the packet, so the rule for loopback's port 53 misses it and the worker resolved names [V, tested in Docker Desktop's VM, Docker 28.3.2: `getent -s dns hosts api.github.com` exit 0 for `awaywork`, and the probe said `awaywork resolves names`]. The script also rejects the worker's traffic to `127.0.0.11`, which closes it, and `away` and root still resolve [V, tested]. The image has no systemd-resolved, D-Bus or nscd, so the resolver lines aren't needed. A test keeps the script equal to the rules `doctor` prints elsewhere. On a shared box:
 
 - **One container per developer:** everything is in one `GH_TOKEN`'s name, and the `chown` line is for one developer. A company box runs a container, control repo and token per person.
 - **Host root reads every token:** `docker inspect` shows env, so a Coolify admin or anyone with `docker` has them all. Put your token only where you'd trust root.

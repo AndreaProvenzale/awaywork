@@ -161,6 +161,14 @@ describe('triage view', () => {
     expect(screen(runTriage(r, [], files, 30), 60)).toContain(`       PR ${'1'.repeat(49)}…`)
   })
 
+  it("ages Needs you from the run's start", () => {
+    const r = { ...acmeRun(), startedAt: new Date('2026-10-15T22:00:00Z') }
+    r.plan.skipped = [
+      { kind: 'waiting_for_review', reason: 'r', item: githubPr(9), since: '2026-10-10T22:00:00Z' },
+    ]
+    expect(screen(runTriage(r, [], files, 30)).join('\n')).toMatch(/review PR 5d/)
+  })
+
   it('unfolds Skipped into repos, each folded, and a repo into its items by action, without what the action says', () => {
     const skipped = press(run(), 'G', 'right')
     expect(screen(skipped)).toContain('  ▸ acme/api 2')

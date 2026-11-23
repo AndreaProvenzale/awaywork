@@ -274,7 +274,7 @@ describe('the launcher', () => {
         refused,
       )
       await expect(workerFor('none', { AWAYWORK_IMAGE: '1' })).rejects.toThrow(
-        linux ? "in this image: build it from awaywork's Dockerfile" : refused,
+        linux ? /in this image \(.*\): build it from awaywork's Dockerfile/ : refused,
       )
       await expect(workerFor('user', { RUNNER_ENVIRONMENT: 'self-hosted' })).rejects.toThrow(
         refused,

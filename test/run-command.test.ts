@@ -6,9 +6,17 @@ import { Command } from 'commander'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runCommand } from '#cli/commands/run'
 import { loadConfig } from '#config/load'
-import { attemptsPath, runLockPath, runsDir, skipsPath, watchLockPath } from '#config/paths'
+import {
+  attemptsPath,
+  pausePath,
+  runLockPath,
+  runsDir,
+  skipsPath,
+  watchLockPath,
+} from '#config/paths'
 import type { PrRef } from '#core/types'
 import { saveAttempts } from '#plan/attempts'
+import { clearPause, savePause } from '#plan/pause'
 import { claimUnits } from '#plan/poll'
 import { saveSkips } from '#plan/skips'
 import { abortOnSignals, executeRun, type RunArgs } from '#run/execute'
@@ -35,6 +43,7 @@ vi.mock('#config/paths', async (original) => {
     runLockPath: `${state}/run.lock`,
     watchLockPath: `${state}/watch.lock`,
     skipsPath: `${state}/skips.json`,
+    pausePath: `${state}/pause.json`,
   }
 })
 
@@ -97,6 +106,21 @@ describe('run command', () => {
     const { out } = await run([])
     expect(existsSync(old)).toBe(false)
     expect(out).toContain('Removed 1 run older than 30d, 0.0 MB freed')
+  })
+
+  it('holds a scheduled run while paused, a hand run and an expired pause not', async () => {
+    await savePause(pausePath, { until: '2999-01-01' })
+    try {
+      const scheduled = await run(['--scheduled'])
+      expect(scheduled.out).toContain(
+        'paused until 2999-01-01 (awaywork resume to undo), nothing to do',
+      )
+      expect((await run(['--dry-run'])).out.join('\n')).toContain('units planned')
+      await savePause(pausePath, { until: '2000-01-01' })
+      expect((await run(['--scheduled'])).out.join('\n')).not.toContain('paused')
+    } finally {
+      await clearPause(pausePath)
+    }
   })
 
   it('refuses to start while another run holds the lock, naming the daemon when it does', async () => {

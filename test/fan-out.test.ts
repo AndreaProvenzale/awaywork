@@ -541,6 +541,7 @@ describe('tasks as items', () => {
       ],
     ])
     expect(needsYou.waiting_for_approval).toBe(true)
+    expect(held.skipped.map((s) => s.since)).toEqual([undefined, undefined, at(3)])
     const moves = result(3, { waits: true, move: 'QA', saw: 'open' })
     expect(heldMove(fanned(moves, yours('approve', 4)))).toBe('QA')
     expect(heldMove(fanned(moves, yours('Not yet.', 4)))).toBeUndefined()
@@ -618,6 +619,7 @@ ${queue}`)
     ])
     const held = plan([approved({}, ask('api', 3))])
     expect(held.units).toEqual([])
+    expect(held.skipped.map((s) => s.since)).toEqual([undefined, at(3), at(3)])
     expect(skips(held)).toEqual([
       [
         'acme/api#1',
