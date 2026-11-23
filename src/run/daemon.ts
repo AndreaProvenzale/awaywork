@@ -14,7 +14,7 @@ import {
   windowEndPath,
 } from '#config/paths'
 import type { Config } from '#config/schema'
-import { isolateWalled, raiseWall } from '#core/wall'
+import { isolateWalled, raiseWall } from '#core/isolation/index'
 import { exec } from '#forge/gh'
 import { ambiguous } from '#format/why'
 import { loadAttempts } from '#plan/attempts'

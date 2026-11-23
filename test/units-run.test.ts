@@ -16,7 +16,9 @@ import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
-import { containerize } from '#core/isolation'
+import { containerMode } from '#core/isolation/container'
+import { useMode } from '#core/isolation/index'
+import { none } from '#core/isolation/none'
 import { builtinSkills } from '#core/skills'
 import type { Provider, Source, Unit } from '#core/types'
 import { formatRun, summarize } from '#format/report'
@@ -1057,13 +1059,13 @@ queue: [{ skill: review }]
 
 it('applies no writable path in a container, and says so', async () => {
   const lines: string[] = []
-  containerize(true)
+  useMode(containerMode())
   try {
     expect(
       await writablePaths({ writable: ['/tmp'] } as Unit, '/clone', (l) => lines.push(l)),
     ).toEqual([])
   } finally {
-    containerize(false)
+    useMode(none)
   }
   expect(lines).toEqual(['writable: not applied under isolation: container'])
 })

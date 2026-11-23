@@ -1,5 +1,7 @@
 import { rm } from 'node:fs/promises'
-import { holdingWorker, isolated, lostToWorker, workerRoot } from '#core/isolation'
+import { lostToWorker } from '#core/isolation/clones'
+import { holdingWorker, isolated } from '#core/isolation/index'
+import { workerRoot } from '#core/isolation/user'
 import type { Item, Quota } from '#core/types'
 import { namesUnit, type PlannedUnit, type RunPlan } from '#plan/foreman'
 import type { RunReport, UnitResult } from '#posts/report'
