@@ -1,22 +1,19 @@
 import { styleText } from 'node:util'
 import { isNamed, shortRef } from '#plan/foreman'
+import { type Chain, chains, type RunReport, type UnitResult } from '#posts/report'
+import { localTime } from '#util/text'
+import { unitRef } from './plan'
 import {
-  type Chain,
   chainCells,
-  chains,
   laterNotes,
-  localTime,
   opened,
   quotaLines,
-  type RunReport,
   reviewed,
   runHeadline,
   stepCells,
-  type UnitResult,
   unitNotes,
   unposted,
-} from '#posts/report'
-import { unitRef } from './plan'
+} from './report-md'
 import { needsYouLines, skippedLines } from './skips'
 import {
   brief,

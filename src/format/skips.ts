@@ -1,6 +1,7 @@
 import type { Item } from '#core/types'
 import { type SkipKind, shortRef } from '#plan/foreman'
-import { ageSince, byKind, needsYouOn, oldestFirst, type ReportedSkip } from '#posts/report'
+import { byKind, needsYouOn, oldestFirst, type ReportedSkip } from '#posts/report'
+import { ageSince } from '#util/text'
 import {
   brief,
   byGroup,
