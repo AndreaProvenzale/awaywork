@@ -2,8 +2,8 @@ import type { LookupAddress } from 'node:dns'
 import { lookup } from 'node:dns/promises'
 import { createServer, request } from 'node:http'
 import { BlockList, connect, isIP, type LookupFunction, type Socket } from 'node:net'
-import { withholdsGrants } from './trust'
-import type { Job, McpServer, Provider, Unit } from './types'
+import { withholdsGrants } from '../trust'
+import type { Job, McpServer, Provider, Unit } from '../types'
 
 /** The hosts one phase of a unit may reach through the proxy; its refusals go to `log`. */
 export interface Phase {
@@ -202,4 +202,11 @@ export async function startEgress(): Promise<Egress> {
       told.clear()
     },
   }
+}
+
+let shared: Egress | undefined
+/** The one proxy of the process, started at the first call. */
+export async function sharedEgress(): Promise<Egress> {
+  shared ??= await startEgress()
+  return shared
 }

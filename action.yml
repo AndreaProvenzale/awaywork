@@ -66,6 +66,19 @@ runs:
         printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
           'profile cursor_sandbox /opt/cursor/.local/share/cursor-agent/versions/*/cursorsandbox flags=(unconfined) { userns, }' |
           sudo apparmor_parser -r
+    # Ubuntu's AppArmor keeps bwrap's children from making the user namespace Claude's sandbox nests, so Claude gets a bwrap copy with a profile of its own, first on PATH.
+    - name: Let Claude's sandbox start
+      if: runner.environment == 'github-hosted'
+      shell: bash
+      run: |
+        command -v claude > /dev/null || exit 0
+        sudo NEEDRESTART_SUSPEND=1 apt-get install -y -qq bubblewrap socat > /dev/null
+        [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ] || exit 0
+        sudo install -D -m 755 /usr/bin/bwrap /opt/awaywork/bin/bwrap
+        printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+          'profile awaywork_bwrap /opt/awaywork/bin/bwrap flags=(unconfined) { userns, }' |
+          sudo apparmor_parser -r
+        echo /opt/awaywork/bin >> "$GITHUB_PATH"
     # The machine's own installs and logins stay as they are; this folder is emptied every job.
     - name: Install for this job
       if: runner.environment != 'github-hosted'

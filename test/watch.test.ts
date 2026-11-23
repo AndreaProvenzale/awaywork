@@ -16,7 +16,7 @@ import {
   windowEndPath,
 } from '#config/paths'
 import type { Config } from '#config/schema'
-import { contained, isolateFor } from '#core/isolation'
+import { contained, isolateFor } from '#core/isolation/index'
 import type { Job } from '#core/types'
 import { savePause } from '#plan/pause'
 import { appendLog, isolation, stopWatch, watch } from '#run/daemon'
