@@ -18,7 +18,7 @@ import {
 import { isolateWalled, raiseWall, useMode, wallUp } from '#core/isolation/index'
 import { none } from '#core/isolation/none'
 import { userMode } from '#core/isolation/user'
-import { wallLines, wallProblem } from '#core/isolation/user-wall'
+import { wallFix, wallLines, wallProblem } from '#core/isolation/user-wall'
 import type { Job, Provider, Unit } from '#core/types'
 import { claude } from '#providers/claude'
 import { codex } from '#providers/codex'
@@ -287,6 +287,12 @@ describe('the wall', () => {
 
   it('holds when the worker is refused at once and resolves nothing', async () => {
     expect(await wallProblem('w', probes(reached, 'connect 1\nresolve 2'), address)).toBeUndefined()
+  })
+
+  it('names NET_ADMIN in the image for the problem wallProblem gives a worker that reaches out', async () => {
+    const problem = await wallProblem('w', probes(reached, 'connect 0\nresolve 2'), address)
+    expect(wallFix(problem as string, { AWAYWORK_IMAGE: '1' })).toContain('NET_ADMIN')
+    expect(wallFix('w resolves names', { AWAYWORK_IMAGE: '1' })).toBeUndefined()
   })
 
   it('is missing when the worker reaches the outside, resolves a name, or times out', async () => {

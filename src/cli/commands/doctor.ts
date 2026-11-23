@@ -620,7 +620,7 @@ export async function wallCheck(
       detail: `${worker} reaches only loopback: setup, the checks and the agent go through awaywork's proxy, to the hosts of their phase`,
     }
   const how = inAwayworkImage(env)
-    ? wallFix(problem, env, '')
+    ? wallFix(problem, env)
     : env.RUNNER_ENVIRONMENT === 'github-hosted'
       ? 'run awaywork through its action, which sets it up'
       : `run these once as root, and keep them past a reboot (iptables-persistent saves them):\n    ${wallLines(worker).join('\n    ')}`

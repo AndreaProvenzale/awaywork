@@ -91,7 +91,7 @@ export async function wallProblem(
 }
 
 /** How to fix a wall problem: in the image, NET_ADMIN only where the rules are missing (the worker reaches out). */
-export function wallFix(problem: string, env: NodeJS.ProcessEnv, elsewhere: string) {
+export function wallFix(problem: string, env: NodeJS.ProcessEnv, elsewhere?: string) {
   if (!inAwayworkImage(env)) return elsewhere
   if (/^\S+ reaches /.test(problem))
     return 'the rules are missing: the container needs NET_ADMIN for the wall, `cap_add: [NET_ADMIN]` in compose.yml'
