@@ -1,8 +1,10 @@
 import { spawnSync } from 'node:child_process'
 import { randomBytes, randomInt } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { hostname } from 'node:os'
+import { join } from 'node:path'
 import { execa } from 'execa'
-import { bin } from '#config/paths'
+import { bin, dockerDir } from '#config/paths'
 import { type Egress, type Exposed, proxyEnv } from './egress'
 
 /** The official Node image the forwarder and the probes run: pinned by digest, so no tag can swap what holds the wall. */
@@ -15,67 +17,13 @@ const FORWARDER_PORT = 3128
 const OUTSIDE = '1.1.1.1:443'
 const TIMEOUT_MS = 60_000
 
-/** Pipes every connection to awaywork's proxy at argv `host port`: the one way out of the internal network. */
-const FORWARDER = `const net = require('net')
-const [host, port] = process.argv.slice(1)
-net.createServer((from) => {
-  const to = net.connect(Number(port), host)
-  const end = () => { from.destroy(); to.destroy() }
-  for (const s of [from, to]) { s.on('error', end); s.on('close', end) }
-  from.pipe(to); to.pipe(from)
-}).listen(${FORWARDER_PORT}, '0.0.0.0')`
-
-/** Listens on the docker host's own network, to see whether a container of the wall's network reaches the host's services. */
-const CANARY = `const s = require('net').createServer((c) => c.end()).listen(Number(process.argv[1]), '0.0.0.0', () => console.log('ready'))
-s.on('error', () => process.exit(1))
-setTimeout(() => process.exit(0), 120000)`
-
-/** Prints what a container on the wall's network reaches; argv: the forwarder's alias, the token, then targets, those starting with host= being the docker host's. */
-const PROBE = `const net = require('net'), dns = require('dns')
-const [alias, token, ...targets] = process.argv.slice(1)
-const tcp = (host, port) => new Promise((done) => {
-  const s = net.connect({ host, port: Number(port), timeout: 3000 })
-  s.on('connect', () => { s.destroy(); done('open') })
-  s.on('timeout', () => { s.destroy(); done('timeout') })
-  s.on('error', (e) => done(e.code || 'error'))
-})
-const resolver = new dns.promises.Resolver({ timeout: 1500, tries: 1 })
-const lookup = (name) => resolver.resolve4(name).then((a) => a.join(','), (e) => e.code)
-const via = (auth) => new Promise((done) => {
-  const s = net.connect(${FORWARDER_PORT}, alias)
-  let seen = ''
-  s.setTimeout(5000, () => { s.destroy(); done('timeout') })
-  s.on('connect', () => s.write('CONNECT awaywork.invalid:443 HTTP/1.1\\r\\nHost: x\\r\\n' + (auth ? 'Proxy-Authorization: Basic ' + Buffer.from('awaywork:' + token).toString('base64') + '\\r\\n' : '') + '\\r\\n'))
-  s.on('data', (b) => { seen += b; if (seen.includes('\\r\\n')) { s.destroy(); done(seen.split('\\r\\n')[0]) } })
-  s.on('error', (e) => done(e.code || 'error'))
-})
-;(async () => {
-  const seen = await Promise.all([
-    ...targets.map(async (t) => {
-      const target = t.replace(/^host=/, '')
-      return [t === target ? 'direct' : 'host', target, await tcp(target.slice(0, target.lastIndexOf(':')), target.slice(target.lastIndexOf(':') + 1))]
-    }),
-    via(false).then((answer) => ['anonymous', answer]),
-    via(true).then((answer) => ['token', answer]),
-  ])
-  for (const name of ['registry.npmjs.org', 'host.docker.internal']) seen.push(['dns', name, await lookup(name)])
-  for (const line of seen) console.log(line.join(' '))
-})()`
-
-/** Prints `outside open` at the first connect to a public address, trying two, twice (a network just up can miss one), then `canary open` if argv `host port` accepts: proof the canary is still listening. */
-const CONTROL = `const net = require('net')
-const tcp = (host, port) => new Promise((done) => {
-  const s = net.connect({ host, port, timeout: 3000 })
-  s.on('connect', () => { s.destroy(); done(true) })
-  s.on('timeout', () => { s.destroy(); done(false) })
-  s.on('error', () => done(false))
-})
-;(async () => {
-  for (const host of ['1.1.1.1', '8.8.8.8', '1.1.1.1', '8.8.8.8'])
-    if (await tcp(host, 443)) { console.log('outside open'); break }
-  const [host, port] = process.argv.slice(1)
-  if (host && await tcp(host, Number(port))) console.log('canary open')
-})()`
+/** A script of the package's `docker/wall/`, as `node -e` runs it in a container: no host path to mount. */
+const node = (script: string, ...args: string[]) => [
+  'node',
+  '-e',
+  readFileSync(join(dockerDir, 'wall', `${script}.cjs`), 'utf8'),
+  ...args,
+]
 
 const unwalled = (reason: string) =>
   new Error(
@@ -192,10 +140,7 @@ async function startCanary(name: string, label: string[]): Promise<number> {
       '--network',
       'host',
       WALL_IMAGE,
-      'node',
-      '-e',
-      CANARY,
-      String(port),
+      ...node('canary', String(port)),
     ])
     if (started.failed)
       throw unwalled(
@@ -322,11 +267,7 @@ export async function raiseContainerWall(egress: Egress): Promise<ContainerWall>
     '--add-host',
     `host.docker.internal:${gateway ?? 'host-gateway'}`,
     WALL_IMAGE,
-    'node',
-    '-e',
-    FORWARDER,
-    'host.docker.internal',
-    String(exposed.port),
+    ...node('forwarder', String(FORWARDER_PORT), 'host.docker.internal', String(exposed.port)),
   ])
   if (started.failed) return fail(`the forwarder didn't start: ${firstLine(started)}`)
   const joined = await docker(['network', 'connect', 'bridge', forwarder])
@@ -353,23 +294,14 @@ export async function raiseContainerWall(egress: Egress): Promise<ContainerWall>
       '--rm',
       ...flags(network),
       WALL_IMAGE,
-      'node',
-      '-e',
-      PROBE,
-      ALIAS,
-      token,
-      ...targets,
+      ...node('probe', ALIAS, String(FORWARDER_PORT), token, ...targets),
     ]),
     docker([
       'run',
       '--rm',
       ...flags(),
       WALL_IMAGE,
-      'node',
-      '-e',
-      CONTROL,
-      candidate ?? '',
-      String(hostPort),
+      ...node('control', candidate ?? '', String(hostPort)),
     ]),
   ])
   await docker(['rm', '-f', canary])
