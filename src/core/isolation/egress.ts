@@ -1,6 +1,6 @@
 import type { LookupAddress } from 'node:dns'
 import { lookup } from 'node:dns/promises'
-import { createServer, type IncomingMessage, request } from 'node:http'
+import { createServer, type IncomingHttpHeaders, type IncomingMessage, request } from 'node:http'
 import {
   BlockList,
   connect,
@@ -134,6 +134,14 @@ const publicLookup: LookupFunction = (name, options, done) => {
   )
 }
 
+/** The request's headers without the ones addressed to this proxy, its token among them. */
+const withoutProxyHeaders = (headers: IncomingHttpHeaders): IncomingHttpHeaders =>
+  Object.fromEntries(
+    Object.entries(headers).filter(
+      ([name]) => !['proxy-authorization', 'proxy-connection'].includes(name),
+    ),
+  )
+
 /** A listener of the proxy that other containers can reach, closed with `close`. */
 export interface Exposed {
   port: number
@@ -165,8 +173,10 @@ export async function startEgress(): Promise<Egress> {
   }
   /** The sockets of `expose`'s listener, which must send its token. */
   const exposed = new WeakMap<Socket, string>()
+  /** The token of the exposed listener, asked of the loopback one too: on a Mac a container reaches both. */
+  let required: string | undefined
   const unauthorized = (req: IncomingMessage) => {
-    const token = exposed.get(req.socket)
+    const token = exposed.get(req.socket) ?? required
     if (token === undefined) return false
     const sent = req.headers['proxy-authorization']
     return sent !== `Basic ${Buffer.from(`${PROXY_USER}:${token}`).toString('base64')}`
@@ -191,7 +201,7 @@ export async function startEgress(): Promise<Egress> {
         port,
         method: req.method,
         path: url.pathname + url.search,
-        headers: req.headers,
+        headers: withoutProxyHeaders(req.headers),
         lookup: lookupFor(host, port),
       },
       (answer) => {
@@ -237,6 +247,7 @@ export async function startEgress(): Promise<Egress> {
   return {
     port: typeof address === 'object' && address ? address.port : 0,
     async expose(host, token) {
+      required = token
       const listener = createListener((socket) => {
         exposed.set(socket, token)
         server.emit('connection', socket)
@@ -248,7 +259,10 @@ export async function startEgress(): Promise<Egress> {
       const address = listener.address()
       return {
         port: typeof address === 'object' && address ? address.port : 0,
-        close: () => void listener.close(),
+        close: () => {
+          listener.close()
+          if (required === token) required = undefined
+        },
       }
     },
     use(next) {

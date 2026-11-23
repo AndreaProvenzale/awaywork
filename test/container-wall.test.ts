@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { containerWallCheck } from '#cli/commands/doctor'
-import { probeProblem } from '#core/isolation/container-wall'
+import { gatewaysOf, probeProblem } from '#core/isolation/container-wall'
 
 const holds = [
   'direct 1.1.1.1:443 ENETUNREACH',
   'direct 172.17.0.1:4000 ENETUNREACH',
+  'host 172.24.0.1:40000 ECONNREFUSED',
+  'host 172.24.0.1:22 timeout',
   'dns registry.npmjs.org ESERVFAIL',
   'dns host.docker.internal ESERVFAIL',
   'anonymous HTTP/1.1 407 Proxy Authentication Required',
@@ -37,6 +39,13 @@ describe('probeProblem', () => {
     ).toMatch(/resolves registry.npmjs.org/)
     expect(
       probeProblem(
+        swap('host 172.24.0.1:40000 ECONNREFUSED', 'host 172.24.0.1:40000 open'),
+        true,
+        'h:1',
+      ),
+    ).toMatch(/reaches the docker host's own services at 172.24.0.1:40000/)
+    expect(
+      probeProblem(
         swap('anonymous HTTP/1.1 407 Proxy Authentication Required', 'anonymous HTTP/1.1 200 OK'),
         true,
         'h:1',
@@ -45,6 +54,18 @@ describe('probeProblem', () => {
     expect(
       probeProblem(swap('token HTTP/1.1 403 Forbidden', 'token ECONNREFUSED'), true, 'h:1'),
     ).toMatch(/with it: ECONNREFUSED/)
+  })
+})
+
+describe('gatewaysOf', () => {
+  it('takes the gateway docker names, else the first address of each subnet', () => {
+    expect(
+      gatewaysOf([
+        { Subnet: '172.21.0.0/16', Gateway: '172.21.0.1' },
+        { Subnet: '172.24.0.0/16' },
+        { Subnet: 'fd00:1::/64' },
+      ]),
+    ).toEqual(['172.21.0.1', '172.24.0.1', 'fd00:1::1'])
   })
 })
 

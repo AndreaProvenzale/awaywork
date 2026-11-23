@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomInt } from 'node:crypto'
+import { hostname } from 'node:os'
 import { execa } from 'execa'
 import { bin } from '#config/paths'
 import { type Egress, type Exposed, proxyEnv } from './egress'
@@ -24,7 +25,11 @@ net.createServer((from) => {
   from.pipe(to); to.pipe(from)
 }).listen(${FORWARDER_PORT}, '0.0.0.0')`
 
-/** Prints what a container on the wall's network reaches; argv: the forwarder's alias, the token, then direct targets. */
+/** Listens on the docker host's own network, to see whether a container of the wall's network reaches the host's services. */
+const CANARY = `const s = require('net').createServer((c) => c.end()).listen(Number(process.argv[1]), '0.0.0.0', () => console.log('ready'))
+s.on('error', () => process.exit(1))`
+
+/** Prints what a container on the wall's network reaches; argv: the forwarder's alias, the token, then targets, those starting with host= being the docker host's. */
 const PROBE = `const net = require('net'), dns = require('dns')
 const [alias, token, ...targets] = process.argv.slice(1)
 const tcp = (host, port) => new Promise((done) => {
@@ -45,13 +50,28 @@ const via = (auth) => new Promise((done) => {
 })
 ;(async () => {
   const seen = await Promise.all([
-    ...targets.map(async (t) => ['direct', t, await tcp(t.slice(0, t.lastIndexOf(':')), t.slice(t.lastIndexOf(':') + 1))]),
+    ...targets.map(async (t) => {
+      const target = t.replace(/^host=/, '')
+      return [t === target ? 'direct' : 'host', target, await tcp(target.slice(0, target.lastIndexOf(':')), target.slice(target.lastIndexOf(':') + 1))]
+    }),
     via(false).then((answer) => ['anonymous', answer]),
     via(true).then((answer) => ['token', answer]),
   ])
   for (const name of ['registry.npmjs.org', 'host.docker.internal']) seen.push(['dns', name, await lookup(name)])
   for (const line of seen) console.log(line.join(' '))
 })()`
+
+/** Exits 0 at the first connect to a public address, trying two, twice: a network just up can miss one. */
+const CONTROL = `const hosts = ['1.1.1.1', '8.8.8.8', '1.1.1.1', '8.8.8.8']
+const next = () => {
+  const host = hosts.shift()
+  if (!host) process.exit(1)
+  const s = require('net').connect({ host, port: 443, timeout: 3000 })
+  let failed = false
+  const fail = () => { if (!failed) { failed = true; s.destroy(); next() } }
+  s.on('connect', () => process.exit(0)).on('timeout', fail).on('error', fail)
+}
+next()`
 
 const unwalled = (reason: string) =>
   new Error(
@@ -87,6 +107,14 @@ const alive = (pid: number) => {
   }
 }
 
+const owner = () => `${hostname()}:${process.pid}`
+
+/** Whether a wall's label names a process of this machine that is gone: another machine's walls are none of ours. */
+const deadHere = (label: string) => {
+  const at = label.lastIndexOf(':')
+  return label.slice(0, at) === hostname() && !alive(Number(label.slice(at + 1)))
+}
+
 /** Removes the walls an awaywork process that is gone left, found by label. */
 async function sweep(): Promise<void> {
   const owned = async (args: string[], name: string) => {
@@ -100,7 +128,7 @@ async function sweep(): Promise<void> {
     return ran.stdout
       .split('\n')
       .map((line) => line.split(' '))
-      .filter(([name, pid]) => name && !alive(Number(pid)))
+      .filter(([name, owner]) => name && deadHere(owner ?? ''))
       .map(([name]) => name as string)
   }
   const containers = await owned(['ps', '-a'], 'Names')
@@ -109,7 +137,7 @@ async function sweep(): Promise<void> {
     await docker(['network', 'rm', network])
 }
 
-/** The host's address on docker's default bridge: where a Linux container reaches the host. */
+/** The default bridge's gateway: where a container reaches awaywork when this machine is the engine's host. */
 async function bridgeGateway(): Promise<string | undefined> {
   const ran = await docker([
     'network',
@@ -121,11 +149,68 @@ async function bridgeGateway(): Promise<string | undefined> {
   return ran.stdout.split(' ').find((address) => /^\d+\.\d+\.\d+\.\d+$/.test(address))
 }
 
+/** The addresses a network's gateway would have: its own, or the first of each subnet, which is the host's where docker assigns it. */
+export function gatewaysOf(configs: { Subnet?: string; Gateway?: string }[]): string[] {
+  return configs.flatMap(({ Subnet = '', Gateway }) => {
+    if (Gateway) return [Gateway]
+    const base = Subnet.replace(/\/\d+$/, '')
+    if (/^\d+\.\d+\.\d+\.0$/.test(base)) return [base.replace(/0$/, '1')]
+    return base.endsWith('::') ? [`${base}1`] : []
+  })
+}
+
+async function networkGateways(network: string): Promise<string[]> {
+  const ran = await docker(['network', 'inspect', network, '--format', '{{json .IPAM.Config}}'])
+  try {
+    return gatewaysOf(JSON.parse(ran.stdout) ?? [])
+  } catch {
+    throw unwalled(`can't read the gateway of its network: ${firstLine(ran)}`)
+  }
+}
+
+/** A listener on the docker host's network, at a port the wall's network must not reach through its gateway. */
+async function startCanary(name: string, label: string[]): Promise<number> {
+  const port = randomInt(20_000, 60_000)
+  const started = await docker([
+    'run',
+    '-d',
+    '--rm',
+    '--name',
+    name,
+    ...label,
+    '--cap-drop=ALL',
+    '--security-opt=no-new-privileges',
+    '--read-only',
+    '--user',
+    'node',
+    '--network',
+    'host',
+    WALL_IMAGE,
+    'node',
+    '-e',
+    CANARY,
+    String(port),
+  ])
+  if (started.failed)
+    throw unwalled(
+      `can't tell whether its network's gateway reaches the host: a listener on docker's host network didn't start (${firstLine(started)}); \`container\` needs \`docker run --network host\` to work, which Docker Desktop has under Settings > Resources > Network`,
+    )
+  for (let tries = 0; tries < 25; tries++) {
+    if ((await docker(['logs', name])).stdout.includes('ready')) return port
+    await new Promise((wait) => setTimeout(wait, 200))
+  }
+  throw unwalled(
+    "can't tell whether its network's gateway reaches the host: the listener on docker's host network didn't come up",
+  )
+}
+
 async function ensureImage(): Promise<void> {
   if (!(await docker(['image', 'inspect', WALL_IMAGE])).failed) return
   const pulled = await docker(['pull', '--quiet', WALL_IMAGE], 10 * TIMEOUT_MS)
   if (pulled.failed)
-    throw unwalled(`${WALL_IMAGE} isn't here and couldn't be pulled: ${firstLine(pulled)}`)
+    throw unwalled(
+      `${WALL_IMAGE} isn't here and couldn't be pulled: ${firstLine(pulled)}; run \`docker pull ${WALL_IMAGE}\` once online`,
+    )
 }
 
 const flags = (network?: string) => [
@@ -144,19 +229,22 @@ export function probeProblem(
   forwarded: string,
 ): string | undefined {
   if (!outsideFromBridge)
-    return `can't tell: a container on docker's default network doesn't reach ${OUTSIDE} to compare with`
+    return `can't tell: a container on docker's default network doesn't reach ${OUTSIDE} to compare with, and \`container\` can't be walled on a network that only reaches the internet through a proxy`
   const lines = seen.split('\n').map((line) => line.split(' '))
   const result = (kind: string) => lines.filter(([k]) => k === kind)
   for (const [, target, answer] of result('direct'))
     if (answer === 'open') return `a container on the wall's network reaches ${target} directly`
     else if (answer === 'timeout')
       return `a container's connect to ${target} isn't refused, it times out`
+  for (const [, target, answer] of result('host'))
+    if (answer === 'open')
+      return `a container on the wall's network reaches the docker host's own services at ${target}, through its network's gateway`
   for (const [, name, answer] of result('dns'))
     if (!/^[A-Z_]+$/.test(answer ?? '')) return `a container on the wall's network resolves ${name}`
   const anonymous = result('anonymous')[0]?.slice(1).join(' ')
   const token = result('token')[0]?.slice(1).join(' ')
   if (!anonymous?.startsWith('HTTP/1.1 407') || !token?.startsWith('HTTP/1.1 403'))
-    return `the forwarder doesn't pass to awaywork's proxy at ${forwarded} (without the token: ${anonymous ?? 'nothing'}, with it: ${token ?? 'nothing'})`
+    return `the forwarder doesn't pass to awaywork's proxy at ${forwarded} (without the token: ${anonymous ?? 'nothing'}, with it: ${token ?? 'nothing'}); allow docker's bridge to that address if a firewall such as ufw drops it, and know that a remote DOCKER_HOST or a rootless docker isn't supported`
 }
 
 /**
@@ -168,22 +256,39 @@ export async function raiseContainerWall(egress: Egress): Promise<ContainerWall>
   await lowerContainerWall()
   await sweep()
   await ensureImage()
-  const gateway = process.platform === 'linux' ? await bridgeGateway() : undefined
-  if (process.platform === 'linux' && !gateway)
-    throw unwalled(
-      "can't find the gateway of docker's default network, where the forwarder reaches the proxy",
-    )
   const token = randomBytes(16).toString('hex')
-  const exposed = await egress.expose(gateway ?? '127.0.0.1', token).catch((e: Error) => {
-    throw unwalled(`can't listen for the forwarder on ${gateway ?? '127.0.0.1'}: ${e.message}`)
+  const listen = (host: string) => egress.expose(host, token)
+  const candidate = await bridgeGateway()
+  // The bridge's gateway is ours to bind on a Linux host; elsewhere (Docker Desktop, Colima, a remote engine) it isn't an address here.
+  let gateway = candidate
+  let exposed = candidate
+    ? await listen(candidate).catch((e: NodeJS.ErrnoException) => {
+        if (e.code !== 'EADDRNOTAVAIL')
+          throw unwalled(
+            `can't listen for the forwarder on ${candidate}: ${e.message}; free that address`,
+          )
+        gateway = undefined
+      })
+    : undefined
+  exposed ??= await listen('127.0.0.1').catch((e: Error) => {
+    throw unwalled(`can't listen for the forwarder on 127.0.0.1: ${e.message}`)
   })
   const network = `awaywork-wall-${randomBytes(4).toString('hex')}`
   const forwarder = `${network}-forwarder`
-  const label = ['--label', `${LABEL}=${process.pid}`]
-  const made = await docker(['network', 'create', '--internal', ...label, network])
+  const label = ['--label', `${LABEL}=${owner()}`]
+  const made = await docker([
+    'network',
+    'create',
+    '--internal',
+    '--ipv6=false',
+    '-o',
+    'com.docker.network.bridge.inhibit_ipv4=true',
+    ...label,
+    network,
+  ])
   if (made.failed) {
     exposed.close()
-    throw unwalled(`can't create its network: ${firstLine(made)}`)
+    throw unwalled(`can't create its network: ${firstLine(made)}; docker must be running`)
   }
   const wall: Raised = { network, forwarder, exposed, env: proxyEnv(FORWARDER_PORT, ALIAS, token) }
   raised = wall
@@ -219,7 +324,21 @@ export async function raiseContainerWall(egress: Egress): Promise<ContainerWall>
   const joined = await docker(['network', 'connect', 'bridge', forwarder])
   if (joined.failed)
     return fail(`the forwarder can't join docker's default network: ${firstLine(joined)}`)
-  const targets = gateway ? [OUTSIDE, `${gateway}:${exposed.port}`] : [OUTSIDE]
+  const canary = `${network}-canary`
+  let hostPort: number
+  let gateways: string[]
+  try {
+    gateways = await networkGateways(network)
+    hostPort = await startCanary(canary, label)
+  } catch (e) {
+    await docker(['rm', '-f', canary])
+    await lowerContainerWall()
+    throw e
+  }
+  const targets = [
+    ...(gateway ? [OUTSIDE, `${gateway}:${exposed.port}`] : [OUTSIDE]),
+    ...gateways.flatMap((address) => [`host=${address}:${hostPort}`, `host=${address}:22`]),
+  ]
   const [seen, control] = await Promise.all([
     docker([
       'run',
@@ -233,16 +352,9 @@ export async function raiseContainerWall(egress: Egress): Promise<ContainerWall>
       token,
       ...targets,
     ]),
-    docker([
-      'run',
-      '--rm',
-      ...flags(),
-      WALL_IMAGE,
-      'node',
-      '-e',
-      `require('net').connect({host: '1.1.1.1', port: 443, timeout: 3000}).on('connect', () => process.exit(0)).on('timeout', () => process.exit(1)).on('error', () => process.exit(1))`,
-    ]),
+    docker(['run', '--rm', ...flags(), WALL_IMAGE, 'node', '-e', CONTROL]),
   ])
+  await docker(['rm', '-f', canary])
   if (seen.failed) return fail(`the probe didn't run: ${firstLine(seen)}`)
   const problem = probeProblem(
     seen.stdout,

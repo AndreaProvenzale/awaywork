@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -29,7 +29,7 @@ describe.skipIf(!process.env.AWAYWORK_CONTAINER_WALL_TEST)(
     const fetches = (url: string) =>
       `fetch('${url}').then((r) => console.log(r.status), (e) => console.log('failed', e.cause?.code ?? e.message))`
     const left = async () => {
-      const filter = ['--filter', 'label=awaywork.wall']
+      const filter = ['--filter', `label=awaywork.wall=${hostname()}:${process.pid}`]
       const containers = await execa('docker', ['ps', '-aq', ...filter])
       const networks = await execa('docker', ['network', 'ls', '-q', ...filter])
       return `${containers.stdout}${networks.stdout}`
@@ -93,8 +93,8 @@ describe.skipIf(!process.env.AWAYWORK_CONTAINER_WALL_TEST)(
     })
 
     it('removes what a process that is gone left, and keeps what a live one holds, at the next start', async () => {
-      const kept = ['--label', `awaywork.wall=${process.ppid}`]
-      const gone = ['--label', 'awaywork.wall=2147483646']
+      const kept = ['--label', `awaywork.wall=${hostname()}:${process.ppid}`]
+      const gone = ['--label', `awaywork.wall=${hostname()}:2147483646`]
       await execa('docker', ['network', 'create', ...gone, 'awaywork-wall-stale'])
       await execa('docker', ['network', 'create', ...kept, 'awaywork-wall-kept'])
       await execa('docker', [

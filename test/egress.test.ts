@@ -268,7 +268,46 @@ describe('the proxy exposed to containers', () => {
       expect(await via(exposed.port, target, basic('guess'))).toBe(407)
       expect(await via(exposed.port, target, basic('secret'))).toBe(200)
       expect(await via(exposed.port, 'evil.example:443', basic('secret'))).toBe(403)
+      expect(await via(proxy.port, target)).toBe(407)
+      expect(await via(proxy.port, target, basic('secret'))).toBe(200)
+      exposed.close()
       expect(await via(proxy.port, target)).toBe(200)
+    } finally {
+      exposed.close()
+      origin.close()
+    }
+  })
+
+  it('keeps the token and the proxy headers from the origin of a plain HTTP request', async () => {
+    const proxy = await startEgress()
+    const exposed = await proxy.expose('127.0.0.1', 'secret')
+    let seen: Record<string, unknown> = {}
+    const origin = createServer((req, res) => {
+      seen = req.headers
+      res.end()
+    }).listen(0, '127.0.0.1')
+    await new Promise((ready) => origin.once('listening', ready))
+    const port = (origin.address() as AddressInfo).port
+    try {
+      proxy.use({ name: 'setup', hosts: ['127.0.0.1'], log: () => {} })
+      await new Promise<void>((done, fail) => {
+        const req = request({
+          host: '127.0.0.1',
+          port: exposed.port,
+          path: `http://127.0.0.1:${port}/`,
+          headers: {
+            'proxy-authorization': `Basic ${Buffer.from('awaywork:secret').toString('base64')}`,
+            'proxy-connection': 'keep-alive',
+            'x-kept': 'yes',
+          },
+        })
+        req.on('response', (res) => res.resume().on('end', done))
+        req.on('error', fail)
+        req.end()
+      })
+      expect(seen['x-kept']).toBe('yes')
+      expect(seen['proxy-authorization']).toBeUndefined()
+      expect(seen['proxy-connection']).toBeUndefined()
     } finally {
       exposed.close()
       origin.close()
