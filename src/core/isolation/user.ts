@@ -144,14 +144,16 @@ export async function workerFor(
   const as = (...command: string[]) =>
     execa(bin('sudo'), ['-n', '-u', user, ...command], { reject: false })
   const ran = await as('true')
-  if (ran.failed)
+  if (ran.failed) {
+    const why = ran.stderr.split('\n')[0] || ran.shortMessage
     throw new Error(
       hosted
         ? `can't run as the ${user} user on this GitHub-hosted runner: run awaywork through its action, which creates it`
         : image
-          ? `can't run as the ${user} user in this image: build it from awaywork's Dockerfile, which creates it`
-          : `can't run as the ${user} user (${ran.stderr.split('\n')[0] || ran.shortMessage})`,
+          ? `can't run as the ${user} user in this image (${why}): build it from awaywork's Dockerfile, which creates it`
+          : `can't run as the ${user} user (${why})`,
     )
+  }
   if (!(await as('sudo', '-n', 'true')).failed)
     throw new Error(
       `the ${user} user can sudo on this ${hosted ? 'runner' : 'machine'}, so it isolates nothing`,
