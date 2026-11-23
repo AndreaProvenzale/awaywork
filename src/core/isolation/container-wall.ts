@@ -28,7 +28,7 @@ net.createServer((from) => {
 /** Listens on the docker host's own network, to see whether a container of the wall's network reaches the host's services. */
 const CANARY = `const s = require('net').createServer((c) => c.end()).listen(Number(process.argv[1]), '0.0.0.0', () => console.log('ready'))
 s.on('error', () => process.exit(1))
-setTimeout(() => process.exit(0), 30000)`
+setTimeout(() => process.exit(0), 120000)`
 
 /** Prints what a container on the wall's network reaches; argv: the forwarder's alias, the token, then targets, those starting with host= being the docker host's. */
 const PROBE = `const net = require('net'), dns = require('dns')
@@ -62,17 +62,20 @@ const via = (auth) => new Promise((done) => {
   for (const line of seen) console.log(line.join(' '))
 })()`
 
-/** Exits 0 at the first connect to a public address, trying two, twice: a network just up can miss one. */
-const CONTROL = `const hosts = ['1.1.1.1', '8.8.8.8', '1.1.1.1', '8.8.8.8']
-const next = () => {
-  const host = hosts.shift()
-  if (!host) process.exit(1)
-  const s = require('net').connect({ host, port: 443, timeout: 3000 })
-  let failed = false
-  const fail = () => { if (!failed) { failed = true; s.destroy(); next() } }
-  s.on('connect', () => process.exit(0)).on('timeout', fail).on('error', fail)
-}
-next()`
+/** Prints `outside open` at the first connect to a public address, trying two, twice (a network just up can miss one), then `canary open` if argv `host port` accepts: proof the canary is still listening. */
+const CONTROL = `const net = require('net')
+const tcp = (host, port) => new Promise((done) => {
+  const s = net.connect({ host, port, timeout: 3000 })
+  s.on('connect', () => { s.destroy(); done(true) })
+  s.on('timeout', () => { s.destroy(); done(false) })
+  s.on('error', () => done(false))
+})
+;(async () => {
+  for (const host of ['1.1.1.1', '8.8.8.8', '1.1.1.1', '8.8.8.8'])
+    if (await tcp(host, 443)) { console.log('outside open'); break }
+  const [host, port] = process.argv.slice(1)
+  if (host && await tcp(host, Number(port))) console.log('canary open')
+})()`
 
 const unwalled = (reason: string) =>
   new Error(
@@ -230,13 +233,11 @@ const flags = (network?: string) => [
 ]
 
 /** What keeps the wall from holding, if anything, from what a throwaway container of the network and one of the default bridge saw. */
-export function probeProblem(
-  seen: string,
-  outsideFromBridge: boolean,
-  forwarded: string,
-): string | undefined {
-  if (!outsideFromBridge)
+export function probeProblem(seen: string, control: string, forwarded: string): string | undefined {
+  if (!control.includes('outside open'))
     return `can't tell: a container on docker's default network doesn't reach ${OUTSIDE} to compare with, and \`container\` can't be walled on a network that only reaches the internet through a proxy`
+  if (!control.includes('canary open'))
+    return `can't tell: a container on docker's default network doesn't reach the listener on docker's host network, so the gateway check proves nothing`
   const lines = seen.split('\n').map((line) => line.split(' '))
   const result = (kind: string) => lines.filter(([k]) => k === kind)
   for (const [, target, answer] of result('direct'))
@@ -359,13 +360,23 @@ export async function raiseContainerWall(egress: Egress): Promise<ContainerWall>
       token,
       ...targets,
     ]),
-    docker(['run', '--rm', ...flags(), WALL_IMAGE, 'node', '-e', CONTROL]),
+    docker([
+      'run',
+      '--rm',
+      ...flags(),
+      WALL_IMAGE,
+      'node',
+      '-e',
+      CONTROL,
+      candidate ?? '',
+      String(hostPort),
+    ]),
   ])
   await docker(['rm', '-f', canary])
   if (seen.failed) return fail(`the probe didn't run: ${firstLine(seen)}`)
   const problem = probeProblem(
     seen.stdout,
-    !control.failed,
+    control.failed ? '' : control.stdout,
     `${gateway ?? 'the host'}:${exposed.port}`,
   )
   if (problem) return fail(problem)
