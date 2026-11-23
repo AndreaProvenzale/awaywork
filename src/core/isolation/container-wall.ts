@@ -27,7 +27,8 @@ net.createServer((from) => {
 
 /** Listens on the docker host's own network, to see whether a container of the wall's network reaches the host's services. */
 const CANARY = `const s = require('net').createServer((c) => c.end()).listen(Number(process.argv[1]), '0.0.0.0', () => console.log('ready'))
-s.on('error', () => process.exit(1))`
+s.on('error', () => process.exit(1))
+setTimeout(() => process.exit(0), 30000)`
 
 /** Prints what a container on the wall's network reaches; argv: the forwarder's alias, the token, then targets, those starting with host= being the docker host's. */
 const PROBE = `const net = require('net'), dns = require('dns')
@@ -170,37 +171,43 @@ async function networkGateways(network: string): Promise<string[]> {
 
 /** A listener on the docker host's network, at a port the wall's network must not reach through its gateway. */
 async function startCanary(name: string, label: string[]): Promise<number> {
-  const port = randomInt(20_000, 60_000)
-  const started = await docker([
-    'run',
-    '-d',
-    '--rm',
-    '--name',
-    name,
-    ...label,
-    '--cap-drop=ALL',
-    '--security-opt=no-new-privileges',
-    '--read-only',
-    '--user',
-    'node',
-    '--network',
-    'host',
-    WALL_IMAGE,
-    'node',
-    '-e',
-    CANARY,
-    String(port),
-  ])
-  if (started.failed)
-    throw unwalled(
-      `can't tell whether its network's gateway reaches the host: a listener on docker's host network didn't start (${firstLine(started)}); \`container\` needs \`docker run --network host\` to work, which Docker Desktop has under Settings > Resources > Network`,
-    )
-  for (let tries = 0; tries < 25; tries++) {
-    if ((await docker(['logs', name])).stdout.includes('ready')) return port
-    await new Promise((wait) => setTimeout(wait, 200))
+  const hint = "can't tell whether its network's gateway reaches the host"
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const port = randomInt(20_000, 60_000)
+    const started = await docker([
+      'run',
+      '-d',
+      '--rm',
+      '--name',
+      name,
+      ...label,
+      '--cap-drop=ALL',
+      '--security-opt=no-new-privileges',
+      '--read-only',
+      '--user',
+      'node',
+      '--network',
+      'host',
+      WALL_IMAGE,
+      'node',
+      '-e',
+      CANARY,
+      String(port),
+    ])
+    if (started.failed)
+      throw unwalled(
+        `${hint}: a listener on docker's host network didn't start (${firstLine(started)}); \`container\` needs \`docker run --network host\` to work, which Docker Desktop's Enhanced Container Isolation blocks`,
+      )
+    for (let tries = 0; tries < 25; tries++) {
+      const logs = await docker(['logs', name])
+      if (logs.stdout.includes('ready')) return port
+      if (logs.failed) break
+      await new Promise((wait) => setTimeout(wait, 200))
+    }
+    await docker(['rm', '-f', name])
   }
   throw unwalled(
-    "can't tell whether its network's gateway reaches the host: the listener on docker's host network didn't come up",
+    `${hint}: the listener on docker's host network didn't come up, its port was taken three times or something stopped it`,
   )
 }
 

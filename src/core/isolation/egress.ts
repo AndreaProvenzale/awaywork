@@ -247,7 +247,6 @@ export async function startEgress(): Promise<Egress> {
   return {
     port: typeof address === 'object' && address ? address.port : 0,
     async expose(host, token) {
-      required = token
       const listener = createListener((socket) => {
         exposed.set(socket, token)
         server.emit('connection', socket)
@@ -256,6 +255,7 @@ export async function startEgress(): Promise<Egress> {
         listener.once('error', fail)
         listener.listen(0, host, ready)
       })
+      required = token
       const address = listener.address()
       return {
         port: typeof address === 'object' && address ? address.port : 0,

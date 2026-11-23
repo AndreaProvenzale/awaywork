@@ -278,6 +278,20 @@ describe('the proxy exposed to containers', () => {
     }
   })
 
+  it('leaves the loopback listener open when the listen fails', async () => {
+    const proxy = await startEgress()
+    const origin = createServer((_, res) => res.end()).listen(0, '127.0.0.1')
+    await new Promise((ready) => origin.once('listening', ready))
+    const target = `127.0.0.1:${(origin.address() as AddressInfo).port}`
+    try {
+      proxy.use({ name: 'setup', hosts: ['127.0.0.1'], log: () => {} })
+      await expect(proxy.expose('203.0.113.1', 'secret')).rejects.toThrow()
+      expect(await via(proxy.port, target)).toBe(200)
+    } finally {
+      origin.close()
+    }
+  })
+
   it('keeps the token and the proxy headers from the origin of a plain HTTP request', async () => {
     const proxy = await startEgress()
     const exposed = await proxy.expose('127.0.0.1', 'secret')
