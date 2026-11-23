@@ -5,6 +5,7 @@ import { setTimeout } from 'node:timers/promises'
 import { ConfigError, loadConfig } from '#config/load'
 import {
   attemptsPath,
+  pausePath,
   runLockPath,
   runsDir,
   skillsDirOf,
@@ -19,6 +20,7 @@ import { exec } from '#forge/gh'
 import { ambiguous } from '#format/why'
 import { loadAttempts } from '#plan/attempts'
 import type { RunPlan } from '#plan/foreman'
+import { pausedLine, pausedUntil } from '#plan/pause'
 import {
   claimUnits,
   dueUnits,
@@ -222,6 +224,7 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
   let lastEnd = saved ? new Date(saved) : undefined
   let pruned = 0
   let waiting = false
+  let pausedLogged: string | undefined
   const lockedOut = (what: string, holder: { pid: number; runId: string }, again: string) => {
     if (!waiting)
       event(
@@ -350,8 +353,13 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
       }
       if (config && now.getTime() - pruned >= DAY && (await prune(config, now)))
         pruned = now.getTime()
+      const paused = await pausedUntil(pausePath, now.getTime())
+      if (paused && paused !== pausedLogged)
+        event(`${pausedLine(paused)}: no window or soon run starts`)
+      pausedLogged = paused
       const inWindow = state.runs.some((r) => r.trigger === 'window')
-      const until = config && windowRun(config.windows, now, { running: inWindow, lastEnd })
+      const until =
+        config && !paused && windowRun(config.windows, now, { running: inWindow, lastEnd })
       if (config && until) {
         const started = await start({ trigger: 'window', config, until, present: false })
         if (typeof started !== 'string') lockedOut('a window is open', started, 'each minute')
@@ -360,7 +368,7 @@ export async function watch(path: string, stop: AbortSignal, remote: Remote = {}
           lastEnd = until
         }
       }
-      if (config && !polling)
+      if (config && !paused && !polling)
         polling = poll(config, now)
           .then(
             () => {
@@ -474,7 +482,12 @@ export async function watchStatus(config: string, now = new Date()): Promise<str
     (c) => c.windows,
     () => undefined,
   )
-  return daemonLines(up ? state : undefined, windows, now)
+  return daemonLines(
+    up ? state : undefined,
+    windows,
+    now,
+    await pausedUntil(pausePath, now.getTime()),
+  )
 }
 
 /** The daemon's lines, `running` its state while it runs; the next window is left out when the config didn't load. */
@@ -482,6 +495,7 @@ export function daemonLines(
   running: WatchState | undefined,
   windows: Config['windows'] | undefined,
   now: Date,
+  paused?: string,
 ): string[] {
   const lines = [
     running
@@ -497,7 +511,8 @@ export function daemonLines(
     lines.push(`Next poll of ${id}: ${localTime(new Date(p.next))}${backoff}`)
   }
   const next = windows && firstOpening(windows, now.getTime() + 1, now.getTime() + 8 * DAY)
-  if (windows)
+  if (paused) lines.push(`Scheduled runs ${pausedLine(paused)}`)
+  else if (windows)
     lines.push(`Next window: ${next ? localTime(new Date(next)) : 'none, no windows set'}`)
   lines.push(`Daemon log: ${watchLogPath}`)
   return lines

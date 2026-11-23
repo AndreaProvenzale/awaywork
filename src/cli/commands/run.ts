@@ -12,7 +12,7 @@ import {
 } from '#cli/tui/browse'
 import { runTriage, screenJson, type UnitFiles } from '#cli/tui/triage'
 import { ConfigError, configPath, loadConfig } from '#config/load'
-import { remoteDir, runLockPath, runsDir, watchLockPath } from '#config/paths'
+import { pausePath, remoteDir, runLockPath, runsDir, watchLockPath } from '#config/paths'
 import { isolateWalled } from '#core/isolation/index'
 import { fetchRun, type UploadedRun, uploadedRuns } from '#forge/artifacts'
 import { type Exec, exec, gitRoot } from '#forge/gh'
@@ -20,6 +20,7 @@ import { reportJson } from '#format/json'
 import { findChains, formatRun, formatUnit } from '#format/report'
 import { formatSkipped } from '#format/skips'
 import { ambiguous } from '#format/why'
+import { pausedLine, pausedUntil } from '#plan/pause'
 import type { OnProgress } from '#plan/probe'
 import { type Chain, chains, localTime, type RunReport, runLine } from '#posts/report'
 import { describeWindow, hostedEnd, runEnd } from '#quota/window'
@@ -81,6 +82,11 @@ export function runCommand(program: Command): void {
         const config = await loadConfig(path)
         await isolateWalled(config.isolation, process.env)
         const now = new Date()
+        const paused = opts.scheduled ? await pausedUntil(pausePath, now.getTime()) : undefined
+        if (paused) {
+          console.log(`${pausedLine(paused)}, nothing to do`)
+          return
+        }
         const until = opts.scheduled
           ? runEnd(config.windows, now, process.env)
           : hostedEnd(now, process.env)
@@ -315,6 +321,8 @@ async function printRun(
   remote: boolean,
   held: string[] = [],
 ) {
+  const paused = remote ? undefined : await pausedUntil(pausePath)
+  const pauseNote = paused ? [pausedLine(paused)] : []
   if (view.skipped)
     return console.log(
       formatSkipped(report.plan.skipped, view.skipped === true ? undefined : view.skipped),
@@ -323,12 +331,13 @@ async function printRun(
     const files = await Promise.all(
       chains(report).map((chain, i) => unitFiles(dir, { chain, n: i + 1 }, view.screen)),
     )
-    const warnings = [...held, ...(report.warnings ?? [])]
+    const warnings = [...pauseNote, ...held, ...(report.warnings ?? [])]
     const state = runTriage(report, warnings, files, process.stdout.rows, remote)
     if (view.screen) return console.log(screenJson(state, report.runId))
     return view.browse?.screen.browse(state, view.browse.commands)
   }
-  if (!view.unit) return console.log(formatRun(report, report.warnings, true))
+  if (!view.unit)
+    return console.log(formatRun(report, [...pauseNote, ...(report.warnings ?? [])], true))
   const named = findChains(report, view.unit)
   const [found] = named
   if (!found || named.length > 1) {

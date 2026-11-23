@@ -6,6 +6,7 @@ import { approveCommand } from './commands/approve'
 import { configCommand } from './commands/config'
 import { doctorCommand } from './commands/doctor'
 import { initCommand } from './commands/init'
+import { pauseCommand } from './commands/pause'
 import { planCommand } from './commands/plan'
 import { replayCommand } from './commands/replay'
 import { runCommand } from './commands/run'
@@ -58,6 +59,7 @@ secretCommand(program, shell)
 sourcesCommand(program)
 planCommand(program)
 skipCommand(program)
+pauseCommand(program)
 approveCommand(program)
 skillsCommand(program)
 runCommand(program)
