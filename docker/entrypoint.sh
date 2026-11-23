@@ -16,7 +16,7 @@ state=~/.local/state/awaywork
 rm -f "$state"/{run,watch,worker,codex}.lock
 
 # The worker's way out is awaywork's proxy only; without NET_ADMIN the rules fail, the daemon stays up and runs are refused.
-sudo -n /usr/local/sbin/awaywork-wall || echo "network wall not set: add cap_add: [NET_ADMIN] to the container" >&2
+sudo -n /usr/local/sbin/awaywork-wall || echo "network wall not set (see above); without cap_add: [NET_ADMIN] the container can't set it" >&2
 
 # The daemon's log is the container's output, for `docker logs` and Coolify's Logs tab.
 tail -n0 -F ~/.local/state/awaywork/watch.log 2> /dev/null &

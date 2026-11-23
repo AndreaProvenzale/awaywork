@@ -90,9 +90,12 @@ export async function wallProblem(
   if (typeof over === 'string') return over
 }
 
-/** What awaywork's image needs for the rules its entrypoint sets. */
-export const NET_ADMIN_FIX =
-  'the container needs NET_ADMIN for the wall: `cap_add: [NET_ADMIN]` in compose.yml'
+/** How to fix a wall problem: in the image, NET_ADMIN only where the rules are missing (the worker reaches out). */
+export function wallFix(problem: string, env: NodeJS.ProcessEnv, elsewhere: string) {
+  if (!inAwayworkImage(env)) return elsewhere
+  if (/^\S+ reaches /.test(problem))
+    return 'the rules are missing: the container needs NET_ADMIN for the wall, `cap_add: [NET_ADMIN]` in compose.yml'
+}
 
 /** Under a worker user, probes the wall, again at each call, and starts the proxy. A worker without one is refused. Returns the proxy where the wall holds. */
 export async function raiseUserWall(
@@ -104,7 +107,7 @@ export async function raiseUserWall(
   const egress = problem ? undefined : await sharedEgress()
   if (problem)
     throw new Error(
-      `the network wall isn't up for the ${worker} user (${problem}), so its setup, checks and MCP servers could reach any host: ${inAwayworkImage(env) ? NET_ADMIN_FIX : '`awaywork doctor` shows the rules to add'}`,
+      `the network wall isn't up for the ${worker} user (${problem}), so its setup, checks and MCP servers could reach any host: ${wallFix(problem, env, '`awaywork doctor` shows the rules to add') ?? '`awaywork doctor` shows the check that fails'}`,
     )
   return egress
 }

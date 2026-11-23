@@ -369,9 +369,9 @@ describe('the wall', () => {
   it('refuses in awaywork’s image where the wall is missing, naming NET_ADMIN', async () => {
     useMode(userMode('wall-user'))
     try {
-      await expect(raiseWall({ AWAYWORK_IMAGE: '1' }, async () => 'no rules')).rejects.toThrow(
-        /no rules.*cap_add: \[NET_ADMIN\]/,
-      )
+      await expect(
+        raiseWall({ AWAYWORK_IMAGE: '1' }, async () => 'awaywork reaches x'),
+      ).rejects.toThrow(/reaches x.*cap_add: \[NET_ADMIN\]/)
       expect(wallUp()).toBe(false)
       await expect(isolateWalled('none', {}, async () => 'no rules')).resolves.toBeUndefined()
     } finally {

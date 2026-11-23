@@ -24,7 +24,7 @@ import { canMatch } from '#config/validate/where'
 import { DOCKER_TIMEOUT_MS, dockerVersion, inImage } from '#core/isolation/container'
 import { inAwayworkImage, WORKER } from '#core/isolation/sudo'
 import { MAX_USER, sudoersLines, workerFor } from '#core/isolation/user'
-import { NET_ADMIN_FIX, wallLines, wallProblem } from '#core/isolation/user-wall'
+import { wallFix, wallLines, wallProblem } from '#core/isolation/user-wall'
 import type { Ctx, Provider, Rule } from '#core/types'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '#forge/bitbucket'
 import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
@@ -620,14 +620,14 @@ export async function wallCheck(
       detail: `${worker} reaches only loopback: setup, the checks and the agent go through awaywork's proxy, to the hosts of their phase`,
     }
   const how = inAwayworkImage(env)
-    ? NET_ADMIN_FIX
+    ? wallFix(problem, env, '')
     : env.RUNNER_ENVIRONMENT === 'github-hosted'
       ? 'run awaywork through its action, which sets it up'
       : `run these once as root, and keep them past a reboot (iptables-persistent saves them):\n    ${wallLines(worker).join('\n    ')}`
   return {
     status: 'FAIL',
     what,
-    detail: `${worker} isn't walled from the network (${problem}), so setup, the checks and MCP servers reach any host; ${how}`,
+    detail: `${worker} isn't walled from the network (${problem}), so setup, the checks and MCP servers reach any host${how ? `; ${how}` : ''}`,
   }
 }
 

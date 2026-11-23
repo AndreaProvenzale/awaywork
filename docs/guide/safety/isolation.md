@@ -180,7 +180,7 @@ Still open:
 - **Another resolver's socket.** Only systemd-resolved's are denied. A daemon such as `nscd` with a world-writable socket would resolve names for the worker, though the probe's `getent -s dns` skips it [V, tested, nscd on Ubuntu 24.04]. The probe fails the wall when the worker can write `/var/run/nscd/socket` or `/run/nscd/socket`; other daemons' sockets aren't checked.
 - **IPv6 is probed only where awaywork's own user has a route out over it.** With none there is no way out over it; with one, the worker must be refused at once too, else the wall doesn't hold [V, the refusal logic tested; no IPv6 route on the boxes tested].
 - **What awaywork publishes** (commits, the PR body, reports), **MCP tools' own destinations** and **what the model provider sees** aren't filtered.
-- **A name that resolves to a private address** is reached when it is on the list: the proxy, run as you, resolves it [I]. Link-local ones are refused.
+- **A name that resolves to a private address** is reached when it is on the list: the proxy, run as you, resolves it. Under `*`, and for any listed host that resolves to one, that includes private addresses such as the other containers on the image's compose network and the Docker host (on Coolify, its proxy and whatever shares the network), which the direct wall blocks [V, tested in the image: a peer container 200, the gateway accepted]. Link-local addresses stay refused.
 
 ### A worker user on your Linux machine
 
@@ -324,10 +324,10 @@ agent: GH_TOKEN=none
 agent: committed smoke.txt
 ```
 
-The image holds the [network wall](#the-network-under-user) too. Its entrypoint runs `/usr/local/sbin/awaywork-wall` as root, the one script `away`'s sudoers lets it run: the eight rules of a hosted runner, for IPv4 and IPv6, in the container's own network namespace, where they last until the container is gone. It needs `NET_ADMIN`, which `compose.yml` asks for (`cap_add: [NET_ADMIN]`). Without it the script fails with a line in the container's output, the daemon stays up for `doctor` and `docker exec`, and a run is refused before any phase:
+The image holds the [network wall](#the-network-under-user) too. Its entrypoint runs `/usr/local/sbin/awaywork-wall` as root, the one script `away`'s sudoers lets it run: the hosted runner's eight rules plus one for Docker's resolver (below), for IPv4 and IPv6, in the container's own network namespace, where they last until the container is gone. It needs `NET_ADMIN`, which `compose.yml` asks for (`cap_add: [NET_ADMIN]`). Without it the script fails with a line in the container's output, the daemon stays up for `doctor` and `docker exec`, and a run is refused before any phase:
 
 ```
-the network wall isn't up for the awaywork user (awaywork reaches api.github.com), so its setup, checks and MCP servers could reach any host: the container needs NET_ADMIN for the wall: `cap_add: [NET_ADMIN]` in compose.yml
+the network wall isn't up for the awaywork user (awaywork reaches api.github.com), so its setup, checks and MCP servers could reach any host: the rules are missing: the container needs NET_ADMIN for the wall, `cap_add: [NET_ADMIN]` in compose.yml
 ```
 
 On a compose network `/etc/resolv.conf` names Docker's resolver, `127.0.0.11`, which Docker redirects to a port of its own before the filter sees the packet, so the rule for loopback's port 53 misses it and the worker resolved names [V, tested in Docker Desktop's VM, Docker 28.3.2: `getent -s dns hosts api.github.com` exit 0 for `awaywork`, and the probe said `awaywork resolves names`]. The script also rejects the worker's traffic to `127.0.0.11`, which closes it, and `away` and root still resolve [V, tested]. The image has no systemd-resolved, D-Bus or nscd, so the resolver lines aren't needed. A test keeps the script equal to the rules `doctor` prints elsewhere. On a shared box:

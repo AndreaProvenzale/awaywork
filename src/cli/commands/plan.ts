@@ -7,7 +7,7 @@ import { skillsDirOf } from '#config/paths'
 import type { Config } from '#config/schema'
 import { inAwayworkImage } from '#core/isolation/sudo'
 import { workerFor } from '#core/isolation/user'
-import { NET_ADMIN_FIX, wallProblem } from '#core/isolation/user-wall'
+import { wallFix, wallProblem } from '#core/isolation/user-wall'
 import type { Ctx } from '#core/types'
 import { resolveTeams } from '#forge/teams'
 import { planJson } from '#format/json'
@@ -107,7 +107,7 @@ async function wallWarning(config: Config): Promise<string | undefined> {
   const worker = await workerFor(config.isolation, process.env).catch(() => undefined)
   const problem = worker && (await wallProblem(worker))
   if (problem)
-    return `no unit runs: the network wall isn't up for ${worker} (${problem}): ${inAwayworkImage(process.env) ? NET_ADMIN_FIX : '`awaywork doctor` shows the rules'}`
+    return `no unit runs: the network wall isn't up for ${worker} (${problem}): ${wallFix(problem, process.env, '`awaywork doctor` shows the rules') ?? '`awaywork doctor` shows the check that fails'}`
 }
 
 type PlanOptions = {

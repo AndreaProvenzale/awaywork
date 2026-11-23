@@ -69,7 +69,7 @@ Keep `.env` out of git. Without `GH_TOKEN`, compose refuses: `required variable 
 ## Living with it
 
 - **Secrets are env vars**, no env file: Coolify passes only what `compose.yml` names, so install lists every secret your config needs as `NAME: ${NAME:-}`. Added one? Run install again.
-- **The network wall** needs `NET_ADMIN`, which `compose.yml` asks for and Coolify's Docker Compose build pack grants. Without it the daemon stays up, `doctor` fails (`the container needs NET_ADMIN for the wall: \`cap_add: [NET_ADMIN]\` in compose.yml`) and every run is refused with the same words. A `compose.yml` from before the wall lacks the line: run install again.
+- **The network wall** needs `NET_ADMIN`, which `compose.yml` asks for (`cap_add: [NET_ADMIN]`). If your host drops it, the wall stays down: the daemon stays up, `doctor` fails with `the rules are missing: the container needs NET_ADMIN for the wall` and every run is refused with the same words. If a run is refused, check `awaywork doctor` first. A `compose.yml` from before the wall lacks the line: run install again.
 - **Codex:** install adds `@openai/codex` to the Dockerfile's `PACKAGES`. Log in once into the volume, `docker exec -it <container> codex login --device-auth`; it survives redeploys.
 - **Toolchains** go in the Dockerfile as `RUN` lines at the marked spot, system-wide, since the worker can't enter `/home/away` (`RUN npm install -g pnpm@10`), [your own CLI](../config/providers.md#bring-your-own-cli) too.
 - **Cursor:** no npm package, so install puts [the installer](./actions.md#running-cursor) at that spot as one `RUN`, without `sudo` (the build is root):
