@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { createServer, request, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { containerMode } from '#core/isolation/container'
 import {
   agentPhase,
   checkPhase,
@@ -13,13 +14,16 @@ import {
   SETUP_HOSTS,
   setupPhase,
   startEgress,
-} from '#core/egress'
-import { containerize, isolate } from '#core/isolation'
+} from '#core/isolation/egress'
+import { isolateWalled, raiseWall, useMode, wallUp } from '#core/isolation/index'
+import { none } from '#core/isolation/none'
+import { userMode } from '#core/isolation/user'
+import { wallLines, wallProblem } from '#core/isolation/user-wall'
 import type { Job, Provider, Unit } from '#core/types'
-import { isolateWalled, raiseWall, shellRefusal, wallLines, wallProblem, wallUp } from '#core/wall'
 import { claude } from '#providers/claude'
 import { codex } from '#providers/codex'
 import { cursor } from '#providers/cursor'
+import { shellRefusal } from '#providers/sandbox'
 
 describe('linkLocal', () => {
   it('names 169.254.0.0/16 and fe80::/10, mapped IPv4 too', () => {
@@ -340,7 +344,7 @@ describe('the wall', () => {
   })
 
   it('probes again at every raise, so rules added or lost show at once', async () => {
-    isolate('wall-user')
+    useMode(userMode('wall-user'))
     try {
       await expect(raiseWall({}, async () => 'no rules')).rejects.toThrow(/no rules/)
       expect(wallUp()).toBe(false)
@@ -349,19 +353,19 @@ describe('the wall', () => {
       await expect(raiseWall({}, async () => 'rules flushed')).rejects.toThrow(/rules flushed/)
       expect(wallUp()).toBe(false)
     } finally {
-      isolate(undefined)
+      useMode(none)
       await raiseWall({}, async () => undefined)
     }
   })
 
   it('runs open in awaywork’s image where the wall is missing, and refuses everywhere else', async () => {
-    isolate('wall-user')
+    useMode(userMode('wall-user'))
     try {
       await raiseWall({ AWAYWORK_IMAGE: '1' }, async () => 'no rules')
       expect(wallUp()).toBe(false)
       await expect(isolateWalled('none', {}, async () => 'no rules')).resolves.toBeUndefined()
     } finally {
-      isolate(undefined)
+      useMode(none)
     }
   })
 })
@@ -371,7 +375,7 @@ describe('shellRefusal', () => {
     ...claude,
     startsSandbox: async () => starts,
   })
-  const none: Provider = { ...claude, startsSandbox: undefined }
+  const bare: Provider = { ...claude, startsSandbox: undefined }
 
   it('lets a unit run where its provider’s sandbox starts', async () => {
     expect(await shellRefusal(withSandbox(true), { dir: '/x' })).toBeUndefined()
@@ -385,26 +389,26 @@ describe('shellRefusal', () => {
   })
 
   it('lets it run behind a wall that holds', async () => {
-    isolate('wall-user')
+    useMode(userMode('wall-user'))
     try {
       await raiseWall({}, async () => undefined)
       expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toBeUndefined()
     } finally {
-      isolate(undefined)
+      useMode(none)
       await raiseWall({}, async () => undefined)
     }
   })
 
   it('exempts a provider with no sandbox of its own', async () => {
-    expect(await shellRefusal(none, { dir: '/x' })).toBeUndefined()
+    expect(await shellRefusal(bare, { dir: '/x' })).toBeUndefined()
   })
 
   it('exempts isolation: container', async () => {
-    containerize(true)
+    useMode(containerMode())
     try {
       expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toBeUndefined()
     } finally {
-      containerize(false)
+      useMode(none)
     }
   })
 

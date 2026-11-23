@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
-import { MAX_USER, workerFor, workerNamed } from '#core/isolation'
+import { workerNamed } from '#core/isolation/sudo'
+import { MAX_USER, workerFor } from '#core/isolation/user'
 
 vi.mock('#config/paths', async (original) => ({
   ...(await original<typeof import('#config/paths')>()),

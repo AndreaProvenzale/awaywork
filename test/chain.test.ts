@@ -19,7 +19,11 @@ import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
-import { asWorker, contain, containerize, isolate, lostToWorker, workerHome } from '#core/isolation'
+import { lostToWorker } from '#core/isolation/clones'
+import { containerMode } from '#core/isolation/container'
+import { asWorker, contain, useMode, workerHome } from '#core/isolation/index'
+import { none } from '#core/isolation/none'
+import { userMode } from '#core/isolation/user'
 import { launch } from '#core/launch'
 import { builtinSkills } from '#core/skills'
 import type { Forge, Item, Login, Provider, Source } from '#core/types'
@@ -59,15 +63,10 @@ vi.mock('#config/paths', async (original) => {
 })
 
 const wall = vi.hoisted(() => ({ up: false }))
-vi.mock('#core/wall', async (original) => {
-  const real = await original<typeof import('#core/wall')>()
-  return {
-    ...real,
-    wallUp: () => wall.up,
-    shellRefusal: (...args: Parameters<typeof real.shellRefusal>) =>
-      wall.up ? undefined : real.shellRefusal(...args),
-  }
-})
+vi.mock('#core/isolation/index', async (original) => ({
+  ...(await original<typeof import('#core/isolation/index')>()),
+  wallUp: () => wall.up,
+}))
 
 process.env.GIT_COMMITTER_NAME ??= 't'
 process.env.GIT_COMMITTER_EMAIL ??= 't@t'
@@ -1013,7 +1012,7 @@ it('ends the chain on a clone it couldn’t take back from the worker user, and 
   await writeFile(join(fakes, 'sudo'), sudo, { mode: 0o755 })
   const path = process.env.PATH
   process.env.PATH = `${fakes}:${path}`
-  isolate('awaywork')
+  useMode(userMode('awaywork'))
   const base = worker()
   let clone = ''
   const provider: Provider = {
@@ -1039,7 +1038,7 @@ it('ends the chain on a clone it couldn’t take back from the worker user, and 
     expect(opened).toEqual([])
     expect(existsSync(join(clone, 'acme-api-1.txt'))).toBe(true)
   } finally {
-    isolate(undefined)
+    useMode(none)
     process.env.PATH = path
     for (const dir of [clone, workerHome(clone)])
       if (dir?.startsWith('/tmp/awaywork-')) await rm(dir, { recursive: true, force: true })
@@ -1047,14 +1046,14 @@ it('ends the chain on a clone it couldn’t take back from the worker user, and 
 })
 
 it('runs no unit in a repo without an image under isolation: container', async () => {
-  containerize(true)
+  useMode(containerMode())
   try {
     const { report } = await run('queue: [{ skill: implement }]\n', [issue(1)], worker())
     expect(report.results.map((r) => [r.status, r.reason])).toEqual([
       ['skipped', 'no image for acme/api: isolation: container needs one in its repos entry'],
     ])
   } finally {
-    containerize(false)
+    useMode(none)
   }
 })
 
@@ -1069,7 +1068,7 @@ it.each([
   await writeFile(fakeDocker, `#!/bin/sh\n${script}\n`, { mode: 0o755 })
   const path = process.env.PATH
   process.env.PATH = `${dirname(fakeDocker)}:${path}`
-  containerize(true, 500)
+  useMode(containerMode(500))
   let clone = ''
   const base = worker()
   const provider: Provider = {
@@ -1095,7 +1094,7 @@ it.each([
     expect(opened).toEqual([])
     expect(clone).toBe('')
   } finally {
-    containerize(false)
+    useMode(none)
     process.env.PATH = path
   }
 })
@@ -1107,7 +1106,7 @@ async function containerPhase(script: string, login?: Login) {
   await rm(log, { force: true })
   const path = process.env.PATH
   process.env.PATH = `${dirname(fakeDocker)}:${path}`
-  containerize(true, 500)
+  useMode(containerMode(500))
   const dir = await mkdtemp(join(tmpdir(), 'awaywork-clone-'))
   contain(dir, { image: 'acme/api:dev', secrets: [] })
   try {
@@ -1118,7 +1117,7 @@ async function containerPhase(script: string, login?: Login) {
     )
     return { dir, error, calls: (await readFile(log, 'utf8')).split('\n').filter(Boolean) }
   } finally {
-    containerize(false)
+    useMode(none)
     process.env.PATH = path
   }
 }

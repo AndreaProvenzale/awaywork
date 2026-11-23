@@ -14,8 +14,8 @@ import { providerContract } from './contracts/provider.contract'
 import { fakeItem } from './fakes/items'
 
 const home = vi.hoisted(() => ({ dir: undefined as string | undefined }))
-vi.mock('#core/isolation', async (original) => ({
-  ...(await original<typeof import('#core/isolation')>()),
+vi.mock('#core/isolation/index', async (original) => ({
+  ...(await original<typeof import('#core/isolation/index')>()),
   workerHome: () => home.dir,
 }))
 

@@ -21,21 +21,11 @@ import {
 import type { Config } from '#config/schema'
 import { hasSkills, readSetup, unknownSkillsWarning } from '#config/skills'
 import { canMatch } from '#config/validate/where'
-import {
-  codexSandboxStarts,
-  cursorSandboxStarts,
-  DOCKER_TIMEOUT_MS,
-  dockerVersion,
-  inAwayworkImage,
-  inImage,
-  MAX_USER,
-  sandboxStarts,
-  sudoersLines,
-  WORKER,
-  workerFor,
-} from '#core/isolation'
+import { DOCKER_TIMEOUT_MS, dockerVersion, inImage } from '#core/isolation/container'
+import { inAwayworkImage, WORKER } from '#core/isolation/sudo'
+import { MAX_USER, sudoersLines, workerFor } from '#core/isolation/user'
+import { wallLines, wallProblem } from '#core/isolation/user-wall'
 import type { Ctx, Provider, Rule } from '#core/types'
-import { sandboxNeeds, wallLines, wallProblem } from '#core/wall'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '#forge/bitbucket'
 import { type Exec, exec, gitRoot, onHost } from '#forge/gh'
 import { teamMembers, teamsIn } from '#forge/teams'
@@ -44,9 +34,12 @@ import { NO_QUEUE } from '#format/rules'
 import { type Status, statusMarker } from '#format/terminal'
 import { ruleThread } from '#plan/queue'
 import { trustFor } from '#plan/repos'
-import { codexLogin } from '#providers/codex'
+import { sandboxStarts } from '#providers/claude'
+import { codexLogin, codexSandboxStarts } from '#providers/codex'
 import { commandBinary, isCommandProvider } from '#providers/command'
+import { cursorSandboxStarts } from '#providers/cursor'
 import { providerFor, providers } from '#providers/index'
+import { sandboxNeeds } from '#providers/sandbox'
 import { allowance } from '#quota/budget'
 import { staleDocker } from '#scheduler/docker'
 import { staleWorkflow, WORKFLOW } from '#scheduler/github-actions'

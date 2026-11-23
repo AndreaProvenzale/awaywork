@@ -2,13 +2,13 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { sandboxStarts, whereRuns, workerHome } from '#core/isolation'
+import { type Where, wallUp, whereRuns, workerHome } from '#core/isolation/index'
 import { launch } from '#core/launch'
 import { withholdsGrants } from '#core/trust'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '#core/types'
-import { wallUp } from '#core/wall'
 import { parseJson } from '#util/json'
 import { killGroupSoon, killGroupWhenDone, withoutParentSession } from '#util/process'
+import { bwrapStarts, DEV, PROC } from './sandbox'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
@@ -41,6 +41,13 @@ const configSchema = z.strictObject({
     .optional()
     .describe('Settings file for every worker, relative to the config file; passed as --settings'),
 })
+
+// Claude's apply-seccomp nests a user namespace, which AppArmor refuses inside bwrap on hosted runners.
+const CLAUDE_INNER = ['bwrap', '--unshare-user', '--ro-bind', '/', '/', 'socat', '-V']
+
+/** Whether Claude's sandbox can start `where`; see `bwrapStarts`. */
+export const sandboxStarts = (where: Where, signal?: AbortSignal, run: typeof execa = execa) =>
+  bwrapStarts('claude', where, [...PROC, ...DEV, ...CLAUDE_INNER], signal, run)
 
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
 export function claudeProvider(
