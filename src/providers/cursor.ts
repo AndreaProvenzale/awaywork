@@ -3,14 +3,14 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { bin as resolveBin } from '#config/paths'
-import { grantedNetwork } from '#core/egress'
-import { AGENT_HOME, cursorSandboxStarts, whereRuns } from '#core/isolation'
+import { grantedNetwork } from '#core/isolation/egress'
+import { AGENT_HOME, type Where, wallUp, whereRuns } from '#core/isolation/index'
 import { launch } from '#core/launch'
 import type { Job, McpServer, Provider, WorkerEvent } from '#core/types'
-import { wallUp } from '#core/wall'
 import { parseJson } from '#util/json'
 import { killGroupSoon, killGroupWhenDone } from '#util/process'
 import { inClone } from '#worker/clone/workspace'
+import { startsWhere } from './sandbox'
 
 /** Never `--force` or `--approve-mcps`: the allowlist in `cli-config.json` decides, and the clone's `.cursor/mcp.json` stays off. */
 const PRINT = ['-p', '--output-format', 'stream-json', '--trust']
@@ -38,6 +38,20 @@ const OWN_SECRETS = ['CURSOR_API_KEY']
 
 /** The `HOME` of a run, fresh each time: with yours, Cursor loads your skills, MCP servers, hooks and rules. */
 const homeOf = (job: Job) => join(job.dir, AGENT_HOME)
+
+/** Cursor's own startup check, as its bundle runs it: the helper beside `agent` (`$0`), no model call; exit 0 when its sandbox starts. */
+const CURSOR_PROBE = [
+  '-c',
+  `D=$(dirname "$(readlink -f "$(command -v "$0")")") && echo '{"sandbox":{"type":"workspace_readwrite","cwd":"/tmp"}}' | "$D/cursorsandbox" --policy /dev/stdin --preflight-only -- /bin/true`,
+]
+
+/** Whether Cursor's sandbox can start `where`, for the binary `agent`; once per process for each image or user. */
+export const cursorSandboxStarts = (
+  agent: string,
+  where: Where,
+  signal?: AbortSignal,
+  run: typeof execa = execa,
+) => startsWhere(`cursor ${agent}`, where, 'sh', [...CURSOR_PROBE, agent], signal, run)
 
 /** Cursor's `agent` binary on `CURSOR_API_KEY`: a fresh `HOME` hides the Keychain login. */
 export function cursorProvider(

@@ -2,7 +2,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { asWorker, isolate, sudoersLines, WORKER, workerHome, workerRoot } from '#core/isolation'
+import { asWorker, useMode, workerHome } from '#core/isolation/index'
+import { none } from '#core/isolation/none'
+import { WORKER } from '#core/isolation/sudo'
+import { sudoersLines, userMode, workerRoot } from '#core/isolation/user'
 
 // A file of its own: bin() keeps the first sudo it finds, here the fake one.
 it('chowns a clone and its home only as the sudoers lines allow, a folder straight under /tmp', async () => {
@@ -11,12 +14,12 @@ it('chowns a clone and its home only as the sudoers lines allow, a folder straig
   await writeFile(join(fakes, 'sudo'), `#!/bin/sh\necho "$*" >> ${calls}\n`, { mode: 0o755 })
   const path = process.env.PATH
   process.env.PATH = `${fakes}:${path}`
-  isolate(WORKER)
+  useMode(userMode(WORKER))
   const clone = await workerRoot()
   try {
     await asWorker(clone, async () => {})
   } finally {
-    isolate(undefined)
+    useMode(none)
     process.env.PATH = path
     for (const dir of [clone, workerHome(clone)])
       if (dir) await rm(dir, { recursive: true, force: true })

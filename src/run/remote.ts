@@ -7,7 +7,7 @@ import { Readable } from 'node:stream'
 import type { ReadableStream } from 'node:stream/web'
 import { execa } from 'execa'
 import { envFile, runsDir } from '#config/paths'
-import { inAwayworkImage } from '#core/isolation'
+import { inAwayworkImage } from '#core/isolation/sudo'
 import { parseJson } from '#util/json'
 import { awaitGroup } from '#util/process'
 

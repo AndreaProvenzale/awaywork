@@ -1,9 +1,12 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { Phase } from '#core/egress'
-import { isolate, WORKER, workerRoot } from '#core/isolation'
-import { isolateWalled, wallProblem, wallUp } from '#core/wall'
+import type { Phase } from '#core/isolation/egress'
+import { isolateWalled, useMode, wallUp } from '#core/isolation/index'
+import { none } from '#core/isolation/none'
+import { WORKER } from '#core/isolation/sudo'
+import { workerRoot } from '#core/isolation/user'
+import { wallProblem } from '#core/isolation/user-wall'
 import { runCommand } from '#worker/process/command'
 
 const env = { PATH: process.env.PATH }
@@ -34,7 +37,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('network wall, live', () => {
     dir = await workerRoot()
   })
   afterAll(() => {
-    isolate(undefined)
+    useMode(none)
     origin.close()
   })
 

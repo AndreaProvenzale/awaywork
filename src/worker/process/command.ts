@@ -1,5 +1,5 @@
-import type { Phase } from '#core/egress'
-import { asWorker } from '#core/isolation'
+import type { Phase } from '#core/isolation/egress'
+import { asWorker } from '#core/isolation/index'
 import { type Launch, launch } from '#core/launch'
 import { killGroupWhenDone } from '#util/process'
 
