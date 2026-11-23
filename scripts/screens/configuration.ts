@@ -6,6 +6,7 @@ import {
   type Check,
   checkLine,
   configFailure,
+  containerWallUp,
   dockerReady,
   folderLogin,
   ghLogin,
@@ -175,7 +176,11 @@ async function networkWallDoctor(): Promise<string> {
 function containerDoctor(): string {
   const found = ['claude 2.1.290 (Claude Code stand-in)', 'codex codex-cli 0.162.1 (stand-in)']
   // An excerpt: docker and the image, without the logins' warnings after them.
-  return [dockerReady('27.4.0'), ...imageClis('acme/leak', 'awaywork-leak', found, [])]
+  return [
+    dockerReady('27.4.0'),
+    containerWallUp,
+    ...imageClis('acme/leak', 'awaywork-leak', found, []),
+  ]
     .map(doctorLine)
     .join('\n')
 }

@@ -22,6 +22,8 @@ import type { Config } from '#config/schema'
 import { hasSkills, readSetup, unknownSkillsWarning } from '#config/skills'
 import { canMatch } from '#config/validate/where'
 import { DOCKER_TIMEOUT_MS, dockerVersion, inImage } from '#core/isolation/container'
+import { lowerContainerWall, raiseContainerWall } from '#core/isolation/container-wall'
+import { sharedEgress } from '#core/isolation/egress'
 import { inAwayworkImage, WORKER } from '#core/isolation/sudo'
 import { MAX_USER, sudoersLines, workerFor } from '#core/isolation/user'
 import { wallLines, wallProblem } from '#core/isolation/user-wall'
@@ -187,8 +189,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
         facts.filter(Boolean).join(', '),
       )
     const starts = { claude: sandboxStarts, codex: codexSandboxStarts }[id]
-    const exempt = boxed || inAwayworkImage(process.env)
-    const wall = asWorker && !exempt && !(await wallProblem(WORKER))
+    const exempt = inAwayworkImage(process.env)
+    const wall = boxed
+      ? isolation.some((c) => c.what === 'network wall' && c.status === 'ok')
+      : asWorker && !exempt && !(await wallProblem(WORKER))
     if (starts && !isolation.some((c) => c.status === 'FAIL')) {
       const sandbox = await shellSandbox(id, starts, config, boxed, asWorker)
       report(...sandboxCheck(id, sandbox, exempt ? 'open' : wall ? 'wall' : 'refused'))
@@ -397,7 +401,7 @@ const CURSOR_BEHIND_WALL =
 
 /**
  * An agent's shell sandbox as a check. Where it can't start, its units are refused (`refused`, a failure), or run with the
- * shell behind awaywork's wall (`wall`), or open, in the image and a container, whose walls are yet to come (`open`).
+ * shell behind awaywork's wall (`wall`), or open, in awaywork's image, whose wall is yet to come (`open`).
  */
 export function sandboxCheck(
   agent: string,
@@ -637,6 +641,27 @@ export async function wallCheck(
   }
 }
 
+export const containerWallUp: Check = {
+  status: 'ok',
+  what: 'network wall',
+  detail:
+    "containers join an internal network whose only way out is a forwarder to awaywork's proxy: setup, the checks and the agent go to the hosts of their phase",
+}
+
+/** Whether a container's only way out is awaywork's proxy: raises the wall and takes it down again. */
+export async function containerWallCheck(raise = raiseContainerWall): Promise<Check> {
+  const failed = await sharedEgress()
+    .then(raise)
+    .then(
+      () => undefined,
+      (e: Error) => e,
+    )
+  await lowerContainerWall()
+  return failed
+    ? { status: 'FAIL', what: containerWallUp.what, detail: failed.message }
+    : containerWallUp
+}
+
 /** `isolation: user` without a worker to run as, and where making it is yours (`local`), how. */
 export function workerFailure(reason: string, local: boolean, sudoers = sudoersLines()): Check {
   const setup = [
@@ -682,7 +707,7 @@ export async function containerChecks(
 ): Promise<Check[]> {
   const version = await dockerVersion(timeout).catch((e: Error) => e)
   if (version instanceof Error) return [boxCheck('FAIL', `container, but ${version.message}`)]
-  const checks = [dockerReady(version)]
+  const checks = [dockerReady(version), await containerWallCheck()]
   const docker = (...args: string[]) => execa(bin('docker'), args, { reject: false, timeout })
   const clis = config.providers.map(({ id, config: cfg }) =>
     isCommandProvider(cfg)

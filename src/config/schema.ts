@@ -270,7 +270,7 @@ const network = z
   .array(host)
   .default([])
   .describe(
-    "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR or issue. Under isolation: user the same hosts, plus built-in registries for setup, are all setup, the checks (verify, until, when, gate scripts) and the agent CLI reach besides their own",
+    "Hosts the agent's shell may reach, on top of the other levels' (top level, repos and rule add up); *.x is x's subdomains, * opens all; none by default, and none on an untrusted author's PR or issue. Under isolation: user or container the same hosts, plus built-in registries for setup, are all setup, the checks (verify, until, when, gate scripts) and the agent CLI reach besides their own",
   )
 const trustEntry = z
   .string()
@@ -618,7 +618,7 @@ const mcpServer = z
       .array(host)
       .optional()
       .describe(
-        "Hosts a stdio server reaches, for awaywork's network wall under isolation: user; an HTTP server's host is its url's",
+        "Hosts a stdio server reaches, for awaywork's network wall under isolation: user or container; an HTTP server's host is its url's",
       ),
     tools: z
       .array(z.string().regex(/^[\w-]+$/, 'expected a tool name like search_issues'))

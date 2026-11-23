@@ -513,14 +513,15 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
     )
     const as = (isolation: Config['isolation']) => ({ isolation }) as Config
     try {
-      await isolate(as('container'), true)
+      // The fake docker has no wall to raise, and a failed pick still leaves the container behind.
+      await expect(isolate(as('container'), true)).rejects.toThrow(/network wall/)
       expect(contained()).toBe(true)
       await expect(isolate(as('user'), true)).rejects.toThrow()
       expect(contained()).toBe(false)
-      await isolate(as('container'), true)
+      await expect(isolate(as('container'), true)).rejects.toThrow(/network wall/)
       expect(contained()).toBe(true)
-      await isolate(as('none'), false)
-      await isolate(as('none'), false)
+      await isolate(as('none'), false).catch(() => {})
+      await isolate(as('none'), false).catch(() => {})
       expect(contained()).toBe(true)
       expect(lines).toEqual(['isolation: none waits for the runs in progress'])
     } finally {

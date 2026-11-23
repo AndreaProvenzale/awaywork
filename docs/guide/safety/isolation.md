@@ -53,6 +53,7 @@ The one for your Mac, and for more than a user hides on Linux. Every setup, agen
 
 ```text config-doctor-container
 ✔  isolation: container: setup, the agent and the checks run in a fresh container of the repo's image (Docker 27.4.0)
+✔  network wall: containers join an internal network whose only way out is a forwarder to awaywork's proxy: setup, the checks and the agent go to the hosts of their phase
 ✔  isolation: acme/leak: awaywork-leak has claude 2.1.290 (Claude Code stand-in), codex codex-cli 0.162.1 (stand-in)
 ```
 
@@ -66,7 +67,20 @@ The image is yours to build, and all the units get:
 - **Logins:** Claude needs `CLAUDE_CODE_OAUTH_TOKEN`, Cursor `CURSOR_API_KEY` (its `HOME` is `.away/agent-home`). Codex gets your `auth.json` (`~/.codex`, `$CODEX_HOME` or `config_dir`) for the run, copied back after under its probes' lock when it's a refresh of the one lent, since a refresh rotates it ([Providers](../../providers.md#codex)). Probes and `--version` checks run on your machine.
 - **Clones in your home,** in the run dir, not `/tmp`: the one place Colima and Docker Desktop both share. `doctor` fails if the engine can't mount it.
 - **Removal:** each container is gone before awaywork reads the clone, `docker rm -f` on a timeout, the window's end or Ctrl-C. No answer from docker within a minute, and the clone is lost. `awaywork replay` runs in one too.
+- **The network:** an internal Docker network and awaywork's proxy, [below](#the-network-in-a-container). The first run or `doctor` pulls the official Node image the wall needs.
 - **Cost:** an image per repo to keep current, a few hundred ms per command on Colima, slow file sharing on macOS, and Linux only: no Xcode.
+
+### The network in a container
+
+Every container joins one internal Docker network: it has no route out and Docker's DNS answers nothing for outside names. Its only other member is a forwarder, a container of the official `node:26-alpine` image, pinned by digest, running a few lines of awaywork's own that pipe each connection to awaywork's proxy on the host. The forwarder also sits on Docker's default network, so it is the only way out. Every launch gets the same `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` as under `user`, pointing at the forwarder, and the proxy applies the [same phase lists](#the-network-under-user): setup gets the registries and `network`, checks and the agent shell what the table there says.
+
+- **The token:** the forwarder's side of the proxy listens beyond loopback, so awaywork gives each process a random token in the proxy URL (`http://awaywork:<token>@awaywork-egress:3128`) and the proxy answers nothing without it. curl, git, npm, pip, wget and Node's `fetch` take the URL as is [V, tested]. What runs in the container reads it from its env, as it reads its login.
+- **Where the proxy listens:** on Docker Desktop and Colima, the Mac's loopback, which the engine's `host-gateway` reaches [V, tested on Docker Desktop 28.3.2 and Colima 0.8.1]. On Linux, the default bridge's gateway (`docker0`, `172.17.0.1` unless you changed it), never `0.0.0.0`; there the forwarder's `host.docker.internal` is that address, not Docker's own `host-gateway`, which Colima points at the Mac [V, tested inside Colima's VM, Docker 27.4.0].
+- **Fails loudly:** before a run raises the wall it removes what a dead awaywork left, and then probes it with throwaway containers: one on the network must be refused at once connecting to `1.1.1.1:443` and to the proxy's own address on the host, resolve neither `registry.npmjs.org` nor `host.docker.internal`, and reach the forwarder, which must ask for the token and, given it, refuse a host outside any phase; one on Docker's default network must reach `1.1.1.1:443`, or the probe can't tell. If any of it fails the run is refused before any model call, with the reason, and `doctor` fails the same way (its `network wall` line, above).
+
+- **Cleanup:** the network and the forwarder go when the run does, also when awaywork dies on an exception. A kill leaves them, labelled `awaywork.wall=<pid>`, and the next start removes those whose process is gone.
+- **The agent's shell:** Docker's default seccomp keeps Claude's and Codex's sandboxes from starting, so their shell gets the CLI's hosts and `network` through the wall rather than its own list, and Cursor's sandbox is left out, as [behind the wall under `user`](#cursor-s-shell-is-offline).
+- **Proxy-ignoring clients:** they fail to resolve or connect even for an allowed host, with no line in `worker.log`, as under `user`. A refused host leaves `network: refused <host>:<port> (setup)`.
 
 ## What each key does
 
@@ -74,12 +88,12 @@ Four keys depend on the mode. Cells say what the key does to the agent's shell, 
 
 | Key | `none` | `user` | `container` |
 | --- | --- | --- | --- |
-| [`network`](../config/repos.md) | Walls the shell to the hosts; setup, checks and MCP servers stay open | Walls everything the worker runs: setup, checks, the agent CLI and MCP servers reach only their phase's hosts ([below](#the-network-under-user)) | Walls the shell to the hosts, its sandbox running in the image; setup, checks and MCP servers stay open |
+| [`network`](../config/repos.md) | Walls the shell to the hosts; setup, checks and MCP servers stay open | Walls everything the worker runs: setup, checks, the agent CLI and MCP servers reach only their phase's hosts ([below](#the-network-under-user)) | Walls everything a container runs: setup, checks, the agent CLI and MCP servers reach only their phase's hosts, through awaywork's proxy ([below](#the-network-in-a-container)) |
 | [`writable`](../config/repos.md) | Opens the paths to the shell; the rest needs no grant | Same, and the worker user's file permissions still apply | No effect: host paths aren't there |
 | [`serve`](../config/repos.md) | Starts the app for a step with `serve: true`, as you; the agent's MCP servers and its Codex and Cursor shells reach it, Claude's shell on Linux [doesn't](#claude-s-shell-is-offline), setup and checks don't | No effect: the step runs without the app | No effect: the step runs without the app |
 | [`image`](../config/repos.md) | No effect | No effect | Setup, the shell, checks and stdio MCP servers run in it |
 
-Under `none`, `network` and `writable` need the agent's own sandbox ([Claude](#claude-s-shell-is-offline), [Codex](#codex-s-shell-is-offline), [Cursor](#cursor-s-shell-is-offline)): where it can't start, the unit is skipped before any model call, with what to install in its reason, and `doctor` fails. Under `user` the [network wall](#the-network-under-user) stands in for it. In awaywork's image and under `container`, whose walls are yet to come, the shell still runs open and `doctor` warns. A command provider has no sandbox and is never skipped for it: `network` and `writable` do nothing for its shell, and under `user` the wall limits it to the hosts of its phase. On an untrusted author's PR or issue the shell gets no hosts and no `writable` paths and `serve` isn't started; `image` still applies. For a key that does nothing in the mode, `doctor` prints `writable: no effect under isolation: container (top level, acme/api)`: an info line, once per key, naming where it's set.
+Under `none`, `network` and `writable` need the agent's own sandbox ([Claude](#claude-s-shell-is-offline), [Codex](#codex-s-shell-is-offline), [Cursor](#cursor-s-shell-is-offline)): where it can't start, the unit is skipped before any model call, with what to install in its reason, and `doctor` fails. Under `user` the [network wall](#the-network-under-user) stands in for it. Under `container` the [network wall](#the-network-in-a-container) does the same. In awaywork's image, whose wall is yet to come, the shell still runs open and `doctor` warns. A command provider has no sandbox and is never skipped for it: `network` and `writable` do nothing for its shell, and under `user` or `container` the wall limits it to the hosts of its phase. On an untrusted author's PR or issue the shell gets no hosts and no `writable` paths and `serve` isn't started; `image` still applies. For a key that does nothing in the mode, `doctor` prints `writable: no effect under isolation: container (top level, acme/api)`: an info line, once per key, naming where it's set.
 
 ## Not a sandbox
 
@@ -269,7 +283,7 @@ agent: left a detached sleep 4242 behind
 
 No container or `sleep` was left; an agent hung past `unit_minutes: 1` was stopped at 64 s. Still open:
 
-- **The network:** what it reads, it can send, except from Claude's, Codex's and Cursor's shells where their sandboxes start (not inside the image), and then only to the `network` hosts. Colima's gateway didn't reach a Mac `localhost` service here, but your LAN is reachable, and Docker Desktop's `host.docker.internal` is your Mac. Domain allowlists for setup and checks: [#316](https://github.com/AndreaProvenzale/awaywork/issues/316).
+- **The network:** what it reads, it can send to the hosts of its phase, and an allowed host is a way out (the registries, GitHub and the vendor's API with an account of the attacker's own, by hostname only, so domain fronting works). The LAN, Docker Desktop's `host.docker.internal` and your Mac's services are not reachable except the proxy, which asks for its token [V, tested]; the token is in the container's env, so what runs there can use the proxy as the agent does. Other containers on the default network reach the proxy's listener on Linux, and need the token. The forwarder's image comes from Docker Hub, pinned by digest.
 - **The agent's secrets:** its token, Codex's `auth.json` for the run, its MCP servers' secrets. The Codex login it hands back has [the worker user's](#the-lent-codex-login) limits.
 - **The clone:** what a phase leaves is what checks run and awaywork publishes, though awaywork restores git config and refuses links after each phase.
 - **The image:** a token baked into a layer or `.npmrc` reaches every unit.

@@ -222,6 +222,14 @@ describe('the launcher', () => {
     const home = `${dir}/.away/agent-home`
     const own = dockerArgs('awaywork-3', box, 'agent', ['-p'], { ...options, home })
     expect(own.slice(own.indexOf('-e'), own.indexOf('-e') + 2)).toEqual(['-e', `HOME=${home}`])
+    const proxied = { ...options, env: { ...env, HTTPS_PROXY: 'http://awaywork:t@egress:3128' } }
+    expect(dockerArgs('awaywork-4', box, 'x', [], proxied)).not.toContain('HTTPS_PROXY')
+    const walled = dockerArgs('awaywork-4', box, 'x', [], proxied, 'awaywork-wall-1')
+    expect(walled.slice(walled.indexOf('--network'), walled.indexOf('--network') + 2)).toEqual([
+      '--network',
+      'awaywork-wall-1',
+    ])
+    expect(walled).toContain('HTTPS_PROXY')
   })
 
   it('names every variable awaywork sets in a phase’s env in AWAYWORK_ENV', async () => {
