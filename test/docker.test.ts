@@ -112,7 +112,7 @@ repos: { acme/api: { secrets: [DATABASE_URL] } }
     )
     const cursor = guide.match(/```dockerfile\n([\s\S]*?)```/)?.[1]?.replace(/^ {2}/gm, '')
     expect(cursor).toMatch(/^RUN install -d \/opt\/cursor/)
-    expect(built).toContain(`as RUN lines: setup runs as the worker user.\n${cursor}`)
+    expect(built).toContain(`not ENV: setup runs as the worker user.\n${cursor}`)
     expect(built).toContain(
       'COPY .awaywork /home/away/.awaywork\n# A command source\'s setup, in the config\'s folder, without the secrets.\nRUN <<"AWAYWORK_SETUP"\n#!/usr/bin/env bash\nset -eo pipefail\ncd /home/away/.awaywork\ngo build -o board .\nAWAYWORK_SETUP\n',
     )
@@ -134,7 +134,7 @@ repos: { acme/api: { secrets: [DATABASE_URL] } }
     await install()
     const generated = await read('Dockerfile')
     const edited = generated.replace(
-      /(as RUN lines: setup runs as the worker user\.\n)/,
+      /(not ENV: setup runs as the worker user\.\n)/,
       '$1RUN npm install -g pnpm@10\n',
     )
     await writeFile(join(root, 'Dockerfile'), edited)

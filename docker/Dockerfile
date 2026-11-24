@@ -9,7 +9,8 @@ RUN apt-get update \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
   && apt-get update \
   && apt-get install -y --no-install-recommends gh \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && echo 'session required pam_env.so readenv=1 user_readenv=0' >> /etc/pam.d/sudo
 
 # Upgrading is a rebuild: change these and push.
 ARG AWAYWORK_VERSION=0.1.0-rc.4
@@ -17,7 +18,7 @@ ARG PACKAGES=@anthropic-ai/claude-code
 ENV DISABLE_AUTOUPDATER=1
 RUN npm install -g "awaywork@$AWAYWORK_VERSION" $PACKAGES && npm cache clean --force
 
-# Your repos' toolchains go here, as RUN lines: setup runs as the worker user.
+# Your repos' toolchains go here, as RUN lines, their env in /etc/environment, not ENV: setup runs as the worker user.
 
 # The developer's user runs awaywork; sudoers' chown names its uid and gid.
 RUN groupadd --gid 1001 away \
