@@ -64,8 +64,8 @@ export function userMode(user: string): Mode {
   let phaseHome: string | undefined
   /** The phase that runs now. */
   let running: Phase | undefined
-  /** The names of yours its log already says its launches didn't get. */
-  const logged = new Set<string>()
+  /** The names of yours each log already says its launches didn't get, so a step's worker.log says it once. */
+  const logged = new WeakMap<Phase['log'], Set<string>>()
   let killing: Promise<unknown> = Promise.resolve()
   /** Each clone's `HOME` for the worker, made at its first phase, so nothing a unit leaves in `~` reaches another clone. */
   const homes = new Map<string, string>()
@@ -92,10 +92,13 @@ export function userMode(user: string): Mode {
         running?.secrets ?? [],
         egress !== undefined,
       )
-      const unlogged = dropped.filter((name) => !logged.has(name))
-      if (running && unlogged.length) {
-        running.log(`env: not passed to the worker user: ${unlogged.join(', ')}`)
-        for (const name of unlogged) logged.add(name)
+      if (running) {
+        const said = logged.get(running.log) ?? new Set<string>()
+        logged.set(running.log, said)
+        const unlogged = dropped.filter((name) => !said.has(name))
+        if (unlogged.length)
+          running.log(`env: not passed to the worker user: ${unlogged.join(', ')}`)
+        for (const name of unlogged) said.add(name)
       }
       // Nor in sudo's own env, where a sudoers `env_keep` would pass it on.
       const worker = { ...rest, env, extendEnv: false }
@@ -127,7 +130,6 @@ export function userMode(user: string): Mode {
         const handed = await handOver([dir, home], `${user}:`)
         phaseHome = home
         running = phase
-        logged.clear()
         egress?.use(phase)
         try {
           return await run()

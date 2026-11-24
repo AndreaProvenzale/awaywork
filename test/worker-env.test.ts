@@ -9,7 +9,7 @@ import { userMode, workerEnvOf } from '#core/isolation/user'
 import { launch } from '#core/launch'
 
 // A file of its own: bin() keeps the first sudo it finds, here the fake one.
-it('gives the worker user only the env it needs, none other in sudo’s own, and logs in each phase what it left out', async () => {
+it('gives the worker user only the env it needs, none other in sudo’s own, and logs once in each log what it left out', async () => {
   // A sudo that records a launch's argv and its own env, and runs nothing.
   const fakes = await mkdtemp(join(tmpdir(), 'awaywork-sudo-'))
   const seen = join(fakes, 'seen')
@@ -42,7 +42,12 @@ it('gives the worker user only the env it needs, none other in sudo’s own, and
       await launch('agent', [], { ...options, env: { ...env, JAVA_HOME: '/opt/java' } })
     }
     await asWorker(clone, twice, undefined, phase)
-    await asWorker(clone, () => launch('agent', [], options), undefined, phase)
+    await asWorker(clone, () => launch('agent', [], options), undefined, {
+      ...phase,
+      name: 'check',
+    })
+    const judge = { ...phase, log: (line: string) => void lines.push(`judge ${line}`) }
+    await asWorker(clone, () => launch('agent', [], options), undefined, judge)
     home = workerHome(clone)
   } finally {
     useMode(none)
@@ -53,7 +58,7 @@ it('gives the worker user only the env it needs, none other in sudo’s own, and
   expect(lines).toEqual([
     'env: not passed to the worker user: AWS_SECRET_ACCESS_KEY, NPM_TOKEN',
     'env: not passed to the worker user: JAVA_HOME',
-    'env: not passed to the worker user: AWS_SECRET_ACCESS_KEY, NPM_TOKEN',
+    'judge env: not passed to the worker user: AWS_SECRET_ACCESS_KEY, NPM_TOKEN',
   ])
   const recorded = await readFile(seen, 'utf8')
   expect(recorded).toContain('--preserve-env=PATH,LC_ALL,GH_TOKEN,CLAUDE_CODE_OAUTH_TOKEN ')
