@@ -8,7 +8,8 @@ import { lock } from '#util/lock'
 import type { Login } from '../types'
 import type { LaunchOptions, Mode } from '.'
 import { lose, lostToWorker } from './clones'
-import { type Egress, type Phase, proxyEnv } from './egress'
+import { AWAYWORK_ENV } from './container'
+import { type Egress, type Phase, PROXY_ENV, proxyEnv } from './egress'
 import {
   CHOWN,
   chown,
@@ -28,12 +29,43 @@ export const MAX_USER = 32
 /** Held across every process of one worker user, whichever profile: `killWorker` ends every process of that user, whoever's unit it belongs to. */
 export const WORKER_LOCK = join(rootStateDir, 'workers', `${WORKER}.lock`)
 
+/** Where binaries are, the locale, the terminal, the timezone, and whether it's CI. */
+const HOST_ENV = ['PATH', 'LANG', 'TERM', 'TZ', 'CI']
+/** What awaywork's image and action set for the worker: no Claude self-update (the image), the identity its commits carry (both). */
+const SET_FOR_WORKER = [
+  'DISABLE_AUTOUPDATER',
+  'GIT_AUTHOR_NAME',
+  'GIT_AUTHOR_EMAIL',
+  'GIT_COMMITTER_NAME',
+  'GIT_COMMITTER_EMAIL',
+]
+
+/** What a worker user gets of `env`: the host's basics, the names awaywork sets, the phase's `secrets` and, `walled`, the proxy's; `dropped` names the rest. */
+export function workerEnvOf(env: NodeJS.ProcessEnv, secrets: string[], walled: boolean) {
+  const passes = (name: string) =>
+    HOST_ENV.includes(name) ||
+    name.startsWith('LC_') ||
+    SET_FOR_WORKER.includes(name) ||
+    AWAYWORK_ENV.includes(name) ||
+    secrets.includes(name) ||
+    (walled && PROXY_ENV.includes(name))
+  const names = Object.keys(env).filter((name) => env[name] !== undefined)
+  return {
+    env: Object.fromEntries(names.filter(passes).map((name) => [name, env[name]])),
+    dropped: names.filter((name) => !passes(name)).sort(),
+  }
+}
+
 /** Runs every launch as `user`, in a phase with a `HOME` of its own, where the kernel wall holds through awaywork's proxy. */
 export function userMode(user: string): Mode {
   /** The proxy every launch of the worker user goes through, where the kernel wall holds. */
   let egress: Egress | undefined
   /** The worker's `HOME` in the phase that runs now. */
   let phaseHome: string | undefined
+  /** The phase that runs now. */
+  let running: Phase | undefined
+  /** The names of yours its log already says its launches didn't get. */
+  const logged = new Set<string>()
   let killing: Promise<unknown> = Promise.resolve()
   /** Each clone's `HOME` for the worker, made at its first phase, so nothing a unit leaves in `~` reaches another clone. */
   const homes = new Map<string, string>()
@@ -51,15 +83,30 @@ export function userMode(user: string): Mode {
     name: 'user',
     start<O extends LaunchOptions>(file: string, args: readonly string[], options: O) {
       const { home: _, tmpdir: __, ...rest } = options
-      const walled = egress ? { ...rest, env: { ...rest.env, ...proxyEnv(egress.port) } } : rest
+      const { env, dropped } = workerEnvOf(
+        {
+          ...(rest.extendEnv === false ? {} : process.env),
+          ...rest.env,
+          ...(egress && proxyEnv(egress.port)),
+        },
+        running?.secrets ?? [],
+        egress !== undefined,
+      )
+      const unlogged = dropped.filter((name) => !logged.has(name))
+      if (running && unlogged.length) {
+        running.log(`env: not passed to the worker user: ${unlogged.join(', ')}`)
+        for (const name of unlogged) logged.add(name)
+      }
+      // Nor in sudo's own env, where a sudoers `env_keep` would pass it on.
+      const worker = { ...rest, env, extendEnv: false }
       const subprocess = execa(
         bin('sudo'),
         sudoArgs(user, file, args, {
           ...options,
-          ...walled,
+          ...worker,
           home: options.home ?? phaseHome,
         }),
-        { ...walled, shell: false } as O,
+        { ...worker, shell: false } as O,
       )
       subprocess.nodeChildProcess.once('exit', () => void killWorker())
       return subprocess
@@ -79,11 +126,14 @@ export function userMode(user: string): Mode {
       try {
         const handed = await handOver([dir, home], `${user}:`)
         phaseHome = home
+        running = phase
+        logged.clear()
         egress?.use(phase)
         try {
           return await run()
         } finally {
           phaseHome = undefined
+          running = undefined
           egress?.use()
           await killWorker()
           await takeBack(handed)

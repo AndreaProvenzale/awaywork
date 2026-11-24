@@ -11,7 +11,7 @@ import { type ContainerWall, raiseContainerWall } from './container-wall'
 import { type Egress, type Phase, PROXY_ENV, sharedEgress } from './egress'
 import { developer } from './sudo'
 
-/** The names awaywork sets in a phase's env (`commandEnv`, `workerEnv`, the checks', the providers), which a container always gets. */
+/** The names awaywork sets in a phase's env (`commandEnv`, `workerEnv`, the checks', the providers), which a container and a worker user always get. */
 export const AWAYWORK_ENV = [
   'GH_CONFIG_DIR',
   'GH_TOKEN',
@@ -23,6 +23,7 @@ export const AWAYWORK_ENV = [
   'GIT_ATTR_SOURCE',
   'AWAYWORK_OUT_DIR',
   'ENABLE_CLAUDEAI_MCP_SERVERS',
+  'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
   'AWAYWORK_PROMPT',
   'AWAYWORK_FROM',
   'AGENT_CLI_CREDENTIAL_STORE',
