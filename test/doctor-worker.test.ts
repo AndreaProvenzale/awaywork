@@ -88,4 +88,7 @@ it('fails a sandbox that can’t start where its units are refused, warns where 
   expect(detail).toContain("Codex's units are skipped")
   expect(sandboxCheck('codex', down, 'wall')[0]).toBe('warn')
   expect(sandboxCheck('codex', down, 'wall')[2]).toContain("through awaywork's wall")
+  expect(sandboxCheck('codex', down, 'wall')[2]).toContain(
+    'units an author off `trust` steers are skipped',
+  )
 })

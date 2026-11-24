@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { runCommand, runSetup } from '#worker/process/command'
+import { leakedSecret, refuseSecrets, runCommand, runSetup } from '#worker/process/command'
 import { escaped, escaping } from './fakes/escape'
 
 const env = { PATH: process.env.PATH, NPM_TOKEN: 'npm-secret' }
@@ -96,4 +96,24 @@ describe('runCommand', () => {
     }
     expect(Date.now() - stopped).toBeLessThan(5000)
   }, 30_000)
+})
+
+describe('leakedSecret', () => {
+  const env = { LONG: 'sk-0123456789ab', SHORT: 'hunter2', EMPTY: '' }
+
+  it('names the first secret whose value the text holds verbatim, passing over short and unset ones', () => {
+    const names = ['EMPTY', 'SHORT', 'UNSET', 'LONG']
+    expect(leakedSecret('key sk-0123456789ab, pass hunter2', names, env)).toBe('LONG')
+    expect(leakedSecret('pass hunter2', names, env)).toBeUndefined()
+    expect(
+      leakedSecret(Buffer.from('sk-0123456789ab').toString('base64'), names, env),
+    ).toBeUndefined()
+  })
+
+  it('refuses the write by the name, never the value', () => {
+    expect(() => refuseSecrets('the result', 'sk-0123456789ab', ['LONG'], env)).toThrow(
+      "the result holds LONG's value: rotate it",
+    )
+    expect(() => refuseSecrets('the result', 'fine', ['LONG'], env)).not.toThrow()
+  })
 })

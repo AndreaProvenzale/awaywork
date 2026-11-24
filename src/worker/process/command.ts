@@ -85,6 +85,27 @@ export async function runCommand(
   }
 }
 
+/** Shorter values turn up in ordinary text by chance: a scan passes over them. */
+const SCANNED_LENGTH = 12
+
+/** The first of the `secrets` named in `env` whose value `text` holds verbatim, for awaywork to refuse a write that would carry it. */
+export const leakedSecret = (text: string, secrets: string[], env: NodeJS.ProcessEnv) =>
+  secrets.find((name) => {
+    const value = env[name]
+    return !!value && value.length >= SCANNED_LENGTH && text.includes(value)
+  })
+
+/** Throws when `text`, the `what` awaywork would write, holds a secret's value: it isn't redacted, as the agent had it. */
+export function refuseSecrets(
+  what: string,
+  text: string,
+  secrets: string[],
+  env: NodeJS.ProcessEnv,
+): void {
+  const name = leakedSecret(text, secrets, env)
+  if (name) throw new Error(`${what} holds ${name}'s value: rotate it`)
+}
+
 /** `text` with the values of the `secrets` named in `env` masked. */
 export function maskSecrets(text: string, secrets: string[], env: NodeJS.ProcessEnv): string {
   const values = secrets.flatMap((name) => env[name] || [])

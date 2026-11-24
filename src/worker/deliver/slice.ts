@@ -87,6 +87,8 @@ export interface Publisher {
   ) => Promise<string | undefined>
   /** Puts the files the clone's `.away/out/` holds besides the PR body in the store, if there's one: their pins go in its footer. */
   pin: (dir: string) => Promise<Pin[]>
+  /** The secret whose value `text` holds, if any: nothing that holds one goes out. */
+  leaked: (text: string) => string | undefined
 }
 
 /**
@@ -132,7 +134,7 @@ export async function publishSlice(
     if (deliver === 'pending_review' && last)
       return failedStep
         ? { kind: 'report', text, unposted: failedStep }
-        : leaveReview(deps.forge, unit, from, text, last)
+        : leaveReview(deps.forge, unit, from, text, last, deps.leaked)
     if (!posts)
       return { kind: 'report', text, ...(gated && { unposted: `${gated}, on_done held back` }) }
     return {
@@ -181,6 +183,7 @@ export async function publishSlice(
     notReady,
     held,
     pins,
+    deps.leaked,
   )
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }

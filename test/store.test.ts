@@ -344,6 +344,30 @@ describe('lean posts', () => {
     expect(r.results[0]?.store).toBeUndefined()
   })
 
+  it("stores no file and posts no result that holds a secret's value, naming the secret", async () => {
+    const token = 'fake-agent-token-0123456789'
+    const files = { 'report.md': `All of it: ${token}`, 'summary.md': 'Short.', 'notes.txt': token }
+    const { writes, report: r } = await run(
+      shared.config,
+      report,
+      [yours(1)],
+      writer(files, { prompts: [], read: [] }),
+      { FAKE_AGENT_TOKEN: token },
+    )
+    expect(writes).toEqual([])
+    expect(r.results[0]?.result).toEqual([
+      {
+        item: 'github:acme/api#1',
+        failed: "the result holds FAKE_AGENT_TOKEN's value: rotate it",
+      },
+    ])
+    expect(r.results[0]?.store).toEqual([
+      "notes.txt holds FAKE_AGENT_TOKEN's value, not stored: rotate it",
+      "report.md holds FAKE_AGENT_TOKEN's value, not stored: rotate it",
+      "report.md isn't in the store: the post shows all of it",
+    ])
+  })
+
   it('leaves a lean plan unposted when the store skips plan.yml', async () => {
     const store = await skipping('plan.yml')
     const yaml = 'tasks:\n  - { id: api, title: VAT endpoint }\n'

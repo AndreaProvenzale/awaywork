@@ -3,7 +3,8 @@ import { bin } from '#config/paths'
 import { inImage } from '#core/isolation/container'
 import { type Where, wallUp } from '#core/isolation/index'
 import { sudoArgs } from '#core/isolation/sudo'
-import type { Job, Provider } from '#core/types'
+import { withholdsGrants } from '#core/trust'
+import type { Provider, Unit } from '#core/types'
 
 const BWRAP_PROBE = ['--unshare-user', '--unshare-net', '--unshare-pid', '--ro-bind', '/', '/']
 export const PROC = ['--proc', '/proc']
@@ -60,15 +61,25 @@ export const sandboxNeeds = (agent: string) =>
       : 'user namespaces'
 
 /**
- * Why a unit can't run: its agent's shell sandbox can't start here and awaywork's wall doesn't hold, so its shell would
- * reach any host. A provider with no sandbox is exempt.
+ * Why a unit can't run `where`: its agent's shell sandbox can't start there, and either awaywork's wall doesn't hold, so
+ * its shell would reach any host, or an author off `trust` steers it, so its shell could read the agent's login, wall or
+ * not. A provider with no sandbox is exempt.
  */
 export async function shellRefusal(
   provider: Provider,
-  job: Pick<Job, 'dir'>,
+  where: Where,
+  unit: Pick<Unit, 'untrusted' | 'untrustedText'>,
   signal?: AbortSignal,
+  walled = wallUp(),
 ): Promise<string | undefined> {
-  if (!provider.startsSandbox || wallUp()) return
-  if (await provider.startsSandbox(job, signal)) return
-  return `${provider.id}'s shell sandbox can't start here (needs ${sandboxNeeds(provider.id)}) and no network wall holds: install them, or run under isolation: user, whose wall \`awaywork doctor\` shows`
+  const { id } = provider
+  const untrusted = withholdsGrants(unit)
+  if (!provider.startsSandbox || (walled && !untrusted)) return
+  const steered = `an author off \`trust\` steers this unit, so its shell could read ${id}'s login`
+  if (walled && provider.sandboxOffBehindWall)
+    return `${id}'s shell sandbox stays off behind awaywork's network wall, and ${steered}`
+  if (await provider.startsSandbox(where, signal)) return
+  const cant = `${id}'s shell sandbox can't start here (needs ${sandboxNeeds(id)})`
+  if (untrusted) return `${cant} and ${steered}: install them where units run`
+  return `${cant} and no network wall holds: install them, or run under isolation: user, whose wall \`awaywork doctor\` shows`
 }

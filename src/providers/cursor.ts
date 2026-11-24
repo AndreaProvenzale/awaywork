@@ -56,8 +56,7 @@ export const cursorSandboxStarts = (
 /** Cursor's `agent` binary on `CURSOR_API_KEY`: a fresh `HOME` hides the Keychain login. */
 export function cursorProvider(
   bin = 'agent',
-  startsSandbox = (job: Pick<Job, 'dir'>, signal?: AbortSignal) =>
-    cursorSandboxStarts(bin, whereRuns(job.dir), signal),
+  startsSandbox = (where: Where, signal?: AbortSignal) => cursorSandboxStarts(bin, where, signal),
 ): Provider {
   return {
     id: 'cursor',
@@ -70,6 +69,7 @@ export function cursorProvider(
     secrets: OWN_SECRETS,
     hosts: ['*.cursor.sh', '*.cursorapi.com', '*.cursor-cdn.com'],
     startsSandbox,
+    sandboxOffBehindWall: true,
 
     async detect() {
       const version = (await execa(bin, ['--version']).catch(() => undefined))?.stdout.trim()
@@ -93,7 +93,7 @@ export function cursorProvider(
       await mkdir(dir, { recursive: true, mode: 0o700 })
       const servers = job.mcp ?? {}
       // Its sandbox's proxy doesn't chain to awaywork's, so behind the wall even a listed host fails.
-      const sandboxed = !wallUp() && (await startsSandbox(job))
+      const sandboxed = !wallUp() && (await startsSandbox(whereRuns(job.dir)))
       sandboxedClones.set(job.dir, sandboxed)
       await writeFile(
         join(dir, 'cli-config.json'),

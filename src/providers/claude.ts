@@ -52,8 +52,7 @@ export const sandboxStarts = (where: Where, signal?: AbortSignal, run: typeof ex
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
 export function claudeProvider(
   bin = 'claude',
-  startsSandbox = (job: Pick<Job, 'dir'>, signal?: AbortSignal) =>
-    sandboxStarts(whereRuns(job.dir), signal),
+  startsSandbox = (where: Where, signal?: AbortSignal) => sandboxStarts(where, signal),
 ): Provider {
   return {
     id: 'claude',
@@ -99,7 +98,7 @@ export function claudeProvider(
     async *run(job, signal) {
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
       if (job.model) args.push('--model', job.model)
-      const sandboxed = await startsSandbox(job, signal)
+      const sandboxed = await startsSandbox(whereRuns(job.dir), signal)
       if (!sandboxed && !signal.aborted)
         yield { type: 'log', line: "Claude's sandbox can't start here: Bash runs unsandboxed" }
       args.push(

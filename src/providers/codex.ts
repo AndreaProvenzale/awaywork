@@ -64,8 +64,7 @@ export function codexProvider(
   bin = 'codex',
   lockFile = join(rootStateDir, 'codex.lock'),
   authPath?: string,
-  startsSandbox = (job: Pick<Job, 'dir'>, signal?: AbortSignal) =>
-    codexSandboxStarts(whereRuns(job.dir), signal),
+  startsSandbox = (where: Where, signal?: AbortSignal) => codexSandboxStarts(where, signal),
 ): Provider {
   // Held from a login lent to the worker until it's saved back, the run in between.
   let lent = false
@@ -204,7 +203,7 @@ export function codexProvider(
           `${k}=${JSON.stringify(v)}`,
         ])
         const mcp = mcpOverrides(job.mcp ?? {})
-        const walled = await startsSandbox(job, signal)
+        const walled = await startsSandbox(whereRuns(job.dir), signal)
         if (!walled && !signal.aborted)
           yield {
             type: 'log',

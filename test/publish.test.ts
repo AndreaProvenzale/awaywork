@@ -206,6 +206,40 @@ describe('publish', () => {
     })
   })
 
+  it("pushes nothing whose body or commits hold a secret's value, naming the secret and never the value", async () => {
+    const token = 'sk-ant-oat01-abcdefghijklmnop'
+    const leaked = (text: string) => (text.includes(token) ? 'CLAUDE_CODE_OAUTH_TOKEN' : undefined)
+    const refused = (what: string, deliver: Unit['deliver'] = 'draft_pr') =>
+      expect(
+        publish(unit(deliver), dir, forge, 'r1', start, false, undefined, undefined, [], leaked),
+      ).resolves.toEqual({
+        kind: 'none',
+        reason: `${what} CLAUDE_CODE_OAUTH_TOKEN's value, not pushed: rotate it`,
+        unpublished: true,
+      })
+    const forge = pushingForge()
+    await commit('first')
+    await body(`Fix it\n\n${token}`)
+    await refused('the PR body holds')
+    await refused('the push summary holds', 'push')
+    await body('Fix it')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', `wip ${token}`)
+    await refused('the commits hold')
+    await git(dir, 'reset', '-q', '--hard', 'HEAD~1')
+    // Gone from the last tree, still in the history the push would carry.
+    await writeFile(
+      join(dir, 'key.bin'),
+      Buffer.concat([Buffer.from([0, 255, 0]), Buffer.from(token)]),
+    )
+    await git(dir, 'add', '.')
+    await git(dir, 'commit', '-qm', 'add')
+    await git(dir, 'rm', '-q', 'key.bin')
+    await git(dir, 'commit', '-qm', 'remove')
+    await refused('the commits hold')
+    expect(forge.pushed).toEqual([])
+    expect(forge.fastForwards).toEqual([])
+  })
+
   it('fast-forwards the new commits with trailers onto your own PR branch, from where the clone started', async () => {
     const forge = pushingForge()
     await commit('first')

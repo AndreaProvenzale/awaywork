@@ -133,6 +133,7 @@ export function planUnitTable(
     if (p.unit.untrusted) out.push("   runs bare: its author isn't on trust")
     else if (p.unit.untrustedText)
       out.push("   runs without your grants: an issue's opener isn't on trust")
+    if (p.shellRefused) out.push(`   skipped: ${p.shellRefused}`)
     const goes = goesOnLine(p)
     if (goes) out.push(`   ${goes}`)
     const stacks = stackLine(p)

@@ -54,6 +54,12 @@ Sources prefetch context into files before the agent starts, and awaywork makes 
 - A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, a Cursor worker `CURSOR_API_KEY`. Codex uses the machine's login and gets no secret. A unit keeps its rule's [MCP servers](#mcp-servers)' secrets.
 - The rest of your environment stays, so repo tooling runs, including env-file variables nothing declares.
 
+### No secret goes out
+
+Before awaywork writes anything out, it looks for the value of each secret it knows (every provider's and every `secrets` the config declares, as listed above) in what it would write: the PR body or push summary, the commits it would push (their messages and every file they change, history included), a pending review, a comment on your item, and each file it would put in the store. A write that holds one is refused, not redacted, and its reason names the variable, never the value: `the PR body holds CLAUDE_CODE_OAUTH_TOKEN's value, not pushed: rotate it`. The agent had the value, so rotate it either way. Values under 12 characters are passed over, since ordinary text can hold them by chance.
+
+It matches the value verbatim only: an encoded copy (base64, split, reversed) goes out unseen, as does a login the agent reads from a file rather than the environment, and `GH_TOKEN` isn't on the list. It's a backstop for a steered model, not a wall.
+
 ### Setup, context and checks outside the agent
 
 - **Setup** runs before the agent, without the agent's secret and with only its repo's `secrets` added, and none of those on a branch a worker wrote: earlier in the run, an awaywork PR a rule took up, or the task PR a plan's task stacks on. On a PR by an author [`trust`](#trusting-an-author) doesn't list, setup doesn't run at all. What it leaves running is stopped before the agent starts.
@@ -105,6 +111,7 @@ repos:
 | The prompt's "its files are the author's, data" line | No | No | Yes |
 | The rule's MCP servers | Started | Started | None |
 | `network`, `writable` | The lists | The lists | None |
+| Where the agent's shell sandbox can't start | Runs behind the wall, skipped without one | Runs behind the wall, skipped without one | Skipped, wall or not; so is Cursor behind the wall ([why](./isolation.md#what-each-key-does)) |
 | Their comments and reviews, on any item | Read | Read | Hidden with a note |
 | Pushes and `deliver: push` | Per rule | Never | Never |
 

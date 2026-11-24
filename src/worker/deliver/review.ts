@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { Forge, Review, Unit } from '#core/types'
 import { readOutput } from '#worker/clone/files'
 import type { Outcome } from './publish'
+import type { Publisher } from './slice'
 
 const MAX_BYTES = 100_000
 const MAX_COMMENTS = 100
@@ -48,7 +49,7 @@ const oneLine = (reason: string) => reason.split('\n')[0]?.split('; ')[0] ?? ''
  * Leaves the chain's last report on the PR the unit reviews as your pending review at `head`, the
  * commit the clone read, with the line comments its step left in `review.json`. GitHub refuses the
  * whole review over one comment outside the PR's diff, so then they all go in the body; any other
- * failure delivers the report alone, saying why.
+ * failure delivers the report alone, saying why, as does a review that holds a value `leaked` names.
  */
 export async function leaveReview(
   forge: Forge,
@@ -56,6 +57,7 @@ export async function leaveReview(
   head: string,
   text: string,
   last: { text: string; out: string },
+  leaked?: Publisher['leaked'],
 ): Promise<Outcome> {
   const pr = unit.items
     .flatMap((i) => i.linkedPrs)
@@ -63,6 +65,9 @@ export async function leaveReview(
   if (!pr) return { kind: 'report', text, unposted: 'no pull request to review' }
   try {
     const { comments, invalid } = parseComments(await readOutput(join(last.out, 'review.json')))
+    const secret = leaked?.([last.text, ...comments.map((c) => c.body)].join('\n'))
+    if (secret)
+      return { kind: 'report', text, unposted: `the review holds ${secret}'s value: rotate it` }
     const post = (review: Review) => forge.pendingReview(unit.repo, pr.number, head, review)
     const url = await post({ body: last.text, comments }).catch((e) => {
       if (!comments.length) throw e

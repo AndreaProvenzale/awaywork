@@ -7,7 +7,7 @@ import type { Forge, Unit } from '#core/types'
 import { type Left, type Pin, trailerKey } from '#posts/footer'
 import { counted } from '#util/text'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from '#worker/clone/files'
-import type { Held } from './slice'
+import type { Held, Publisher } from './slice'
 
 export type Outcome =
   | {
@@ -61,7 +61,8 @@ const git = async (dir: string, ...args: string[]) =>
  * no merge among the commits, but on a merging unit only the merge of the PR's base awaywork made itself, the unit's `merged`;
  * on a unit that resumes awaywork's own draft, a fast-forward onto its branch, with or without commits, its body
  * rewritten from `pr.md` and the draft marked ready once nothing holds it, as a new PR would open.
- * The unit's commits are those after `start`, the commit its clone held before any worker ran.
+ * The unit's commits are those after `start`, the commit its clone held before any worker ran; nothing goes out while
+ * the body or a commit holds a value `leaked` names.
  * Git reads the clone only to fetch its HEAD into a repo of awaywork's own, so the clone's
  * config, attributes, hooks and refs, which the model can write, neither run nor count here.
  */
@@ -75,6 +76,7 @@ export async function publish(
   notReady?: string,
   held?: Held,
   pins?: Pin[],
+  leaked?: Publisher['leaked'],
 ): Promise<Outcome> {
   const out = `${WORK_DIR}/out`
   const file = join(dir, out, outputFile[unit.deliver])
@@ -89,7 +91,20 @@ export async function publish(
     // From the clone's own `.git` only, like `inClone`.
     const strict = '--upload-pack=git-upload-pack --strict'
     await git(repo, 'fetch', '-q', '--no-tags', strict, join(dir, '.git'), '+HEAD:refs/heads/work')
-    return await deliver(unit, repo, forge, runId, start, file, text, closes, notReady, held, pins)
+    return await deliver(
+      unit,
+      repo,
+      forge,
+      runId,
+      start,
+      file,
+      text,
+      closes,
+      notReady,
+      held,
+      pins,
+      leaked,
+    )
   } finally {
     await rm(repo, { recursive: true, force: true })
   }
@@ -107,6 +122,7 @@ async function deliver(
   notReady?: string,
   held?: Held,
   pins?: Pin[],
+  leaked?: Publisher['leaked'],
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
   const { resume } = unit
@@ -171,6 +187,9 @@ async function deliver(
       reason: `${unit.branch} already exists on ${unit.repo}, not pushed`,
       unpublished: true,
     }
+  const body = push ? 'the push summary' : 'the PR body'
+  const secret = await leakedIn(repo, unit, start, text, body, leaked)
+  if (secret) return { kind: 'none', reason: `${secret}, not pushed: rotate it`, unpublished: true }
 
   const head = oldest ? await withTrailer(repo, commits, `${trailerKey}: ${runId}`) : start
   await git(repo, 'update-ref', 'HEAD', head)
@@ -229,6 +248,24 @@ async function deliver(
   // Stacked PRs are a preview on GitHub: a repo without them answers 404, and the body says it anyway.
   if (unit.stackedOn) await forge.stack(unit.repo, unit.stackedOn, url).catch(() => {})
   return { kind: 'pr', url, commits: commits.length, head, ...opened }
+}
+
+/** Which of the `body` and the unit's commits (their messages and every file they change, history included) holds a value `leaked` names, and whose. */
+async function leakedIn(
+  repo: string,
+  unit: Unit,
+  start: string,
+  text: string,
+  body: string,
+  leaked?: Publisher['leaked'],
+): Promise<string | undefined> {
+  if (!leaked) return
+  const inBody = leaked(text)
+  if (inBody) return `${body} holds ${inBody}'s value`
+  const parent = unit.merged ? ['--first-parent'] : []
+  const patches = ['-p', '--text', '--no-ext-diff', '--no-textconv', '--format=%B']
+  const inCommits = leaked(await git(repo, 'log', ...patches, ...parent, 'work', `^${start}`))
+  if (inCommits) return `the commits hold ${inCommits}'s value`
 }
 
 /** Rewrites `commits`, oldest first, each with `trailer` and its author and committer kept; returns the new tip. */

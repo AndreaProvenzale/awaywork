@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { Item } from '#core/types'
@@ -20,7 +21,7 @@ import { type Threads, threaded, unwritable, writeItem } from '#sources/index'
 import { checkPlan, contractName, contractText, PLAN_TASKS, planYaml } from '#tasks/plan-file'
 import { bounded } from '#util/text'
 import { outputFile, readOutput } from '#worker/clone/files'
-import { maskSecrets } from '#worker/process/command'
+import { leakedSecret, maskSecrets, refuseSecrets } from '#worker/process/command'
 import type { Run } from './state'
 
 /** Under every tracker's comment limit as text; Jira's write also checks the longer ADF it sends. */
@@ -57,6 +58,7 @@ export async function postResult(
         op: 'comment',
         body: `${resultComment(text, status, p.unit.skill, item.task?.id, continued, waits)}${pinBlock(pins)}`,
       } as const
+      refuseSecrets('the result', write.body, secrets, input.ctx.env)
       const cfg = input.config.sources[item.source]
       const { updated, url = item.url } = await writeItem(
         source,
@@ -153,6 +155,7 @@ async function postComment(
   const ref = `${item.source}:${item.key}`
   try {
     const write = { op: 'comment', body: body(item) } as const
+    refuseSecrets(`the ${what}`, write.body, secrets, input.ctx.env)
     const cfg = input.config.sources[item.source]
     const { url = item.url } = await writeItem(
       input.sources[item.source],
@@ -179,7 +182,7 @@ export const postQuestions = async (run: Run, p: PlannedUnit, text: string) =>
 
 /**
  * Puts the files of `out` a post of `p` pins in the store, if there's one, but those `inline` in the post unless it's lean;
- * a put that fails gets a line in `notes`, a file the store skips its name in `skipped`.
+ * a put that fails, or a file that holds a secret's value, gets a line in `notes`, a file the store skips its name in `skipped`.
  */
 export async function pinOut(
   run: Run,
@@ -192,7 +195,13 @@ export async function pinOut(
 ): Promise<Pin[]> {
   const { input, secrets, store } = run
   if (!store || input.dryRun) return []
-  const names = (await outFiles(out)).filter((name) => p.unit.lean || !inline.includes(name))
+  const names: string[] = []
+  for (const name of await outFiles(out)) {
+    if (!p.unit.lean && inline.includes(name)) continue
+    const secret = leakedSecret(await readFile(join(out, name), 'utf8'), secrets, input.ctx.env)
+    if (secret) notes.push(`${name} holds ${secret}'s value, not stored: rotate it`)
+    else names.push(name)
+  }
   const kind = (name: string): Kind =>
     name === 'plan.yml'
       ? 'plan'

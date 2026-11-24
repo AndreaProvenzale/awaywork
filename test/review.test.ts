@@ -112,4 +112,23 @@ describe('leaveReview', () => {
       unposted: 'no pull request to review',
     })
   })
+
+  it("leaves no review whose body or a line comment holds a secret's value", async () => {
+    const leaked = (text: string) =>
+      text.includes('s3cr3t-0123456789') ? 'ASANA_TOKEN' : undefined
+    const forge = fakeForge()
+    const said = [{ path: 'a.ts', line: 2, body: 'token s3cr3t-0123456789' }]
+    for (const [review, text] of [
+      [comments, 'Fine. s3cr3t-0123456789'],
+      [said, 'Fine.'],
+    ] as const) {
+      const { out, unit } = await setUp(JSON.stringify(review))
+      expect(await leaveReview(forge, unit, 'abc', 'x', { text, out }, leaked)).toEqual({
+        kind: 'report',
+        text: 'x',
+        unposted: "the review holds ASANA_TOKEN's value: rotate it",
+      })
+    }
+    expect(forge.reviews).toEqual([])
+  })
 })
