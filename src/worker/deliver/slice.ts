@@ -88,7 +88,7 @@ export interface Publisher {
   /** Puts the files the clone's `.away/out/` holds besides the PR body in the store, if there's one: their pins go in its footer. */
   pin: (dir: string) => Promise<Pin[]>
   /** The secret whose value `text` holds, if any: nothing that holds one goes out. */
-  leaked: (text: string) => string | undefined
+  leaked: (text: string) => Promise<string | undefined>
 }
 
 /**
@@ -177,13 +177,13 @@ export async function publishSlice(
     unit,
     dir,
     deps.forge,
+    deps.leaked,
     deps.runId,
     from,
     closes,
     notReady,
     held,
     pins,
-    deps.leaked,
   )
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }

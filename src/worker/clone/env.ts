@@ -5,7 +5,12 @@ import { bin } from '#config/paths'
 import { parentSession } from '#util/process'
 import { refuseSymlinks, WORK_DIR } from './files'
 
-const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
+export const forgeTokens = [
+  'GH_TOKEN',
+  'GITHUB_TOKEN',
+  'GH_ENTERPRISE_TOKEN',
+  'GITHUB_ENTERPRISE_TOKEN',
+]
 /** Credentials that aren't tokens: askpass helpers, the ssh agent and git config set through the env. */
 const credentialPlumbing = [
   'SSH_AUTH_SOCK',

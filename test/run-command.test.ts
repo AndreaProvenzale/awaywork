@@ -98,6 +98,18 @@ describe('run command', () => {
     expect((await stat(join(runsDir, id))).mode & 0o777).toBe(0o700)
   })
 
+  it('masks the secrets awaywork scans for in report.md and report.json, which the action publishes', async () => {
+    const token = 'ghp_fake0123456789abcdef'
+    vi.stubEnv('GH_TOKEN', token)
+    await run([], `{ command: 'echo ${token}; exit 1' }`)
+    const id = (await readdir(runsDir)).sort().at(-1) ?? ''
+    const { report } = await latestRun()
+    const json = await readFile(join(runsDir, id, 'report.json'), 'utf8')
+    expect(report).toContain('***')
+    expect(report).not.toContain(token)
+    expect(json).not.toContain(token)
+  })
+
   it('prunes runs older than keep_runs when it starts, not on a dry run', async () => {
     const old = join(runsDir, '20200101-000000')
     await mkdir(old, { recursive: true })

@@ -1,8 +1,9 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { leakedSecret, refuseSecrets, runCommand, runSetup } from '#worker/process/command'
+import { codexProvider } from '#providers/codex'
+import { runCommand, runSetup, secretScan } from '#worker/process/command'
 import { escaped, escaping } from './fakes/escape'
 
 const env = { PATH: process.env.PATH, NPM_TOKEN: 'npm-secret' }
@@ -98,22 +99,41 @@ describe('runCommand', () => {
   }, 30_000)
 })
 
-describe('leakedSecret', () => {
-  const env = { LONG: 'sk-0123456789ab', SHORT: 'hunter2', EMPTY: '' }
+describe('secretScan', () => {
+  const env = {
+    LONG: 'sk-0123456789ab',
+    SHORT: 'hunter2',
+    EMPTY: '',
+    GH_TOKEN: 'ghp_0123456789abcdef',
+    TWG_BBC_TOKEN: 'bbc-0123456789ab',
+    TWG_CONFIG_DIR: '/home/dev/.config/twg',
+  }
 
-  it('names the first secret whose value the text holds verbatim, passing over short and unset ones', () => {
-    const names = ['EMPTY', 'SHORT', 'UNSET', 'LONG']
-    expect(leakedSecret('key sk-0123456789ab, pass hunter2', names, env)).toBe('LONG')
-    expect(leakedSecret('pass hunter2', names, env)).toBeUndefined()
-    expect(
-      leakedSecret(Buffer.from('sk-0123456789ab').toString('base64'), names, env),
-    ).toBeUndefined()
+  it('names the first secret whose value the text holds verbatim, passing over short and unset ones', async () => {
+    const { leaked } = secretScan(['EMPTY', 'SHORT', 'UNSET', 'LONG'], {}, env)
+    expect(await leaked('key sk-0123456789ab, pass hunter2')).toBe('LONG')
+    expect(await leaked('pass hunter2')).toBeUndefined()
+    expect(await leaked(Buffer.from('sk-0123456789ab').toString('base64'))).toBeUndefined()
   })
 
-  it('refuses the write by the name, never the value', () => {
-    expect(() => refuseSecrets('the result', 'sk-0123456789ab', ['LONG'], env)).toThrow(
-      "the result holds LONG's value: rotate it",
-    )
-    expect(() => refuseSecrets('the result', 'fine', ['LONG'], env)).not.toThrow()
+  it("looks for the forge's and twg's tokens too, not twg's config folder", async () => {
+    const { leaked, mask } = secretScan([], {}, env)
+    expect(await leaked('ghp_0123456789abcdef')).toBe('GH_TOKEN')
+    expect(await leaked('bbc-0123456789ab')).toBe('TWG_BBC_TOKEN')
+    expect(await leaked('/home/dev/.config/twg')).toBeUndefined()
+    expect(await mask('a ghp_0123456789abcdef b')).toBe('a *** b')
+  })
+
+  it("looks for the Codex login's tokens, the rotated ones and those lent before", async () => {
+    const auth = join(await mkdtemp(join(tmpdir(), 'awaywork-scan-')), 'auth.json')
+    const login = (refresh_token: string) =>
+      writeFile(auth, JSON.stringify({ tokens: { refresh_token, account_id: 'acct-0123456789' } }))
+    await login('rt-old-0123456789')
+    const { leaked } = secretScan([], { codex: codexProvider('codex', undefined, auth) }, {})
+    expect(await leaked('rt-old-0123456789')).toBe('CODEX_LOGIN (refresh_token)')
+    await login('rt-new-0123456789')
+    expect(await leaked('rt-new-0123456789')).toBe('CODEX_LOGIN (refresh_token)')
+    expect(await leaked('rt-old-0123456789')).toBe('CODEX_LOGIN (refresh_token)')
+    expect(await leaked('acct-0123456789')).toBeUndefined()
   })
 })

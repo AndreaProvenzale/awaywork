@@ -203,6 +203,9 @@ ${withRepos(yaml)}`)
 }
 
 /** Runs `queue` on `items` with GitHub and tracker sources that record what on_done writes, or fail as `write` does. */
+/** The forge token in `finishedRun`'s env, which nothing awaywork writes may hold. */
+export const GH_TOKEN_VALUE = 'ghp_fake0123456789abcdef'
+
 export async function finishedRun(
   queue: string,
   items: Item[],
@@ -252,7 +255,10 @@ ${queue}
     providers: { claude: provider },
     sources: { github: source as Source, tracker: source as Source },
     forge: { ...forge, ownDraftsRefused, threads },
-    ctx: { env: { PATH: process.env.PATH, SRC_TOKEN: 's3cret' }, log: (line) => lines.push(line) },
+    ctx: {
+      env: { PATH: process.env.PATH, SRC_TOKEN: 's3cret', GH_TOKEN: GH_TOKEN_VALUE },
+      log: (line) => lines.push(line),
+    },
     watch: () => ({ stop: async () => {} }),
     shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },

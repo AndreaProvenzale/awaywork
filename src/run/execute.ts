@@ -22,7 +22,7 @@ import { ruleFor } from '#plan/queue'
 import { providersOf } from '#providers/index'
 import { type Allowance, route } from '#quota/budget'
 import { counted } from '#util/text'
-import { maskSecrets } from '#worker/process/command'
+import { maskSecrets, secretScan } from '#worker/process/command'
 import { namedChains, runUnits } from '#worker/units/run'
 import type { RunInput } from '#worker/units/state'
 import { notifyRun } from './notify'
@@ -251,6 +251,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     true,
   )
 
+  const providers = providersOf(config)
   const report = await runUnits({
     config,
     configDir: dirname(path),
@@ -261,7 +262,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     // Claimed first by a run in progress, it's in the plan's skipped, and this run runs nothing.
     only: a.unit && namedChains(plan, a.unit).length ? a.unit : undefined,
     until: a.until,
-    providers: providersOf(config),
+    providers,
     sources,
     forge: forgeFor(planned.config),
     ctx: { ...ctx, log: (line) => log.info(`  ${line}`) },
@@ -272,8 +273,10 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     soon: !!a.soon,
   })
   const reportPath = join(runDir, 'report.md')
-  await writeFile(reportPath, formatReport(report, warnings))
-  await writeFile(join(runDir, reportJsonFile), reportJson(report, warnings))
+  // Text a write held back for a secret still lands here, and the action publishes these files.
+  const { mask } = secretScan(secrets, providers, ctx.env)
+  await writeFile(reportPath, await mask(formatReport(report, warnings)))
+  await writeFile(join(runDir, reportJsonFile), await mask(reportJson(report, warnings)))
   await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
   await inSaving(async () => {
     await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))

@@ -264,6 +264,8 @@ export interface Provider {
   finish?(dir: string): Promise<string[]>
   /** Under a worker user, whose `HOME` is fresh for each clone: lends it the machine's own login for the run. */
   login?: Login
+  /** The values of the login its shell can read from a file, by name, for awaywork to keep out of what it writes. */
+  loginValues?(env: NodeJS.ProcessEnv): Promise<Record<string, string>>
   /** The env var naming the folder its login is in, which a config's `config_dir` sets; the folder without it, and how to log in. */
   loginDir?: { env: string; default: string; command: string }
   /** Who it's logged in as in `env`; throws when it isn't. */

@@ -7,6 +7,8 @@ import { leaveReview, parseComments } from '#worker/deliver/review'
 import { fakeForge } from './fakes/forge'
 import { githubPr } from './fakes/items'
 
+const clean = async () => undefined
+
 describe('parseComments', () => {
   it('takes path, line and body, and says why it left a file out; a missing one has none', () => {
     const comment = { path: 'src/a.ts', line: 3, body: 'Name it after what it holds.' }
@@ -42,10 +44,17 @@ describe('leaveReview', () => {
   it('posts the last report with its line comments at the given commit', async () => {
     const { out, unit } = await setUp(JSON.stringify(comments))
     const forge = fakeForge()
-    const outcome = await leaveReview(forge, unit, 'abc1234', 'All of it', {
-      text: 'Looks fine.',
-      out,
-    })
+    const outcome = await leaveReview(
+      forge,
+      unit,
+      'abc1234',
+      'All of it',
+      {
+        text: 'Looks fine.',
+        out,
+      },
+      clean,
+    )
     expect(outcome).toEqual({
       kind: 'review',
       url: 'https://example.com/acme/api/pull/1#pullrequestreview-1',
@@ -60,12 +69,12 @@ describe('leaveReview', () => {
     const invalid = await setUp('{"path": "a.ts"}')
     const forge = fakeForge()
     const last = { text: 'Looks fine.', out: invalid.out }
-    expect(await leaveReview(forge, invalid.unit, 'abc', 'x', last)).toMatchObject({
+    expect(await leaveReview(forge, invalid.unit, 'abc', 'x', last, clean)).toMatchObject({
       kind: 'review',
       note: 'review.json left out: Invalid input: expected array, received object',
     })
     const none = await setUp()
-    const plain = await leaveReview(forge, none.unit, 'abc', 'x', { ...last, out: none.out })
+    const plain = await leaveReview(forge, none.unit, 'abc', 'x', { ...last, out: none.out }, clean)
     expect(plain).not.toHaveProperty('note')
     expect(forge.reviews.map((r) => [r.body, r.comments])).toEqual([
       ['Looks fine.', []],
@@ -82,7 +91,7 @@ describe('leaveReview', () => {
         throw new Error('Unprocessable Entity: Line could not be resolved')
       return post(repo, pr, head, review)
     }
-    const outcome = await leaveReview(forge, unit, 'abc', 'x', { text: 'Fine.', out })
+    const outcome = await leaveReview(forge, unit, 'abc', 'x', { text: 'Fine.', out }, clean)
     expect(outcome).toMatchObject({ kind: 'review' })
     expect(forge.reviews.map((r) => [r.body, r.comments])).toEqual([
       ['Fine.\n\n## Line comments\n\n`a.ts:2`: Why two?\n\n`a.ts:9`: Far from the diff.', []],
@@ -99,14 +108,16 @@ describe('leaveReview', () => {
         'Unprocessable Entity: User can only have one pending review per pull request\nmore',
       )
     }
-    expect(await leaveReview(forge, unit, 'abc', 'Report', { text: 'r', out })).toEqual({
+    expect(await leaveReview(forge, unit, 'abc', 'Report', { text: 'r', out }, clean)).toEqual({
       kind: 'report',
       text: 'Report',
       unposted: 'Unprocessable Entity: User can only have one pending review per pull request',
     })
     expect(posts).toBe(2)
     const elsewhere = { ...unit, base: 'feature-9' }
-    expect(await leaveReview(fakeForge(), elsewhere, 'abc', 'Report', { text: 'r', out })).toEqual({
+    expect(
+      await leaveReview(fakeForge(), elsewhere, 'abc', 'Report', { text: 'r', out }, clean),
+    ).toEqual({
       kind: 'report',
       text: 'Report',
       unposted: 'no pull request to review',
@@ -114,7 +125,7 @@ describe('leaveReview', () => {
   })
 
   it("leaves no review whose body or a line comment holds a secret's value", async () => {
-    const leaked = (text: string) =>
+    const leaked = async (text: string) =>
       text.includes('s3cr3t-0123456789') ? 'ASANA_TOKEN' : undefined
     const forge = fakeForge()
     const said = [{ path: 'a.ts', line: 2, body: 'token s3cr3t-0123456789' }]

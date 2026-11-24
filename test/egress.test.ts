@@ -548,9 +548,13 @@ describe('shellRefusal', () => {
     await behindWall(async () => {
       for (const unit of [theirs, { untrusted: false, untrustedText: true as const }])
         expect(await shellRefusal(withSandbox(false), {}, unit)).toBe(
-          "claude's shell sandbox can't start here (needs bubblewrap, socat and user namespaces) and an author off `trust` steers this unit, so its shell could read claude's login: install them where units run",
+          "claude's shell sandbox can't start here (needs bubblewrap, socat and user namespaces) and an author off `trust` steers this unit, so its shell could read CLAUDE_CODE_OAUTH_TOKEN: install them where units run",
         )
       expect(await shellRefusal(withSandbox(true), {}, theirs)).toBeUndefined()
+      // Codex's shell reads its login with the sandbox up too.
+      expect(await shellRefusal(withSandbox(false, codex), {}, theirs)).toContain(
+        'steers this unit, so its shell could write outside the clone and reach the network',
+      )
     })
   })
 

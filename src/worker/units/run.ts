@@ -11,7 +11,7 @@ import { runChain } from '#worker/chain/run'
 import { configSecrets } from '#worker/clone/context'
 import type { Publisher } from '#worker/deliver/slice'
 import { createChecks } from '#worker/process/checks'
-import { leakedSecret } from '#worker/process/command'
+import { secretScan } from '#worker/process/command'
 import { blocked, readPosts, skipTask } from './ready'
 import { triedLater } from './results'
 import type { Run, RunInput } from './state'
@@ -62,7 +62,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     runId: input.runId,
     signal: input.signal,
     check: checks.check,
-    leaked: (text) => leakedSecret(text, secrets, input.ctx.env),
+    leaked: secretScan(secrets, input.providers, input.ctx.env).leaked,
   }
   const run: Run = {
     input,

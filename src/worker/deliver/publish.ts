@@ -70,13 +70,13 @@ export async function publish(
   unit: Unit,
   dir: string,
   forge: Forge,
+  leaked: Publisher['leaked'],
   runId: string,
   start: string,
   closes = false,
   notReady?: string,
   held?: Held,
   pins?: Pin[],
-  leaked?: Publisher['leaked'],
 ): Promise<Outcome> {
   const out = `${WORK_DIR}/out`
   const file = join(dir, out, outputFile[unit.deliver])
@@ -95,6 +95,7 @@ export async function publish(
       unit,
       repo,
       forge,
+      leaked,
       runId,
       start,
       file,
@@ -103,7 +104,6 @@ export async function publish(
       notReady,
       held,
       pins,
-      leaked,
     )
   } finally {
     await rm(repo, { recursive: true, force: true })
@@ -114,6 +114,7 @@ async function deliver(
   unit: Unit,
   repo: string,
   forge: Forge,
+  leaked: Publisher['leaked'],
   runId: string,
   start: string,
   file: string,
@@ -122,7 +123,6 @@ async function deliver(
   notReady?: string,
   held?: Held,
   pins?: Pin[],
-  leaked?: Publisher['leaked'],
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
   const { resume } = unit
@@ -188,8 +188,8 @@ async function deliver(
       unpublished: true,
     }
   const body = push ? 'the push summary' : 'the PR body'
-  const secret = await leakedIn(repo, unit, start, text, body, leaked)
-  if (secret) return { kind: 'none', reason: `${secret}, not pushed: rotate it`, unpublished: true }
+  const leak = await leakedIn(repo, unit, start, text, body, leaked)
+  if (leak) return { kind: 'none', reason: leak, unpublished: true }
 
   const head = oldest ? await withTrailer(repo, commits, `${trailerKey}: ${runId}`) : start
   await git(repo, 'update-ref', 'HEAD', head)
@@ -250,22 +250,29 @@ async function deliver(
   return { kind: 'pr', url, commits: commits.length, head, ...opened }
 }
 
-/** Which of the `body` and the unit's commits (their messages and every file they change, history included) holds a value `leaked` names, and whose. */
+/**
+ * Why the `body` or the unit's commits (their messages, authors and the lines they change, history included) can't go
+ * out: one holds a value `leaked` names, or the commits can't be scanned.
+ */
 async function leakedIn(
   repo: string,
   unit: Unit,
   start: string,
   text: string,
   body: string,
-  leaked?: Publisher['leaked'],
+  leaked: Publisher['leaked'],
 ): Promise<string | undefined> {
-  if (!leaked) return
-  const inBody = leaked(text)
-  if (inBody) return `${body} holds ${inBody}'s value`
+  const inBody = await leaked(text)
+  if (inBody) return `${body} holds ${inBody}'s value, not pushed: rotate it`
   const parent = unit.merged ? ['--first-parent'] : []
-  const patches = ['-p', '--text', '--no-ext-diff', '--no-textconv', '--format=%B']
-  const inCommits = leaked(await git(repo, 'log', ...patches, ...parent, 'work', `^${start}`))
-  if (inCommits) return `the commits hold ${inCommits}'s value`
+  const format = '--format=%an%n%ae%n%cn%n%ce%n%B'
+  const patches = ['-p', '-U0', '--text', '--no-ext-diff', '--no-textconv', format, ...parent]
+  // execa's error holds what it buffered: none of it may reach a log or a reason.
+  const log = await git(repo, 'log', ...patches, 'work', `^${start}`).catch(() => undefined)
+  if (log === undefined)
+    return "the commits couldn't be scanned for secrets (over 100 MB?), not pushed"
+  const inCommits = await leaked(log)
+  if (inCommits) return `the commits hold ${inCommits}'s value, not pushed: rotate it`
 }
 
 /** Rewrites `commits`, oldest first, each with `trailer` and its author and committer kept; returns the new tip. */

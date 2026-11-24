@@ -9,6 +9,8 @@ import { publish } from '#worker/deliver/publish'
 import { fakeForge } from './fakes/forge'
 import { fakeItem } from './fakes/items'
 
+const clean = async () => undefined
+
 const git = async (dir: string, ...args: string[]) =>
   (await execa(bin('git'), ['-C', dir, ...args])).stdout
 
@@ -103,7 +105,7 @@ describe('publish', () => {
     await commit('second')
     await body('Fix the thing\n\nChecked: tests pass.')
     const forge = pushingForge()
-    expect(await publish(unit(), dir, forge, '20260925-010000', start)).toEqual({
+    expect(await publish(unit(), dir, forge, clean, '20260925-010000', start)).toEqual({
       kind: 'pr',
       url: 'https://example.com/acme/api/pull/away/FAKE-1',
       commits: 2,
@@ -125,7 +127,7 @@ describe('publish', () => {
     const linked = (key: string) => fakeItem({ source: 'linear', key, link: `Part of ${key}` })
     const items = [linked('ENG-12'), linked('ENG-12'), linked('ENG-13'), fakeItem()]
     const stacked = { ...unit(), items, stackedOn: 'https://github.com/acme/api/pull/9' }
-    await publish(stacked, dir, forge, 'r1', start)
+    await publish(stacked, dir, forge, clean, 'r1', start)
     expect(drafted).toEqual([
       {
         body: 'Fix the thing\n\nChecked: tests pass.\n\nPart of ENG-12\n\nPart of ENG-13\n\nStacked on https://github.com/acme/api/pull/9: merge that first.\n',
@@ -146,7 +148,7 @@ describe('publish', () => {
     }
     const opened = async (deliver: Unit['deliver'], notReady?: string) => {
       forge.branches.clear()
-      return publish(unit(deliver), dir, forge, 'r1', start, false, notReady)
+      return publish(unit(deliver), dir, forge, clean, 'r1', start, false, notReady)
     }
     expect(await opened('pr')).toMatchObject({ kind: 'pr', ready: true })
     expect(await opened('pr', 'verify failed')).toMatchObject({ draft: 'verify failed' })
@@ -168,7 +170,7 @@ describe('publish', () => {
     const issue = fakeItem({ source: 'github', type: 'issue', key: 'acme/api#7' })
     const task = fakeItem({ source: 'github', type: 'pr', key: 'acme/api#8' })
     const slice = { ...unit(), items: [issue, task] }
-    await publish(slice, dir, forge, 'r1', start, true)
+    await publish(slice, dir, forge, clean, 'r1', start, true)
     expect(bodies).toEqual(['Fix the thing\n\nCloses acme/api#7\n'])
   })
 
@@ -180,26 +182,26 @@ describe('publish', () => {
       throw new Error('Stacked PRs are not enabled for this repository')
     }
     const stacked = { ...unit(), stackedOn: 'https://github.com/acme/api/pull/9' }
-    expect(await publish(stacked, dir, forge, 'r1', start)).toMatchObject({ kind: 'pr' })
+    expect(await publish(stacked, dir, forge, clean, 'r1', start)).toMatchObject({ kind: 'pr' })
   })
 
   it('publishes nothing without commits, without a PR body, or onto an existing branch', async () => {
     const forge = fakeForge()
     await body('Title')
-    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit(), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: 'nothing',
     })
     await commit('first')
     await body('')
-    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit(), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: '1 commit but no PR body, not pushed',
       unpublished: true,
     })
     await body('Title')
     forge.branches.add('acme/api:away/FAKE-1')
-    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit(), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: 'away/FAKE-1 already exists on acme/api, not pushed',
       unpublished: true,
@@ -208,11 +210,10 @@ describe('publish', () => {
 
   it("pushes nothing whose body or commits hold a secret's value, naming the secret and never the value", async () => {
     const token = 'sk-ant-oat01-abcdefghijklmnop'
-    const leaked = (text: string) => (text.includes(token) ? 'CLAUDE_CODE_OAUTH_TOKEN' : undefined)
+    const leaked = async (text: string) =>
+      text.includes(token) ? 'CLAUDE_CODE_OAUTH_TOKEN' : undefined
     const refused = (what: string, deliver: Unit['deliver'] = 'draft_pr') =>
-      expect(
-        publish(unit(deliver), dir, forge, 'r1', start, false, undefined, undefined, [], leaked),
-      ).resolves.toEqual({
+      expect(publish(unit(deliver), dir, forge, leaked, 'r1', start)).resolves.toEqual({
         kind: 'none',
         reason: `${what} CLAUDE_CODE_OAUTH_TOKEN's value, not pushed: rotate it`,
         unpublished: true,
@@ -240,24 +241,49 @@ describe('publish', () => {
     expect(forge.fastForwards).toEqual([])
   })
 
+  it('scans the lines the commits change and who made them, not a value already in the repo beside them', async () => {
+    const token = 'https://key@sentry.example/42'
+    const leaked = async (text: string) => (text.includes(token) ? 'SENTRY_DSN' : undefined)
+    await writeFile(join(dir, '.env'), `DSN=${token}\nA=1\nB=2\n`)
+    await git(dir, 'add', '.')
+    await git(dir, 'commit', '-qm', 'dsn')
+    start = await git(dir, 'rev-parse', 'HEAD')
+    await writeFile(join(dir, '.env'), `DSN=${token}\nA=1\nB=3\n`)
+    await git(dir, 'commit', '-qam', 'bump')
+    await body('Bump')
+    expect(await publish(unit(), dir, fakeForge(), leaked, 'r1', start)).toMatchObject({
+      kind: 'pr',
+    })
+    await execa(bin('git'), ['-C', dir, 'commit', '-q', '--allow-empty', '-m', 'who'], {
+      env: { GIT_AUTHOR_NAME: `n ${token}` },
+    })
+    expect(await publish(unit(), dir, fakeForge(), leaked, 'r1', start)).toEqual({
+      kind: 'none',
+      reason: "the commits hold SENTRY_DSN's value, not pushed: rotate it",
+      unpublished: true,
+    })
+  })
+
   it('fast-forwards the new commits with trailers onto your own PR branch, from where the clone started', async () => {
     const forge = pushingForge()
     await commit('first')
-    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit('push'), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: '1 commit but no summary, not pushed',
       unpublished: true,
     })
     await body('Fixed the flaky test.\n')
     for (const refused of [{ base: '' }, { foreign: true }])
-      expect(await publish({ ...unit('push'), ...refused }, dir, forge, 'r1', start)).toEqual({
+      expect(
+        await publish({ ...unit('push'), ...refused }, dir, forge, clean, 'r1', start),
+      ).toEqual({
         kind: 'none',
         reason: "push goes only onto your own PR's branch, not pushed",
         unpublished: true,
       })
     expect(forge.fastForwards).toEqual([])
 
-    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit('push'), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'pushed',
       branch: 'feature-1',
       url: 'https://github.com/acme/api/pull/1',
@@ -274,7 +300,7 @@ describe('publish', () => {
     const forge = { ...fakeForge(), fastForward: async () => '#1 has auto-merge on' }
     await commit('first')
     await body('Fixed the flaky test.\n')
-    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit('push'), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: '#1 has auto-merge on, not pushed',
       unpublished: true,
@@ -294,8 +320,8 @@ describe('publish', () => {
       reason: '3 commits include a merge, not pushed',
       unpublished: true,
     }
-    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual(merged)
-    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual(merged)
+    expect(await publish(unit('push'), dir, forge, clean, 'r1', start)).toEqual(merged)
+    expect(await publish(unit(), dir, forge, clean, 'r1', start)).toEqual(merged)
     expect(forge.fastForwards).toEqual([])
     expect(forge.branches.size).toBe(0)
   })
@@ -318,17 +344,17 @@ describe('publish', () => {
     const merging = { ...unit('push'), merge: 'main' }
     const synced = { ...merging, merged: await git(dir, 'rev-parse', 'HEAD') }
     // A merge other than the one awaywork made is a worker's.
-    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit('push'), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: '3 commits include a merge, not pushed',
       unpublished: true,
     })
-    expect(await publish(merging, dir, forge, 'r1', start)).toEqual({
+    expect(await publish(merging, dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: 'awaywork made no merge of main, not pushed',
       unpublished: true,
     })
-    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject({
+    expect(await publish(synced, dir, forge, clean, 'r1', start)).toMatchObject({
       kind: 'pushed',
       commits: 1,
       text: 'Merge main into feature-1: 2 commits.',
@@ -346,10 +372,10 @@ describe('publish', () => {
       kind: 'none',
       reason: `the clone's head isn't awaywork's merge ${synced.merged.slice(0, 7)} any more, not pushed`,
     }
-    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject(moved)
+    expect(await publish(synced, dir, forge, clean, 'r1', start)).toMatchObject(moved)
     await git(dir, 'reset', '-q', '--hard', synced.merged)
     await git(dir, 'commit', '-q', '--amend', '-m', 'Merge main into feature-1, amended')
-    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject(moved)
+    expect(await publish(synced, dir, forge, clean, 'r1', start)).toMatchObject(moved)
     expect(forge.pushed).toHaveLength(1)
   })
 
@@ -360,7 +386,7 @@ describe('publish', () => {
     await git(dir, 'commit', '-q', '--amend', '--allow-empty', '-m', 'rewritten')
     await commit('rebased')
     await body('Title')
-    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit(), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: `the branch no longer holds ${start.slice(0, 7)}, where the clone started, not pushed`,
       unpublished: true,
@@ -378,7 +404,7 @@ describe('publish', () => {
     await git(dir, 'update-ref', 'refs/remotes/origin/sneaky', 'HEAD')
     await commit('after')
     await body('Fixed.\n')
-    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit('push'), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: '4 commits include a merge, not pushed',
       unpublished: true,
@@ -390,7 +416,7 @@ describe('publish', () => {
     await body('Title')
     await execa('sh', ['-c', 'cp -R .git/* .'], { cwd: dir })
     await rm(join(dir, '.git/HEAD'))
-    await expect(publish(unit(), dir, fakeForge(), 'r1', start)).rejects.toThrow(
+    await expect(publish(unit(), dir, fakeForge(), clean, 'r1', start)).rejects.toThrow(
       'does not appear to be a git repository',
     )
   })
@@ -405,8 +431,10 @@ describe('publish', () => {
     await writeFile(join(dir, 'uncommitted.txt'), 'left behind')
     await body('Title')
     const forge = pushingForge()
-    expect(await publish(unit('push'), dir, forge, 'r1', start)).toMatchObject({ kind: 'pushed' })
-    await publish(unit(), dir, forge, 'r1', start)
+    expect(await publish(unit('push'), dir, forge, clean, 'r1', start)).toMatchObject({
+      kind: 'pushed',
+    })
+    await publish(unit(), dir, forge, clean, 'r1', start)
     expect(forge.pushed).toEqual([
       ['first|r1', 'init|'],
       ['first|r1', 'init|'],
@@ -423,7 +451,10 @@ describe('publish', () => {
     await commit('second')
     await body('Title')
     const forge = pushingForge()
-    expect(await publish(unit(), dir, forge, 'r1', start)).toMatchObject({ kind: 'pr', commits: 2 })
+    expect(await publish(unit(), dir, forge, clean, 'r1', start)).toMatchObject({
+      kind: 'pr',
+      commits: 2,
+    })
     expect(forge.pushed).toEqual([['second|r1', 'first|r1', 'init|']])
   })
 
@@ -437,7 +468,7 @@ describe('publish', () => {
     forge.push = async (repo) => {
       message = await git(repo, 'log', '-1', '--format=%B', 'HEAD')
     }
-    await publish(unit(), dir, forge, 'r1', start)
+    await publish(unit(), dir, forge, clean, 'r1', start)
     expect(message).toBe('Fix it\n\nBefore\n---\nAfter\n\nAwaywork: r1')
   })
 
@@ -448,12 +479,12 @@ describe('publish', () => {
     await body('Title')
     await symlink(outside, join(dir, '.away/out/diff.patch'))
     const forge = fakeForge()
-    await expect(publish(unit(), dir, forge, 'r1', start)).rejects.toThrow(
+    await expect(publish(unit(), dir, forge, clean, 'r1', start)).rejects.toThrow(
       '.away/out/diff.patch in the clone is a symlink',
     )
     await rm(join(dir, '.away/out/pr.md'))
     await symlink(outside, join(dir, '.away/out/pr.md'))
-    await expect(publish(unit(), dir, forge, 'r1', start)).rejects.toThrow(
+    await expect(publish(unit(), dir, forge, clean, 'r1', start)).rejects.toThrow(
       '.away/out/pr.md in the clone is a symlink',
     )
     expect(await readFile(outside, 'utf8')).toBe('mine\n')
@@ -465,7 +496,7 @@ describe('publish', () => {
     await mkdir(join(dir, '.away/out'), { recursive: true })
     await execa('mkfifo', [join(dir, '.away/out/pr.md')])
     const forge = fakeForge()
-    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit(), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: '1 commit but no PR body, not pushed',
       unpublished: true,
@@ -476,12 +507,12 @@ describe('publish', () => {
   it('returns the report for report delivery and pushes nothing', async () => {
     const forge = fakeForge()
     await commit('stray')
-    expect(await publish(unit('report'), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit('report'), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'none',
       reason: 'no report written',
     })
     await writeFile(join(dir, '.away/out/report.md'), 'Approve.\n')
-    expect(await publish(unit('report'), dir, forge, 'r1', start)).toEqual({
+    expect(await publish(unit('report'), dir, forge, clean, 'r1', start)).toEqual({
       kind: 'report',
       text: 'Approve.',
     })

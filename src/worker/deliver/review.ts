@@ -57,7 +57,7 @@ export async function leaveReview(
   head: string,
   text: string,
   last: { text: string; out: string },
-  leaked?: Publisher['leaked'],
+  leaked: Publisher['leaked'],
 ): Promise<Outcome> {
   const pr = unit.items
     .flatMap((i) => i.linkedPrs)
@@ -65,7 +65,7 @@ export async function leaveReview(
   if (!pr) return { kind: 'report', text, unposted: 'no pull request to review' }
   try {
     const { comments, invalid } = parseComments(await readOutput(join(last.out, 'review.json')))
-    const secret = leaked?.([last.text, ...comments.map((c) => c.body)].join('\n'))
+    const secret = await leaked([last.text, ...comments.map((c) => c.body)].join('\n'))
     if (secret)
       return { kind: 'report', text, unposted: `the review holds ${secret}'s value: rotate it` }
     const post = (review: Review) => forge.pendingReview(unit.repo, pr.number, head, review)

@@ -395,8 +395,7 @@ async function cursorSandbox(config: Config, boxed: boolean, asWorker: boolean, 
   return where && `its sandbox can't start${where} (needs ${sandboxNeeds('cursor')})`
 }
 
-const SKIPS_UNTRUSTED =
-  "; units an author off `trust` steers are skipped: the shell could read the agent's login"
+const SKIPS_UNTRUSTED = '; units an author off `trust` steers are skipped'
 
 const CURSOR_BEHIND_WALL = `left out under the network wall, which its proxy can't pass: its shell reaches the CLI's hosts and \`network\` through awaywork's proxy${SKIPS_UNTRUSTED}`
 

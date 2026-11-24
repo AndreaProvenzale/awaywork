@@ -1,7 +1,9 @@
 import type { Phase } from '#core/isolation/egress'
 import { asWorker } from '#core/isolation/index'
 import { type Launch, launch } from '#core/launch'
+import type { Provider } from '#core/types'
 import { killGroupWhenDone } from '#util/process'
+import { forgeTokens } from '#worker/clone/env'
 
 const TIMEOUT_MS = 15 * 60_000
 const TAIL_LINES = 5
@@ -88,22 +90,36 @@ export async function runCommand(
 /** Shorter values turn up in ordinary text by chance: a scan passes over them. */
 const SCANNED_LENGTH = 12
 
-/** The first of the `secrets` named in `env` whose value `text` holds verbatim, for awaywork to refuse a write that would carry it. */
-export const leakedSecret = (text: string, secrets: string[], env: NodeJS.ProcessEnv) =>
-  secrets.find((name) => {
-    const value = env[name]
-    return !!value && value.length >= SCANNED_LENGTH && text.includes(value)
-  })
+export type SecretScan = ReturnType<typeof secretScan>
 
-/** Throws when `text`, the `what` awaywork would write, holds a secret's value: it isn't redacted, as the agent had it. */
-export function refuseSecrets(
-  what: string,
-  text: string,
+/**
+ * What awaywork looks for in what it writes out: the `secrets` named in `env`, the forge's and twg's tokens, and each
+ * provider's login, read again at each look as a login rotates, earlier values kept.
+ */
+export function secretScan(
   secrets: string[],
+  providers: Record<string, Provider>,
   env: NodeJS.ProcessEnv,
-): void {
-  const name = leakedSecret(text, secrets, env)
-  if (name) throw new Error(`${what} holds ${name}'s value: rotate it`)
+) {
+  const known = new Map<string, string>()
+  const read = async () => {
+    const twg = Object.keys(env).filter(
+      (name) => name.startsWith('TWG_') && name !== 'TWG_CONFIG_DIR',
+    )
+    const named = [...secrets, ...forgeTokens, ...twg].map((name) => [name, env[name]])
+    const logins = await Promise.all(
+      Object.values(providers).map(async (p) => Object.entries((await p.loginValues?.(env)) ?? {})),
+    )
+    for (const [name = '', value] of [...named, ...logins.flat()])
+      if (value && value.length >= SCANNED_LENGTH && !known.has(value)) known.set(value, name)
+    return [...known]
+  }
+  return {
+    /** The name of the first value `text` holds verbatim: a write that holds one is refused, not redacted, as the agent had it. */
+    leaked: async (text: string) => (await read()).find(([value]) => text.includes(value))?.[1],
+    mask: async (text: string) =>
+      (await read()).reduce((out, [value]) => out.replaceAll(value, '***'), text),
+  }
 }
 
 /** `text` with the values of the `secrets` named in `env` masked. */

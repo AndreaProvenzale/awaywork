@@ -60,10 +60,15 @@ export const sandboxNeeds = (agent: string) =>
       ? 'bubblewrap and user namespaces'
       : 'user namespaces'
 
+/** What an agent's shell could do without its sandbox: Codex's reads every file either way. */
+const unsandboxed = (agent: string) =>
+  agent === 'claude'
+    ? 'read CLAUDE_CODE_OAUTH_TOKEN'
+    : 'write outside the clone and reach the network'
+
 /**
  * Why a unit can't run `where`: its agent's shell sandbox can't start there, and either awaywork's wall doesn't hold, so
- * its shell would reach any host, or an author off `trust` steers it, so its shell could read the agent's login, wall or
- * not. A provider with no sandbox is exempt.
+ * its shell would reach any host, or an author off `trust` steers it, wall or not. A provider with no sandbox is exempt.
  */
 export async function shellRefusal(
   provider: Provider,
@@ -75,7 +80,7 @@ export async function shellRefusal(
   const { id } = provider
   const untrusted = withholdsGrants(unit)
   if (!provider.startsSandbox || (walled && !untrusted)) return
-  const steered = `an author off \`trust\` steers this unit, so its shell could read ${id}'s login`
+  const steered = `an author off \`trust\` steers this unit, so its shell could ${unsandboxed(id)}`
   if (walled && provider.sandboxOffBehindWall)
     return `${id}'s shell sandbox stays off behind awaywork's network wall, and ${steered}`
   if (await provider.startsSandbox(where, signal)) return

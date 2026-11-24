@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { Item } from '#core/types'
@@ -21,7 +21,7 @@ import { type Threads, threaded, unwritable, writeItem } from '#sources/index'
 import { checkPlan, contractName, contractText, PLAN_TASKS, planYaml } from '#tasks/plan-file'
 import { bounded } from '#util/text'
 import { outputFile, readOutput } from '#worker/clone/files'
-import { leakedSecret, maskSecrets, refuseSecrets } from '#worker/process/command'
+import { maskSecrets } from '#worker/process/command'
 import type { Run } from './state'
 
 /** Under every tracker's comment limit as text; Jira's write also checks the longer ADF it sends. */
@@ -58,7 +58,7 @@ export async function postResult(
         op: 'comment',
         body: `${resultComment(text, status, p.unit.skill, item.task?.id, continued, waits)}${pinBlock(pins)}`,
       } as const
-      refuseSecrets('the result', write.body, secrets, input.ctx.env)
+      await refuseSecrets(run, 'the result', write.body)
       const cfg = input.config.sources[item.source]
       const { updated, url = item.url } = await writeItem(
         source,
@@ -155,7 +155,7 @@ async function postComment(
   const ref = `${item.source}:${item.key}`
   try {
     const write = { op: 'comment', body: body(item) } as const
-    refuseSecrets(`the ${what}`, write.body, secrets, input.ctx.env)
+    await refuseSecrets(run, `the ${what}`, write.body)
     const cfg = input.config.sources[item.source]
     const { url = item.url } = await writeItem(
       input.sources[item.source],
@@ -175,6 +175,28 @@ async function postComment(
   }
 }
 
+/** Throws when `text`, the `what` awaywork would write, holds a secret's value. */
+async function refuseSecrets(run: Run, what: string, text: string) {
+  const secret = await run.publisher.leaked(text)
+  const holds = what.endsWith('s') ? 'hold' : 'holds'
+  if (secret) throw new Error(`${what} ${holds} ${secret}'s value: rotate it`)
+}
+
+/** A store file is read whole to scan it: a larger one isn't stored. */
+const MAX_SCANNED_BYTES = 100_000_000
+
+/** Why the store can't take the file at `path`: it holds a secret's value, or it can't be scanned for one. */
+async function unscannable(path: string, leaked: Run['publisher']['leaked']) {
+  try {
+    if ((await stat(path)).size > MAX_SCANNED_BYTES)
+      return 'is too large to scan for secrets, not stored'
+    const secret = await leaked(await readFile(path, 'utf8'))
+    return secret && `holds ${secret}'s value, not stored: rotate it`
+  } catch {
+    return "couldn't be read to scan for secrets, not stored"
+  }
+}
+
 export const postQuestions = async (run: Run, p: PlannedUnit, text: string) =>
   Buffer.byteLength(text) > MAX_COMMENT_BYTES
     ? { unposted: `questions.md is over ${MAX_COMMENT_BYTES} bytes` }
@@ -182,7 +204,7 @@ export const postQuestions = async (run: Run, p: PlannedUnit, text: string) =>
 
 /**
  * Puts the files of `out` a post of `p` pins in the store, if there's one, but those `inline` in the post unless it's lean;
- * a put that fails, or a file that holds a secret's value, gets a line in `notes`, a file the store skips its name in `skipped`.
+ * a put that fails, or a file that holds a secret's value or can't be scanned, gets a line in `notes`, a file the store skips its name in `skipped`.
  */
 export async function pinOut(
   run: Run,
@@ -198,8 +220,8 @@ export async function pinOut(
   const names: string[] = []
   for (const name of await outFiles(out)) {
     if (!p.unit.lean && inline.includes(name)) continue
-    const secret = leakedSecret(await readFile(join(out, name), 'utf8'), secrets, input.ctx.env)
-    if (secret) notes.push(`${name} holds ${secret}'s value, not stored: rotate it`)
+    const why = await unscannable(join(out, name), run.publisher.leaked)
+    if (why) notes.push(`${name} ${why}`)
     else names.push(name)
   }
   const kind = (name: string): Kind =>
