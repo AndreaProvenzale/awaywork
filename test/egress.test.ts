@@ -68,9 +68,10 @@ describe('grantedNetwork', () => {
 })
 
 describe('phase lists', () => {
-  it('gives setup the built-in registries plus network', () => {
-    const { hosts, name } = setupPhase(['npm.acme.internal'], log)
+  it('gives setup the built-in registries plus network, and the repo’s own secrets', () => {
+    const { hosts, name, secrets } = setupPhase(['npm.acme.internal'], log, ['NPM_TOKEN'])
     expect(name).toBe('setup')
+    expect(secrets).toEqual(['NPM_TOKEN'])
     expect(hosts).toEqual([...SETUP_HOSTS, 'npm.acme.internal'])
     for (const host of [
       'registry.npmjs.org',
@@ -96,20 +97,23 @@ describe('phase lists', () => {
     expect(checkPhase(undefined, log).hosts).toEqual([])
   })
 
-  it('gives the agent its CLI, its MCP servers and network', () => {
+  it('gives the agent its CLI, its MCP servers and network, and their secrets', () => {
     const mcp = {
-      linear: { url: 'https://mcp.linear.app/mcp', secrets: [] },
-      sentry: { command: 'npx', secrets: [], network: ['sentry.io'] },
+      linear: { url: 'https://mcp.linear.app/mcp', secrets: ['LINEAR_TOKEN'] },
+      sentry: { command: 'npx', secrets: ['SENTRY_TOKEN'], network: ['sentry.io'] },
       plain: { command: 'npx', secrets: [] },
     }
-    const { hosts, name } = agentPhase(claude, job({ network: ['pypi.org'] }, mcp), log)
+    const { hosts, name, secrets } = agentPhase(claude, job({ network: ['pypi.org'] }, mcp), log)
     expect(name).toBe('agent')
     expect(hosts).toEqual([...claude.hosts, 'mcp.linear.app', 'sentry.io', 'pypi.org'])
+    expect(secrets).toEqual([...claude.secrets, 'LINEAR_TOKEN', 'SENTRY_TOKEN'])
+    expect(secrets).toContain('CLAUDE_CODE_OAUTH_TOKEN')
   })
 
   it('gives the judge, an untrusted unit with no MCP servers, its CLI alone', () => {
     const judged = job({ untrusted: true, network: ['pypi.org'] })
     expect(agentPhase(claude, judged, log).hosts).toEqual(claude.hosts)
+    expect(agentPhase(claude, judged, log).secrets).toEqual(claude.secrets)
     expect(agentPhase(codex, judged, log).hosts).toEqual([
       'chatgpt.com',
       'auth.openai.com',

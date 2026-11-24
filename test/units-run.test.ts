@@ -34,7 +34,7 @@ import { fakeForge } from './fakes/forge'
 import { fakeItem, githubPr, issue } from './fakes/items'
 import { fakeProvider } from './fakes/provider'
 import { fakeSource } from './fakes/source'
-import { envs, git, models, quota, reset, worker } from './fakes/units'
+import { envs, git, models, quota, recordPhases, reset, worker } from './fakes/units'
 
 const loaded = {
   PATH: '/bin',
@@ -630,6 +630,7 @@ repos:
   const contexts: string[] = []
   const workerEnvs: NodeJS.ProcessEnv[] = []
   const events: string[] = []
+  const phases = recordPhases()
   const report = await runUnits({
     config,
     configDir: root,
@@ -667,6 +668,8 @@ repos:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
+  const [setup, agent] = ['setup: NPM_TOKEN', 'agent: FAKE_AGENT_TOKEN']
+  expect(phases).toEqual([setup, agent, setup, setup, agent, agent, setup, agent])
   expect(setups).toEqual([
     'npm,,/agent.sock\n',
     'npm,,/agent.sock\n',
@@ -739,6 +742,7 @@ queue:
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
   })
   const jobs: { unit: string; mcp: string[]; env: string[] }[] = []
+  const phases = recordPhases()
   await runUnits({
     config,
     configDir: root,
@@ -777,6 +781,18 @@ queue:
     'GIT_CONFIG_NOSYSTEM',
   ]
   const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', ...fixed] }
+  const cli = 'agent: FAKE_AGENT_TOKEN'
+  expect(phases).toEqual([
+    `${cli}, DB_URL`,
+    `${cli}, SENTRY_TOKEN`,
+    `${cli}, DB_URL`,
+    cli,
+    `${cli}, SENTRY_TOKEN`,
+    cli,
+    `${cli}, SENTRY_TOKEN`,
+    cli,
+    `${cli}, SENTRY_TOKEN`,
+  ])
   expect(jobs).toEqual([
     { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', ...fixed] },
     { unit: 'acme-api-1-plan', ...sentry },

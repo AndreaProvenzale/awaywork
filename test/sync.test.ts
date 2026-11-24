@@ -19,6 +19,7 @@ import { fakeForge } from './fakes/forge'
 import { githubPr } from './fakes/items'
 import { fakeProvider } from './fakes/provider'
 import { fakeSource } from './fakes/source'
+import { recordPhases } from './fakes/units'
 
 const skills = { builtin: builtinSkills }
 
@@ -40,6 +41,7 @@ repos:
   acme/api:
     setup: '${setup}'
     verify: '${verify}'
+    secrets: [NPM_TOKEN]
 `)
 const config = withRepo('echo ran >> .away/setup.txt', 'test -f base-2.txt')
 
@@ -236,7 +238,9 @@ queue: [{ skill: catch-up, where: { type: pr } }]
 
   it('pushes a clean merge of the base onto your PR, its trailer on the merge alone, with no worker and no hold', async () => {
     const at = await origin({ 'base-1.txt': '1', 'base-2.txt': '2' })
+    const phases = recordPhases()
     const { plan, report } = await sync(at)
+    expect(phases).toEqual(['setup: NPM_TOKEN', 'check: none'])
     const [result] = report.results
     expect(result).toMatchObject({
       status: 'done',
