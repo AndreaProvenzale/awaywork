@@ -12,10 +12,11 @@ import {
 import { withholdsGrants } from '../trust'
 import type { Job, McpServer, Provider, Unit } from '../types'
 
-/** The hosts one phase of a unit may reach through the proxy; its refusals go to `log`. */
+/** The hosts one phase of a unit may reach through the proxy, its refusals going to `log`, and the secrets its launches get by name, none when unset. */
 export interface Phase {
   name: 'setup' | 'check' | 'agent'
   hosts: string[]
+  secrets?: string[]
   log(line: string): void
 }
 
@@ -54,9 +55,14 @@ export const hostAllowed = (host: string, hosts: string[]) => {
 export const grantedNetwork = (unit: Pick<Unit, 'network' | 'untrusted' | 'untrustedText'>) =>
   withholdsGrants(unit) ? [] : (unit.network ?? [])
 
-export const setupPhase = (network: string[] = [], log: Phase['log']): Phase => ({
+export const setupPhase = (
+  network: string[] = [],
+  log: Phase['log'],
+  secrets?: string[],
+): Phase => ({
   name: 'setup',
   hosts: [...SETUP_HOSTS, ...network],
+  secrets,
   log,
 })
 
@@ -67,7 +73,11 @@ export const checkPhase = (network: string[] = [], log: Phase['log']): Phase => 
 })
 
 /** The agent CLI's vendor, the hosts of the unit's HTTP MCP servers and the stdio ones' `network`, and the unit's `network`; on an untrusted author's PR or issue only the vendor's. */
-export function agentPhase(provider: Pick<Provider, 'hosts'>, job: Job, log: Phase['log']): Phase {
+export function agentPhase(
+  provider: Pick<Provider, 'hosts' | 'secrets'>,
+  job: Job,
+  log: Phase['log'],
+): Phase {
   const servers: McpServer[] = Object.values(job.mcp ?? {})
   const mcp = servers.flatMap((s) => [
     ...(s.url ? [new URL(s.url).hostname] : []),
@@ -76,6 +86,7 @@ export function agentPhase(provider: Pick<Provider, 'hosts'>, job: Job, log: Pha
   return {
     name: 'agent',
     hosts: [...new Set([...provider.hosts, ...mcp, ...grantedNetwork(job.unit)])],
+    secrets: [...provider.secrets, ...servers.flatMap((s) => s.secrets)],
     log,
   }
 }

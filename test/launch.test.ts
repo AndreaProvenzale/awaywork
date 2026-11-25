@@ -235,7 +235,13 @@ describe('the launcher', () => {
   it('names every variable awaywork sets in a phase’s env in AWAYWORK_ENV', async () => {
     const base = { PATH: '/usr/bin' }
     const phase = { ...job, env: workerEnv(base, dir, []) }
-    await drain(claudeProvider(fake('claude')).run(phase, new AbortController().signal))
+    // Behind the wall, Claude's telemetry goes off too.
+    useMode({ ...none, walled: () => true })
+    try {
+      await drain(claudeProvider(fake('claude')).run(phase, new AbortController().signal))
+    } finally {
+      useMode(none)
+    }
     const command = { command: 'true', secrets: [], skills_dir: '.agents/skills' }
     await drain(commandProvider('mine', command).run(phase, new AbortController().signal))
     await drain(cursorProvider(fake('cursor')).run(phase, new AbortController().signal))

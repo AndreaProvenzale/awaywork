@@ -30,7 +30,7 @@ flowchart TD
   subgraph after["awaywork, with your forge and tracker tokens"]
     publish["Push a branch, open the PR, post on your item"]
   end
-  login["Its own agent login, a rule's MCP secrets, the rest of your environment"] --> agent
+  login["Its own agent login, a rule's MCP secrets, the rest of your environment with isolation: none"] --> agent
   prefetch -- ".away/context/ files" --> agent
   agent -- "commits and .away/out/" --> publish
   publish --> forge["Forge and tracker"]
@@ -52,7 +52,7 @@ Sources prefetch context into files before the agent starts, and awaywork makes 
 
 - Every configured source's secret (`ASANA_TOKEN`, `LINEAR_API_KEY`, `JIRA_API_TOKEN` or your `token_env`), `notify.secrets`, `store.secrets`, every context command's, repo's and MCP server's `secrets` and every other provider's (`CLAUDE_CODE_OAUTH_TOKEN` for a Codex worker) are removed.
 - A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, a Cursor worker `CURSOR_API_KEY`. Codex uses the machine's login and gets no secret. A unit keeps its rule's [MCP servers](#mcp-servers)' secrets.
-- The rest of your environment stays, so repo tooling runs, including env-file variables nothing declares.
+- Under `isolation: none` the rest of your environment stays, so repo tooling runs, including env-file variables nothing declares. A worker user and a container get [only what they need](./isolation.md).
 
 ### Setup, context and checks outside the agent
 

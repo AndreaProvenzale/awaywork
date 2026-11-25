@@ -2,9 +2,12 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
+import { onTestFinished } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
+import { useMode } from '#core/isolation/index'
+import { none } from '#core/isolation/none'
 import { builtinSkills } from '#core/skills'
 import type { Forge, Item, Provider, Quota, Source, Write } from '#core/types'
 import { planRun } from '#plan/foreman'
@@ -32,6 +35,20 @@ export const quota = (long: number): Quota => ({
     { name: 'seven_day', span: 'long', used: long, resetsAt: reset },
   ],
 })
+
+/** Runs this test's launches as under `none`, and lists each phase's name and the secrets it gives the worker user. */
+export function recordPhases(): string[] {
+  const phases: string[] = []
+  useMode({
+    ...none,
+    phase: (_dir, run, _login, phase) => {
+      if (phase) phases.push(`${phase.name}: ${phase.secrets?.join(', ') || 'none'}`)
+      return run()
+    },
+  })
+  onTestFinished(() => useMode(none))
+  return phases
+}
 
 export const models: (string | undefined)[] = []
 

@@ -157,7 +157,7 @@ async function settle(
       secrets: own,
       signal: input.signal,
       until: input.until,
-      egress: setupPhase(grantedNetwork(unit), log),
+      egress: setupPhase(grantedNetwork(unit), log, own),
     }
     const failed = await runSetup(settings.setup, dir, env, log, options)
     if (failed) {
@@ -420,7 +420,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
           secrets: own,
           signal: input.signal,
           until: input.until,
-          egress: setupPhase(grantedNetwork(unit), log),
+          egress: setupPhase(grantedNetwork(unit), log, own),
         },
       )
       // A conflicted lockfile, say, fails an install: the worker resolves the merge all the same.

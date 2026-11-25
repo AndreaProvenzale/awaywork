@@ -27,7 +27,6 @@ const env = {
   HOME: process.env.HOME,
   XDG_CONFIG_HOME: `${process.env.HOME}/.config`,
   CANARY,
-  AWAYWORK_PARENT: `${process.pid}`,
 }
 const running = async (user: string) =>
   (await execa('pgrep', ['-u', user], { reject: false })).stdout
@@ -47,17 +46,26 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
   })
   afterAll(() => useMode(none))
 
-  it('runs a command as the worker, with the env but none of its values on argv', async () => {
+  it('runs a command as the worker, with its phase’s secrets but none of their values on argv, and nothing undeclared', async () => {
     const leaks = [
-      'id -un; echo "$HOME $CANARY ${XDG_CONFIG_HOME-unset}"',
+      'id -un; echo "$HOME $CANARY ${XDG_CONFIG_HOME-unset} ${NPM_TOKEN-unset}"',
       // Builtins only: an exec'd command would carry the value on its own argv. A process can exit before its read.
       'for f in /proc/[0-9]*/cmdline; do c=$(tr "\\0" " " 2>/dev/null < $f); case "$c" in *"$CANARY"*) echo "argv: $f $c";; esac; done',
-      'cat /proc/$AWAYWORK_PARENT/environ >/dev/null 2>&1 && echo "environ readable"',
+      `cat /proc/${process.pid}/environ >/dev/null 2>&1 && echo "environ readable"`,
       'echo out > out.txt',
       'ln -s /etc/hostname link',
     ]
-    const result = await runCommand(leaks.join('\n'), dir, env, { secrets: [] })
-    expect(result.output).toBe(`${WORKER}\n${workerHome(dir)} ${CANARY} unset`)
+    const lines: string[] = []
+    const egress = {
+      name: 'check' as const,
+      hosts: [],
+      secrets: ['CANARY'],
+      log: (line: string) => void lines.push(line),
+    }
+    const undeclared = { ...env, NPM_TOKEN: 'npm-canary' }
+    const result = await runCommand(leaks.join('\n'), dir, undeclared, { secrets: [], egress })
+    expect(result.output).toBe(`${WORKER}\n${workerHome(dir)} ${CANARY} unset unset`)
+    expect(lines).toEqual(['env: not passed to the worker user: HOME, NPM_TOKEN, XDG_CONFIG_HOME'])
     expect(await owner(join(dir, 'out.txt'))).toBe(process.getuid?.())
     expect(await owner(dir)).toBe(process.getuid?.())
     expect(await owner('/etc/hostname')).toBe(0)
