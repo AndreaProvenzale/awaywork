@@ -178,8 +178,7 @@ async function postComment(
 /** Throws when `text`, the `what` awaywork would write, holds a secret's value. */
 async function refuseSecrets(run: Run, what: string, text: string) {
   const secret = await run.publisher.leaked(text)
-  const holds = what.endsWith('s') ? 'hold' : 'holds'
-  if (secret) throw new Error(`${what} ${holds} ${secret}'s value: rotate it`)
+  if (secret) throw new Error(`${secret}'s value is in ${what}: rotate it`)
 }
 
 /** A store file is read whole to scan it: a larger one isn't stored. */

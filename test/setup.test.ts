@@ -107,33 +107,43 @@ describe('secretScan', () => {
     GH_TOKEN: 'ghp_0123456789abcdef',
     TWG_BBC_TOKEN: 'bbc-0123456789ab',
     TWG_CONFIG_DIR: '/home/dev/.config/twg',
+    TWG_USER: 'dev@acme.example',
+    TWG_SITE: 'acme.atlassian.net',
   }
 
   it('names the first secret whose value the text holds verbatim, passing over short and unset ones', async () => {
-    const { leaked } = secretScan(['EMPTY', 'SHORT', 'UNSET', 'LONG'], {}, env)
+    const { leaked } = await secretScan(['EMPTY', 'SHORT', 'UNSET', 'LONG'], {}, env)
     expect(await leaked('key sk-0123456789ab, pass hunter2')).toBe('LONG')
     expect(await leaked('pass hunter2')).toBeUndefined()
     expect(await leaked(Buffer.from('sk-0123456789ab').toString('base64'))).toBeUndefined()
   })
 
-  it("looks for the forge's and twg's tokens too, not twg's config folder", async () => {
-    const { leaked, mask } = secretScan([], {}, env)
+  it("looks for the forge's and twg's tokens too, not twg's user, site or config folder", async () => {
+    const { leaked, mask } = await secretScan([], {}, env)
     expect(await leaked('ghp_0123456789abcdef')).toBe('GH_TOKEN')
     expect(await leaked('bbc-0123456789ab')).toBe('TWG_BBC_TOKEN')
     expect(await leaked('/home/dev/.config/twg')).toBeUndefined()
+    expect(
+      await leaked('Dev\ndev@acme.example\nhttps://acme.atlassian.net/browse/AI-42'),
+    ).toBeUndefined()
     expect(await mask('a ghp_0123456789abcdef b')).toBe('a *** b')
   })
 
-  it("looks for the Codex login's tokens, the rotated ones and those lent before", async () => {
+  it('masks a value as a JSON string escapes it too', async () => {
+    const key = '{"type":"service_account",\n"key":"k"}'
+    const { mask } = await secretScan(['KEY'], {}, { KEY: key })
+    expect(await mask(JSON.stringify({ text: `body ${key}` }))).toBe('{"text":"body ***"}')
+  })
+
+  it("looks for the Codex login's tokens, those lent before a refresh and the refreshed ones", async () => {
     const auth = join(await mkdtemp(join(tmpdir(), 'awaywork-scan-')), 'auth.json')
     const login = (refresh_token: string) =>
       writeFile(auth, JSON.stringify({ tokens: { refresh_token, account_id: 'acct-0123456789' } }))
     await login('rt-old-0123456789')
-    const { leaked } = secretScan([], { codex: codexProvider('codex', undefined, auth) }, {})
-    expect(await leaked('rt-old-0123456789')).toBe('CODEX_LOGIN (refresh_token)')
+    const { leaked } = await secretScan([], { codex: codexProvider('codex', undefined, auth) }, {})
     await login('rt-new-0123456789')
-    expect(await leaked('rt-new-0123456789')).toBe('CODEX_LOGIN (refresh_token)')
     expect(await leaked('rt-old-0123456789')).toBe('CODEX_LOGIN (refresh_token)')
+    expect(await leaked('rt-new-0123456789')).toBe('CODEX_LOGIN (refresh_token)')
     expect(await leaked('acct-0123456789')).toBeUndefined()
   })
 })

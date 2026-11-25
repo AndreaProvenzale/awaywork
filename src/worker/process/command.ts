@@ -90,23 +90,31 @@ export async function runCommand(
 /** Shorter values turn up in ordinary text by chance: a scan passes over them. */
 const SCANNED_LENGTH = 12
 
-export type SecretScan = ReturnType<typeof secretScan>
+/** twg's own credentials: twg 1.3.8 marks these `secret` in its env registry, outside its internal release names. */
+const twgTokens = [
+  'TWG_TOKEN',
+  'TWG_BBC_TOKEN',
+  'TWG_OAUTH_ACCESS_TOKEN',
+  'TWG_ADMIN_TOKEN',
+  'TWG_STATLAS_TOKEN',
+  'TWG_MCP_TOKEN',
+  'TWG_AUTH_STORAGE_KEY',
+]
+
+export type SecretScan = Awaited<ReturnType<typeof secretScan>>
 
 /**
  * What awaywork looks for in what it writes out: the `secrets` named in `env`, the forge's and twg's tokens, and each
- * provider's login, read again at each look as a login rotates, earlier values kept.
+ * provider's login, read when the scan is made, before a worker gets it, and again at each look as a login rotates, earlier values kept.
  */
-export function secretScan(
+export async function secretScan(
   secrets: string[],
   providers: Record<string, Provider>,
   env: NodeJS.ProcessEnv,
 ) {
   const known = new Map<string, string>()
   const read = async () => {
-    const twg = Object.keys(env).filter(
-      (name) => name.startsWith('TWG_') && name !== 'TWG_CONFIG_DIR',
-    )
-    const named = [...secrets, ...forgeTokens, ...twg].map((name) => [name, env[name]])
+    const named = [...secrets, ...forgeTokens, ...twgTokens].map((name) => [name, env[name]])
     const logins = await Promise.all(
       Object.values(providers).map(async (p) => Object.entries((await p.loginValues?.(env)) ?? {})),
     )
@@ -114,11 +122,17 @@ export function secretScan(
       if (value && value.length >= SCANNED_LENGTH && !known.has(value)) known.set(value, name)
     return [...known]
   }
+  await read()
   return {
     /** The name of the first value `text` holds verbatim: a write that holds one is refused, not redacted, as the agent had it. */
     leaked: async (text: string) => (await read()).find(([value]) => text.includes(value))?.[1],
+    /** `text` with each value masked, as written and as a JSON string escapes it. */
     mask: async (text: string) =>
-      (await read()).reduce((out, [value]) => out.replaceAll(value, '***'), text),
+      (await read()).reduce(
+        (out, [value]) =>
+          out.replaceAll(JSON.stringify(value).slice(1, -1), '***').replaceAll(value, '***'),
+        text,
+      ),
   }
 }
 

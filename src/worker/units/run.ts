@@ -62,7 +62,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     runId: input.runId,
     signal: input.signal,
     check: checks.check,
-    leaked: secretScan(secrets, input.providers, input.ctx.env).leaked,
+    leaked: (input.scan ?? (await secretScan(secrets, input.providers, input.ctx.env))).leaked,
   }
   const run: Run = {
     input,

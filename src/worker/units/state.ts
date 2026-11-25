@@ -6,6 +6,7 @@ import type { Store } from '#posts/store'
 import type { Allowance } from '#quota/budget'
 import type { Held, Publisher } from '#worker/deliver/slice'
 import type { createChecks } from '#worker/process/checks'
+import type { SecretScan } from '#worker/process/command'
 import type { WorkerOptions } from '#worker/process/worker'
 
 export interface RunInput {
@@ -23,6 +24,8 @@ export interface RunInput {
   sources: Record<string, Source>
   forge: Forge
   ctx: Ctx
+  /** What every write is scanned for, made before a worker gets a login; one from the config's secrets when unset. */
+  scan?: SecretScan
   /** Logs a unit's start and end, and what went wrong; `ctx.log` when unset. */
   event?: (line: string) => void
   signal?: AbortSignal

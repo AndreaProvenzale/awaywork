@@ -252,6 +252,8 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
   )
 
   const providers = providersOf(config)
+  // Made now, it holds the logins the workers are lent, before any refresh.
+  const scan = await secretScan(secrets, providers, ctx.env)
   const report = await runUnits({
     config,
     configDir: dirname(path),
@@ -266,6 +268,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     sources,
     forge: forgeFor(planned.config),
     ctx: { ...ctx, log: (line) => log.info(`  ${line}`) },
+    scan,
     event: (line) => log.info(`  ${line}`, true),
     signal: a.signal(),
     attempts: await loadAttempts(attemptsPath),
@@ -274,9 +277,8 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
   })
   const reportPath = join(runDir, 'report.md')
   // Text a write held back for a secret still lands here, and the action publishes these files.
-  const { mask } = secretScan(secrets, providers, ctx.env)
-  await writeFile(reportPath, await mask(formatReport(report, warnings)))
-  await writeFile(join(runDir, reportJsonFile), await mask(reportJson(report, warnings)))
+  await writeFile(reportPath, await scan.mask(formatReport(report, warnings)))
+  await writeFile(join(runDir, reportJsonFile), await scan.mask(reportJson(report, warnings)))
   await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
   await inSaving(async () => {
     await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))

@@ -1,13 +1,19 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { bin } from '#config/paths'
 import type { PrRef, Unit } from '#core/types'
 import { publish } from '#worker/deliver/publish'
 import { fakeForge } from './fakes/forge'
 import { fakeItem } from './fakes/items'
+
+const shim = vi.hoisted(() => ({ git: undefined as string | undefined }))
+vi.mock('#config/paths', async (original) => {
+  const paths = await original<typeof import('#config/paths')>()
+  return { ...paths, bin: (name: string) => (name === 'git' && shim.git) || paths.bin(name) }
+})
 
 const clean = async () => undefined
 
@@ -262,6 +268,28 @@ describe('publish', () => {
       reason: "the commits hold SENTRY_DSN's value, not pushed: rotate it",
       unpublished: true,
     })
+  })
+
+  it("pushes nothing when git can't log the commits, and keeps what it printed out of the reason", async () => {
+    const token = 'sk-ant-oat01-abcdefghijklmnop'
+    const real = bin('git')
+    shim.git = join(dir, '..', 'git')
+    await writeFile(
+      shim.git,
+      `#!/bin/sh\ncase "$*" in *-U0*) echo ${token}; exit 1;; esac\nexec ${real} "$@"\n`,
+    )
+    await chmod(shim.git, 0o755)
+    try {
+      await commit('first')
+      await body('Fix it')
+      expect(await publish(unit(), dir, fakeForge(), clean, 'r1', start)).toEqual({
+        kind: 'none',
+        reason: "the commits couldn't be scanned for secrets (over 100 MB?), not pushed",
+        unpublished: true,
+      })
+    } finally {
+      shim.git = undefined
+    }
   })
 
   it('fast-forwards the new commits with trailers onto your own PR branch, from where the clone started', async () => {

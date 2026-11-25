@@ -381,11 +381,11 @@ it("reports a plan whose post failed, its secrets masked, and doesn't move the c
 it("posts no plan and no questions that hold a secret's value, naming the secret", async () => {
   const plan = await finishedRun(planRule, [yours(1)], planner(tasks, `Two: ${GH_TOKEN_VALUE}`))
   expect(plan.writes).toEqual([])
-  expect(plan.report.results[0]?.plan?.unposted).toBe("the plan holds GH_TOKEN's value: rotate it")
+  expect(plan.report.results[0]?.plan?.unposted).toBe("GH_TOKEN's value is in the plan: rotate it")
   const asked = await finishedRun(planRule, [yours(1)], asker(`Which? ${GH_TOKEN_VALUE}`))
   expect(asked.writes).toEqual([])
   expect(asked.report.results[0]?.questions?.unposted).toBe(
-    "the questions hold GH_TOKEN's value: rotate it",
+    "GH_TOKEN's value is in the questions: rotate it",
   )
 })
 
