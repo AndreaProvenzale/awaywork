@@ -3,34 +3,46 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Command } from 'commander'
+import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runCommand } from '#cli/commands/run'
 import { loadConfig } from '#config/load'
 import {
   attemptsPath,
+  bin,
   pausePath,
   runLockPath,
   runsDir,
   skipsPath,
   watchLockPath,
 } from '#config/paths'
-import type { PrRef } from '#core/types'
+import type { Config } from '#config/schema'
+import type { Forge, PrRef } from '#core/types'
 import { saveAttempts } from '#plan/attempts'
 import { clearPause, savePause } from '#plan/pause'
 import { claimUnits } from '#plan/poll'
 import { saveSkips } from '#plan/skips'
-import { abortOnSignals, executeRun, type RunArgs } from '#run/execute'
+import { abortOnSignals, executeRun, newRunId, type RunArgs } from '#run/execute'
 import { github } from '#sources/github'
+import { fakeForge } from './fakes/forge'
 import { githubPr } from './fakes/items'
 
-vi.mock('#providers/index', async () => {
+const the = vi.hoisted(() => ({ forge: undefined as Forge | undefined }))
+
+vi.mock('#providers/index', async (original) => {
+  const real = await original<typeof import('#providers/index')>()
   const { fakeProvider } = await import('./fakes/provider')
   const providers = { claude: fakeProvider('claude') }
   return {
     providers,
-    providerFor: (id: string) => providers[id as 'claude'],
-    providersOf: () => providers,
+    providerFor: (id: string, cfg: unknown) =>
+      providers[id as 'claude'] ?? real.providerFor(id, cfg),
+    providersOf: (config: Config) => ({ ...real.providersOf(config), ...providers }),
   }
+})
+vi.mock('#forge/index', async (original) => {
+  const real = await original<typeof import('#forge/index')>()
+  return { ...real, forgeFor: (config: Config) => the.forge ?? real.forgeFor(config) }
 })
 vi.mock('#config/paths', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
@@ -46,6 +58,9 @@ vi.mock('#config/paths', async (original) => {
     pausePath: `${state}/pause.json`,
   }
 })
+
+const git = (dir: string, ...args: string[]) =>
+  execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
 async function run(args: string[], chores = '{ command: exit 1 }', extra = '') {
   const config = join(await mkdtemp(join(tmpdir(), 'awaywork-run-')), 'config.yml')
@@ -72,6 +87,8 @@ describe('run command', () => {
     vi.stubEnv('GITHUB_OUTPUT', '')
     // CI's own hosted runner has no worker user.
     vi.stubEnv('RUNNER_ENVIRONMENT', '')
+    // The scan reads Codex's login: never yours.
+    vi.stubEnv('CODEX_HOME', join(tmpdir(), 'awaywork-no-codex'))
   })
 
   afterEach(() => {
@@ -108,6 +125,54 @@ describe('run command', () => {
     expect(report).toContain('***')
     expect(report).not.toContain(token)
     expect(json).not.toContain(token)
+  })
+
+  it('masks a Codex token in the report that the worker held before it rotated, as the run made one scan before it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-run-'))
+    const origin = join(dir, 'origin')
+    await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
+    await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
+    the.forge = {
+      ...fakeForge(),
+      clone: async (_repo, _branch, to) =>
+        void (await execa(bin('git'), ['clone', '-q', origin, to])),
+    }
+    vi.stubEnv('CODEX_HOME', dir)
+    await writeFile(join(dir, 'auth.json'), '{"tokens":{"refresh_token":"rt-old-0123456789"}}')
+    const item = {
+      id: '1',
+      key: 'CH-1',
+      title: 'Chore 1',
+      url: 'https://e.com/1',
+      fields: { repo: 'a/b' },
+    }
+    await writeFile(join(dir, 'items.json'), JSON.stringify([item]))
+    const rotate = `printf '{"tokens":{"refresh_token":"rt-new-0123456789"}}' > "$CODEX_HOME/auth.json"`
+    const work = `mkdir -p .away/out && echo rt-old-0123456789 > .away/out/report.md && ${rotate}`
+    const path = join(dir, 'config.yml')
+    await writeFile(
+      path,
+      `providers: [sh: { command: ${JSON.stringify(work)} }]\nlimits: { unit_minutes: 5 }\nwindows: []\nrepos: { a/b: {} }\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: review, deliver: report }]\n`,
+    )
+    const runId = newRunId()
+    try {
+      await executeRun({
+        path,
+        config: await loadConfig(path),
+        runId,
+        now: new Date(),
+        log: { info: () => {}, error: () => {} },
+        signal: () => new AbortController().signal,
+        present: false,
+      })
+    } finally {
+      the.forge = undefined
+    }
+    const report = await readFile(join(runsDir, runId, 'report.md'), 'utf8')
+    const json = await readFile(join(runsDir, runId, 'report.json'), 'utf8')
+    expect(report).toContain('***')
+    expect(report).not.toContain('rt-old-0123456789')
+    expect(json).not.toContain('rt-old-0123456789')
   })
 
   it('prunes runs older than keep_runs when it starts, not on a dry run', async () => {

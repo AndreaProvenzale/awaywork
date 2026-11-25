@@ -90,11 +90,12 @@ export async function runCommand(
 /** Shorter values turn up in ordinary text by chance: a scan passes over them. */
 const SCANNED_LENGTH = 12
 
-/** twg's own credentials: twg 1.3.8 marks these `secret` in its env registry, outside its internal release names. */
+/** twg's own credentials: twg 1.3.8 marks these `secret` for auth or network in its env registry, all but `TWG_OUTBOUND_AUTH`, a mode. */
 const twgTokens = [
   'TWG_TOKEN',
   'TWG_BBC_TOKEN',
   'TWG_OAUTH_ACCESS_TOKEN',
+  'TWG_GOVERNATOR_SLAUTH_TOKEN',
   'TWG_ADMIN_TOKEN',
   'TWG_STATLAS_TOKEN',
   'TWG_MCP_TOKEN',
