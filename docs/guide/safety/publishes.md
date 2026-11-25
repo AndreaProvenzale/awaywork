@@ -126,6 +126,7 @@ awaywork fetches the clone's HEAD into a repo of its own, adds the trailer, diff
 - Its git runs no hook, ignores replace refs, diffs only from commits it resolved itself (so `changed` gates and `when: { changed }` see what's pushed), and runs no git in a submodule, even with your global `submodule.recurse` or `diff.submodule`.
 - A `.git` with a symlink outside its hooks, an alternates file, a `commondir` or `info/grafts` stops it: no more git, checks or `verify` in that clone, nothing published.
 - In the clone it only reads the body or report, writes `diff.patch` beside it, tops the body with the gates' section and appends the chain's notes, the items' link lines, a GitHub issue's `Closes` line (for a chain from the default branch) and a stacked PR's "merge that first" line. It refuses symlinks there and touches only regular files; a process that outlived the watchdog could still swap a path after that check.
+- A body or commit that holds a secret's value verbatim is pushed nowhere, nor are commits too large to scan, nor a review, comment or store file that holds one: [No secret goes out](./index.md#no-secret-goes-out).
 
 ## Reports and pending reviews
 

@@ -2,7 +2,7 @@ import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { parseConfig } from '#config/load'
 import { bin, builtinSkillsDir } from '#config/paths'
 import { setupOf } from '#config/skills'
@@ -13,10 +13,16 @@ import { planRun } from '#plan/foreman'
 import { type Allowance, allowance } from '#quota/budget'
 import { runUnits } from '#worker/units/run'
 import { withRepos } from './fakes/acme'
-import { githubPr, issue } from './fakes/items'
+import { fakeItem, githubPr, issue } from './fakes/items'
 import { fakeProvider } from './fakes/provider'
 import { fakeSource } from './fakes/source'
 import { committer, git, looper, originForge } from './fakes/units'
+
+const wall = vi.hoisted(() => ({ up: false }))
+vi.mock('#core/isolation/index', async (original) => ({
+  ...(await original<typeof import('#core/isolation/index')>()),
+  wallUp: () => wall.up,
+}))
 
 /** The PR body, the unit's `out/` in the run dir, what the run printed and what it published. */
 async function verified(
@@ -808,4 +814,36 @@ it('pushes onto your PR when its judge fired, the card atop the summary in the r
   expect(outcomes[0]?.kind === 'pushed' && outcomes[0].text).toBe(
     '## Needs a decision\n\n### Judge\n\n- risk: the export format changed → its consumers decide\n\n---\n\nfix\n\nDone.',
   )
+})
+
+it("runs a trusted chain's judge behind the wall without a shell sandbox, and refuses an untrusted chain's", async () => {
+  wall.up = true
+  try {
+    const trusted = await gated(
+      `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+      judgedBy(verdict('clear')),
+      { provider: { startsSandbox: async () => false } },
+    )
+    expect(trusted.runs).toEqual(['claude:implement:1', 'claude:judge:1'])
+    let down = false
+    const theirs = await gated(
+      `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+      async (dir) => {
+        down = true
+        return commitFile(dir, 'src/app.ts', 'x')
+      },
+      {
+        items: async () => [
+          fakeItem({ ...issue(1), fields: { repo: 'acme/api', trusted: false } }),
+        ],
+        provider: { startsSandbox: async () => !down },
+      },
+    )
+    expect(theirs.runs).toEqual(['claude:implement:1'])
+    expect(theirs.opened[0]?.body).toContain(
+      "risk: judge didn't run: claude's shell sandbox can't start here (needs bubblewrap, socat and user namespaces) and an author off `trust` steers this unit",
+    )
+  } finally {
+    wall.up = false
+  }
 })

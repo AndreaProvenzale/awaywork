@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, truncate, writeFile } from 'node:fs/promises'
 import { createServer, type RequestListener } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -15,7 +15,7 @@ import { setupOf } from '#config/skills'
 import { builtinSkills } from '#core/skills'
 import type { Item, Provider, Source, Write } from '#core/types'
 import { formatReport } from '#format/report-md'
-import { planRun } from '#plan/foreman'
+import { type PlannedUnit, planRun } from '#plan/foreman'
 import {
   commentKind,
   leanPlanComment,
@@ -34,6 +34,8 @@ import { TIMEOUT_MS } from '#sources/command'
 import { githubSource } from '#sources/github'
 import { cardTasks, planState } from '#tasks/plan-file'
 import { runUnits } from '#worker/units/run'
+import type { Run } from '#worker/units/state'
+import { pinOut } from '#worker/units/writes'
 import { fakeForge } from './fakes/forge'
 import { fixture, githubRoutes, recorded } from './fakes/gh'
 import { fakeItem, githubPr } from './fakes/items'
@@ -342,6 +344,53 @@ describe('lean posts', () => {
     )
     expect(body()).not.toContain('The whole report.')
     expect(r.results[0]?.store).toBeUndefined()
+  })
+
+  it("stores no file and posts no result that holds a secret's value, naming the secret", async () => {
+    const token = 'fake-agent-token-0123456789'
+    const files = { 'report.md': `All of it: ${token}`, 'summary.md': 'Short.', 'notes.txt': token }
+    const { writes, report: r } = await run(
+      shared.config,
+      report,
+      [yours(1)],
+      writer(files, { prompts: [], read: [] }),
+      { FAKE_AGENT_TOKEN: token },
+    )
+    expect(writes).toEqual([])
+    expect(r.results[0]?.result).toEqual([
+      {
+        item: 'github:acme/api#1',
+        failed: "FAKE_AGENT_TOKEN's value is in the result: rotate it",
+      },
+    ])
+    expect(r.results[0]?.store).toEqual([
+      "notes.txt holds FAKE_AGENT_TOKEN's value, not stored: rotate it",
+      "report.md holds FAKE_AGENT_TOKEN's value, not stored: rotate it",
+      "report.md isn't in the store: the post shows all of it",
+    ])
+  })
+
+  it("stores no file too large to scan or that can't be read", async () => {
+    const out = await mkdtemp(join(tmpdir(), 'awaywork-pin-'))
+    await writeFile(join(out, 'big.bin'), '')
+    await truncate(join(out, 'big.bin'), 100_000_001)
+    await writeFile(join(out, 'locked.txt'), 'x')
+    await chmod(join(out, 'locked.txt'), 0o000)
+    const run = {
+      input: { dryRun: false, ctx: { env: {} } },
+      secrets: [],
+      store: storeOf(shared.config),
+      publisher: { leaked: async () => undefined },
+    } as unknown as Run
+    const p = { unit: { id: 'u1', items: [yours(1)] } } as unknown as PlannedUnit
+    const notes: string[] = []
+    expect(await pinOut(run, p, out, [], notes)).toEqual([])
+    expect(notes).toEqual([
+      'big.bin is too large to scan for secrets, not stored',
+      ...(process.getuid?.() === 0
+        ? []
+        : ["locked.txt couldn't be read to scan for secrets, not stored"]),
+    ])
   })
 
   it('leaves a lean plan unposted when the store skips plan.yml', async () => {

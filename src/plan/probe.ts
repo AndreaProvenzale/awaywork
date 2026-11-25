@@ -1,8 +1,10 @@
 import { attemptsPath, skipsPath } from '#config/paths'
 import type { Config } from '#config/schema'
 import { readSetup } from '#config/skills'
-import { inAwayworkImage } from '#core/isolation/sudo'
-import type { Ctx, Forge, Item, Rule, Source } from '#core/types'
+import type { Where } from '#core/isolation/index'
+import { hostedRunner, inAwayworkImage, WORKER } from '#core/isolation/sudo'
+import { withholdsGrants } from '#core/trust'
+import type { Ctx, Forge, Item, Provider, Rule, Source } from '#core/types'
 import { forgeFor } from '#forge/index'
 import { resolveTeams } from '#forge/teams'
 import { clip } from '#format/terminal'
@@ -20,8 +22,9 @@ import { bounded, counted } from '#util/text'
 import { configSecrets } from '#worker/clone/context'
 import { maskSecrets } from '#worker/process/command'
 import { loadAttempts } from './attempts'
-import { planRun, type RunPlan } from './foreman'
+import { type PlannedUnit, planRun, type RunPlan } from './foreman'
 import { ruleThread } from './queue'
+import { settingsFor } from './repos'
 import { activeSkips, loadSkips } from './skips'
 import { DEFAULT_LOOKBACK, itemState, lookback, spanMs } from './where'
 
@@ -91,6 +94,7 @@ export async function probeAndPlan(
   const at = opts.at ?? new Date()
   const present = opts.present ?? !windowEnd(config.windows, at)
   const allowances: Record<string, Allowance> = {}
+  const probed: Record<string, Provider> = {}
   for (const p of opts.probe === false ? [] : config.providers) {
     const provider = providerFor(p.id, p.config)
     const name = `${p.id} quota`
@@ -104,8 +108,9 @@ export async function probeAndPlan(
       config.isolation === 'none' &&
       !inAwayworkImage(process.env) &&
       provider &&
-      (await shellRefusal(provider, { dir: process.cwd() }))
+      (await shellRefusal(provider, {}, { untrusted: false }))
     if (refused) warnings.push(`${p.id}: its units are skipped: ${refused}`)
+    if (provider) probed[p.id] = provider
     onProgress?.({ name, state: 'running' })
     let reason: string | undefined
     const quota = await provider?.probe(ctx).catch((e: Error) => {
@@ -143,6 +148,7 @@ export async function probeAndPlan(
       skill: opts.skill,
     },
   })
+  await markShellRefused(config, planned.units, probed, ctx.env)
   return {
     plan: {
       ...planned,
@@ -161,6 +167,35 @@ export async function probeAndPlan(
     secrets,
     config,
   }
+}
+
+/** Marks the units an author off `trust` steers whose provider's shell sandbox won't start where the run puts them, as the run skips them. */
+export async function markShellRefused(
+  config: Config,
+  units: PlannedUnit[],
+  providers: Record<string, Provider>,
+  env: NodeJS.ProcessEnv,
+) {
+  for (const p of units) {
+    const provider = p.provider && providers[p.provider]
+    const at = provider && withholdsGrants(p.unit) && whereUnitRuns(config, p.unit.repo, env)
+    if (!at) continue
+    const refused = await shellRefusal(provider, at.where, p.unit, undefined, at.walled)
+    if (refused) p.shellRefused = refused
+  }
+}
+
+/** Where a run puts a unit of `repo`, as `isolateFor` picks it, and whether a wall holds there; none under a container without the repo's image. */
+function whereUnitRuns(
+  config: Config,
+  repo: string,
+  env: NodeJS.ProcessEnv,
+): { where: Where; walled: boolean } | undefined {
+  if (config.isolation === 'user' || hostedRunner(env) || inAwayworkImage(env))
+    return { where: { user: WORKER }, walled: true }
+  if (config.isolation !== 'container') return { where: {}, walled: false }
+  const { image } = settingsFor(config.repos, repo)
+  return image ? { where: { image }, walled: true } : undefined
 }
 
 export function configuredSources(config: Config): Record<string, Source> {

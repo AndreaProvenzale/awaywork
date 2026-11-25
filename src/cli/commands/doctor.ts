@@ -395,8 +395,9 @@ async function cursorSandbox(config: Config, boxed: boolean, asWorker: boolean, 
   return where && `its sandbox can't start${where} (needs ${sandboxNeeds('cursor')})`
 }
 
-const CURSOR_BEHIND_WALL =
-  "left out under the network wall, which its proxy can't pass: its shell reaches the CLI's hosts and `network` through awaywork's proxy"
+const SKIPS_UNTRUSTED = '; units an author off `trust` steers are skipped'
+
+const CURSOR_BEHIND_WALL = `left out under the network wall, which its proxy can't pass: its shell reaches the CLI's hosts and \`network\` through awaywork's proxy${SKIPS_UNTRUSTED}`
 
 /**
  * An agent's shell sandbox as a check. Where it can't start, its units are refused (`refused`, a failure), or run with the
@@ -414,7 +415,7 @@ export function sandboxCheck(
     return [
       'warn',
       what,
-      `${down}: ${name}'s shell reaches the CLI's hosts and \`network\` through awaywork's wall`,
+      `${down}: ${name}'s shell reaches the CLI's hosts and \`network\` through awaywork's wall${SKIPS_UNTRUSTED}`,
     ]
   return [
     'FAIL',

@@ -65,6 +65,9 @@ export const start: Mode['start'] = (file, args, options) => mode.start(file, ar
 export const isolated = () => mode.name === 'user'
 export const contained = () => mode.name === 'container'
 export const whereRuns = (dir: string): Where => mode.where(dir)
+/** Where launches in `dir` will run, before a container's box is set: in the repo's `image`. */
+export const whereWillRun = (dir: string, image?: string): Where =>
+  contained() ? { image } : whereRuns(dir)
 export const workerHome = (dir: string) => mode.home?.(dir)
 export const wallUp = () => mode.walled()
 

@@ -7,7 +7,14 @@ import { readRegistry } from '#config/profiles'
 import { lostToWorker } from '#core/isolation/clones'
 import { CONTAINER_HOME } from '#core/isolation/container'
 import { grantedNetwork, setupPhase } from '#core/isolation/egress'
-import { AGENT_HOME, contain, contained, wallUp, whereRuns } from '#core/isolation/index'
+import {
+  AGENT_HOME,
+  contain,
+  contained,
+  wallUp,
+  whereRuns,
+  whereWillRun,
+} from '#core/isolation/index'
 import { withholdsGrants } from '#core/trust'
 import type { McpServer, Unit } from '#core/types'
 import { describeCondition, holds } from '#plan/condition'
@@ -297,7 +304,7 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
     end(`no provider left: ${passed.join('; ') || 'none configured'}`)
     return
   }
-  const refused = await shellRefusal(provider, { dir }, input.signal)
+  const refused = await shellRefusal(provider, whereWillRun(dir, image), unit, input.signal)
   if (refused) {
     end(refused)
     return
@@ -339,7 +346,11 @@ export async function runStep(run: Run, cs: ChainState, i: number) {
   await mkdir(unitDir, { recursive: true })
   const logFile = createWriteStream(join(unitDir, 'worker.log'))
   const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
-  if (wallUp() && provider.startsSandbox && !(await provider.startsSandbox({ dir }, input.signal)))
+  if (
+    wallUp() &&
+    provider.startsSandbox &&
+    !(await provider.startsSandbox(whereRuns(dir), input.signal))
+  )
     log(
       `network: ${id}'s shell sandbox can't start here: its shell reaches the CLI's hosts and \`network\` through awaywork's wall`,
     )

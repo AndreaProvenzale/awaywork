@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import type { Where as RunsAt } from '#core/isolation/index'
 import type { DraftLeft, Left, Pin } from '#posts/footer'
 import type { Contract, PlanLimits } from '#tasks/plan-file'
 
@@ -246,8 +247,10 @@ export interface Provider {
   secrets: string[]
   /** The hosts the CLI itself needs: its API and its login. */
   hosts: string[]
-  /** Whether the CLI's own shell sandbox can start where `job` runs; unset, it has none. */
-  startsSandbox?(job: Pick<Job, 'dir'>, signal?: AbortSignal): Promise<boolean>
+  /** Whether the CLI's own shell sandbox can start `where`; unset, it has none. */
+  startsSandbox?(where: RunsAt, signal?: AbortSignal): Promise<boolean>
+  /** Its sandbox stays off behind awaywork's wall, whose proxy it can't pass. */
+  sandboxOffBehindWall?: true
   /** Why it can't run in this environment, if it can't; routing then skips it. */
   unavailable?(env: NodeJS.ProcessEnv): string | undefined
   detect(): Promise<{ installed: boolean; version?: string }>
@@ -261,6 +264,8 @@ export interface Provider {
   finish?(dir: string): Promise<string[]>
   /** Under a worker user, whose `HOME` is fresh for each clone: lends it the machine's own login for the run. */
   login?: Login
+  /** The values of the login its shell can read from a file, by name, for awaywork to keep out of what it writes. */
+  loginValues?(env: NodeJS.ProcessEnv): Promise<Record<string, string>>
   /** The env var naming the folder its login is in, which a config's `config_dir` sets; the folder without it, and how to log in. */
   loginDir?: { env: string; default: string; command: string }
   /** Who it's logged in as in `env`; throws when it isn't. */

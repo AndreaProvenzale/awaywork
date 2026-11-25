@@ -1,7 +1,9 @@
 import type { Phase } from '#core/isolation/egress'
 import { asWorker } from '#core/isolation/index'
 import { type Launch, launch } from '#core/launch'
+import type { Provider } from '#core/types'
 import { killGroupWhenDone } from '#util/process'
+import { forgeTokens } from '#worker/clone/env'
 
 const TIMEOUT_MS = 15 * 60_000
 const TAIL_LINES = 5
@@ -82,6 +84,56 @@ export async function runCommand(
     stdout,
     failed: signal?.aborted ? 'interrupted' : 'the window ended',
     stopped: true,
+  }
+}
+
+/** Shorter values turn up in ordinary text by chance: a scan passes over them. */
+const SCANNED_LENGTH = 12
+
+/** twg's own credentials: twg 1.3.8 marks these `secret` for auth or network in its env registry, all but `TWG_OUTBOUND_AUTH`, a mode. */
+const twgTokens = [
+  'TWG_TOKEN',
+  'TWG_BBC_TOKEN',
+  'TWG_OAUTH_ACCESS_TOKEN',
+  'TWG_GOVERNATOR_SLAUTH_TOKEN',
+  'TWG_ADMIN_TOKEN',
+  'TWG_STATLAS_TOKEN',
+  'TWG_MCP_TOKEN',
+  'TWG_AUTH_STORAGE_KEY',
+]
+
+export type SecretScan = Awaited<ReturnType<typeof secretScan>>
+
+/**
+ * What awaywork looks for in what it writes out: the `secrets` named in `env`, the forge's and twg's tokens, and each
+ * provider's login, read when the scan is made, before a worker gets it, and again at each look as a login rotates, earlier values kept.
+ */
+export async function secretScan(
+  secrets: string[],
+  providers: Record<string, Provider>,
+  env: NodeJS.ProcessEnv,
+) {
+  const known = new Map<string, string>()
+  const read = async () => {
+    const named = [...secrets, ...forgeTokens, ...twgTokens].map((name) => [name, env[name]])
+    const logins = await Promise.all(
+      Object.values(providers).map(async (p) => Object.entries((await p.loginValues?.(env)) ?? {})),
+    )
+    for (const [name = '', value] of [...named, ...logins.flat()])
+      if (value && value.length >= SCANNED_LENGTH && !known.has(value)) known.set(value, name)
+    return [...known]
+  }
+  await read()
+  return {
+    /** The name of the first value `text` holds verbatim: a write that holds one is refused, not redacted, as the agent had it. */
+    leaked: async (text: string) => (await read()).find(([value]) => text.includes(value))?.[1],
+    /** `text` with each value masked, as written and as a JSON string escapes it. */
+    mask: async (text: string) =>
+      (await read()).reduce(
+        (out, [value]) =>
+          out.replaceAll(JSON.stringify(value).slice(1, -1), '***').replaceAll(value, '***'),
+        text,
+      ),
   }
 }
 

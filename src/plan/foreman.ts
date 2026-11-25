@@ -54,6 +54,8 @@ export interface PlannedUnit {
   passed: string[]
   /** Why its quota `when` fails now: the run checks again as windows fill, and skips it if it still fails. */
   quotaUnmet?: string
+  /** Why the run skips it: an author off `trust` steers it and its agent's shell sandbox won't start where it runs. */
+  shellRefused?: string
   /** The rule's unit whose chain this step is part of, by id: it works in that unit's clone. */
   chain?: string
   loop?: LoopRound

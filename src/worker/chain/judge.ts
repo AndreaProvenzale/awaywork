@@ -2,7 +2,7 @@ import { createWriteStream } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { lostToWorker } from '#core/isolation/clones'
-import { contain, contained } from '#core/isolation/index'
+import { contain, contained, whereWillRun } from '#core/isolation/index'
 import type { Unit } from '#core/types'
 import { modelFor, modelsFor, slug } from '#plan/foreman'
 import { settingsFor } from '#plan/repos'
@@ -31,10 +31,11 @@ export const judge =
     const provider = id && input.providers[id]
     const a = id && allowances[id]
     if (!id || !provider || !a) return `no provider left: ${passed.join('; ') || 'none configured'}`
-    const refused = await shellRefusal(provider, { dir }, input.signal)
+    const image = settingsFor(input.config.repos, unit.repo).image
+    // Trusted as its chain is: the unit it judges with is untrusted on every chain.
+    const refused = await shellRefusal(provider, whereWillRun(dir, image), unit, input.signal)
     if (refused) return refused
     if (!ranSlice.has(id)) routed[id] = (routed[id] ?? 0) + 1
-    const image = settingsFor(input.config.repos, unit.repo).image
     const entry = input.config.providers.find((c) => c.id === id)
     const model = modelFor(unit.rule.model, id, at) ?? entry?.model
     const name = `judge-${gate}-${slug(skill)}`

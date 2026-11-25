@@ -19,7 +19,7 @@ import { runUnits } from '#worker/units/run'
 import { cardAndPr, fakeItem, githubPr, issue, yours } from './fakes/items'
 import { fakeProvider } from './fakes/provider'
 import { fakeSource } from './fakes/source'
-import { asker, finishedRun, looper, originForge } from './fakes/units'
+import { asker, finishedRun, GH_TOKEN_VALUE, looper, originForge } from './fakes/units'
 
 it("posts a thread rule's waiting result on a thread issue it opens for a card that can't write, holding no move it can't make", async () => {
   const posted: string[] = []
@@ -376,6 +376,17 @@ it("reports a plan whose post failed, its secrets masked, and doesn't move the c
   expect(report.results[0]?.plan).toMatchObject({ unposted: '403 for ***' })
   expect(report.results[0]?.moved).toBeUndefined()
   expect(lines).toContain(`acme-api-1: couldn't post its plan on acme/api#1: 403 for ***`)
+})
+
+it("posts no plan and no questions that hold a secret's value, naming the secret", async () => {
+  const plan = await finishedRun(planRule, [yours(1)], planner(tasks, `Two: ${GH_TOKEN_VALUE}`))
+  expect(plan.writes).toEqual([])
+  expect(plan.report.results[0]?.plan?.unposted).toBe("GH_TOKEN's value is in the plan: rotate it")
+  const asked = await finishedRun(planRule, [yours(1)], asker(`Which? ${GH_TOKEN_VALUE}`))
+  expect(asked.writes).toEqual([])
+  expect(asked.report.results[0]?.questions?.unposted).toBe(
+    "GH_TOKEN's value is in the questions: rotate it",
+  )
 })
 
 it('posts no plan when the step asked questions instead', async () => {

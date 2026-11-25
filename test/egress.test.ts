@@ -512,42 +512,91 @@ describe('the wall', () => {
 })
 
 describe('shellRefusal', () => {
-  const withSandbox = (starts: boolean): Provider => ({
-    ...claude,
+  const withSandbox = (starts: boolean, base: Provider = claude): Provider => ({
+    ...base,
     startsSandbox: async () => starts,
   })
   const bare: Provider = { ...claude, startsSandbox: undefined }
+  const mine = { untrusted: false }
+  const theirs = { untrusted: true }
+  const behindWall = async (check: () => Promise<void>) => {
+    useMode(userMode('wall-user'))
+    try {
+      await raiseWall({}, async () => undefined)
+      await check()
+    } finally {
+      useMode(none)
+      await raiseWall({}, async () => undefined)
+    }
+  }
 
   it('lets a unit run where its provider’s sandbox starts', async () => {
-    expect(await shellRefusal(withSandbox(true), { dir: '/x' })).toBeUndefined()
+    expect(await shellRefusal(withSandbox(true), {}, mine)).toBeUndefined()
+    expect(await shellRefusal(withSandbox(true), {}, theirs)).toBeUndefined()
   })
 
   it('refuses it, naming the fix, where the sandbox can’t start and no wall holds', async () => {
-    const reason = await shellRefusal(withSandbox(false), { dir: '/x' })
+    const reason = await shellRefusal(withSandbox(false), {}, mine)
     expect(reason).toContain("claude's shell sandbox can't start here")
     expect(reason).toContain('bubblewrap, socat and user namespaces')
     expect(reason).toContain('isolation: user')
   })
 
   it('lets it run behind a wall that holds', async () => {
-    useMode(userMode('wall-user'))
-    try {
-      await raiseWall({}, async () => undefined)
-      expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toBeUndefined()
-    } finally {
-      useMode(none)
-      await raiseWall({}, async () => undefined)
+    await behindWall(async () => {
+      expect(await shellRefusal(withSandbox(false), {}, mine)).toBeUndefined()
+    })
+  })
+
+  it('refuses an untrusted author’s unit behind the wall too, where its shell could read the login', async () => {
+    await behindWall(async () => {
+      for (const unit of [theirs, { untrusted: false, untrustedText: true as const }])
+        expect(await shellRefusal(withSandbox(false), {}, unit)).toBe(
+          "claude's shell sandbox can't start here (needs bubblewrap, socat and user namespaces) and an author off `trust` steers this unit, so its shell could read CLAUDE_CODE_OAUTH_TOKEN: install them where units run",
+        )
+      expect(await shellRefusal(withSandbox(true), {}, theirs)).toBeUndefined()
+      // Codex's shell reads its login with the sandbox up too.
+      expect(await shellRefusal(withSandbox(false, codex), {}, theirs)).toContain(
+        'steers this unit, so its shell could write outside the clone and reach the network',
+      )
+    })
+  })
+
+  it('refuses an untrusted author’s Cursor unit behind the wall, where its sandbox stays off', async () => {
+    await behindWall(async () => {
+      expect(await shellRefusal(withSandbox(true, cursor), {}, theirs)).toMatch(
+        /^cursor's shell sandbox stays off behind awaywork's network wall, and an author off `trust`/,
+      )
+      expect(await shellRefusal(withSandbox(true, cursor), {}, mine)).toBeUndefined()
+    })
+    expect(await shellRefusal(withSandbox(true, cursor), {}, theirs)).toBeUndefined()
+  })
+
+  it('probes where it’s told the unit runs, and takes the wall it’s told', async () => {
+    const seen: unknown[] = []
+    const provider: Provider = {
+      ...claude,
+      startsSandbox: async (where) => {
+        seen.push(where)
+        return false
+      },
     }
+    expect(await shellRefusal(provider, { image: 'node:22' }, theirs, undefined, true)).toMatch(
+      /steers this unit/,
+    )
+    expect(seen).toEqual([{ image: 'node:22' }])
+    expect(await shellRefusal(provider, {}, mine, undefined, true)).toBeUndefined()
   })
 
   it('exempts a provider with no sandbox of its own', async () => {
-    expect(await shellRefusal(bare, { dir: '/x' })).toBeUndefined()
+    expect(await shellRefusal(bare, {}, mine)).toBeUndefined()
+    expect(await shellRefusal(bare, {}, theirs)).toBeUndefined()
   })
 
   it('refuses under isolation: container while its wall is down', async () => {
     useMode(containerMode())
     try {
-      expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toMatch(/no network wall holds/)
+      expect(await shellRefusal(withSandbox(false), {}, mine)).toMatch(/no network wall holds/)
     } finally {
       useMode(none)
     }
@@ -557,7 +606,7 @@ describe('shellRefusal', () => {
     const before = process.env.AWAYWORK_IMAGE
     process.env.AWAYWORK_IMAGE = '1'
     try {
-      expect(await shellRefusal(withSandbox(false), { dir: '/x' })).toContain("can't start here")
+      expect(await shellRefusal(withSandbox(false), {}, mine)).toContain("can't start here")
     } finally {
       if (before === undefined) delete process.env.AWAYWORK_IMAGE
       else process.env.AWAYWORK_IMAGE = before

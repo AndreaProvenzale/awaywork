@@ -6,8 +6,9 @@ import { ruleNumber } from '#cli/commands/plan'
 import { parseConfig } from '#config/load'
 import { setupOf } from '#config/skills'
 import { renderBranch, templateProblem } from '#core/branch'
+import { WORKER } from '#core/isolation/sudo'
 import { builtinSkills, type SkillCatalog } from '#core/skills'
-import type { Item, PrRef, Quota, Rule } from '#core/types'
+import type { Item, Provider, PrRef, Quota, Rule } from '#core/types'
 import { describeAllowance } from '#format/allowances'
 import { planJson } from '#format/json'
 import { formatPlan, listedUnits } from '#format/plan'
@@ -22,10 +23,11 @@ import {
 } from '#plan/attempts'
 import { needsYou, planRun } from '#plan/foreman'
 import type { Step } from '#plan/probe'
-import { finishedSince, probeAndPlan } from '#plan/probe'
+import { finishedSince, markShellRefused, probeAndPlan } from '#plan/probe'
 import type { Skip } from '#plan/skips'
 import { approveReply, markComment, planComment, resultComment } from '#posts/comments'
 import type { RunReport } from '#posts/report'
+import { claude } from '#providers/claude'
 import { type Allowance, allowance } from '#quota/budget'
 import { oneOffRefusal } from '#run/execute'
 import { asanaTask, fakeItem, githubPr } from './fakes/items'
@@ -1111,6 +1113,47 @@ queue:
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+})
+
+describe('a shell that would hold the login', () => {
+  const planned = (isolation: string) => {
+    const yaml = `isolation: ${isolation}\nproviders: [claude: {}]\nrepos: { acme/api: { image: node:22 } }\nsources: { github: {} }\nqueue: [{ skill: review, deliver: report }]\n`
+    const items = [githubPr(2, { mine: false, trusted: false, author: 'Bob' }), githubPr(3)]
+    return { config: parseConfig(yaml), result: plan(yaml, items, { claude: week(0.1) }) }
+  }
+  const probing = (seen: unknown[]): Provider => ({
+    ...claude,
+    startsSandbox: async (where) => {
+      seen.push(where)
+      return false
+    },
+  })
+
+  it('marks the untrusted author’s unit as the run skips it, where the run puts it, and says so in the plan', async () => {
+    for (const [isolation, where] of [
+      ['container', { image: 'node:22' }],
+      ['user', { user: WORKER }],
+      ['none', {}],
+    ] as const) {
+      const { config, result } = planned(isolation)
+      const seen: unknown[] = []
+      await markShellRefused(config, result.units, { claude: probing(seen) }, {})
+      expect(seen).toEqual([where])
+      const [theirs, mine] = result.units
+      expect(theirs?.shellRefused).toContain('an author off `trust` steers this unit')
+      expect(mine?.shellRefused).toBeUndefined()
+      expect(formatPlan(result)).toContain(
+        "   skipped: claude's shell sandbox can't start here (needs bubblewrap, socat and user namespaces) and an author off `trust` steers this unit",
+      )
+    }
+  })
+
+  it('leaves it be where its sandbox starts', async () => {
+    const { config, result } = planned('container')
+    const starts = { ...claude, startsSandbox: async () => true }
+    await markShellRefused(config, result.units, { claude: starts }, {})
+    expect(result.units.map((p) => p.shellRefused)).toEqual([undefined, undefined])
   })
 })
 

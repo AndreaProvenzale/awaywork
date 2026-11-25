@@ -64,8 +64,7 @@ export function codexProvider(
   bin = 'codex',
   lockFile = join(rootStateDir, 'codex.lock'),
   authPath?: string,
-  startsSandbox = (job: Pick<Job, 'dir'>, signal?: AbortSignal) =>
-    codexSandboxStarts(whereRuns(job.dir), signal),
+  startsSandbox = (where: Where, signal?: AbortSignal) => codexSandboxStarts(where, signal),
 ): Provider {
   // Held from a login lent to the worker until it's saved back, the run in between.
   let lent = false
@@ -188,6 +187,17 @@ export function codexProvider(
       }
     },
 
+    /** The tokens of `auth.json`, which its shell reads whatever the sandbox, and a worker gets a copy of. */
+    async loginValues(env) {
+      const auth = parseJson(await readFile(authPath ?? codexLogin(env), 'utf8').catch(() => ''))
+      const values = { OPENAI_API_KEY: auth?.OPENAI_API_KEY, ...auth?.tokens }
+      return Object.fromEntries(
+        ['OPENAI_API_KEY', 'access_token', 'id_token', 'refresh_token'].flatMap((key) =>
+          typeof values[key] === 'string' ? [[`CODEX_LOGIN (${key})`, values[key]]] : [],
+        ),
+      )
+    },
+
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
       const release = lent ? async () => {} : await lock(lockFile, () => {})
@@ -204,7 +214,7 @@ export function codexProvider(
           `${k}=${JSON.stringify(v)}`,
         ])
         const mcp = mcpOverrides(job.mcp ?? {})
-        const walled = await startsSandbox(job, signal)
+        const walled = await startsSandbox(whereRuns(job.dir), signal)
         if (!walled && !signal.aborted)
           yield {
             type: 'log',

@@ -6,7 +6,7 @@ import { bin } from '#config/paths'
 import type { Config } from '#config/schema'
 import { lostToWorker } from '#core/isolation/clones'
 import { grantedNetwork, setupPhase } from '#core/isolation/egress'
-import { contain, contained, isolated, workerHome } from '#core/isolation/index'
+import { contain, contained, isolated, whereWillRun, workerHome } from '#core/isolation/index'
 import { workerRoot } from '#core/isolation/user'
 import type { Ctx, Forge, Provider, Source, Unit } from '#core/types'
 import { modelFor } from '#plan/foreman'
@@ -76,7 +76,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   if (contained() && !image)
     throw new Error(`no image for ${unit.repo}: isolation: container needs one in its repos entry`)
 
-  const refused = await shellRefusal(provider, { dir: r.runDir }, r.signal)
+  const refused = await shellRefusal(provider, whereWillRun(r.runDir, image), unit, r.signal)
   if (refused) throw new Error(refused)
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)

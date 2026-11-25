@@ -7,7 +7,7 @@ import type { Forge, Unit } from '#core/types'
 import { type Left, type Pin, trailerKey } from '#posts/footer'
 import { counted } from '#util/text'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from '#worker/clone/files'
-import type { Held } from './slice'
+import type { Held, Publisher } from './slice'
 
 export type Outcome =
   | {
@@ -61,7 +61,8 @@ const git = async (dir: string, ...args: string[]) =>
  * no merge among the commits, but on a merging unit only the merge of the PR's base awaywork made itself, the unit's `merged`;
  * on a unit that resumes awaywork's own draft, a fast-forward onto its branch, with or without commits, its body
  * rewritten from `pr.md` and the draft marked ready once nothing holds it, as a new PR would open.
- * The unit's commits are those after `start`, the commit its clone held before any worker ran.
+ * The unit's commits are those after `start`, the commit its clone held before any worker ran; nothing goes out while
+ * the body or a commit holds a value `leaked` names.
  * Git reads the clone only to fetch its HEAD into a repo of awaywork's own, so the clone's
  * config, attributes, hooks and refs, which the model can write, neither run nor count here.
  */
@@ -69,6 +70,7 @@ export async function publish(
   unit: Unit,
   dir: string,
   forge: Forge,
+  leaked: Publisher['leaked'],
   runId: string,
   start: string,
   closes = false,
@@ -89,7 +91,20 @@ export async function publish(
     // From the clone's own `.git` only, like `inClone`.
     const strict = '--upload-pack=git-upload-pack --strict'
     await git(repo, 'fetch', '-q', '--no-tags', strict, join(dir, '.git'), '+HEAD:refs/heads/work')
-    return await deliver(unit, repo, forge, runId, start, file, text, closes, notReady, held, pins)
+    return await deliver(
+      unit,
+      repo,
+      forge,
+      leaked,
+      runId,
+      start,
+      file,
+      text,
+      closes,
+      notReady,
+      held,
+      pins,
+    )
   } finally {
     await rm(repo, { recursive: true, force: true })
   }
@@ -99,6 +114,7 @@ async function deliver(
   unit: Unit,
   repo: string,
   forge: Forge,
+  leaked: Publisher['leaked'],
   runId: string,
   start: string,
   file: string,
@@ -171,6 +187,9 @@ async function deliver(
       reason: `${unit.branch} already exists on ${unit.repo}, not pushed`,
       unpublished: true,
     }
+  const body = push ? 'the push summary' : 'the PR body'
+  const leak = await leakedIn(repo, unit, start, text, body, leaked)
+  if (leak) return { kind: 'none', reason: leak, unpublished: true }
 
   const head = oldest ? await withTrailer(repo, commits, `${trailerKey}: ${runId}`) : start
   await git(repo, 'update-ref', 'HEAD', head)
@@ -229,6 +248,31 @@ async function deliver(
   // Stacked PRs are a preview on GitHub: a repo without them answers 404, and the body says it anyway.
   if (unit.stackedOn) await forge.stack(unit.repo, unit.stackedOn, url).catch(() => {})
   return { kind: 'pr', url, commits: commits.length, head, ...opened }
+}
+
+/**
+ * Why the `body` or the unit's commits (their messages, authors and the lines they change, history included) can't go
+ * out: one holds a value `leaked` names, or the commits can't be scanned.
+ */
+async function leakedIn(
+  repo: string,
+  unit: Unit,
+  start: string,
+  text: string,
+  body: string,
+  leaked: Publisher['leaked'],
+): Promise<string | undefined> {
+  const inBody = await leaked(text)
+  if (inBody) return `${body} holds ${inBody}'s value, not pushed: rotate it`
+  const parent = unit.merged ? ['--first-parent'] : []
+  const format = '--format=%an%n%ae%n%cn%n%ce%n%B'
+  const patches = ['-p', '-U0', '--text', '--no-ext-diff', '--no-textconv', format, ...parent]
+  // execa's error holds what it buffered: none of it may reach a log or a reason.
+  const log = await git(repo, 'log', ...patches, 'work', `^${start}`).catch(() => undefined)
+  if (log === undefined)
+    return "the commits couldn't be scanned for secrets (over 100 MB?), not pushed"
+  const inCommits = await leaked(log)
+  if (inCommits) return `the commits hold ${inCommits}'s value, not pushed: rotate it`
 }
 
 /** Rewrites `commits`, oldest first, each with `trailer` and its author and committer kept; returns the new tip. */

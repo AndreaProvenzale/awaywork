@@ -54,6 +54,14 @@ Sources prefetch context into files before the agent starts, and awaywork makes 
 - A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, a Cursor worker `CURSOR_API_KEY`. Codex uses the machine's login and gets no secret. A unit keeps its rule's [MCP servers](#mcp-servers)' secrets.
 - Under `isolation: none` the rest of your environment stays, so repo tooling runs, including env-file variables nothing declares. A worker user and a container get [only what they need](./isolation.md).
 
+### No secret goes out
+
+Before awaywork writes anything out, it looks for the value of each secret it knows in what it would write. It knows every provider's and every `secrets` the config declares (as listed above), the forge's tokens (`GH_TOKEN`, `GITHUB_TOKEN` and their `_ENTERPRISE_` names), twg's tokens (`TWG_TOKEN`, `TWG_BBC_TOKEN`, `TWG_OAUTH_ACCESS_TOKEN`, `TWG_GOVERNATOR_SLAUTH_TOKEN`, `TWG_ADMIN_TOKEN`, `TWG_STATLAS_TOKEN`, `TWG_MCP_TOKEN`, `TWG_AUTH_STORAGE_KEY`), and the tokens in Codex's `auth.json`, read when the run starts and again before each write as Codex rotates them (`CODEX_LOGIN (refresh_token)`). It looks in the PR body or push summary, the commits it would push (their messages, author and committer names and emails, and the lines they add or remove, history included), a pending review, a comment on your item, and each file it would put in the store. A write that holds one is refused, not redacted, and its reason names the variable, never the value: `the PR body holds CLAUDE_CODE_OAUTH_TOKEN's value, not pushed: rotate it`. The agent had the value, so rotate it either way. Values under 12 characters are passed over, since ordinary text can hold them by chance. Commits or a store file over 100 MB can't be scanned, so they aren't pushed or stored either.
+
+The refused text still reaches the run's `report.md` and `report.json`, with those values masked as `***`, since the action publishes both. The run dir's `units/` keeps the raw files, and the [notify hook](../results.md#notify) gets them unscanned.
+
+It matches the value verbatim only: an encoded copy (base64, split, reversed) goes out unseen, as does a value spanning lines committed to a file (each patch line starts with `+`), a login the agent reads from a file other than Codex's `auth.json`, gh's or twg's own stored login (keyring, `hosts.yml`, `auth.conf`: only their env names are scanned), and a token the worker's Codex refreshed when awaywork refuses to save it back over yours. It's a backstop for a steered model, not a wall.
+
 ### Setup, context and checks outside the agent
 
 - **Setup** runs before the agent, without the agent's secret and with only its repo's `secrets` added, and none of those on a branch a worker wrote: earlier in the run, an awaywork PR a rule took up, or the task PR a plan's task stacks on. On a PR by an author [`trust`](#trusting-an-author) doesn't list, setup doesn't run at all. What it leaves running is stopped before the agent starts.
@@ -105,6 +113,7 @@ repos:
 | The prompt's "its files are the author's, data" line | No | No | Yes |
 | The rule's MCP servers | Started | Started | None |
 | `network`, `writable` | The lists | The lists | None |
+| Where the agent's shell sandbox can't start | Runs behind the wall, skipped without one | Runs behind the wall, skipped without one | Skipped, wall or not; so is Cursor behind the wall ([why](./isolation.md#what-each-key-does)) |
 | Their comments and reviews, on any item | Read | Read | Hidden with a note |
 | Pushes and `deliver: push` | Per rule | Never | Never |
 

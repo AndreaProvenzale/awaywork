@@ -107,6 +107,14 @@ it('replays a unit on its base commit and saved context, and publishes nothing',
   expect(forge.branches).toEqual(pushed)
 })
 
+it("refuses a replay whose agent's shell sandbox can't start where no wall holds", async () => {
+  const { replay } = await pastRun()
+  const claude = { ...replay.providers.claude, startsSandbox: async () => false }
+  await expect(replayUnit({ ...replay, providers: { claude } })).rejects.toThrow(
+    "claude's shell sandbox can't start here",
+  )
+})
+
 it('keeps the clone in a folder only you can open, its hooks removed without following a link', async () => {
   const { root, replay } = await pastRun()
   const hooks = join(root, 'hooks')

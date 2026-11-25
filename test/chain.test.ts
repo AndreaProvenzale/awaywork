@@ -652,6 +652,22 @@ it('runs it behind a wall that holds, and says in worker.log its shell goes thro
   }
 })
 
+it('skips an untrusted opener’s issue behind the wall where the shell sandbox can’t start', async () => {
+  wall.up = true
+  try {
+    const provider: Provider = { ...worker({}), startsSandbox: async () => false }
+    const { report } = await run(
+      'queue: [{ skill: implement, deliver: pr }]\n',
+      [issue(1, { trusted: false })],
+      provider,
+    )
+    expect(report.results[0]?.status).toBe('skipped')
+    expect(report.results[0]?.reason).toContain('an author off `trust` steers this unit')
+  } finally {
+    wall.up = false
+  }
+})
+
 it("logs what a provider set aside and what it refused, and shows the set-aside in the chain's notes", async () => {
   const calls: string[] = []
   const provider: Provider = {
